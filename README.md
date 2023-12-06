@@ -30,4 +30,4 @@ To check if the effective potential of the given model defined in `tl_dark_photo
 
 The code has been tested with `python v3.8.8`, `scipy v1.5.2`, `numpy v1.20.1`, `matplotlib v3.3.4`, `itertools-len v1.0`, and `tqmd v4.59.0`. Please feel free to write an email to carlo.tasillo@desy.de in case you identify any bug in the code or still need some further documentation. Enjoy!
 
-**Note** (October 12, 2023): It has been brought to our attention, that the CosmoTransitions backend we are using runs into errors of type 7 (nucleation criterion cannot be fulfilled) when using an M2 processor (Macbooks from 2022+) and the latest versions of python, numpy and scipy. We can confirm that the code still works with `python v3.9.16`, `scipy v1.10.1` and `numpy v1.24.3`.
+**Note** (December 6, 2023): The CosmoTransitions backend we are using runs into errors of type 7 (nucleation criterion cannot be fulfilled) when the latest version of `scipy`. We can confirm that the code still runs using `scipy v1.10.1`. The issue is due to a the brentq method throwing a ValueError. We added the file `TL.yml` to set up a conda environment in which TransitionListener should run smoothly.

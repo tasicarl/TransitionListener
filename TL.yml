@@ -1,0 +1,13 @@
+name: TL
+channels:
+  - conda-forge
+dependencies:
+  - python
+  - pip
+  - scipy==1.10.1
+  #- scipy
+  - numpy
+  - matplotlib
+  - pip:
+    - tqdm
+    - itertools-len
