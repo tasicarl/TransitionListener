@@ -3,12 +3,15 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+import inspect
 import os
 import sys
 from pathlib import Path
 
 project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root / "src"))  # Ensure autodoc finds the package
+
+on_github = bool(os.environ.get("GITHUB_PAGES"))
 
 
 # -- Project information -----------------------------------------------------
@@ -32,6 +35,25 @@ extensions = [
     "sphinx.ext.todo",
     "matplotlib.sphinxext.plot_directive",
 ]
+
+if on_github:
+    extensions.append("sphinx.ext.linkcode")
+
+    def linkcode_resolve(domain, info):
+        if domain != "py" or not info["module"]:
+            return None
+        try:
+            mod = sys.modules[info["module"]]
+            obj = mod
+            for part in info["fullname"].split("."):
+                obj = getattr(obj, part)
+            filename = os.path.relpath(inspect.getfile(obj), project_root)
+            source, lineno = inspect.getsourcelines(obj)
+            linespec = f"#L{lineno}-L{lineno + len(source) - 1}"
+        except Exception:
+            filename = info["module"].replace(".", "/") + ".py"
+            linespec = ""
+        return f"https://github.com/tasicarl/TransitionListener/blob/main/{filename}{linespec}"
 
 myst_enable_extensions = [
     "dollarmath",
