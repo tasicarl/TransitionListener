@@ -1,0 +1,70 @@
+Modelfile:
+  arxiv/reproducibility/models/TL_2HDM_BSMPT_highacc.py
+
+Potential:
+  R2HDM_HighAcc_NAct100_Conv1_FRatio005
+
+Scan:
+  SinglePoint
+
+Parameters:
+  lambda1: 0.28894
+  lambda2: 0.26237
+  lambda3: 5.80958300958301
+  lambda4: -2.17494
+  lambda5: -2.24170
+  m12_sq_GeV2: 1573.171
+  tan_beta: 21.3949
+  yukawa_type: 1
+  v_GeV: 246.22
+
+timeout: -1
+format: txt
+output_path: arxiv/reproducibility/output/fig05_gw_spectra/raw_benchmarks/bp_lisa
+description: BP 3 – LISA benchmark (2HDM Type-I)
+plot_description: BP 3 LISA benchmark
+
+additional_plots:
+  action:
+    plot?: False
+    Tmin_GeV: 0
+    Tmax_GeV: 120
+    phase_indices: [0, 1]
+    n: 100
+
+  potential:
+    plot?: False
+    T_GeV: 80
+    phi_ranges_GeV: [0, 400]
+    n: 100
+
+  phases:
+    plot?: False
+    include_transitions?: False
+
+  profileV:
+    plot?: False
+    field_index_1: 0
+    field_index_2: 1
+
+  energy_density:
+    plot?: False
+    Tmin_GeV: 40
+    Tmax_GeV: 120
+
+  dofs:
+    plot?: False
+    Tmin_GeV: 40
+    Tmax_GeV: 120
+
+  sensitivities:
+    plot?: False
+
+  profile:
+    plot?: False
+
+  percolation:
+    plot?: False
+
+  gw_spectrum:
+    plot?: True

@@ -1,0 +1,16 @@
+Date created:time.struct_time(tm_year=2023, tm_mon=5, tm_mday=15, tm_hour=16, tm_min=52, tm_sec=35, tm_wday=0, tm_yday=135, tm_isdst=1)
+la-forge cores: ['/data/taylor_group/william_lamb/analyses/NANOGrav/NG15_v1p1/dm_gp/ng15_dmgp/fshd_dmgp/chain.core']
+KDE function: FFTKDE
+KDE kernel choice: epanechnikov
+Bandwidth choice: <function sj at 0x2b8ea42b2040>
+Bandwidth values: [0.01382799 0.0076616  0.00881017 0.01775468 0.03435934 0.0352577
+ 0.03740746 0.02612554 0.03060202 0.0316155  0.03392853 0.02787687
+ 0.0277001  0.03093307 0.03309433 0.05967801 0.03425261 0.02855942
+ 0.03035076 0.03150779 0.028027   0.03046142 0.03247571 0.02890307
+ 0.03327375 0.01868055 0.0296922  0.03165958 0.03124277 0.0287242 ]
+log10rho grid: [-9.99999894 -9.99952853 -9.99905811 ... -5.29728896 -5.29681855
+ -5.29634814]
+Thin chain for KDE? False
+Thin chain for bandwidth? False
+Bootstrap? False
+Number of bootstrapped samples: None

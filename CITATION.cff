@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+title: TransitionListener
+message: >-
+  If you use TransitionListener in your work, please cite the v2.0 release
+  paper and the v1 release paper that introduced the framework.
+type: software
+authors:
+  - given-names: Carlo
+    family-names: Tasillo
+    email: carlo.tasillo@ific.uv.es
+    affiliation: IFIC Valencia
+    orcid: "https://orcid.org/0000-0003-2683-5169"
+  - given-names: Jonas
+    family-names: Matuszak
+    email: jonas.matuszak@kit.edu
+    affiliation: Karlsruhe Institute of Technology
+repository-code: "https://github.com/tasicarl/TransitionListener"
+url: "https://tasillo.de/TransitionListener/"
+abstract: >-
+  TransitionListener is an open-source Python framework for analyzing
+  cosmological first-order phase transitions and their stochastic
+  gravitational-wave backgrounds. It implements a full thermal history
+  from microphysical model parameters to observable signals, including a
+  precision percolation solver, the LTE bubble-wall velocity, and
+  state-of-the-art gravitational-wave spectra.
+keywords:
+  - cosmology
+  - gravitational waves
+  - phase transitions
+  - particle physics
+license: GPL-3.0-or-later
+version: "2.0.0"
+date-released: 2026-04-26

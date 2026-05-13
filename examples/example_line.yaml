@@ -1,0 +1,51 @@
+# Line scan for the conformal U(1) model
+# Run (on 10 CPUs): tl -c examples/example_line.yaml -j 10
+
+# ==================================================
+# Scan settings
+# ================================================== 
+Modelfile:
+  models/TL_conformal_dark_u1.py
+
+Potential:
+  specific_potential
+
+Scan:
+  LineScan
+
+Parameters:
+  line_param:
+    g:
+      scale: lin
+      range: [0.5, 1.0]
+  other_params:
+    y: 0.01
+    v_GeV: 0.14
+    gw_wall_velocity: c
+  N: 30
+
+
+# ==================================================
+# output stuff
+# ==================================================
+timeout: -1  # Timeout in seconds for the individual TL run, -1 for no timeout
+format: txt  # either "txt" or "hdf5"
+output_path: scans/example_line
+description: example line, conformal U(1) model
+plot_description: Example line, conformal $U(1)$ model
+
+# Plotting parameters for grid scans
+plots: True
+# possible detector names:
+# B-DECIGO, BBO, DECIGO, EPTA_18_yrs, ET, 
+# HLVK_design, HLV_O2, LISA, NANOGrav_11_yrs,
+# NANOGrav_15_yrs, SKA_10_yrs, SKA_20_yrs, SKA_5_yrs, muAres
+overview_detector_name: SKA_5_yrs  # Detector name for the overview plot
+overview_param_names: # Parameter names for the overview plot
+- alpha
+- betaH_RH
+- Treh_SM_GeV
+
+plots: True
+show_scan_points: False
+

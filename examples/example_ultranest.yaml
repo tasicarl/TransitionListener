@@ -1,0 +1,39 @@
+# Ultranest scan for the conformal U(1) model
+# Run (with 10 CPUs): mpiexec -n 10 tl -c examples/example_ultranest.yaml
+
+# ==================================================
+# Scan settings
+# ================================================== 
+Modelfile:
+  models/TL_conformal_dark_u1.py
+
+Potential:
+  specific_potential
+
+Scan:
+  UltranestScan
+
+Parameters:
+  scan_params:
+    g:
+      scale: lin
+      range: [0.55, 1]
+    v_GeV:
+      scale: log
+      range: [1e-2, 1e0]
+  other_params:
+    y: 0.01
+
+
+# ==================================================
+# output stuff
+# ==================================================
+timeout: 300  # Timeout in seconds for the individual TL run, -1 for no timeout
+format: "txt"  # either "txt" or "hdf5"
+output_path: "scans/example_ultranest_scan"
+resume_mode: "overwrite"  # use "resume" to continue an existing clean UltraNest run
+description: "Example ultranest scan, U(1) conformal model"
+plot_description: "Example ultranest scan, U(1) conformal model"
+
+# Additional plotting options for single point scans
+plots: True

@@ -1,33 +1,169 @@
 # TransitionListener
-TransitionListener is tool for calculating spectra of stochastic gravitational wave backgrounds emitted in first-order phase transitions of dark sectors beyond the standard model of particle physics. The code was used to obtain the results presented in `arXiv:2109.06208` "Turn up the volume: Listening to phase transitions in hot dark sectors" by Fatih Ertas, Felix Kahlhoefer and Carlo Tasillo. Therein, a special focus was set on the effects of increasign the gravitational wave spectrum's amplitude by increasing the temperature ratio between the dark setor and the standard model bath as well as the dilution effect by an intermediate period of early matter domination.
 
-The underlying code CosmoTransitions (v2.0.2) by Carroll L. Wainwright (see `arXiv:1109.4189v1`) has been extended by several methods and modules for the calculation of
-- effective relativistic degrees of freedom in the standard model (see `arXiv:1803.01038`) and the dark sector bath
-- the nucleation temperature, transition strength, threshold transition strength for runaway bubbles and inverse transition timescale
-- the dilution factor of a stochastic GW spectrum from entropy injection
-- GW spectra as described in `arXiv:1512.06239`
-- signal-to-noise ratios for current and future observatories as described in `arXiv:1811.11175v2`
+A framework for analyzing cosmological first-order phase transitions and their gravitational-wave signatures.
 
-To start the program with an example model analysis use
+<p align="center">
+  <img src="./src/transitionlistener/logo/TL-logo_large.png" alt="TransitionListener Logo" width="450"/>
+</p>
 
-	python My_point.py
+---
 
-Using this procedure, a point in the model parameter space of a U(1) extension to the SM gauge group can be analyzed: First, the effective potential is calculated; then, the possibility of a first-order phase transition is considered. Using the nucleation criterion that the bubble nucleation rate reaches $H^-4$ (with $H$ being the Hubble parameter at the nucleation temeprature), the nucleation temeprature of bubbles is obtained. The calculation of the transition strength $/alpha$ and the inverse timescale $/beta \ H$ follows. As the dark sector is assumed to be unstable, further the possibility of decays to the SM is investigated. If these decays happen sufficiently late, a considerable entropy injection can be obtained that dilutes the GW signal. This dilution is quantified using the quantity D as defined in `arXiv:1811.03608v3`. After having obtained all necessary parameters, the GW spectrum as it would be observed by LISA or the Einstein Telescope is computed. Eventually, the expected signal-to-noise ratios for a list of future observatories are computed. All intermediate parameters of the analysis are saved together with some informative plots that might facilitate interpreting the physical results of the model analysis. Comments on all input parameters can be found in the file `my_point.py`.
+<p align="center">
+  <a href="https://www.gnu.org/licenses/gpl-3.0">
+    <img src="https://img.shields.io/badge/license-GPLv3-blue.svg" alt="License: GPL v3">
+  </a>
+  <a href="https://johannesbuchner.github.io/UltraNest/">
+    <img src="https://img.shields.io/badge/sampler-UltraNest-lightgrey.svg" alt="Sampler: UltraNest">
+  </a>
+  <a href="https://arxiv.org/abs/2109.06208">
+    <img src="https://img.shields.io/badge/arXiv-2109.06208-b31b1b.svg" alt="arXiv">
+  </a>
+  <a href="https://arxiv.org/abs/2502.19478">
+    <img src="https://img.shields.io/badge/arXiv-2502.19478-b31b1b.svg" alt="arXiv">
+  </a>
+</p>
 
-For the analysis of a given part of a model parameter space use
+---
 
-	python My_scan.py
+## Overview
 
-In doing so, the defined range of parameters will be analyzed on a two-dimensional grid. Eventually the results and all intermediate parameters will be plotted on that predefined grid.
+**TransitionListener** is an open-source Python package designed to compute, analyze, and visualize **first-order phase transitions** and their resulting **stochastic gravitational-wave backgrounds**. It implements a full thermal history from microphysical parameters to observable signals, combining field-theoretic precision with modern Bayesian inference tools.
 
-Additionally, there is also the possibility to compare the resulting GW spectra referring to a list of parameter space configurations. This analysis can be started using
+TransitionListener bridges theoretical particle physics and gravitational-wave phenomenology, enabling robust parameter inference across cosmological and detector scales.
 
-	python My_comparison.py
+Our code in version 2 is extends C. Wainwright's ```CosmoTransitions``` (see ```arxiv:1109.4189```) and its original version 1 (used in ```arxiv:2109.06208```) in multiple ways:
 
-To check if the effective potential of the given model defined in `tl_dark_photon_model_mb.py` is calculated correctly, a cross-check can be obtained by executing
+## Key Features
+- **Precision percolation computation** with self-consistent iteration over the Hubble rate and the false vacuum fraction
+- **Consistent treatment of the transition speed** and the mean bubble separation.  
+- **Bubble wall velocity** modeling in local thermal equilibrium based on Ai et al.'s ```arxiv:2303.10171```
+- **State-of-the-art gravitational-wave spectra** including multiple source contributions, as recommended by the LISA Cosmology Working Group in ```arxiv:2403.03723```
+- **Built-in sensitivity curves** for LISA, BBO, DECIGO, muAres and PTA experiments  
+- **PTA log-likelihood** evaluation using ```PTArcade```.
+- **UltraNest integration** for scans over large model parameter spaces using nested sampling methods.  
+- **Automatic degrees-of-freedom accounting** from both SM and BSM sectors  
+- **Energy density**: Evaluated self-consistently using the user-defined effective potential, going beyond the simple and often-used $\Delta V$ approximation.  
+- **Stable at low temperatures** — handles extreme supercooling of up to $\alpha = 10^{10}$  
+- **Robust error codes** which indicate why a given parameter point does not yield a gravitational wave signal, even if you expected it to do so 
+- **First Python code** supporting multi-Higgs potentials and SNR computation simultaneously  
+- **Flexible nucleation and percolation criteria** which go far beyond the fixed $S_3/T \simeq 140$ assumption: We take the degrees of freedom of the user-defined SM extension and the amount of vacuum energy into account when checking for the nucleation and percolation of bubbles.
+- **Fully modular design** with forthcoming **GAMBIT integration**
+---
 
-	python My_potential_plot_point.py
+## Installation
 
-The code has been tested with `python v3.8.8`, `scipy v1.5.2`, `numpy v1.20.1`, `matplotlib v3.3.4`, `itertools-len v1.0`, and `tqmd v4.59.0`. Please feel free to write an email to carlo.tasillo@desy.de in case you identify any bug in the code or still need some further documentation. Enjoy!
+Good news: TransitionListener is very easy to install!
 
-**Note** (December 6, 2023): The CosmoTransitions backend we are using runs into errors of type 7 (nucleation criterion cannot be fulfilled) when the latest version of `scipy`. We can confirm that the code still runs using `scipy v1.10.1`. The issue is due to a the brentq method throwing a ValueError. We added the file `TL.yml` to set up a conda environment in which TransitionListener should run smoothly.
+### Core installation
+For the release smoke test and the standard gravitational-wave workflow, the core Python package is sufficient:
+
+```bash
+git clone https://github.com/tasicarl/TransitionListener.git
+cd TransitionListener
+pip install -e .
+```
+
+This exposes the `tl` console script in your active environment.
+
+### Optional PTA environment
+PTA likelihood evaluation uses the external `PTArcade` / `enterprise` stack, which in turn may require native libraries that are better provisioned through conda than plain `pip`.
+
+First, install micromamba or conda on your computer or computing cluster. To create the recommended PTA-capable environment **on a Linux machine** use:
+
+```bash
+conda create -n TL -c conda-forge python=3.10 ptarcade ultranest tqdm corner getdist mpi4py
+conda activate TL
+```
+
+If you're using Apple Silicon or Intel **macOS** systems, use:
+
+```bash
+conda create -n TL --platform osx-64 -c conda-forge python=3.10 ptarcade ultranest tqdm corner getdist mpi4py
+conda activate TL
+```
+
+Then install TransitionListener into that environment:
+
+```bash
+git clone https://github.com/tasicarl/TransitionListener.git
+cd TransitionListener
+pip install -e .
+```
+
+If you want `pip` to record the optional PTA dependency explicitly, install the extra instead:
+
+```bash
+pip install -e ".[pta]"
+```
+
+### Testing
+After installing, run the release smoke test (≈1 minute on a modern CPU):
+
+```bash
+pip install pytest
+pytest tests/test_release_smoke.py
+```
+
+It runs `tl -c examples/example_point.yaml` end-to-end on the conformal U(1) benchmark and checks that the key observables (Tperc, Treh, alpha, RH) land in their expected physical bands.
+
+## Quick start
+You're now ready to use TransitionListener on your own favourite model. Alternatively, take one of the models shipped with the package. A minimal working example is
+
+```bash
+tl -c examples/example_point.yaml
+```
+
+which reads in the YAML file shipped with the repository, computes the full phase-transition history for a benchmark point of a U(1) extension of the Standard Model, predicts the gravitational-wave spectrum, and evaluates its observability with LISA, PTAs and other observatories.
+
+For a full reproduction of every figure in the v2.0 paper:
+
+```bash
+python arxiv/reproducibility/paper/scripts/build_all.py            # only build what's missing
+python arxiv/reproducibility/paper/scripts/build_all.py --regenerate  # rerun every scan + figure
+python arxiv/reproducibility/paper/scripts/build_all.py --only label_bubble-separation
+```
+
+The figure-to-script-to-YAML mapping lives in [`arxiv/reproducibility/paper/manifest.yaml`](arxiv/reproducibility/paper/manifest.yaml).
+
+### Environment rule
+For this repository, use the `TL` conda environment for all Python-based workflows:
+
+```bash
+conda activate TL
+```
+
+This includes:
+- production scans
+- profiling runs
+- plotting scripts
+- local validation helpers
+- one-off Python commands using `numpy`, `matplotlib`, or repo imports
+
+If you prefer not to activate the environment globally, use:
+
+```bash
+conda run -n TL python ...
+```
+
+More information and many more hands-on use cases of the code can be found in the [manual](https://tasillo.de/TransitionListener/).
+
+## Authors
+Please feel free to write us an email in case you identify any bug in the code or still need some further documentation. Enjoy!
+
+- Jonas Matuszak (KIT, jonas.matuszak@kit.edu)
+- Carlo Tasillo (IFIC Valencia, carlo.tasillo@ific.uv.es)
+
+## Citation
+
+If you use TransitionListener in your research, please cite the v2.0 release paper as well as the original v1 release in the bibliography of the new paper. A `CITATION.cff` file is shipped with the repository so that GitHub renders a "Cite this repository" button automatically.
+
+## License
+
+TransitionListener is distributed under the GNU GPL v3.0 license.
+You are free to use, modify, and distribute the code — provided that derivative works remain open-source under the same license and credit the original authors.
+See the [LICENSE](LICENSE.txt) file for full details.
+
+
+<p align="center">
+  <sub>© 2026 J. Matuszak & C. Tasillo: TransitionListener v2.0. Gravitational wave backgrounds from first-order phase transitions — made simple.</sub>
+</p>

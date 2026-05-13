@@ -1,0 +1,73 @@
+# Single-point scan for the Abelian dark Higgs model
+# Use with: tl -c examples/example_dark_photon.yaml -v
+
+# ==================================================
+# Scan settings
+# ==================================================
+Modelfile:
+  models/TL_dark_U1_g_parameterization.py
+Potential:
+  specific_potential
+
+Scan:
+  SinglePoint
+
+Parameters:
+  v_GeV: 1e3
+  g: 0.5
+  lambda: 1.31e-3
+
+# ==================================================
+# output stuff
+# ==================================================
+timeout: -1  # Timeout in seconds for the individual TL run, -1 for no timeout
+format: txt  # either "txt" or "hdf5"
+output_path: scans/example_dark_photon
+description: example point, dark photon model
+plot_description: Example point, dark photon model
+
+
+additional_plots:
+  action:
+    plot?: False
+    Tmin_GeV: 0
+    Tmax_GeV: 0.05
+    phase_indices: [0, 1]
+    n: 100
+
+  potential:
+    plot?: False
+    T_GeV: 0.02
+    phi_ranges_GeV: [0, 1]
+    n: 100
+
+  phases:
+    plot?: True
+    include_transitions?: False
+
+  profileV:
+    plot?: False
+    field_index_1: 0
+    field_index_2: 1
+
+  energy_density:
+    plot?: False
+    Tmin_GeV: 0.01
+    Tmax_GeV: 0.05
+  
+  dofs:
+    Tmin_GeV: 0.01
+    Tmax_GeV: 0.05
+    plot?: False
+
+  sensitivities:
+    plot?: False
+
+  profile:
+    plot?: False
+
+  percolation:
+    plot?: False
+
+  gw_spectrum:
+    plot?: True

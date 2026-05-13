@@ -1,0 +1,69 @@
+Modelfile:
+  models/TL_dark_flipflop.py
+
+Potential:
+  DarkFlipFlop
+
+Scan:
+  SinglePoint
+
+Parameters:
+  lambda0: 0.005098
+  lambda1: 0.002144
+  lambda12: 0.003078
+  v_GeV: 3.728330741601088
+  y: 0.972319
+  gamma: 0.7532
+
+timeout: -1
+format: txt
+output_path: arxiv/reproducibility/output/fig05_gw_spectra/raw_benchmarks/bp_muares
+description: BP 2 – muAres benchmark (dark flipflop)
+plot_description: BP 2 muAres benchmark
+
+additional_plots:
+  action:
+    plot?: True
+    Tmin_GeV: 1.0e-5
+    Tmax_GeV: 1
+    phase_indices: [0, 1]
+    n: 100
+
+  potential:
+    plot?: False
+    T_GeV: 0.1
+    phi_ranges_GeV: [0.0, 0.4]
+    n: 200
+
+  phases:
+    plot?: True
+    Tmin_GeV: 1.0e-3
+    Tmax_GeV: 2
+    include_transitions?: True
+
+  profileV:
+    plot?: True
+    field_index_1: 0
+    field_index_2: 1
+
+  energy_density:
+    plot?: True
+    Tmin_GeV: 1.0e-3
+    Tmax_GeV: 2.0
+
+  dofs:
+    plot?: True
+    Tmin_GeV: 1.0e-3
+    Tmax_GeV: 2.0
+
+  sensitivities:
+    plot?: False
+
+  profile:
+    plot?: True
+
+  percolation:
+    plot?: True
+
+  gw_spectrum:
+    plot?: True

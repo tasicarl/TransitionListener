@@ -1,0 +1,64 @@
+Modelfile:
+  models/TL_dark_U1.py
+
+Potential:
+  specific_potential
+
+Scan:
+  SinglePoint
+
+Parameters:
+  g_tilde: 2.65
+  l: 1.5e-3
+  v_GeV: 1e7
+
+timeout: -1
+format: txt
+output_path: arxiv/reproducibility/output/fig05_gw_spectra/raw_benchmarks/bp_et
+description: BP 4 – ET benchmark (dark U1, high scale)
+plot_description: BP 4 ET benchmark
+
+additional_plots:
+  action:
+    plot?: False
+    Tmin_GeV: 0
+    Tmax_GeV: 0.05
+    phase_indices: [0, 1]
+    n: 100
+
+  potential:
+    plot?: False
+    T_GeV: 0.02
+    phi_ranges_GeV: [0, 1]
+    n: 100
+
+  phases:
+    plot?: False
+    include_transitions?: False
+
+  profileV:
+    plot?: False
+    field_index_1: 0
+    field_index_2: 1
+
+  energy_density:
+    plot?: False
+    Tmin_GeV: 0.01
+    Tmax_GeV: 0.05
+
+  dofs:
+    plot?: False
+    Tmin_GeV: 0.01
+    Tmax_GeV: 0.05
+
+  sensitivities:
+    plot?: False
+
+  profile:
+    plot?: False
+
+  percolation:
+    plot?: False
+
+  gw_spectrum:
+    plot?: True

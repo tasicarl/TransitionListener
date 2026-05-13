@@ -1,0 +1,42 @@
+# Random scan for the conformal U(1) model
+# Run (on 10 CPUs): tl -c examples/example_random_conformal.yaml -j 10
+
+
+# ==================================================
+# Scan settings
+# ================================================== 
+Modelfile:
+  models/TL_conformal_dark_u1.py
+
+Potential:
+  specific_potential
+
+Scan:
+  RandomScan
+
+Parameters:
+  scan_params:
+    g:
+      scale: lin
+      range: [0.5, 1]
+    y:
+      scale: log
+      range: [1e-3, 1e0]
+    v_GeV:
+      scale: log
+      range: [1e-2, 1e1]
+  other_params:
+    # no other params
+  N: 100
+
+# ==================================================
+# output stuff
+# ==================================================
+timeout: -1  # Timeout in seconds for the individual TL run, -1 for no timeout
+format: "txt"  # either "txt" or "hdf5"
+output_path: "scans/example_random_conformal"
+description: "RandomScan: Conformal dark U1"
+plot_description: "RandomScan: Conformal dark $U(1)$"
+
+# Additional plotting options for single point scans
+plots: True

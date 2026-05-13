@@ -1,0 +1,15 @@
+Pillow
+PyYAML
+corner
+cycler
+getdist
+h5py
+matplotlib
+mpi4py
+numpy
+pandas
+ptarcade
+rich
+scipy
+tqdm
+ultranest

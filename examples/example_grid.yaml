@@ -1,0 +1,55 @@
+# Grid scan for the Abelian dark Higgs model
+# Run (on 10 CPUs): tl -c examples/example_grid.yaml -j 10
+
+# ==================================================
+# Scan settings
+# ================================================== 
+Modelfile:
+  models/TL_dark_U1.py
+
+Potential:
+  specific_potential
+
+Scan:
+  GridScan
+
+Parameters:
+  grid_params:
+    x:
+      name: l
+      scale: log
+      range: [-4, -2]
+    y:
+      name: v_GeV
+      scale: log
+      range: [6, 10]
+  other_params:
+    g_tilde: 2.69
+    precision_mode: benchmark
+  N: 10
+
+
+# ==================================================
+# output stuff
+# ==================================================
+timeout: -1  # Timeout in seconds for the individual TL run, -1 for no timeout
+format: txt  # either "txt" or "hdf5"
+output_path: scans/example_grid
+description: example grid, Abelian dark Higgs model
+plot_description: Example grid, Abelian dark Higgs model, $\tilde{g} = 2.69$
+
+# # Plotting parameters for grid scans
+plots: True
+# possible detector names:
+# B-DECIGO, BBO, DECIGO, EPTA_18_yrs, ET, 
+# HLVK_design, HLV_O2, LISA, NANOGrav_11_yrs,
+# NANOGrav_15_yrs, SKA_10_yrs, SKA_20_yrs, SKA_5_yrs, muAres
+overview_detector_name: ET  # Detector name for the overview plot
+overview_param_names: # Parameter names for the overview plot
+- alpha
+- betaH_RH
+- Treh_SM_GeV
+
+plots: True
+show_scan_points: False
+

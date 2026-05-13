@@ -1,0 +1,2165 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="./">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="#"><link rel="search" title="Search" href="search.html">
+        <link rel="prefetch" href="_static/TL-logo_small.png" as="image">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 --><title>Index - TransitionListener</title>
+<link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="_static/plot_directive.css?v=7f9a90b1" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #eeffcc;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="index.html"><div class="brand">TransitionListener</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="_static/TL-logo_small.png" alt="Logo"/>
+  </div>
+  
+  
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="features.html">Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="method.html">Method</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="documentation.html">Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="plots.html">Plots</a></li>
+<li class="toctree-l1"><a class="reference internal" href="example_output.html">Example Output</a></li>
+<li class="toctree-l1"><a class="reference internal" href="faq.html">Frequently Asked Questions</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="api/TransitionListener.html">TransitionListener API</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          
+<section class="genindex-section">
+  <h1 id="index">Index</h1>
+  <div class="genindex-jumpbox"><a href="#A"><strong>A</strong></a> | <a href="#B"><strong>B</strong></a> | <a href="#C"><strong>C</strong></a> | <a href="#D"><strong>D</strong></a> | <a href="#E"><strong>E</strong></a> | <a href="#F"><strong>F</strong></a> | <a href="#G"><strong>G</strong></a> | <a href="#H"><strong>H</strong></a> | <a href="#I"><strong>I</strong></a> | <a href="#J"><strong>J</strong></a> | <a href="#K"><strong>K</strong></a> | <a href="#L"><strong>L</strong></a> | <a href="#M"><strong>M</strong></a> | <a href="#N"><strong>N</strong></a> | <a href="#O"><strong>O</strong></a> | <a href="#P"><strong>P</strong></a> | <a href="#R"><strong>R</strong></a> | <a href="#S"><strong>S</strong></a> | <a href="#T"><strong>T</strong></a> | <a href="#U"><strong>U</strong></a> | <a href="#V"><strong>V</strong></a> | <a href="#W"><strong>W</strong></a> | <a href="#X"><strong>X</strong></a> | <a href="#Y"><strong>Y</strong></a> | <a href="#Z"><strong>Z</strong></a></div>
+</section>
+<section id="A" class="genindex-section">
+  <h2>A</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.acc_rh">acc_rh (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.acc_tfinal">acc_tfinal (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.acc_tperc">acc_tperc (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.action_jitter_log10_gamma_h4">action_jitter_log10_gamma_h4 (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.action_jitter_log10_gamma_h4_smooth">action_jitter_log10_gamma_h4_smooth (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.action_jitter_max_residual_oom">action_jitter_max_residual_oom (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.action_jitter_probability">action_jitter_probability (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.action_jitter_rescue_attempts">action_jitter_rescue_attempts (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.action_jitter_rescue_success">action_jitter_rescue_success (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.action_jitter_rescue_temperatures">action_jitter_rescue_temperatures (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.action_jitter_temperature">action_jitter_temperature (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.action_temperatures">action_temperatures (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.action_temperatures">(transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo.action_Tnuc">action_Tnuc (transitionlistener.transitions.TransitionInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.ActionRateJitterError">ActionRateJitterError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.add_NeffHatch">add_NeffHatch() (in module transitionlistener.plots)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plot_settings.add_TL_logo">add_TL_logo() (in module transitionlistener.plot_settings)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.add_violins">add_violins() (in module transitionlistener.plots)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.gwfopt.FOPTspectrum.additional_spec_info">additional_spec_info() (transitionlistener.gwfopt.FOPTspectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseInfo.addLinkFrom">addLinkFrom() (transitionlistener.phases.PhaseInfo method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.algorithm_mode">algorithm_mode (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.alpha">alpha (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.alpha_e">alpha_e (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.alpha_eq">alpha_eq (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.alpha_hyd">alpha_hyd (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.alpha_inf">alpha_inf (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.alpha_p">alpha_p (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.alpha_theta">alpha_theta (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.alpha_thetabar">alpha_thetabar (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.applySymmetries">applySymmetries() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf.approx_strength_threshold">approx_strength_threshold (transitionlistener.config.TracingConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.approxNucleationCriterion">approxNucleationCriterion() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.approxZeroTMin">approxZeroTMin() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.arrayFunc">arrayFunc() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.BosonSector.as_tuple">as_tuple() (transitionlistener.particles.BosonSector method)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.FermionSector.as_tuple">(transitionlistener.particles.FermionSector method)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="B" class="genindex-section">
+  <h2>B</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.betaH_RH">betaH_RH (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.betaH_S3">betaH_S3 (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassSpectrum.boson_labels">boson_labels() (transitionlistener.particles.MassSpectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.boson_massSq">boson_massSq() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.SpectrumSnapshot.bosons">bosons (transitionlistener.particles.SpectrumSnapshot attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassSpectrum.bosons_massSq">bosons_massSq() (transitionlistener.particles.MassSpectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.BosonSector">BosonSector (class in transitionlistener.particles)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.bounceAction">bounceAction() (in module transitionlistener.pathDeformation)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.bounceSolution">bounceSolution() (in module transitionlistener.pathDeformation)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseSegment.bounds">bounds() (transitionlistener.phases.PhaseSegment method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gwfopt.FOPTspectrum.BPL">BPL() (transitionlistener.gwfopt.FOPTspectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.br">br() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.bs">bs() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.Phases.buildPhaseGraph">buildPhaseGraph() (transitionlistener.phases.Phases method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.GWConf.bw_collisions">bw_collisions (transitionlistener.config.GWConf attribute)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="C" class="genindex-section">
+  <h2>C</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.BosonSector.c">c (transitionlistener.particles.BosonSector attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Fermion.c">(transitionlistener.particles.Fermion attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.GaugeBoson.c">(transitionlistener.particles.GaugeBoson attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Goldstone.c">(transitionlistener.particles.Goldstone attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Scalar.c">(transitionlistener.particles.Scalar attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.c_s">c_s (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.c_s_bro">c_s_bro (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.c_s_sym">c_s_sym (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.calc_betaH_S3">calc_betaH_S3() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.calc_betaH_S3_approx">calc_betaH_S3_approx() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics.calc_cs">calc_cs() (transitionlistener.hydrodynamics.Hydrodynamics method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.Observability.calc_DNeff_GW">calc_DNeff_GW() (transitionlistener.observability.Observability method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.calc_kappas">calc_kappas() (in module transitionlistener.hydrodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassSpectrum.calc_N_gauge_bosons">calc_N_gauge_bosons() (transitionlistener.particles.MassSpectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.Observability.calc_PTA_logL">calc_PTA_logL() (transitionlistener.observability.Observability method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.Observability.calc_PTA_logL_with_astronoise">calc_PTA_logL_with_astronoise() (transitionlistener.observability.Observability method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.Observability.calc_SNR">calc_SNR() (transitionlistener.observability.Observability method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.calcAction">calcAction() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.calcAlphas">calcAlphas() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.calcApproxPercolation">calcApproxPercolation() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.calcEnergydensityIntegrals">calcEnergydensityIntegrals() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.calcMeanBubbleSeparation">calcMeanBubbleSeparation() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.calcNumberdensityIntegrals">calcNumberdensityIntegrals() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.calcPercAndEvolve">calcPercAndEvolve() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.calcPressureIntegrals">calcPressureIntegrals() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.calcSoundSpeedSq">calcSoundSpeedSq() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.calcTf">calcTf() (in module transitionlistener.bubbledynamics)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics.calcWallVelocityLTE">calcWallVelocityLTE() (transitionlistener.hydrodynamics.Hydrodynamics method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.call_by_sampler">call_by_sampler() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingSettings.callback">callback (transitionlistener.pathDeformation.TunnelingSettings attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingSettings.callback_data">callback_data (transitionlistener.pathDeformation.TunnelingSettings attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.GWConf.check_if_T0_global_min">check_if_T0_global_min (transitionlistener.config.GWConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.check_renorm_conditions">check_renorm_conditions() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservables.check_T0_global_min">check_T0_global_min() (transitionlistener.transitionObservables.TransitionObservables method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.checkInitialisation">checkInitialisation() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.clampVal">clampVal() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.Logger.close">close() (transitionlistener.interface.Logger method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.cold_tail_last_integral">cold_tail_last_integral (transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.cold_tail_last_log_gamma_h4">cold_tail_last_log_gamma_h4 (transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.cold_tail_last_probability">cold_tail_last_probability (transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.cold_tail_last_temperature">cold_tail_last_temperature (transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.cold_tail_post_peak_streak">cold_tail_post_peak_streak (transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.coleman_weinberg_from_curvatures">coleman_weinberg_from_curvatures() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.computeConversionFactor">computeConversionFactor() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservables.computeTransitionObservables">computeTransitionObservables() (transitionlistener.transitionObservables.TransitionObservables method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservables.computeTransitionObservables_one_transition">computeTransitionObservables_one_transition() (transitionlistener.transitionObservables.TransitionObservables method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.Configuration">Configuration (class in transitionlistener.config)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.constantTerms">constantTerms() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingOutputs.converged">converged (transitionlistener.pathDeformation.TunnelingOutputs attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.PercolationResult.coolingInt">coolingInt (transitionlistener.transitionObservables.PercolationResult attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.GWConf.coupled_hydrodynamics">coupled_hydrodynamics (transitionlistener.config.GWConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.create_grid">create_grid() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.cubicInterpFunction">cubicInterpFunction (class in transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.constants.CW_CONSTANTS">CW_CONSTANTS (in module transitionlistener.constants)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="D" class="genindex-section">
+  <h2>D</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.D">D (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.d2V">d2V() (transitionlistener.generic_potential.generic_potential method)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.SplinePath.d2V">(transitionlistener.pathDeformation.SplinePath method)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.d2V">(transitionlistener.tunneling1D.SingleFieldInstanton method)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.d2V1atvev">d2V1atvev() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.d2VdT2">d2VdT2() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.d2x2K2">d2x2K2() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.d3x2K2">d3x2K2() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gwfopt.FOPTspectrum.DBPL">DBPL() (transitionlistener.gwfopt.FOPTspectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingOutputs.deform_obj">deform_obj (transitionlistener.pathDeformation.TunnelingOutputs attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingSettings.deformation_class">deformation_class (transitionlistener.pathDeformation.TunnelingSettings attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingSettings.deformation_deform_params">deformation_deform_params (transitionlistener.pathDeformation.TunnelingSettings attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingSettings.deformation_init_params">deformation_init_params (transitionlistener.pathDeformation.TunnelingSettings attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.Deformation_Points">Deformation_Points (class in transitionlistener.pathDeformation)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.Deformation_Spline">Deformation_Spline (class in transitionlistener.pathDeformation)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.DeformationError">DeformationError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.Deformation_Points.deformPath">deformPath() (transitionlistener.pathDeformation.Deformation_Points method)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.Deformation_Spline.deformPath">(transitionlistener.pathDeformation.Deformation_Spline method)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.deriv14">deriv14() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.deriv14_const_dx">deriv14_const_dx() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.deriv1n">deriv1n() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.deriv23">deriv23() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.deriv23_const_dx">deriv23_const_dx() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.deriv_order">deriv_order (transitionlistener.generic_potential.generic_potential attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.derivative">derivative() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionContext.derived_param_names">derived_param_names (transitionlistener.transitionObservables.TransitionContext attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionContext.derived_params">derived_params (transitionlistener.transitionObservables.TransitionContext attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo.derived_params">(transitionlistener.transitions.TransitionInfo attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.GW_Sensitivity_Data.self.det">det (transitionlistener.observability.GW_Sensitivity_Data.self attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.GW_Sensitivity_Data.self.det_colors">det_colors (transitionlistener.observability.GW_Sensitivity_Data.self attribute)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.GW_Sensitivity_Data.self.det_data">det_data (transitionlistener.observability.GW_Sensitivity_Data.self attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.GW_Sensitivity_Data.self.det_f">det_f (transitionlistener.observability.GW_Sensitivity_Data.self attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.GW_Sensitivity_Data.self.det_names">det_names (transitionlistener.observability.GW_Sensitivity_Data.self attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.GW_Sensitivity_Data.self.det_thr">det_thr (transitionlistener.observability.GW_Sensitivity_Data.self attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.GW_Sensitivity_Data.self.det_tobs">det_tobs (transitionlistener.observability.GW_Sensitivity_Data.self attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics.detonation">detonation() (transitionlistener.hydrodynamics.Hydrodynamics method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics.dfdv">dfdv() (transitionlistener.hydrodynamics.Hydrodynamics method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.dgradV_dT">dgradV_dT() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf.diftol">diftol (transitionlistener.config.TracingConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.GWConf.dilution">dilution (transitionlistener.config.GWConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.ScanConfig.display">display() (transitionlistener.interface.ScanConfig method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.dJb_exact">dJb_exact() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.dJf_exact">dJf_exact() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf.do_high_T_phase_check">do_high_T_phase_check (transitionlistener.config.TracingConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf.do_tachyon_test">do_tachyon_test (transitionlistener.config.TracingConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.BosonSector.dof">dof (transitionlistener.particles.BosonSector attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Fermion.dof">(transitionlistener.particles.Fermion attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.FermionSector.dof">(transitionlistener.particles.FermionSector attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.GaugeBoson.dof">(transitionlistener.particles.GaugeBoson attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Goldstone.dof">(transitionlistener.particles.Goldstone attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Scalar.dof">(transitionlistener.particles.Scalar attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingOutputs.dphi">dphi (transitionlistener.pathDeformation.TunnelingOutputs attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.SplinePath.dV">dV() (transitionlistener.pathDeformation.SplinePath method)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.dV">(transitionlistener.tunneling1D.SingleFieldInstanton method)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.dV1atvev">dV1atvev() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.dV1physatvev">dV1physatvev() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.dV_from_absMin">dV_from_absMin() (transitionlistener.tunneling1D.SingleFieldInstanton method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.dVdT">dVdT() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.DVtot">DVtot() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.dx2K2">dx2K2() (in module transitionlistener.finiteT)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="E" class="genindex-section">
+  <h2>E</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.e_geff">e_geff() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.e_geffDS">e_geffDS() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.e_geffSM">e_geffSM() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.eigenvalues_2x2">eigenvalues_2x2() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.energy_criterion_BRO">energy_criterion_BRO() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.energyDensity">energyDensity() (in module transitionlistener.bubbledynamics)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.energyDensity">(transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.energyDensityDaisy">energyDensityDaisy() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.entropy_criterion_SYM_BRO">entropy_criterion_SYM_BRO() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.PercolationResult.entropyInt">entropyInt (transitionlistener.transitionObservables.PercolationResult attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseSegment.entry_temperature">entry_temperature (transitionlistener.phases.PhaseSegment attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.GWConf.epsilon_turbulence">epsilon_turbulence (transitionlistener.config.GWConf attribute)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.equationOfMotion">equationOfMotion() (transitionlistener.tunneling1D.SingleFieldInstanton method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.GWConf.equilibrium_DS">equilibrium_DS (transitionlistener.config.GWConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics.eqWall">eqWall() (transitionlistener.hydrodynamics.Hydrodynamics method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.estimate_spline_tnuc_from_rate_history">estimate_spline_tnuc_from_rate_history() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.EternalInflationError">EternalInflationError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.Transitions.evalNucleationCriterion">evalNucleationCriterion() (transitionlistener.transitions.Transitions method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassBlock.evaluate">evaluate() (transitionlistener.particles.MassBlock method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassBlock.evaluate_thermal">evaluate_thermal() (transitionlistener.particles.MassBlock method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.evenlySpacedPhi">evenlySpacedPhi() (transitionlistener.tunneling1D.SingleFieldInstanton method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.exactSolution">exactSolution() (transitionlistener.tunneling1D.SingleFieldInstanton method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseSegment.exit_temperature">exit_temperature (transitionlistener.phases.PhaseSegment attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.explored_tmin">explored_tmin (transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.extract_parameters">extract_parameters() (in module transitionlistener.interface)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="F" class="genindex-section">
+  <h2>F</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.f_final">f_final (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.f_perc">f_perc (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.f_start">f_start (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.Fermion">Fermion (class in transitionlistener.particles)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassSpectrum.fermion_labels">fermion_labels() (transitionlistener.particles.MassSpectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.fermion_massSq">fermion_massSq() (transitionlistener.generic_potential.generic_potential method)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.MassSpectrum.fermion_massSq">(transitionlistener.particles.MassSpectrum method)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.SpectrumSnapshot.fermions">fermions (transitionlistener.particles.SpectrumSnapshot attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.FermionSector">FermionSector (class in transitionlistener.particles)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.final_active_support_points">final_active_support_points (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics.find_kappa">find_kappa() (transitionlistener.hydrodynamics.Hydrodynamics method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics.find_vJ">find_vJ() (transitionlistener.hydrodynamics.Hydrodynamics method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics.find_vw">find_vw() (transitionlistener.hydrodynamics.Hydrodynamics method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.findAction">findAction() (transitionlistener.tunneling1D.SingleFieldInstanton method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.Transitions.findAllTransitions">findAllTransitions() (transitionlistener.transitions.Transitions method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.findApproxLocalMin">findApproxLocalMin() (in module transitionlistener.phases)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.findBarrierLocation">findBarrierLocation() (transitionlistener.tunneling1D.SingleFieldInstanton method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.findLocalMinimum">findLocalMinimum() (in module transitionlistener.phases)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.findMinimum">findMinimum() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.Phases.findPhases">findPhases() (transitionlistener.phases.Phases method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.Transitions.findPossibleTransitionsFromPhases">findPossibleTransitionsFromPhases() (transitionlistener.transitions.Transitions method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.findProfile">findProfile() (transitionlistener.tunneling1D.SingleFieldInstanton method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.findRScale">findRScale() (transitionlistener.tunneling1D.SingleFieldInstanton method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.findRscaleNew">findRscaleNew() (transitionlistener.tunneling1D.SingleFieldInstanton method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.Transitions.findTransitionPathFromTnuc">findTransitionPathFromTnuc() (transitionlistener.transitions.Transitions method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gwfopt.FOPTspectrum">FOPTspectrum (class in transitionlistener.gwfopt)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.Deformation_Points.forces">forces() (transitionlistener.pathDeformation.Deformation_Points method)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.Deformation_Spline.forces">(transitionlistener.pathDeformation.Deformation_Spline method)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.fr">fr() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationGrid.free_support_bank">free_support_bank (transitionlistener.bubbledynamics.PercolationGrid attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.free_support_bank">(transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.from_state">from_state() (transitionlistener.bubbledynamics.PercolationDiagnostics class method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.fs">fs() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo.full_tunneling_info">full_tunneling_info (transitionlistener.transitions.TransitionInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.fullTunneling">fullTunneling() (in module transitionlistener.pathDeformation)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.constants.fyr_Hz">fyr_Hz (in module transitionlistener.constants)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="G" class="genindex-section">
+  <h2>G</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.g0">g0 (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.g_eff_DS">g_eff_DS() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.g_eff_tot_reh">g_eff_tot_reh (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.Gamma">Gamma() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.BosonSector.gauge_coupling">gauge_coupling (transitionlistener.particles.BosonSector attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.GaugeBoson.gauge_coupling">(transitionlistener.particles.GaugeBoson attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Goldstone.gauge_coupling">(transitionlistener.particles.Goldstone attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Scalar.gauge_coupling">(transitionlistener.particles.Scalar attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.GaugeBoson">GaugeBoson (class in transitionlistener.particles)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.geff_rho_h">geff_rho_h() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.geff_rho_l">geff_rho_l() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.geff_s_h">geff_s_h() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.geff_s_l">geff_s_l() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf.gen_mirror_phases">gen_mirror_phases (transitionlistener.config.TracingConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.generateInvGroupElements">generateInvGroupElements() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.generateMirrorPhases">generateMirrorPhases() (in module transitionlistener.phases)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential">generic_potential (class in transitionlistener.generic_potential)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassSpectrum.get_gauge_coupling">get_gauge_coupling() (transitionlistener.particles.MassSpectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.get_mass_spectrum">get_mass_spectrum() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.get_mass_spectrum_T0">get_mass_spectrum_T0() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics.get_vp">get_vp() (transitionlistener.hydrodynamics.Hydrodynamics method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.get_zero_temperature_mass_spectrum">get_zero_temperature_mass_spectrum() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.Phases.getStartPhase">getStartPhase() (transitionlistener.phases.Phases method)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.transitions.Transitions.getStartPhase">(transitionlistener.transitions.Transitions method)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.Phases.getT0Phase">getT0Phase() (transitionlistener.phases.Phases method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.Transitions.getUniqueTunnelingPhases">getUniqueTunnelingPhases() (transitionlistener.transitions.Transitions method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.constants.GeV_Hz">GeV_Hz (in module transitionlistener.constants)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.Goldstone">Goldstone (class in transitionlistener.particles)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.gradientFunction">gradientFunction (class in transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.gradV">gradV() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.grid_scan">grid_scan() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.GW_Sensitivity_Data">GW_Sensitivity_Data (class in transitionlistener.observability)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.GWConf">GWConf (class in transitionlistener.config)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionContext.GWconfig">GWconfig (transitionlistener.transitionObservables.TransitionContext attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.GWParamsError">GWParamsError</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="H" class="genindex-section">
+  <h2>H</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.PercolationResult.H">H (transitionlistener.transitionObservables.PercolationResult attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.h0">h0 (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.constants.H100_Hz">H100_Hz (in module transitionlistener.constants)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gwfopt.FOPTspectrum.h2Omega_0_sum">h2Omega_0_sum() (transitionlistener.gwfopt.FOPTspectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gwfopt.FOPTspectrum.h2Omega_0_sum_old">h2Omega_0_sum_old() (transitionlistener.gwfopt.FOPTspectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gwfopt.FOPTspectrum.h2Omega_astro_noise">h2Omega_astro_noise() (transitionlistener.gwfopt.FOPTspectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gwfopt.FOPTspectrum.h2Omega_PT_and_astro">h2Omega_PT_and_astro() (transitionlistener.gwfopt.FOPTspectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.h_eff_DS">h_eff_DS() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.h_eff_tot_reh">h_eff_tot_reh (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassBlock.hard_thermal_mass_function">hard_thermal_mass_function (transitionlistener.particles.MassBlock attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.hessianFunction">hessianFunction (class in transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo.high_phase">high_phase (transitionlistener.transitions.TransitionInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseInfo.high_trans">high_trans (transitionlistener.phases.PhaseInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo.high_vev">high_vev (transitionlistener.transitions.TransitionInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.PercolationResult.Hint">Hint (transitionlistener.transitionObservables.PercolationResult attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.Hr">Hr (transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.HubbleParameter">HubbleParameter() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics">Hydrodynamics (class in transitionlistener.hydrodynamics)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="I" class="genindex-section">
+  <h2>I</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.import_file">import_file() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseSegment.index">index (transitionlistener.phases.PhaseSegment attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.InfiniteActionError">InfiniteActionError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.init">init() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.initialConditions">initialConditions() (transitionlistener.tunneling1D.SingleFieldInstanton method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.Observability.initialise_gw_info_dict">initialise_gw_info_dict() (transitionlistener.observability.Observability method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.InitPotentialError">InitPotentialError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo.instanton">instanton (transitionlistener.transitions.TransitionInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.integral_method">integral_method (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics.integrate_plasma">integrate_plasma() (transitionlistener.hydrodynamics.Hydrodynamics method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.integrateAndSaveProfile">integrateAndSaveProfile() (transitionlistener.tunneling1D.SingleFieldInstanton method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.integrateProfile">integrateProfile() (transitionlistener.tunneling1D.SingleFieldInstanton method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.IntegrationError">IntegrationError</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf.internal_scale">internal_scale (transitionlistener.config.TracingConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.BosonSector.is_bsm">is_bsm (transitionlistener.particles.BosonSector attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.FermionSector.is_bsm">(transitionlistener.particles.FermionSector attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.BosonSector.is_physical">is_physical (transitionlistener.particles.BosonSector attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.GaugeBoson.is_physical">(transitionlistener.particles.GaugeBoson attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Goldstone.is_physical">(transitionlistener.particles.Goldstone attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Scalar.is_physical">(transitionlistener.particles.Scalar attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.Fermion.is_SM">is_SM (transitionlistener.particles.Fermion attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.GaugeBoson.is_SM">(transitionlistener.particles.GaugeBoson attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Goldstone.is_SM">(transitionlistener.particles.Goldstone attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Scalar.is_SM">(transitionlistener.particles.Scalar attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.TransitionHistory.items">items() (transitionlistener.phases.TransitionHistory method)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservables.items">(transitionlistener.transitionObservables.TransitionObservables method)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="J" class="genindex-section">
+  <h2>J</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.Jb">Jb() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.Jb_exact">Jb_exact() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.Jb_exact2">Jb_exact2() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.Jb_high">Jb_high() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.Jb_low">Jb_low() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.Jb_spline">Jb_spline() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.Jf">Jf() (in module transitionlistener.finiteT)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.Jf_exact">Jf_exact() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.Jf_exact2">Jf_exact2() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.Jf_high">Jf_high() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.Jf_low">Jf_low() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.Jf_spline">Jf_spline() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.jitter_GH4_threshold">jitter_GH4_threshold (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.jitter_rescue">jitter_rescue (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="K" class="genindex-section">
+  <h2>K</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.kappa_phi">kappa_phi (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.kappa_sw">kappa_sw (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.kappa_sw">kappa_sw() (in module transitionlistener.hydrodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.kappa_turb">kappa_turb (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseInfo.key">key (transitionlistener.phases.PhaseInfo attribute)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.gwfopt.FOPTspectrum.keys">keys() (transitionlistener.gwfopt.FOPTspectrum method)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.observability.Observability.keys">(transitionlistener.observability.Observability method)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.phases.Phases.keys">(transitionlistener.phases.Phases method)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.phases.TransitionHistory.keys">(transitionlistener.phases.TransitionHistory method)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservables.keys">(transitionlistener.transitionObservables.TransitionObservables method)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.transitions.Transitions.keys">(transitionlistener.transitions.Transitions method)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="L" class="genindex-section">
+  <h2>L</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.SplinePath.L">L (transitionlistener.pathDeformation.SplinePath attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassBlock.label">label (transitionlistener.particles.MassBlock attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.constants.Lambda">Lambda (in module transitionlistener.constants)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.large_delta_p_refine_threshold">large_delta_p_refine_threshold (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.large_delta_p_success_threshold">large_delta_p_success_threshold (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.BosonSector.latex_labels">latex_labels (transitionlistener.particles.BosonSector property)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.FermionSector.latex_labels">(transitionlistener.particles.FermionSector property)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.Fermion.latex_name">latex_name (transitionlistener.particles.Fermion attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.GaugeBoson.latex_name">(transitionlistener.particles.GaugeBoson attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Goldstone.latex_name">(transitionlistener.particles.Goldstone attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Scalar.latex_name">(transitionlistener.particles.Scalar attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.line_scan">line_scan() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plot_settings.load_large_logo">load_large_logo() (in module transitionlistener.plot_settings)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.load_potential">load_potential() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plot_settings.load_small_logo">load_small_logo() (in module transitionlistener.plot_settings)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.Logger.log">log() (transitionlistener.interface.Logger method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.log_likelihood">log_likelihood() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.logGamma">logGamma() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.Logger">Logger (class in transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo.low_phase">low_phase (transitionlistener.transitions.TransitionInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseInfo.low_trans">low_trans (transitionlistener.phases.PhaseInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo.low_vev">low_vev (transitionlistener.transitions.TransitionInfo attribute)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="M" class="genindex-section">
+  <h2>M</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.main">main() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.makeInterpFuncs">makeInterpFuncs() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.makePrettyDictionaryPrint">makePrettyDictionaryPrint() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.Transitions.makeSecondOrderDict">makeSecondOrderDict() (transitionlistener.transitions.Transitions method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassBlock.mass_function">mass_function (transitionlistener.particles.MassBlock attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassBlock">MassBlock (class in transitionlistener.particles)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.BosonSector.masses_sq">masses_sq (transitionlistener.particles.BosonSector attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.FermionSector.masses_sq">(transitionlistener.particles.FermionSector attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassSpectrum">MassSpectrum (class in transitionlistener.particles)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.massSqMatrix">massSqMatrix() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.max_action_temperatures">max_action_temperatures (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics.max_al">max_al() (transitionlistener.hydrodynamics.Hydrodynamics method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.max_boundary_ratio">max_boundary_ratio (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.maxit">maxit (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.PercolationResult.metadata">metadata (transitionlistener.transitionObservables.PercolationResult attribute)</a>
+</li>
+        <li>
+    module
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener">transitionlistener</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.bubbledynamics">transitionlistener.bubbledynamics</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.colors">transitionlistener.colors</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.config">transitionlistener.config</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.constants">transitionlistener.constants</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.errors">transitionlistener.errors</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.finiteT">transitionlistener.finiteT</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.generic_potential">transitionlistener.generic_potential</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.gridplots">transitionlistener.gridplots</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.gwfopt">transitionlistener.gwfopt</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.helper_functions">transitionlistener.helper_functions</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.hydrodynamics">transitionlistener.hydrodynamics</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.interface">transitionlistener.interface</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.interface.check">transitionlistener.interface.check</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.observability">transitionlistener.observability</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.particles">transitionlistener.particles</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.pathDeformation">transitionlistener.pathDeformation</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.phases">transitionlistener.phases</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.plot_settings">transitionlistener.plot_settings</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.plots">transitionlistener.plots</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.thermodynamics">transitionlistener.thermodynamics</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.transitionObservables">transitionlistener.transitionObservables</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.transitions">transitionlistener.transitions</a>
+</li>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.tunneling1D">transitionlistener.tunneling1D</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.monotonicIndices">monotonicIndices() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.constants.Mpl_GeV">Mpl_GeV (in module transitionlistener.constants)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="N" class="genindex-section">
+  <h2>N</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.n_action">n_action (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.n_action_increment">n_action_increment (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.n_action_max">n_action_max (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.n_action_min">n_action_min (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.n_jitter_save">n_jitter_save (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.Fermion.name">name (transitionlistener.particles.Fermion attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.GaugeBoson.name">(transitionlistener.particles.GaugeBoson attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Goldstone.name">(transitionlistener.particles.Goldstone attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.Scalar.name">(transitionlistener.particles.Scalar attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.Nbspl">Nbspl() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.Nbspld1">Nbspld1() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.Nbspld2">Nbspld2() (in module transitionlistener.helper_functions)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.nDensity">nDensity() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.Ndim">Ndim (transitionlistener.generic_potential.generic_potential attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.NoConfigError">NoConfigError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.NoLoggerError">NoLoggerError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.NoModelError">NoModelError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.NoPhases">NoPhases</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.NoTransitionFound">NoTransitionFound</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf.nucleation_Ttol">nucleation_Ttol (transitionlistener.config.TracingConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.nucleationCriterion">nucleationCriterion() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.NucleationError">NucleationError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.Deformation_Points.num_steps">num_steps (transitionlistener.pathDeformation.Deformation_Points attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.Deformation_Spline.num_steps">(transitionlistener.pathDeformation.Deformation_Spline attribute)</a>
+</li>
+        </ul></li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="O" class="genindex-section">
+  <h2>O</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.Observability">Observability (class in transitionlistener.observability)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.constants.Omega_gamma_h2">Omega_gamma_h2 (in module transitionlistener.constants)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.OnlyOnePhase">OnlyOnePhase</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.OnlySecondOrderTransitionsError">OnlySecondOrderTransitionsError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionContext.outdict">outdict (transitionlistener.transitionObservables.TransitionContext attribute)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="P" class="genindex-section">
+  <h2>P</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.PercolationResult.P">P (transitionlistener.transitionObservables.PercolationResult attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.p_geff">p_geff() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.p_geffSM">p_geffSM() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.p_geffSM_fit">p_geffSM_fit() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.ParamNamesError">ParamNamesError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.BosonSector.particles">particles (transitionlistener.particles.BosonSector attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.FermionSector.particles">(transitionlistener.particles.FermionSector attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.MassBlock.particles">(transitionlistener.particles.MassBlock attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingOutputs.path">path (transitionlistener.pathDeformation.TunnelingOutputs attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.percIntegral">percIntegral() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.percIntegralODE">percIntegralODE() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.percIntegralODE_full_sweep">percIntegralODE_full_sweep() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.PercolationApproximation1Error">PercolationApproximation1Error</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf">PercolationConf (class in transitionlistener.config)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionContext.PercolationConf">(transitionlistener.transitionObservables.TransitionContext attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics">PercolationDiagnostics (class in transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.PercolationError">PercolationError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationGrid">PercolationGrid (class in transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.PercolationResult">PercolationResult (class in transitionlistener.transitionObservables)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState">PercolationState (class in transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseSegment.phase">phase (transitionlistener.phases.PhaseSegment attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseComparison.phase1">phase1 (transitionlistener.phases.PhaseComparison attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseComparison.phase2">phase2 (transitionlistener.phases.PhaseComparison attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionContext.phase_broken">phase_broken (transitionlistener.transitionObservables.TransitionContext attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseSegment.phase_key">phase_key (transitionlistener.phases.PhaseSegment attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.TransitionHistory.phase_keys">phase_keys() (transitionlistener.phases.TransitionHistory method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionContext.phase_symmetric">phase_symmetric (transitionlistener.transitionObservables.TransitionContext attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseComparison">PhaseComparison (class in transitionlistener.phases)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseInfo">PhaseInfo (class in transitionlistener.phases)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.Phases">Phases (class in transitionlistener.phases)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionContext.phases">phases (transitionlistener.transitionObservables.TransitionContext attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseSegment">PhaseSegment (class in transitionlistener.phases)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.Deformation_Points.phi">phi (transitionlistener.pathDeformation.Deformation_Points attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.Deformation_Spline.phi">(transitionlistener.pathDeformation.Deformation_Spline attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingOutputs.phi">(transitionlistener.pathDeformation.TunnelingOutputs attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.PercolationResult.Pint">Pint (transitionlistener.transitionObservables.PercolationResult attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.plot1d">plot1d() (in module transitionlistener.plots)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.plot2d">plot2d() (in module transitionlistener.plots)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData">plot2dData (class in transitionlistener.gridplots)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData.plot_add_infos">plot_add_infos() (transitionlistener.gridplots.plot2dData method)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData.plot_errors">plot_errors() (transitionlistener.gridplots.plot2dData method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData.plot_lin_params">plot_lin_params() (transitionlistener.gridplots.plot2dData method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData.plot_log_params">plot_log_params() (transitionlistener.gridplots.plot2dData method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData.plot_logLs">plot_logLs() (transitionlistener.gridplots.plot2dData method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData.plot_mass_spectrum">plot_mass_spectrum() (transitionlistener.gridplots.plot2dData method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData.plot_overview">plot_overview() (transitionlistener.gridplots.plot2dData method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.plot_results_1d">plot_results_1d() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.plot_results_2d">plot_results_2d() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData.plot_SNRs">plot_SNRs() (transitionlistener.gridplots.plot2dData method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.TLPlots.plotAction">plotAction() (transitionlistener.plots.TLPlots method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.TLPlots.plotDOFs">plotDOFs() (transitionlistener.plots.TLPlots method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.TLPlots.plotEnergyDensity">plotEnergyDensity() (transitionlistener.plots.TLPlots method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.plotGWSpectrum">plotGWSpectrum() (in module transitionlistener.plots)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.TLPlots.plotPercolation">plotPercolation() (transitionlistener.plots.TLPlots method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.TLPlots.plotPhases">plotPhases() (transitionlistener.plots.TLPlots method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.TLPlots.plotPotential">plotPotential() (transitionlistener.plots.TLPlots method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.TLPlots.plotProfile">plotProfile() (transitionlistener.plots.TLPlots method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.plotProfile2">plotProfile2() (in module transitionlistener.plots)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.TLPlots.plotProfileV">plotProfileV() (transitionlistener.plots.TLPlots method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.plotSensitivities">plotSensitivities() (in module transitionlistener.plots)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.plotSensitivitiesPTA">plotSensitivitiesPTA() (in module transitionlistener.plots)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.plotSpectrum">plotSpectrum() (in module transitionlistener.plots)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.plotSpectrum2PTA">plotSpectrum2PTA() (in module transitionlistener.plots)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionContext.pot">pot (transitionlistener.transitionObservables.TransitionContext attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.PotentialError">PotentialError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.Pr">Pr (transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.Observability.print_additional_spec_info">print_additional_spec_info() (transitionlistener.observability.Observability method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gwfopt.FOPTspectrum.print_params">print_params() (transitionlistener.gwfopt.FOPTspectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservables.printDerivedParams">printDerivedParams() (transitionlistener.transitionObservables.TransitionObservables method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.Phases.printPhaseTree">printPhaseTree() (transitionlistener.phases.Phases method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.Transitions.printTransitions">printTransitions() (transitionlistener.transitions.Transitions method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.prior_transform">prior_transform() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.product">product() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingOutputs.profile1D">profile1D (transitionlistener.pathDeformation.TunnelingOutputs attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton.profile_rval">profile_rval (transitionlistener.tunneling1D.SingleFieldInstanton attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.PTAConfig">PTAConfig (class in transitionlistener.observability)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.PTAModel">PTAModel (class in transitionlistener.observability)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.PTAModel_SMBHB">PTAModel_SMBHB (class in transitionlistener.observability)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingOutputs.pts">pts (transitionlistener.pathDeformation.TunnelingOutputs attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.SplinePath.pts">pts() (transitionlistener.pathDeformation.SplinePath method)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="R" class="genindex-section">
+  <h2>R</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.radiationEnergyDensity">radiationEnergyDensity() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.random_scan">random_scan() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.ratio">ratio() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.rebuild_count">rebuild_count (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.rebuild_count">(transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.reconstructTransitionHistory">reconstructTransitionHistory() (in module transitionlistener.phases)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.rel_increment">rel_increment (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.removeRedundantPhases">removeRedundantPhases() (in module transitionlistener.phases)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.renormScaleSq">renormScaleSq (transitionlistener.generic_potential.generic_potential attribute)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData.retrieve_add_spec_info">retrieve_add_spec_info() (transitionlistener.gridplots.plot2dData method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData.retrieve_derived_params">retrieve_derived_params() (transitionlistener.gridplots.plot2dData method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData.retrieve_observability_data">retrieve_observability_data() (transitionlistener.gridplots.plot2dData method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.observability.Observability.return_gw_info_dict">return_gw_info_dict() (transitionlistener.observability.Observability method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.RH">RH (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.rkqs">rkqs() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.rkqs2">rkqs2() (in module transitionlistener.helper_functions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.check.run_checks">run_checks() (in module transitionlistener.interface.check)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.run_TL">run_TL() (in module transitionlistener.interface)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="S" class="genindex-section">
+  <h2>S</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.PercolationResult.S">S (transitionlistener.transitionObservables.PercolationResult attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.s_geff">s_geff() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.s_geffDS">s_geffDS() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.s_geffSM">s_geffSM() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseComparison.same_at_tmax">same_at_tmax (transitionlistener.phases.PhaseComparison attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseComparison.same_at_tmin">same_at_tmin (transitionlistener.phases.PhaseComparison attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.sample_and_export_to_csv">sample_and_export_to_csv() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData.save_add_infos">save_add_infos() (transitionlistener.gridplots.plot2dData method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingSettings.save_all_steps">save_all_steps (transitionlistener.pathDeformation.TunnelingSettings attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData.save_logLs">save_logLs() (transitionlistener.gridplots.plot2dData method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.save_results_1d">save_results_1d() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.save_results_2d">save_results_2d() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.gridplots.plot2dData.save_SNRs">save_SNRs() (transitionlistener.gridplots.plot2dData method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.Scalar">Scalar (class in transitionlistener.particles)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.ScanConfig">ScanConfig (class in transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.scanfunc">scanfunc() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.Transitions.secondOrderTrans">secondOrderTrans() (transitionlistener.transitions.Transitions method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.Transitions.seedlessFirstOrderCandidate">seedlessFirstOrderCandidate() (transitionlistener.transitions.Transitions method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassSpectrum.set_bmass_fn">set_bmass_fn() (transitionlistener.particles.MassSpectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassSpectrum.set_fmass_fn">set_fmass_fn() (transitionlistener.particles.MassSpectrum method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.colors.set_font">set_font() (in module transitionlistener.colors)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.set_modelparams">set_modelparams() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.colors.set_size">set_size() (in module transitionlistener.colors)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.set_sm_temperature_cap">set_sm_temperature_cap() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.set_tracing_params">set_tracing_params() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.setConfigParameters">setConfigParameters() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.helper_functions.setDefaultArgs">setDefaultArgs() (in module transitionlistener.helper_functions)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.thermodynamics.Sfit">Sfit() (in module transitionlistener.thermodynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics.shooting">shooting() (transitionlistener.hydrodynamics.Hydrodynamics method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.single">single() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.tunneling1D.SingleFieldInstanton">SingleFieldInstanton (class in transitionlistener.tunneling1D)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.PercolationResult.Sint">Sint (transitionlistener.transitionObservables.PercolationResult attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.constants.SM_FERMION_MASSES_GEV">SM_FERMION_MASSES_GEV (in module transitionlistener.constants)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.constants.SM_GAUGE_MASSES_GEV">SM_GAUGE_MASSES_GEV (in module transitionlistener.constants)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics.solve_alpha">solve_alpha() (transitionlistener.hydrodynamics.Hydrodynamics method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.Transitions.sortForSmallestAction">sortForSmallestAction() (transitionlistener.transitions.Transitions method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.GWConf.sound_speed">sound_speed (transitionlistener.config.GWConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.SpectrumSnapshot">SpectrumSnapshot (class in transitionlistener.particles)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.spline_tnuc">spline_tnuc (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.spline_tnuc_integral_prefactor">spline_tnuc_integral_prefactor (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.spline_tnuc_max_N">spline_tnuc_max_N (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.spline_tnuc_warning">spline_tnuc_warning (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.SplineError">SplineError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.SplinePath">SplinePath (class in transitionlistener.pathDeformation)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.Sr">Sr (transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.start_temperature">start_temperature (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.MassBlock.statistic">statistic (transitionlistener.particles.MassBlock property)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.step">step (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo.step">(transitionlistener.transitions.TransitionInfo attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.Deformation_Points.step">step() (transitionlistener.pathDeformation.Deformation_Points method)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.Deformation_Spline.step">(transitionlistener.pathDeformation.Deformation_Spline method)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.PercolationResult.successful">successful (transitionlistener.transitionObservables.PercolationResult attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.support_bank">support_bank (transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.support_bank_temperatures">support_bank_temperatures (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="T" class="genindex-section">
+  <h2>T</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.constants.T0_SM_GeV">T0_SM_GeV (in module transitionlistener.constants)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.T_eps">T_eps (transitionlistener.generic_potential.generic_potential attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.table">table() (in module transitionlistener.interface)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.TachyonError">TachyonError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.tachyonTest">tachyonTest() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.Tb">Tb (transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.Tb_criterion">Tb_criterion() (in module transitionlistener.bubbledynamics)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.PercolationResult.TBRO">TBRO (transitionlistener.transitionObservables.PercolationResult attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationGrid.TBROmax">TBROmax (transitionlistener.bubbledynamics.PercolationGrid attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationGrid.TBROmin">TBROmin (transitionlistener.bubbledynamics.PercolationGrid attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseInfo.tck">tck (transitionlistener.phases.PhaseInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo.Tcrit">Tcrit (transitionlistener.transitions.TransitionInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.Tcrit_SM_GeV">Tcrit_SM_GeV (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseSegment.temperature_grid">temperature_grid() (transitionlistener.phases.PhaseSegment method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.TransitionHistory.temperature_span">temperature_span (transitionlistener.phases.TransitionHistory property)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.Phases.testTmax">testTmax() (transitionlistener.phases.Phases method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.BosonSector.text_labels">text_labels (transitionlistener.particles.BosonSector property)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.particles.FermionSector.text_labels">(transitionlistener.particles.FermionSector property)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.Tf_SM_GeV">Tf_SM_GeV (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.particles.BosonSector.thermal_masses_sq">thermal_masses_sq (transitionlistener.particles.BosonSector attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.time_temperature_mode">time_temperature_mode (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.Timeout">Timeout</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.plots.TLPlots">TLPlots (class in transitionlistener.plots)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationGrid.tmax">tmax (transitionlistener.bubbledynamics.PercolationGrid attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.Tmax">Tmax (transitionlistener.generic_potential.generic_potential attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseComparison.tmax">tmax (transitionlistener.phases.PhaseComparison attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf.Tmax_factor">Tmax_factor (transitionlistener.config.TracingConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationGrid.tmin">tmin (transitionlistener.bubbledynamics.PercolationGrid attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseComparison.tmin">(transitionlistener.phases.PhaseComparison attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionContext.Tnuc">Tnuc (transitionlistener.transitionObservables.TransitionContext attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo.Tnuc">(transitionlistener.transitions.TransitionInfo attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.Tnuc_SM_GeV">Tnuc_SM_GeV (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingOutputs.tobj">tobj (transitionlistener.pathDeformation.TunnelingOutputs attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.TooMuchSupercoolingError">TooMuchSupercoolingError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.TooSmalldVError">TooSmalldVError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.total_steps">total_steps (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo.total_steps">(transitionlistener.transitions.TransitionInfo attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.total_unique_action_temperatures">total_unique_action_temperatures (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationDiagnostics.total_unique_percolation_support_points">total_unique_percolation_support_points (transitionlistener.bubbledynamics.PercolationDiagnostics attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.PercolationResult.Tperc">Tperc (transitionlistener.transitionObservables.PercolationResult attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.Tperc">(transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo.Tperc">(transitionlistener.transitions.TransitionInfo attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.Tperc_SM_GeV">Tperc_SM_GeV (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationGrid.TpercApprox">TpercApprox (transitionlistener.bubbledynamics.PercolationGrid attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionContext.tr">tr (transitionlistener.transitionObservables.TransitionContext attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.traceLocalMinimum">traceLocalMinimum() (in module transitionlistener.phases)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.traceMinimum">traceMinimum() (in module transitionlistener.phases)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.traceMultiMin">traceMultiMin() (in module transitionlistener.phases)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf.tracing_args">tracing_args (transitionlistener.config.TracingConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf.tracing_derivative_order">tracing_derivative_order (transitionlistener.config.TracingConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf.tracing_field_accuracy">tracing_field_accuracy (transitionlistener.config.TracingConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf.tracing_temp_accuracy">tracing_temp_accuracy (transitionlistener.config.TracingConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf">TracingConf (class in transitionlistener.config)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionContext">TransitionContext (class in transitionlistener.transitionObservables)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.TransitionHistory">TransitionHistory (class in transitionlistener.phases)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo">TransitionInfo (class in transitionlistener.transitions)</a>
+</li>
+        <li>
+    transitionlistener
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.bubbledynamics
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.bubbledynamics">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.colors
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.colors">module</a>
+</li>
+        </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li>
+    transitionlistener.config
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.config">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.constants
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.constants">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.errors
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.errors">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.finiteT
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.finiteT">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.generic_potential
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.generic_potential">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.gridplots
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.gridplots">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.gwfopt
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.gwfopt">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.helper_functions
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.helper_functions">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.hydrodynamics
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.hydrodynamics">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.interface
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.interface">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.interface.check
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.interface.check">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.observability
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.observability">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.particles
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.particles">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.pathDeformation
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.pathDeformation">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.phases
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.phases">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.plot_settings
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.plot_settings">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.plots
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.plots">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.thermodynamics
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.thermodynamics">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.transitionObservables
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.transitionObservables">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.transitions
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.transitions">module</a>
+</li>
+        </ul></li>
+        <li>
+    transitionlistener.tunneling1D
+
+        <ul>
+          <li><a href="api/TransitionListener.html#module-transitionlistener.tunneling1D">module</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo">TransitionObservableInfo (class in transitionlistener.transitionObservables)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservables">TransitionObservables (class in transitionlistener.transitionObservables)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.Transitions">Transitions (class in transitionlistener.transitions)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.Treh">Treh (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.Treh_SM_GeV">Treh_SM_GeV (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationGrid.Tstart">Tstart (transitionlistener.bubbledynamics.PercolationGrid attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationGrid.TSYM">TSYM (transitionlistener.bubbledynamics.PercolationGrid attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.bubbledynamics.PercolationState.TSYM">(transitionlistener.bubbledynamics.PercolationState attribute)</a>
+</li>
+          <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.PercolationResult.TSYM">(transitionlistener.transitionObservables.PercolationResult attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingSettings.tunneling_class">tunneling_class (transitionlistener.pathDeformation.TunnelingSettings attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingSettings.tunneling_findProfile_params">tunneling_findProfile_params (transitionlistener.pathDeformation.TunnelingSettings attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingSettings.tunneling_init_params">tunneling_init_params (transitionlistener.pathDeformation.TunnelingSettings attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf.tunneling_params">tunneling_params (transitionlistener.config.TracingConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.TunnelingError">TunnelingError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingOutputs">TunnelingOutputs (class in transitionlistener.pathDeformation)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingSettings">TunnelingSettings (class in transitionlistener.pathDeformation)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.GWConf.turbulence">turbulence (transitionlistener.config.GWConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitions.TransitionInfo.type">type (transitionlistener.transitions.TransitionInfo attribute)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="U" class="genindex-section">
+  <h2>U</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.interface.ultranest">ultranest() (in module transitionlistener.interface)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.UnexpectedError">UnexpectedError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.GWConf.use_mean_bubble_separation">use_mean_bubble_separation (transitionlistener.config.GWConf attribute)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="V" class="genindex-section">
+  <h2>V</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.SplinePath.V">V() (transitionlistener.pathDeformation.SplinePath method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.V0">V0() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.V1">V1() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.V1_from_X">V1_from_X() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.V1phys">V1phys() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.V1T">V1T() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.V1T_from_X">V1T_from_X() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingSettings.V_spline_samples">V_spline_samples (transitionlistener.pathDeformation.TunnelingSettings attribute)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.v_wall">v_wall (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseInfo.valAt">valAt() (transitionlistener.phases.PhaseInfo method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.TransitionHistory.values">values() (transitionlistener.phases.TransitionHistory method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.Vct">Vct() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.Vdaisy">Vdaisy() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.Vdaisy_from_X">Vdaisy_from_X() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.pathDeformation.TunnelingSettings.verbose">verbose (transitionlistener.pathDeformation.TunnelingSettings attribute)</a>
+
+        <ul>
+          <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionContext.verbose">(transitionlistener.transitionObservables.TransitionContext attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.Vtot">Vtot() (transitionlistener.generic_potential.generic_potential method)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="W" class="genindex-section">
+  <h2>W</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.hydrodynamics.Hydrodynamics.w_from_alpha">w_from_alpha() (transitionlistener.hydrodynamics.Hydrodynamics method)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.GWConf.wall_velocity">wall_velocity (transitionlistener.config.GWConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.WARNING_betaH_mismatch">WARNING_betaH_mismatch (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.WARNING_betaH_nonfinite">WARNING_betaH_nonfinite (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.WARNING_betaH_small">WARNING_betaH_small (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.WARNING_betaH_very_small">WARNING_betaH_very_small (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.WARNING_no_perc_splines">WARNING_no_perc_splines (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.WARNING_not_T0_global_min">WARNING_not_T0_global_min (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.WARNING_nucleationRate_nonexponential">WARNING_nucleationRate_nonexponential (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.WARNING_too_weak_to_compute_perc">WARNING_too_weak_to_compute_perc (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.weak_threshold">weak_threshold (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.PercolationConf.weight">weight (transitionlistener.config.PercolationConf attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.WrongHighTPhaseError">WrongHighTPhaseError</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.WrongT0MinimumError">WrongT0MinimumError</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="X" class="genindex-section">
+  <h2>X</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseComparison.x1_max">x1_max (transitionlistener.phases.PhaseComparison attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseComparison.x1_min">x1_min (transitionlistener.phases.PhaseComparison attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseComparison.x2_max">x2_max (transitionlistener.phases.PhaseComparison attribute)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.phases.PhaseComparison.x2_min">x2_min (transitionlistener.phases.PhaseComparison attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.finiteT.x2K2">x2K2() (in module transitionlistener.finiteT)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.generic_potential.generic_potential.x_eps">x_eps (transitionlistener.generic_potential.generic_potential attribute)</a>
+</li>
+        <li><a href="api/TransitionListener.html#transitionlistener.transitionObservables.TransitionObservableInfo.xi_crit">xi_crit (transitionlistener.transitionObservables.TransitionObservableInfo attribute)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="Y" class="genindex-section">
+  <h2>Y</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.constants.yr">yr (in module transitionlistener.constants)</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+<section id="Z" class="genindex-section">
+  <h2>Z</h2>
+  <table style="width: 100%" class="indextable genindextable"><tr>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.config.TracingConf.Z2_cutof_factor">Z2_cutof_factor (transitionlistener.config.TracingConf attribute)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="api/TransitionListener.html#transitionlistener.errors.ZeroActionError">ZeroActionError</a>
+</li>
+    </ul></td>
+  </tr></table>
+</section>
+
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2025, Carlo Tasillo, Jonas Matuszak
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="_static/documentation_options.js?v=60dbed4a"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/scripts/furo.js?v=46bd48cc"></script>
+    </body>
+</html>
