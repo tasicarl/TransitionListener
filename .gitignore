@@ -1,0 +1,49 @@
+# macOS / editor cruft (anywhere in the tree)
+**/.DS_Store
+.DS_Store
+*.~undo-tree~
+
+# Python
+*.pyc
+__pycache__/
+**/__pycache__/
+*.egg-info/
+
+# Auto-generated model artefacts (counterterm tensors, etc.)
+models/generated/
+
+# IDE
+.vscode/settings.json
+**/.vscode/settings.json
+
+# tl runtime outputs (anywhere in the tree)
+scans/
+**/scans/
+output.*.txt
+
+# Sphinx / docs build artifacts
+docs/_build/
+docs/build/
+docs/*.aux
+docs/*.log
+docs/*.out
+docs/*.toc
+docs/*.bbl
+docs/*.blg
+docs/*.fls
+docs/*.fdb_latexmk
+
+# arxiv LaTeX build artifacts (we ship the figure PDFs but never the LaTeX
+# intermediates of main.tex)
+arxiv/*.aux
+arxiv/*.bbl
+arxiv/*.bcf
+arxiv/*.blg
+arxiv/*.fdb_latexmk
+arxiv/*.fls
+arxiv/*.log
+arxiv/*.out
+arxiv/*.run.xml
+arxiv/*.synctex.gz
+arxiv/*.toc
+arxiv/main.pdf
