@@ -5,15 +5,10 @@
 
 import os
 import sys
-import warnings
 from pathlib import Path
 
 project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root / "src"))  # Ensure autodoc finds the package
-
-from sphinx.deprecation import RemovedInSphinx11Warning
-
-warnings.filterwarnings("ignore", category=RemovedInSphinx11Warning)
 
 
 # -- Project information -----------------------------------------------------
