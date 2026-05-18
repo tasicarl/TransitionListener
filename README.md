@@ -3,7 +3,8 @@
 A framework for analyzing cosmological first-order phase transitions and their gravitational wave signatures.
 
 <p align="center">
-  <img src="./src/transitionlistener/logo/TL-logo_large.png" alt="TransitionListener Logo" width="200"/>
+  <img src="https://raw.githubusercontent.com/tasicarl/TransitionListener/main/src/transitionlistener/logo/TL-logo_large.png"
+   alt="TransitionListener Logo" width="200"/>
 </p>
 
 ---
@@ -21,13 +22,19 @@ A framework for analyzing cosmological first-order phase transitions and their g
   <a href="https://arxiv.org/abs/2502.19478">
     <img src="https://img.shields.io/badge/arXiv-2502.19478-b31b1b.svg" alt="arXiv">
   </a>
+  <a href="https://arxiv.org/abs/2602.09092">
+    <img src="https://img.shields.io/badge/arXiv-2602.09092-b31b1b.svg" alt="arXiv">
+  </a>
+  <a href="https://arxiv.org/abs/2605.15259">
+    <img src="https://img.shields.io/badge/arXiv-2605.15259-b31b1b.svg" alt="arXiv">
+  </a>
 </p>
 
 ---
 
 ## Overview
 
-**TransitionListener** is an open-source Python package designed to compute, analyze, and visualize **first-order phase transitions** and their resulting **stochastic gravitational wave backgrounds**. It implements a full thermal history from microphysical parameters to observable signals, combining precision in the thermodynamic description of the primordial plasma with a large range of possibilities for parameter scans and automatically generated plots. TransitionListener bridges theoretical particle physics and gravitational wave phenomenology, enabling robust parameter inference across twelve orders of magnitude in gravitational wave freqeuncies.
+**TransitionListener** is an open-source Python package designed to compute, analyze, and visualize **first-order phase transitions** and their resulting **stochastic gravitational wave backgrounds**. It implements a full thermal history from microphysical parameters to observable signals, combining precision in the thermodynamic description of the primordial plasma with a large range of possibilities for parameter scans and automatically generated plots. TransitionListener bridges theoretical particle physics and gravitational wave phenomenology, enabling robust parameter inference across twelve orders of magnitude in gravitational wave frequencies.
 
 Please refer to our online manual at [https://tasillo.de/TransitionListener/](https://tasillo.de/TransitionListener/) for detailed information on the installation and implementation details.
 
@@ -78,7 +85,7 @@ Please feel free to write us an email in case you identify any bug in the code o
 
 ## Citation
 
-If you use TransitionListener in your research, please cite the v2.0 release paper as well as the original v1 release in the bibliography of the new paper.
+If you use TransitionListener in your research, please cite the [v2.0 release](https://arxiv.org/abs/2605.15259) paper as well as the original [v1 release](https://arxiv.org/abs/2109.06208).
 
 ## License
 

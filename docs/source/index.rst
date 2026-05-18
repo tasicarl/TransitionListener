@@ -59,7 +59,7 @@ License and Citation
 --------------------
 If you use TransitionListener in your research, please cite the following papers:
 
-- J. Matuszak, C. Tasillo, "TransitionListener: ...", arXiv:2601.xxxxx [hep-ph].
+- J. Matuszak, C. Tasillo, "TransitionListener v2.0 - Robust gravitational wave predictions for cosmological phase transitions", arXiv:2605.15259 [hep-ph].
 - F. Ertas, F. Kahlhoefer, C. Tasillo, "Turn up the volume: listening
   to phase transitions in hot dark sectors", JCAP 02 (2022) 02, 014, arXiv:2109.06208 [astro-ph.CO].
 

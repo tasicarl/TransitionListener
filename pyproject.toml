@@ -5,9 +5,9 @@ build-backend = "hatchling.build"
 [project]
 name = "TransitionListener"
 version = "2.0.0"
-description = "Framework for analyzing cosmological first-order phase transitions and their gravitational-wave signatures."
+description = "Framework for analyzing cosmological first-order phase transitions and their gravitational wave signatures."
 readme = "README.md"
-requires-python = ">=3.10,<3.11"
+requires-python = ">=3.10"
 license = { file = "LICENSE.txt" }
 authors = [
     { name = "Carlo Tasillo", email = "carlo.tasillo@ific.uv.es" },
@@ -24,6 +24,9 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Physics",
     "Topic :: Scientific/Engineering :: Astronomy",
 ]
