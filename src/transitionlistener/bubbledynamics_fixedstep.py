@@ -713,7 +713,7 @@ def ApproxPercolCriterion2(
             print("Warning: vw is not finite or zero in ApproxPercolCriterion2. vw =", vw)
         return np.inf
     crit = np.power(G, 1 / 4.0) / H / betaH / np.power(fperc / (8 * np.pi * vw**3), 1 / 4.0)
-    return crit - 1
+    return float(np.squeeze(crit)) - 1
 
 
 def calcApproxPercolation(

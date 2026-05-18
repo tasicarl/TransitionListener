@@ -256,66 +256,110 @@
         <article role="main" id="furo-main-content">
           <section id="installation-guide">
 <h1>Installation Guide<a class="headerlink" href="#installation-guide" title="Link to this heading">¶</a></h1>
-<p>The core package can be installed directly with <code class="docutils literal notranslate"><span class="pre">pip</span></code>. PTA likelihood support
-is optional and is best provisioned through a dedicated conda environment
-because the <code class="docutils literal notranslate"><span class="pre">PTArcade</span></code> / <code class="docutils literal notranslate"><span class="pre">enterprise</span></code> stack may require additional native libraries.</p>
-<section id="installation-instructions">
-<h2>Installation Instructions<a class="headerlink" href="#installation-instructions" title="Link to this heading">¶</a></h2>
-<p>For the core package, clone the repository and install it directly:</p>
+<p>Choose the path that matches your use case:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#core"><span class="std std-ref">Core installation</span></a> — Linux or macOS, no PTA likelihood</p></li>
+<li><p><a class="reference internal" href="#pta-linux"><span class="std std-ref">Installation with PTA support on Linux</span></a> — Linux, with PTA likelihood</p></li>
+<li><p><a class="reference internal" href="#pta-mac"><span class="std std-ref">Installation with PTA support on macOS</span></a> — macOS, with PTA likelihood</p></li>
+</ul>
+<section id="core-installation">
+<span id="core"></span><h2>Core installation<a class="headerlink" href="#core-installation" title="Link to this heading">¶</a></h2>
+<p>Clone the repository and install with <code class="docutils literal notranslate"><span class="pre">pip</span></code>:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/tasicarl/TransitionListener.git
 <span class="nb">cd</span><span class="w"> </span>TransitionListener
 pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
 </pre></div>
 </div>
-<p>To enable PTA likelihood calculations, create the recommended <code class="docutils literal notranslate"><span class="pre">conda-forge</span></code>
-environment on a Linux machine:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>create<span class="w"> </span>-n<span class="w"> </span>TL<span class="w"> </span>-c<span class="w"> </span>conda-forge<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.10<span class="w"> </span>ptarcade<span class="w"> </span>ultranest<span class="w"> </span>tqdm<span class="w"> </span>corner<span class="w"> </span>getdist<span class="w"> </span>mpi4py
+</section>
+<section id="installation-with-pta-support-on-linux">
+<span id="pta-linux"></span><h2>Installation with PTA support on Linux<a class="headerlink" href="#installation-with-pta-support-on-linux" title="Link to this heading">¶</a></h2>
+<p>PTA likelihood support requires <code class="docutils literal notranslate"><span class="pre">PTArcade</span></code> and its <code class="docutils literal notranslate"><span class="pre">enterprise</span></code> stack,
+which depend on native libraries best managed through conda.</p>
+<p>First, create a dedicated conda environment:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>create<span class="w"> </span>-n<span class="w"> </span>TL<span class="w"> </span>-c<span class="w"> </span>conda-forge<span class="w"> </span>python<span class="w"> </span>ptarcade<span class="w"> </span>ultranest<span class="w"> </span>tqdm<span class="w"> </span>corner<span class="w"> </span>getdist<span class="w"> </span>mpi4py
 </pre></div>
 </div>
-<p>If you are working on macOS, use instead</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>create<span class="w"> </span>-n<span class="w"> </span>TL<span class="w"> </span>--platform<span class="w"> </span>osx-64<span class="w"> </span>-c<span class="w"> </span>conda-forge<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.10<span class="w"> </span>ptarcade<span class="w"> </span>ultranest<span class="w"> </span>tqdm<span class="w"> </span>corner<span class="w"> </span>getdist<span class="w"> </span>mpi4py
-</pre></div>
-</div>
-<p>Once the environment is created, activate it before installing TransitionListener:</p>
+<p>Activate the environment and reinstall <code class="docutils literal notranslate"><span class="pre">setuptools</span></code> via pip (conda’s build of
+setuptools does not always expose <code class="docutils literal notranslate"><span class="pre">pkg_resources</span></code> correctly on Python 3.12):</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>activate<span class="w"> </span>TL
+pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;setuptools&lt;72&quot;</span>
 </pre></div>
 </div>
-<p>Now, clone the TransitionListener repository from GitHub if you haven’t already:</p>
+<p>Then clone and install TransitionListener:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/tasicarl/TransitionListener.git
+<span class="nb">cd</span><span class="w"> </span>TransitionListener
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
 </pre></div>
 </div>
-<p>Now, install TransitionListener using pip. Navigate to the root folder of TransitionListener and run:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>.
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">&quot;setuptools&lt;72&quot;</span></code> step works around a known incompatibility
+in <code class="docutils literal notranslate"><span class="pre">PTArcade</span></code>: it relies on <code class="docutils literal notranslate"><span class="pre">pkg_resources</span></code>, which was removed from
+setuptools ≥ 72. The root fix has already been applied to <code class="docutils literal notranslate"><span class="pre">enterprise</span></code>
+(<a class="reference external" href="https://github.com/nanograv/enterprise/commit/a6d504d69254c45b530471efe0c7cc7a3c772c3f">nanograv/enterprise&#64;a6d504d</a>)
+and a corresponding PTArcade release is expected soon, after which this
+workaround will no longer be needed.
+Pip may report version-conflict warnings during this step — they are harmless
+and can be ignored.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The first invocation of <code class="docutils literal notranslate"><span class="pre">tl</span></code> after a fresh PTA installation (e.g. <code class="docutils literal notranslate"><span class="pre">tl</span> <span class="pre">--help</span></code>)
+may take several minutes while <code class="docutils literal notranslate"><span class="pre">enterprise</span></code> compiles and caches internal data.
+This is normal and only happens once.</p>
+</div>
+</section>
+<section id="installation-with-pta-support-on-macos">
+<span id="pta-mac"></span><h2>Installation with PTA support on macOS<a class="headerlink" href="#installation-with-pta-support-on-macos" title="Link to this heading">¶</a></h2>
+<p>On macOS, the <code class="docutils literal notranslate"><span class="pre">ceffyl</span></code> package required by <code class="docutils literal notranslate"><span class="pre">PTArcade</span></code> is only available
+as an x86-64 build, so the conda environment must be created with the
+<code class="docutils literal notranslate"><span class="pre">osx-64</span></code> platform flag:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>create<span class="w"> </span>-n<span class="w"> </span>TL<span class="w"> </span>--platform<span class="w"> </span>osx-64<span class="w"> </span>-c<span class="w"> </span>conda-forge<span class="w"> </span>python<span class="w"> </span>ptarcade<span class="w"> </span>ultranest<span class="w"> </span>tqdm<span class="w"> </span>corner<span class="w"> </span>getdist<span class="w"> </span>mpi4py
 </pre></div>
 </div>
-<p>If you want <code class="docutils literal notranslate"><span class="pre">pip</span></code> to record the optional PTA dependency explicitly, install the extra instead:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;.[pta]&quot;</span>
+<p>Activate the environment and reinstall <code class="docutils literal notranslate"><span class="pre">setuptools</span></code> via pip (conda’s build of
+setuptools does not always expose <code class="docutils literal notranslate"><span class="pre">pkg_resources</span></code> correctly on Python 3.12):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>activate<span class="w"> </span>TL
+pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;setuptools&lt;72&quot;</span>
 </pre></div>
 </div>
-<p>Alternatively, you can also install TransitionListener directly from the GitHub repository using:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>git+https://github.com/carlotasillo/TransitionListener.git
+<p>Then clone and install TransitionListener:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/tasicarl/TransitionListener.git
+<span class="nb">cd</span><span class="w"> </span>TransitionListener
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
 </pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">&quot;setuptools&lt;72&quot;</span></code> step works around a known incompatibility
+in <code class="docutils literal notranslate"><span class="pre">PTArcade</span></code>: it relies on <code class="docutils literal notranslate"><span class="pre">pkg_resources</span></code>, which was removed from
+setuptools ≥ 72. The root fix has already been applied to <code class="docutils literal notranslate"><span class="pre">enterprise</span></code>
+(<a class="reference external" href="https://github.com/nanograv/enterprise/commit/a6d504d69254c45b530471efe0c7cc7a3c772c3f">nanograv/enterprise&#64;a6d504d</a>)
+and a corresponding PTArcade release is expected soon, after which this
+workaround will no longer be needed.
+Pip may report version-conflict warnings during this step — they are harmless
+and can be ignored.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The first invocation of <code class="docutils literal notranslate"><span class="pre">tl</span></code> after a fresh PTA installation (e.g. <code class="docutils literal notranslate"><span class="pre">tl</span> <span class="pre">--help</span></code>)
+may take several minutes while <code class="docutils literal notranslate"><span class="pre">enterprise</span></code> compiles and caches internal data.
+This is normal and only happens once.</p>
 </div>
 </section>
 <section id="verifying-the-installation">
 <h2>Verifying the Installation<a class="headerlink" href="#verifying-the-installation" title="Link to this heading">¶</a></h2>
-<p>To verify that TransitionListener is installed correctly, you can run the following command in your terminal:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import transitionlistener; print(transitionlistener.__version__)&quot;</span>
-</pre></div>
-</div>
-<p>To see if the necessary dependencies are installed correctly, and in order to run a
-quick (1 - 2 minute) test, you can also run</p>
+<p>Run the built-in check to verify all dependencies and the physics engine:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>tl<span class="w"> </span>--check
 </pre></div>
 </div>
-<p>You can also check how the command line interface is working by running:</p>
+<p>This runs a quick dependency test (~1 s) followed by an end-to-end physics
+smoke test (~1–2 min). You can also inspect the command-line interface with:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>tl<span class="w"> </span>--help
 </pre></div>
 </div>
-<p>This should display the help message for the <code class="docutils literal notranslate"><span class="pre">tl</span></code> command line tool,
-confirming that TransitionListener is installed and ready to use.</p>
-<p>If you encounter any issues during installation, please feel free to reach out
-via the GitHub issues page at <a class="reference external" href="https://github.com/tasicarl/TransitionListener/issues">https://github.com/tasicarl/TransitionListener/issues</a>!</p>
+<p>If you encounter any issues, please open an issue at
+<a class="reference external" href="https://github.com/tasicarl/TransitionListener/issues">https://github.com/tasicarl/TransitionListener/issues</a>.</p>
 </section>
 </section>
 
@@ -375,7 +419,9 @@ via the GitHub issues page at <a class="reference external" href="https://github
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Installation Guide</a><ul>
-<li><a class="reference internal" href="#installation-instructions">Installation Instructions</a></li>
+<li><a class="reference internal" href="#core-installation">Core installation</a></li>
+<li><a class="reference internal" href="#installation-with-pta-support-on-linux">Installation with PTA support on Linux</a></li>
+<li><a class="reference internal" href="#installation-with-pta-support-on-macos">Installation with PTA support on macOS</a></li>
 <li><a class="reference internal" href="#verifying-the-installation">Verifying the Installation</a></li>
 </ul>
 </li>

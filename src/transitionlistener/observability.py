@@ -392,10 +392,10 @@ class Observability(GW_Sensitivity_Data):
             else:
                 self.calc_PTA_logL()
         elif self.verbose:
-            console.print(
-                "[yellow]PTA likelihood dependencies unavailable; "
-                "continuing with SNR-only observability outputs.[/yellow]"
-            )
+            msg = "[yellow]PTA likelihood dependencies unavailable; continuing with SNR-only observability outputs.[/yellow]"
+            if _PTA_IMPORT_ERROR is not None:
+                msg += f"\n  [dim]Import error: {_PTA_IMPORT_ERROR}[/dim]"
+            console.print(msg)
         self.calc_DNeff_GW()
         self.observability_dict = self.return_gw_info_dict()
 

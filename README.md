@@ -85,7 +85,7 @@ Please feel free to write us an email in case you identify any bug in the code o
 
 ## Citation
 
-If you use TransitionListener in your research, please cite the [v2.0 release](https://arxiv.org/abs/2605.15259) paper as well as the original [v1 release](https://arxiv.org/abs/2109.06208).
+If you use TransitionListener in your research, please cite the [v2 release](https://arxiv.org/abs/2605.15259) paper as well as the original [v1 release](https://arxiv.org/abs/2109.06208).
 
 ## License
 

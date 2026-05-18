@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "TransitionListener"
-version = "2.0.0"
+version = "2.0.0rc6"
 description = "Framework for analyzing cosmological first-order phase transitions and their gravitational wave signatures."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,7 +39,7 @@ dependencies = [
     "h5py",
     "matplotlib",
     "mpi4py",
-    "numpy",
+    "numpy>=1.21",
     "pandas",
     "rich",
     "scipy",
@@ -51,9 +51,8 @@ dependencies = [
 dev = [
     "pytest",
     "sphinx",
-]
-pta = [
-    "ptarcade",
+    "build",
+    "twine",
 ]
 
 [project.urls]

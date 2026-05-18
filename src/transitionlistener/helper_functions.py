@@ -349,9 +349,8 @@ def _rkck(y,dydt,t,f,dt,args=()):
     dc1=c1-2825.0/27648.0;dc3=c3-18575.0/48384.0;  # noqa
     dc4=c4-13525.0/55296.0;dc6=c6-0.25  # noqa
 
-    np.seterr(invalid = 'ignore')
-    ytemp = y+b21*dt*dydt
-    np.seterr(invalid = 'warn')
+    with np.errstate(invalid='ignore'):
+        ytemp = y+b21*dt*dydt
 
     ak2 = f(ytemp, t+a2*dt, *args)
     ytemp = y+dt*(b31*dydt+b32*ak2)
@@ -471,8 +470,8 @@ def deriv1n(y,x,n):
     # So we should be able to calculate all of them at once like this.
     s = ((2**np.arange(n-1)) & np.arange(2**(n-1))[:,np.newaxis])
     s[s > 0] = (np.arange(1,n) * np.ones(2**(n-1))[:,np.newaxis])[s > 0]
-    w[1:] = (np.sum(np.product(d[:,s],axis=2), axis=1)*d[:,0]
-             / np.product(d[:,1:], axis=1))
+    w[1:] = (np.sum(np.prod(d[:,s],axis=2), axis=1)*d[:,0]
+             / np.prod(d[:,1:], axis=1))
     w[1:] = -w[1:]**-1
     w[0] = -np.sum(w[1:],axis=0)
 

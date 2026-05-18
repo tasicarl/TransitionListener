@@ -1188,7 +1188,7 @@ def _approx_percolation_criterion(
             print("Warning: vw is not finite or zero in percolation approximation. vw =", vw)
         return np.inf
     crit = np.power(G, 1 / 4.0) / H / betaH / np.power(Iperc / (8 * np.pi * vw**3), 1 / 4.0)
-    return crit - 1
+    return float(np.squeeze(crit)) - 1
 
 
 def calcApproxPercolation(

@@ -1,14 +1,18 @@
 Installation Guide
 ==================
 
-The core package can be installed directly with ``pip``. PTA likelihood support
-is optional and is best provisioned through a dedicated conda environment
-because the ``PTArcade`` / ``enterprise`` stack may require additional native libraries.
+Choose the path that matches your use case:
 
-Installation Instructions
--------------------------
+- :ref:`core` — Linux or macOS, no PTA likelihood
+- :ref:`pta-linux` — Linux, with PTA likelihood
+- :ref:`pta-mac` — macOS, with PTA likelihood
 
-For the core package, clone the repository and install it directly:
+.. _core:
+
+Core installation
+-----------------
+
+Clone the repository and install with ``pip``:
 
 .. code-block:: bash
 
@@ -16,73 +20,110 @@ For the core package, clone the repository and install it directly:
     cd TransitionListener
     pip install -e .
 
-To enable PTA likelihood calculations, create the recommended ``conda-forge``
-environment on a Linux machine:
+.. _pta-linux:
+
+Installation with PTA support on Linux
+---------------------------------------
+
+PTA likelihood support requires ``PTArcade`` and its ``enterprise`` stack,
+which depend on native libraries best managed through conda.
+
+First, create a dedicated conda environment:
 
 .. code-block:: bash
 
-    conda create -n TL -c conda-forge python=3.10 ptarcade ultranest tqdm corner getdist mpi4py
+    conda create -n TL -c conda-forge python ptarcade ultranest tqdm corner getdist mpi4py
 
-If you are working on macOS, use instead
-
-.. code-block:: bash
-
-    conda create -n TL --platform osx-64 -c conda-forge python=3.10 ptarcade ultranest tqdm corner getdist mpi4py
-
-Once the environment is created, activate it before installing TransitionListener:
+Activate the environment and reinstall ``setuptools`` via pip (conda's build of
+setuptools does not always expose ``pkg_resources`` correctly on Python 3.12):
 
 .. code-block:: bash
 
     conda activate TL
+    pip install "setuptools<72"
 
-Now, clone the TransitionListener repository from GitHub if you haven't already:
+Then clone and install TransitionListener:
 
 .. code-block:: bash
 
     git clone https://github.com/tasicarl/TransitionListener.git
+    cd TransitionListener
+    pip install -e .
 
-Now, install TransitionListener using pip. Navigate to the root folder of TransitionListener and run:
+.. note::
+    The ``pip install "setuptools<72"`` step works around a known incompatibility
+    in ``PTArcade``: it relies on ``pkg_resources``, which was removed from
+    setuptools ≥ 72. The root fix has already been applied to ``enterprise``
+    (`nanograv/enterprise@a6d504d <https://github.com/nanograv/enterprise/commit/a6d504d69254c45b530471efe0c7cc7a3c772c3f>`_)
+    and a corresponding PTArcade release is expected soon, after which this
+    workaround will no longer be needed.
+    Pip may report version-conflict warnings during this step — they are harmless
+    and can be ignored.
+
+.. note::
+    The first invocation of ``tl`` after a fresh PTA installation (e.g. ``tl --help``)
+    may take several minutes while ``enterprise`` compiles and caches internal data.
+    This is normal and only happens once.
+
+.. _pta-mac:
+
+Installation with PTA support on macOS
+---------------------------------------
+
+On macOS, the ``ceffyl`` package required by ``PTArcade`` is only available
+as an x86-64 build, so the conda environment must be created with the
+``osx-64`` platform flag:
 
 .. code-block:: bash
 
-    pip install .
+    conda create -n TL --platform osx-64 -c conda-forge python ptarcade ultranest tqdm corner getdist mpi4py
 
-If you want ``pip`` to record the optional PTA dependency explicitly, install the extra instead:
-
-.. code-block:: bash
-
-    pip install ".[pta]"
-
-Alternatively, you can also install TransitionListener directly from the GitHub repository using:
+Activate the environment and reinstall ``setuptools`` via pip (conda's build of
+setuptools does not always expose ``pkg_resources`` correctly on Python 3.12):
 
 .. code-block:: bash
 
-    pip install git+https://github.com/carlotasillo/TransitionListener.git
+    conda activate TL
+    pip install "setuptools<72"
+
+Then clone and install TransitionListener:
+
+.. code-block:: bash
+
+    git clone https://github.com/tasicarl/TransitionListener.git
+    cd TransitionListener
+    pip install -e .
+
+.. note::
+    The ``pip install "setuptools<72"`` step works around a known incompatibility
+    in ``PTArcade``: it relies on ``pkg_resources``, which was removed from
+    setuptools ≥ 72. The root fix has already been applied to ``enterprise``
+    (`nanograv/enterprise@a6d504d <https://github.com/nanograv/enterprise/commit/a6d504d69254c45b530471efe0c7cc7a3c772c3f>`_)
+    and a corresponding PTArcade release is expected soon, after which this
+    workaround will no longer be needed.
+    Pip may report version-conflict warnings during this step — they are harmless
+    and can be ignored.
+
+.. note::
+    The first invocation of ``tl`` after a fresh PTA installation (e.g. ``tl --help``)
+    may take several minutes while ``enterprise`` compiles and caches internal data.
+    This is normal and only happens once.
 
 Verifying the Installation
 --------------------------
 
-To verify that TransitionListener is installed correctly, you can run the following command in your terminal:
-
-.. code-block:: bash
-
-    python -c "import transitionlistener; print(transitionlistener.__version__)"
-
-To see if the necessary dependencies are installed correctly, and in order to run a
-quick (1 - 2 minute) test, you can also run
+Run the built-in check to verify all dependencies and the physics engine:
 
 .. code-block:: bash
 
     tl --check
 
-You can also check how the command line interface is working by running:
+This runs a quick dependency test (~1 s) followed by an end-to-end physics
+smoke test (~1–2 min). You can also inspect the command-line interface with:
 
 .. code-block:: bash
 
     tl --help
 
-This should display the help message for the ``tl`` command line tool,
-confirming that TransitionListener is installed and ready to use.
-
-If you encounter any issues during installation, please feel free to reach out
-via the GitHub issues page at https://github.com/tasicarl/TransitionListener/issues!
+If you encounter any issues, please open an issue at
+https://github.com/tasicarl/TransitionListener/issues.
