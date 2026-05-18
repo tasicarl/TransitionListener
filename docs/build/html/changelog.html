@@ -260,11 +260,41 @@
 <p>The format follows <a class="reference external" href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and the project adheres to <a class="reference external" href="https://semver.org/">Semantic Versioning</a>.</p>
 <section id="id1">
-<h2>[2.0.0] - 2026-05-06<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h2>
-<p>Major code release accompanied by the paper
-<a class="reference external" href="https://arxiv.org/abs/2605.xxxxx">arXiv:2605.xxxxx</a> (TDB).</p>
+<h2>[2.0.1] - 2026-05-18<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h2>
+<p>Compatibility and packaging fixes; no physics changes.</p>
+<section id="fixed">
+<h3>Fixed<a class="headerlink" href="#fixed" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><strong>numpy ≥ 2.0 compatibility</strong>: <code class="docutils literal notranslate"><span class="pre">np.product()</span></code> (removed in numpy 2.0) replaced
+with <code class="docutils literal notranslate"><span class="pre">np.prod()</span></code>. Percolation criterion functions in <code class="docutils literal notranslate"><span class="pre">bubbledynamics.py</span></code> and
+<code class="docutils literal notranslate"><span class="pre">bubbledynamics_fixedstep.py</span></code> now return Python scalars instead of shape-<code class="docutils literal notranslate"><span class="pre">(1,)</span></code>
+arrays, fixing a <code class="docutils literal notranslate"><span class="pre">SystemError</span></code> from <code class="docutils literal notranslate"><span class="pre">scipy.optimize.brentq</span></code> on numpy 2.x.
+<code class="docutils literal notranslate"><span class="pre">np.linalg.lstsq</span></code> calls updated from deprecated <code class="docutils literal notranslate"><span class="pre">rcond=-1</span></code> to <code class="docutils literal notranslate"><span class="pre">rcond=None</span></code>.</p></li>
+<li><p><strong>Windows compatibility</strong>: <code class="docutils literal notranslate"><span class="pre">signal.SIGALRM</span></code> and <code class="docutils literal notranslate"><span class="pre">signal.alarm()</span></code> are POSIX-only
+and not available on Windows. All usages are now guarded by <code class="docutils literal notranslate"><span class="pre">hasattr</span></code> checks,
+fixing an <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code> on import that caused the conda-forge Windows CI to
+fail.</p></li>
+<li><p><strong>PTA diagnostics</strong>: when <code class="docutils literal notranslate"><span class="pre">ptarcade.signal_builder</span></code> fails to import, the
+underlying error is now shown alongside the “PTA likelihood unavailable” warning.</p></li>
+</ul>
+</section>
 <section id="added">
 <h3>Added<a class="headerlink" href="#added" title="Link to this heading">¶</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">conda/meta.yaml</span></code> recipe for conda-forge submission.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">build</span></code> and <code class="docutils literal notranslate"><span class="pre">twine</span></code> added to the <code class="docutils literal notranslate"><span class="pre">[dev]</span></code> optional dependencies in
+<code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>.</p></li>
+<li><p>GitHub Actions workflow (<code class="docutils literal notranslate"><span class="pre">.github/workflows/publish.yml</span></code>) for automatic PyPI
+publishing on tagged releases via OIDC trusted publishing.</p></li>
+</ul>
+</section>
+</section>
+<section id="id2">
+<h2>[2.0.0] - 2026-05-06<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h2>
+<p>Major code release accompanied by the paper
+<a class="reference external" href="https://arxiv.org/abs/2605.15259">arXiv:2605.15259</a>.</p>
+<section id="id3">
+<h3>Added<a class="headerlink" href="#id3" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p>Public packaged interface (<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">.</span></code>, <code class="docutils literal notranslate"><span class="pre">tl</span></code> console script,
 YAML-driven scans). v1 was a collection of top-level Python scripts
@@ -396,19 +426,19 @@ who need the dilution can compute it externally and pass it in.</p></li>
 </ul>
 </section>
 </section>
-<section id="id2">
-<h2>[1.0.2] - 2023-12-06<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h2>
+<section id="id4">
+<h2>[1.0.2] - 2023-12-06<a class="headerlink" href="#id4" title="Link to this heading">¶</a></h2>
 <p>Added a conda environment file.</p>
-<section id="id3">
-<h3>Added<a class="headerlink" href="#id3" title="Link to this heading">¶</a></h3>
+<section id="id5">
+<h3>Added<a class="headerlink" href="#id5" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">TL.yml</span></code>, a conda environment file intended to provide a working v1 setup
 with <code class="docutils literal notranslate"><span class="pre">scipy==1.10.1</span></code> and the small Python dependencies needed by the
 original scripts.</p></li>
 </ul>
 </section>
-<section id="id4">
-<h3>Changed<a class="headerlink" href="#id4" title="Link to this heading">¶</a></h3>
+<section id="id6">
+<h3>Changed<a class="headerlink" href="#id6" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">My_scan_LISA_low_res.py</span></code> was wrapped in a standard
 <code class="docutils literal notranslate"><span class="pre">if</span> <span class="pre">__name__</span> <span class="pre">==</span> <span class="pre">&quot;__main__&quot;:</span></code> entry point so the example scan script behaves
@@ -419,11 +449,11 @@ users to the new conda environment file.</p></li>
 </ul>
 </section>
 </section>
-<section id="id5">
-<h2>[1.0.1] - 2023-10-12<a class="headerlink" href="#id5" title="Link to this heading">¶</a></h2>
+<section id="id7">
+<h2>[1.0.1] - 2023-10-12<a class="headerlink" href="#id7" title="Link to this heading">¶</a></h2>
 <p>Documentation-only maintenance update on the public v1 repository.</p>
-<section id="id6">
-<h3>Changed<a class="headerlink" href="#id6" title="Link to this heading">¶</a></h3>
+<section id="id8">
+<h3>Changed<a class="headerlink" href="#id8" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p>The README command examples were corrected to match the actual script names
 (<code class="docutils literal notranslate"><span class="pre">My_point.py</span></code>, <code class="docutils literal notranslate"><span class="pre">My_scan.py</span></code>, <code class="docutils literal notranslate"><span class="pre">My_comparison.py</span></code>).</p></li>
@@ -435,13 +465,13 @@ confirm a working environment with <code class="docutils literal notranslate"><s
 </ul>
 </section>
 </section>
-<section id="id7">
-<h2>[1.0.0] - 2021-10-21<a class="headerlink" href="#id7" title="Link to this heading">¶</a></h2>
+<section id="id9">
+<h2>[1.0.0] - 2021-10-21<a class="headerlink" href="#id9" title="Link to this heading">¶</a></h2>
 <p>Initial public v1 release of TransitionListener on GitHub, corresponding to
 the original dark sector workflow used in
 <a class="reference external" href="https://arxiv.org/abs/2109.06208">arXiv:2109.06208</a>.</p>
-<section id="id8">
-<h3>Added<a class="headerlink" href="#id8" title="Link to this heading">¶</a></h3>
+<section id="id10">
+<h3>Added<a class="headerlink" href="#id10" title="Link to this heading">¶</a></h3>
 <ul class="simple">
 <li><p>A script-driven analysis workflow built on top of CosmoTransitions for
 dark sector first-order phase transitions and their stochastic
@@ -515,23 +545,28 @@ spectra, and detector signal-to-noise ratios in the original v1 framework.</p></
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Changelog</a><ul>
-<li><a class="reference internal" href="#id1">[2.0.0] - 2026-05-06</a><ul>
+<li><a class="reference internal" href="#id1">[2.0.1] - 2026-05-18</a><ul>
+<li><a class="reference internal" href="#fixed">Fixed</a></li>
 <li><a class="reference internal" href="#added">Added</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id2">[2.0.0] - 2026-05-06</a><ul>
+<li><a class="reference internal" href="#id3">Added</a></li>
 <li><a class="reference internal" href="#changed">Changed</a></li>
 <li><a class="reference internal" href="#removed">Removed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id2">[1.0.2] - 2023-12-06</a><ul>
-<li><a class="reference internal" href="#id3">Added</a></li>
-<li><a class="reference internal" href="#id4">Changed</a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#id5">[1.0.1] - 2023-10-12</a><ul>
+<li><a class="reference internal" href="#id4">[1.0.2] - 2023-12-06</a><ul>
+<li><a class="reference internal" href="#id5">Added</a></li>
 <li><a class="reference internal" href="#id6">Changed</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#id7">[1.0.0] - 2021-10-21</a><ul>
-<li><a class="reference internal" href="#id8">Added</a></li>
+<li><a class="reference internal" href="#id7">[1.0.1] - 2023-10-12</a><ul>
+<li><a class="reference internal" href="#id8">Changed</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#id9">[1.0.0] - 2021-10-21</a><ul>
+<li><a class="reference internal" href="#id10">Added</a></li>
 </ul>
 </li>
 </ul>

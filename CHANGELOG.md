@@ -5,10 +5,36 @@ All notable changes between releases of TransitionListener.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.0.1] - 2026-05-18
+
+Compatibility and packaging fixes; no physics changes.
+
+### Fixed
+
+- **numpy ≥ 2.0 compatibility**: `np.product()` (removed in numpy 2.0) replaced
+  with `np.prod()`. Percolation criterion functions in `bubbledynamics.py` and
+  `bubbledynamics_fixedstep.py` now return Python scalars instead of shape-`(1,)`
+  arrays, fixing a `SystemError` from `scipy.optimize.brentq` on numpy 2.x.
+  `np.linalg.lstsq` calls updated from deprecated `rcond=-1` to `rcond=None`.
+- **Windows compatibility**: `signal.SIGALRM` and `signal.alarm()` are POSIX-only
+  and not available on Windows. All usages are now guarded by `hasattr` checks,
+  fixing an `AttributeError` on import that caused the conda-forge Windows CI to
+  fail.
+- **PTA diagnostics**: when `ptarcade.signal_builder` fails to import, the
+  underlying error is now shown alongside the "PTA likelihood unavailable" warning.
+
+### Added
+
+- `conda/meta.yaml` recipe for conda-forge submission.
+- `build` and `twine` added to the `[dev]` optional dependencies in
+  `pyproject.toml`.
+- GitHub Actions workflow (`.github/workflows/publish.yml`) for automatic PyPI
+  publishing on tagged releases via OIDC trusted publishing.
+
 ## [2.0.0] - 2026-05-06
 
 Major code release accompanied by the paper
-[arXiv:2605.xxxxx](https://arxiv.org/abs/2605.xxxxx) (TDB).
+[arXiv:2605.15259](https://arxiv.org/abs/2605.15259).
 
 ### Added
 

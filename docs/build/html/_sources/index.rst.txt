@@ -34,8 +34,15 @@ first-order phase transitions and gravitational wave signals.
    :target: https://arxiv.org/abs/2502.19478
    :alt: arXiv
 
+.. image:: https://img.shields.io/badge/arXiv-2602.09092-b31b1b.svg
+   :target: https://arxiv.org/abs/2602.09092
+   :alt: arXiv
 
-About
+.. image:: https://img.shields.io/badge/arXiv-2605.15259-b31b1b.svg
+   :target: https://arxiv.org/abs/2605.15259
+   :alt: arXiv
+
+
 -----
 
 TransitionListener is an open-source Python package designed to facilitate the
