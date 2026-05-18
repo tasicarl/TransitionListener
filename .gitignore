@@ -9,6 +9,10 @@ __pycache__/
 **/__pycache__/
 *.egg-info/
 
+# Build and distribution artefacts
+dist/
+build/
+
 # Auto-generated model artefacts (counterterm tensors, etc.)
 models/generated/
 
