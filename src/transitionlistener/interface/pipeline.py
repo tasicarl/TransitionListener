@@ -127,7 +127,7 @@ def _compute_single_point(
     else:
         astroparams_dict = {"A": 0, "gamma": 0}
 
-    if timeout > 0 and not state.DEBUGMODE:
+    if timeout > 0 and not state.DEBUGMODE and hasattr(signal, "alarm"):
         signal.alarm(timeout)
     try:
         context["pot"] = potential(inputparams_dict, verbose=verbose)
@@ -172,10 +172,12 @@ def _compute_single_point(
                 if verbose:
                     print(f"Skipping GW observability after transition observables: {err}")
 
-        signal.alarm(0)
+        if hasattr(signal, "alarm"):
+            signal.alarm(0)
         return context, None
     except Exception as err:
-        signal.alarm(0)
+        if hasattr(signal, "alarm"):
+            signal.alarm(0)
         if state.DEBUGMODE:
             raise
         return context, err

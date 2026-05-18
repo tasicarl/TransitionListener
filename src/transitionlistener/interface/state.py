@@ -58,4 +58,5 @@ def timeout_handler(signum, frame):  # pragma: no cover - deterministic signal h
     msg = f"The calculation timed out after {TIMEOUT} seconds."
     raise Timeout(msg)
 
-signal.signal(signal.SIGALRM, timeout_handler)
+if hasattr(signal, "SIGALRM"):  # POSIX only — not available on Windows
+    signal.signal(signal.SIGALRM, timeout_handler)
