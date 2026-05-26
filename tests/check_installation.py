@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import warnings
 from pathlib import Path
 
 
@@ -69,46 +70,162 @@ def _run_smoke(console, failures: int) -> int:
     yaml_src = repo_root / "examples" / "example_point.yaml"
     model_src = repo_root / "models" / "TL_conformal_dark_u1.py"
 
-    with tempfile.TemporaryDirectory() as _tmp:
-        tmpdir = Path(_tmp)
+    # Persistent output dir so the user can inspect the result of the
+    # smoke run after ``tl --check`` exits.  Each invocation gets its
+    # own timestamped subdirectory under the system temp dir; we print
+    # a clickable file:// link to it at the end of this function.
+    runs_root = Path(tempfile.gettempdir()) / "tl_check_runs"
+    runs_root.mkdir(exist_ok=True)
+    tmpdir = runs_root / f"example_point_{int(time.time())}"
+    tmpdir.mkdir()
+    try:
         (tmpdir / "examples").mkdir()
         (tmpdir / "models").mkdir()
         shutil.copy(yaml_src, tmpdir / "examples" / "example_point.yaml")
         shutil.copy(model_src, tmpdir / "models" / "TL_conformal_dark_u1.py")
 
         env = os.environ.copy()
-        env.update({"OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"})
+        env.update({
+            "OMP_NUM_THREADS": "1",
+            "OPENBLAS_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            # Force the child to flush stdout line by line so our streaming
+            # progress indicator below sees output as it is produced.
+            "PYTHONUNBUFFERED": "1",
+        })
 
-        console.print("  Running example_point.yaml  [dim](conformal U(1), SinglePoint — takes ~1-2 min)[/dim]")
+        console.print(
+            "  Running example_point.yaml  "
+            "[dim](conformal U(1), SinglePoint — ~30-60 s after warm-up; "
+            "the first run can take 2-3 min while NumPy/SciPy/matplotlib "
+            "warm their caches)[/dim]"
+        )
         t0 = time.perf_counter()
         # Prefer the `tl` script from the same env as sys.executable.
         tl_script = Path(sys.executable).parent / "tl"
         if not tl_script.exists():
             tl_script = Path(sys.executable).parent / "tl.exe"  # Windows
+        # ``-v`` switches on the per-stage ``print("Calculating ...")``
+        # messages in transitionObservables.py.  They are what
+        # STAGE_HINTS below converts into bouncing-ball status labels,
+        # so without ``-v`` the second ball never appears.
         cmd = (
-            [str(tl_script), "-c", "examples/example_point.yaml", "-j", "1"]
+            [str(tl_script), "-c", "examples/example_point.yaml", "-j", "1", "-v"]
             if tl_script.exists()
             else [sys.executable, "-c",
                   "from transitionlistener.interface import main; main()",
-                  "-c", "examples/example_point.yaml", "-j", "1"]
+                  "-c", "examples/example_point.yaml", "-j", "1", "-v"]
         )
+
+        # Stream the subprocess output and surface progress through a
+        # bouncing-ball status line. Without this, first-time users (when
+        # nothing is cached yet) see a blank terminal for several minutes
+        # and assume the run is frozen.
+        STAGE_HINTS = (
+            ("Tracing phase",                       "Tracing phases"),
+            ("Calculating critical temperature",    "Locating critical temperature"),
+            ("Calculating critical vev",            "Locating critical vev"),
+            ("Calculating nucleation temperature",  "Locating nucleation temperature"),
+            ("Calculating percolation splines",     "Building percolation splines"),
+            ("Calculating percolation temperature", "Locating percolation temperature"),
+            ("Calculating reheating temperature",   "Locating reheating temperature"),
+            ("Calculating sound speed",             "Computing sound speed"),
+            ("Calculating alpha parameters",        "Computing alpha (latent heat)"),
+            ("Calculating beta/H",                  "Computing beta/H"),
+            ("Calculating mean bubble separation",  "Computing mean bubble separation"),
+            ("Calculating kappa parameters",        "Computing efficiency factors"),
+            ("Calculating g_eff_tot_reh",           "Tabulating reheating dofs"),
+            ("Calculating h_eff_tot_reh",           "Tabulating reheating dofs"),
+            ("Calculating Tf_SM_GeV",               "Locating final temperature"),
+            ("Computed thermodynamic quantities",   "Writing observables"),
+        )
+
+        captured: list[str] = []
+        timed_out = False
         try:
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 cmd,
                 cwd=tmpdir,
                 env=env,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
-                timeout=300,
+                bufsize=1,
             )
-        except subprocess.TimeoutExpired:
-            _result("smoke test", False, "timed out after 300 s")
+        except OSError as exc:
+            _result("smoke test", False, f"could not launch: {exc}")
             return failures + 1
+
+        # 10 minute hard cap — first-time runs with cold caches on slower
+        # CPUs have been observed to take up to ~5 min.
+        deadline = t0 + 600
+        # Two-stage status: a "Warming up" bouncing ball runs while the
+        # subprocess imports NumPy / SciPy / matplotlib and builds its
+        # caches; when the first STAGE_HINTS match shows up on stdout we
+        # close that ball, print a one-line confirmation, and open a
+        # fresh bouncing ball for the actual physics run. This way the
+        # user can tell warm-up from the run, and the run's status label
+        # tracks the current physics stage.
+        status = console.status(
+            "[bold cyan]Warming up TransitionListener…[/bold cyan]",
+            spinner="bouncingBall",
+        )
+        status.start()
+        warmed = False
+        # Most of the per-stage ``print("Calculating ...")`` lines fire in a
+        # tight burst near the end of the run (they label the assignment of
+        # derived quantities, where the heavy work happened in earlier
+        # steps).  Holding each label for at least MIN_LABEL_HOLD seconds
+        # lets the user actually see them roll past instead of catching
+        # only the last one before the run exits.
+        MIN_LABEL_HOLD = 0.4
+        last_label_t = 0.0
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                captured.append(line)
+                s = line.strip()
+                for needle, pretty in STAGE_HINTS:
+                    if needle in s:
+                        if not warmed:
+                            status.stop()
+                            console.print(
+                                "  [green]✓[/green]  Warm-up complete — "
+                                "starting the physics run"
+                            )
+                            status = console.status(
+                                f"[bold cyan]{pretty}…[/bold cyan]",
+                                spinner="bouncingBall",
+                            )
+                            status.start()
+                            warmed = True
+                            last_label_t = time.perf_counter()
+                        else:
+                            now = time.perf_counter()
+                            held = now - last_label_t
+                            if held < MIN_LABEL_HOLD:
+                                time.sleep(MIN_LABEL_HOLD - held)
+                            status.update(f"[bold cyan]{pretty}…[/bold cyan]")
+                            last_label_t = time.perf_counter()
+                        break
+                if time.perf_counter() > deadline:
+                    proc.kill()
+                    timed_out = True
+                    break
+            proc.wait()
+        finally:
+            status.stop()
+            if proc.stdout is not None:
+                proc.stdout.close()
         elapsed = time.perf_counter() - t0
+
+        if timed_out:
+            _result("smoke test", False, "timed out after 600 s")
+            return failures + 1
 
         if proc.returncode != 0:
             _result("smoke test", False, f"exit code {proc.returncode}")
-            console.print(f"  [dim]{proc.stderr[-500:]}[/dim]")
+            console.print(f"  [dim]{''.join(captured)[-500:]}[/dim]")
             return failures + 1
 
         out_file = tmpdir / "scans" / "example_point" / "1_All_params.txt"
@@ -148,6 +265,29 @@ def _run_smoke(console, failures: int) -> int:
         _result("smoke test (example_point.yaml)", smoke_ok, f"{elapsed:.0f} s")
         if not smoke_ok:
             failures += 1
+    finally:
+        # Always print a clickable link to the run directory — even on
+        # early returns / failures, so the user can inspect the output
+        # (and the partial logs) of the just-finished smoke run.
+        # ``soft_wrap=True`` keeps the path on a single line so a
+        # terminal-width line break can't truncate copy-pastes or
+        # clickable hyperlinks mid-path.
+        console.print(
+            f"  [dim]Output saved to[/dim] "
+            f"[link=file://{tmpdir}]{tmpdir}[/link]",
+            soft_wrap=True,
+        )
+        # Friendly "what's next" hint pointing at the same workspace —
+        # the smoke-test tmpdir already contains a complete
+        # ``examples/`` + ``models/`` layout, so the user can rerun
+        # the conformal U(1) example interactively with one command
+        # without hunting down the package install location.
+        console.print(
+            "  [dim]New to TransitionListener?  Try the same run "
+            "interactively:[/dim]\n"
+            f"    [bold]cd {tmpdir} && tl -c examples/example_point.yaml -v[/bold]",
+            soft_wrap=True,
+        )
 
     return failures
 
@@ -205,7 +345,19 @@ def run_checks() -> int:
         s_over_t = 120.0 * (T / T[0]) ** 0.5 + 5.0
         S = s_over_t * T
         H = T**2 / 1e6
-        I_ode = percIntegralODE(T, H, S, vw=1.0)
+        # SciPy's select_initial_step heuristic divides f0 by atol and squares
+        # the result, which overflows float64 because percIntegralODE uses
+        # atol=1e-300 (set deliberately to resolve the hot-tail exp(-S/T)
+        # suppression). NumPy >= 2 surfaces this as a benign RuntimeWarning,
+        # which is unrelated to the correctness of the result. Silence it
+        # locally so the check output stays clean.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="overflow encountered in dot",
+                category=RuntimeWarning,
+            )
+            I_ode = percIntegralODE(T, H, S, vw=1.0)
         ok = I_ode.shape == T.shape and float(I_ode[-1]) > 0.0
         _result("percolation ODE integral", ok, f"{(time.perf_counter()-t0)*1e3:.0f} ms")
         if not ok:
