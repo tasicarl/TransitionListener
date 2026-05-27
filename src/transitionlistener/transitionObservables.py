@@ -280,6 +280,7 @@ class PercolationResult:
     Pint: interpolate.interp1d | None
     Sint: interpolate.interp1d | None
     Hint: interpolate.interp1d | None
+    TBROint: interpolate.interp1d | None
     entropyInt: interpolate.interp1d | None
     coolingInt: interpolate.interp1d | None
     metadata: PercolationDiagnostics | None
@@ -522,7 +523,7 @@ class TransitionObservables:
 
         if verbose:
             print("Calculating percolation splines...")
-        Pint = Sint = Hint = entropyInt = coolingInt = None
+        Pint = Sint = Hint = TBROint = entropyInt = coolingInt = None
         core_spline_error = None
         try:
             Pint = _BoundedPchipInterpolator(
@@ -559,6 +560,17 @@ class TransitionObservables:
             if core_spline_error is None:
                 core_spline_error = err
 
+        try:
+            finite_tb = TBRO[np.isfinite(TBRO)]
+            TBROint = _BoundedPchipInterpolator(
+                TSYM,
+                TBRO,
+                fill_low=float(finite_tb[-1]),
+                fill_high=float(finite_tb[0]),
+            )
+        except Exception:
+            TBROint = None
+
         if core_spline_error is not None:
             derived["WARNING:no_perc_splines"] = True
             if verbose:
@@ -569,7 +581,7 @@ class TransitionObservables:
                     "for further calculations."
                 )
                 console.print(f"[bold yellow]WARNING:[/bold yellow] {msg}")
-            Pint = Sint = Hint = entropyInt = coolingInt = None
+            Pint = Sint = Hint = TBROint = entropyInt = coolingInt = None
 
         return PercolationResult(
             Tperc=Tperc,
@@ -581,6 +593,7 @@ class TransitionObservables:
             Pint=Pint,
             Sint=Sint,
             Hint=Hint,
+            TBROint=TBROint,
             entropyInt=entropyInt,
             coolingInt=coolingInt,
             metadata=metadata,
@@ -634,26 +647,40 @@ class TransitionObservables:
         if "Treh_SM_GeV" in ctx.derived_param_names:
             if ctx.verbose:
                 print("Calculating reheating temperature...")
-            try:
-                Treh = optimize.brentq(
-                    Tb_criterion,
-                    float(ctx.phase_broken.Tmin),
-                    float(ctx.phase_broken.Tmax),
-                    args=(
-                        percolation.Tperc,
-                        ctx.phase_symmetric,
-                        ctx.phase_broken,
-                        pot,
-                    ),
-                )
-            except ValueError:
-                if ctx.verbose:
-                    msg = (
-                        "WARNING: Tb_criterion does not bracket a root in the "
-                        "broken-phase temperature range; falling back to Treh = Tperc."
+            # Paper definition: reheating follows the gradual conversion of the
+            # true-vacuum energy density tracked during percolation, so evaluate
+            # the evolved broken-phase temperature spline at Tperc. Fall back to
+            # the instantaneous-reheating Tb_criterion solve only when the
+            # trajectory spline is unavailable.
+            Treh = None
+            if percolation.TBROint is not None:
+                try:
+                    Treh = float(percolation.TBROint(percolation.Tperc))
+                    if not np.isfinite(Treh):
+                        Treh = None
+                except Exception:
+                    Treh = None
+            if Treh is None:
+                try:
+                    Treh = optimize.brentq(
+                        Tb_criterion,
+                        float(ctx.phase_broken.Tmin),
+                        float(ctx.phase_broken.Tmax),
+                        args=(
+                            percolation.Tperc,
+                            ctx.phase_symmetric,
+                            ctx.phase_broken,
+                            pot,
+                        ),
                     )
-                    console.print(f"[bold yellow]WARNING:[/bold yellow] {msg}")
-                Treh = percolation.Tperc
+                except ValueError:
+                    if ctx.verbose:
+                        msg = (
+                            "WARNING: Tb_criterion does not bracket a root in the "
+                            "broken-phase temperature range; falling back to Treh = Tperc."
+                        )
+                        console.print(f"[bold yellow]WARNING:[/bold yellow] {msg}")
+                    Treh = percolation.Tperc
             derived["Treh"] = Treh
             derived["Treh_SM_GeV"] = Treh * pot.conversionFactor
 
