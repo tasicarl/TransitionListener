@@ -56,3 +56,30 @@ Please cite the following papers if you use TransitionListener in your work:
       pages = "014",
       year = "2022"
   }
+
+  @article{Wainwright:2011kj,
+    author = "Wainwright, Carroll L.",
+    title = "{CosmoTransitions: Computing Cosmological Phase Transition Temperatures and Bubble Profiles with Multiple Fields}",
+    eprint = "1109.4189",
+    archivePrefix = "arXiv",
+    primaryClass = "hep-ph",
+    doi = "10.1016/j.cpc.2012.04.004",
+    journal = "Comput. Phys. Commun.",
+    volume = "183",
+    pages = "2006--2013",
+    year = "2012"
+  }
+
+  @article{Ai:2023see,
+      author = "Ai, Wen-Yuan and Laurent, Benoit and van de Vis, Jorinde",
+      title = "{Model-independent bubble wall velocities in local thermal equilibrium}",
+      eprint = "2303.10171",
+      archivePrefix = "arXiv",
+      primaryClass = "astro-ph.CO",
+      reportNumber = "KCL-PH-TH/2023-19",
+      doi = "10.1088/1475-7516/2023/07/002",
+      journal = "JCAP",
+      volume = "07",
+      pages = "002",
+      year = "2023"
+  }

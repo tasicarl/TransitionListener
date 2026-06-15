@@ -6,9 +6,14 @@ Based on the code snippet provided in `arxiv:2303.10171`.
 Part of TransitionListener v2.0
 Documentation: https://tasillo.de/TransitionListener/
 
-Authors:
+Authors of the wrapper:
     Jonas Matuszak <jonas.matuszak@kit.edu>
     Carlo Tasillo <carlo.tasillo@ific.uv.es>
+
+Authors of the hydrodynamics routines:
+    Wen-Yuan Ai <wenyuanai@sjtu.edu.cn>
+    Benoit Laurent <blaurent@perimeterinstitute.ca>
+    Jorinde van de Vis <jorinde.van.de.vis@cern.ch>
 """
 
 import numpy as np
