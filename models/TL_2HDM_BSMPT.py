@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 from scipy.interpolate import interp1d
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 _BASE_MODEL_PATH = REPO_ROOT / "models" / "TL_2HDM.py"
 _SPEC = importlib.util.spec_from_file_location("tl_2hdm_base_for_bsmpt", _BASE_MODEL_PATH)
 if _SPEC is None or _SPEC.loader is None:
