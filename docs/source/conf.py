@@ -20,7 +20,7 @@ on_github = bool(os.environ.get("GITHUB_PAGES"))
 project = 'TransitionListener'
 copyright = '2025, Carlo Tasillo, Jonas Matuszak'
 author = 'Carlo Tasillo, Jonas Matuszak'
-release = '2.0'
+release = '2.1'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

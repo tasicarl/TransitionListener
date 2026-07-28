@@ -5,6 +5,39 @@ All notable changes between releases of TransitionListener.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 2026-07-28
+
+Bugfix release: reheating temperature (Treh) is now computed from the
+evolved true-vacuum energy density rather than assumed instantaneous.
+
+### Fixed
+
+- **Treh (reheating temperature)**: previously solved for Treh by assuming
+  instantaneous reheating via energy conservation at the single percolation
+  temperature (`eBRO(Treh) = eSYM(Tperc)`), discarding the gradual
+  true-vacuum-energy-density evolution the percolation routine already
+  tracks per step. This disagreed with the paper definition and overestimated
+  Treh for deeply supercooled transitions (low Tperc). The `TBROint` spline
+  built from the evolved `(TSYM, TBRO)` trajectory is now restored on
+  `PercolationResult` and evaluated at `Tperc`, realigning the adaptive-step
+  path with `transitionObservables_fixedstep.py`. The direct `Tb_criterion`
+  solve remains as a fallback when the spline is unavailable, and
+  `Treh = Tperc` as the final fallback.
+
+### Added
+
+- `TL_2HDM_BSMPT.py` and `TL_2HDM_BSMPT_highacc.py` model files, needed to
+  use the `bp_lisa.yaml` benchmark point.
+
+### Changed
+
+- Installation check now shows a progress indicator while warming the numpy
+  cache, so the install doesn't appear to hang; installation instructions
+  updated to match.
+- README and FAQ now reference CosmoTransitions and arXiv:2303.10171 for the
+  LTE velocity approximation; `hydrodynamics.py` header updated accordingly.
+- Issue and feature request templates updated.
+
 ## [2.0.1] - 2026-05-18
 
 Compatibility and packaging fixes; no physics changes.
