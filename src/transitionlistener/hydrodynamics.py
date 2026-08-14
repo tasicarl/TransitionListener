@@ -579,7 +579,7 @@ def calc_kappas(alphaN: float, alpha_inf: float, alpha_eq: float,
     Parameters
     ----------
     alphaN : float
-        alphaN = [alpha_hyd, alpha_hyd_decoupled] from bubbledynamics.py
+        alphaN = [alpha_hyd_coupled, alpha_hyd_config] from bubbledynamics.py
     alpha_inf : float
         The critical strength of the phase transition at which bubbles
         would run away if there was only leading order friction.
