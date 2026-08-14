@@ -2069,22 +2069,21 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     m_bos_before = np.sqrt(np.where(m2_bos_before > 0, m2_bos_before, 0))
     delta_m_bos = np.maximum(m_bos_after - m_bos_before, 0)
 
-    alpha_hyd = []
-    include_decoupled_in_enthalpy = bool(pot.config.gwConf.coupled_hydrodynamics)
-    Veff_sym_w = pot.Vtot(high_phi, T, include_decoupled=include_decoupled_in_enthalpy) - V0_ref
-    e_sym_w = pot.energyDensity(high_phi, T, include_decoupled=include_decoupled_in_enthalpy)
-    alpha_hyd.append((theta_sym - theta_bro) / (3 * (-Veff_sym_w + e_sym_w)))
+	# alpha_eq, see eq. (2.16) in 1903.09642
+	# the hydrodynamic alphas do not depend on the decoupled radiation bath!
+	Veff_sym_w = pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref
+	e_sym_w = pot.energyDensity(high_phi, T, include_decoupled=False)
+	alpha_hyd_coupled = (theta_sym - theta_bro) / (3 * (-Veff_sym_w + e_sym_w))
 
-    # alpha_eq, see eq. (2.16) in 1903.09642
-    # the hydrodynamic alphas do not depend on the decoupled radiation bath!
-    Veff_sym_w = pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref
-    e_sym_w = pot.energyDensity(high_phi, T, include_decoupled=False)
-    alpha_hyd_decoupled = (theta_sym - theta_bro) / (3 * (-Veff_sym_w + e_sym_w))
-    alpha_hyd.append(alpha_hyd_decoupled)
-    alpha_eq = T**3 / (3/4 * (-Veff_sym_w + e_sym_w)) * np.sum(delta_m_bos * gauge_coupling**2 * dof_bos * is_physical, axis=-1)
-    alpha_inf = T**2 / (18 * (-Veff_sym_w + e_sym_w)) * m2factor
+	alpha_eq = T**3 / (3/4 * (-Veff_sym_w + e_sym_w)) * np.sum(delta_m_bos * gauge_coupling**2 * dof_bos * is_physical, axis=-1)
+	alpha_inf = T**2 / (18 * (-Veff_sym_w + e_sym_w)) * m2factor
+	
+	include_decoupled_in_enthalpy = bool(pot.config.gwConf.coupled_hydrodynamics)
+	Veff_sym_w = pot.Vtot(high_phi, T, include_decoupled=include_decoupled_in_enthalpy) - V0_ref
+	e_sym_w = pot.energyDensity(high_phi, T, include_decoupled=include_decoupled_in_enthalpy)
+	alpha_hyd_config = (theta_sym - theta_bro) / (3 * (-Veff_sym_w + e_sym_w))
 
-    return alpha_p, alpha_theta, alpha_thetabar, alpha_e, alpha_hyd, alpha_inf, alpha_eq
+	return alpha_p, alpha_theta, alpha_thetabar, alpha_e, [alpha_hyd_coupled, alpha_hyd_config], alpha_inf, alpha_eq
 
 
 
