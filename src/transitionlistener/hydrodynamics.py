@@ -579,7 +579,7 @@ def calc_kappas(alphaN: float, alpha_inf: float, alpha_eq: float,
     Parameters
     ----------
     alphaN : float
-        The strength of the phase transition at nucleation.
+        alphaN = [alpha_hyd_coupled, alpha_hyd_config] from bubbledynamics.py
     alpha_inf : float
         The critical strength of the phase transition at which bubbles
         would run away if there was only leading order friction.
@@ -618,7 +618,7 @@ def calc_kappas(alphaN: float, alpha_inf: float, alpha_eq: float,
     # Computation of kappa_phi
     # based on 1903.09642 by John Ellis, Marek 
     # Lewicki, José Miguel No & Ville Vaskonen
-    gamma_eq = np.inf if alpha_eq == 0 else (alphaN - alpha_inf) / alpha_eq
+    gamma_eq = np.inf if alpha_eq == 0 else (alphaN[0] - alpha_inf) / alpha_eq
     gamma_star = 2 * Rsep / (3 * R0)
 
     def kappa_col(gamma_star, gamma_eq, alpha_inf, alpha):
@@ -637,7 +637,7 @@ def calc_kappas(alphaN: float, alpha_inf: float, alpha_eq: float,
     elif config.bw_collisions == "full":
         kappa_BW = 1
     elif config.bw_collisions == "NLO":
-        kappa_BW = kappa_col(gamma_star, gamma_eq, alpha_inf, alphaN)
+        kappa_BW = kappa_col(gamma_star, gamma_eq, alpha_inf, alphaN[0])
     else:
         raise ValueError("Wrong config input: bw_collisions must be 'off', 'full' or 'NLO'.")
 
@@ -646,7 +646,7 @@ def calc_kappas(alphaN: float, alpha_inf: float, alpha_eq: float,
     # based on  1004.4187 by Jose R. Espinosa, Thomas Konstandin,
     # Jose M. No & Geraldine Servant
 
-    alpha_eff = alphaN * (1 - kappa_BW)
+    alpha_eff = alphaN[1] * (1 - kappa_BW)
     kappa_SW = (1 - kappa_BW) * kappa_sw(alpha_eff, vw, cs)
     kappa_TURB = eps * kappa_SW
     return kappa_BW, kappa_SW, kappa_TURB
