@@ -804,8 +804,16 @@ def percIntegralODE(
     *,
     sound_speed_sq: np.ndarray | None = None,
     scale_factor: np.ndarray | None = None,
-) -> np.ndarray:
+    i_target: float | None = None,
+) -> np.ndarray | tuple[np.ndarray, float | None]:
     r"""Compute I(T_i) at every grid point via the J_n ODE chain.
+
+    With ``i_target`` the solver additionally records the temperature at which
+    the percolation integral reaches that value, and the return value becomes
+    the pair ``(I_values, crossing_temperature)``, where the crossing is
+    ``None`` if the target is not reached. Taking the crossing from the
+    integrator avoids reading it back off an interpolation of the sampled
+    ``I`` values.
 
     With ``sound_speed_sq`` and ``scale_factor`` this solves the generalized
     EOS form using
@@ -827,18 +835,18 @@ def percIntegralODE(
 
     Returns
     -------
-    np.ndarray
+    np.ndarray or tuple
         ``I(T_i)`` at each grid point (same length as *T*).
-        ``P(T_i) = 1 - exp(-I(T_i))``.
+        ``P(T_i) = 1 - exp(-I(T_i))``. With ``i_target``, the pair
+        ``(I_values, crossing_temperature)``.
     """
     T = np.asarray(T, dtype=float)
     H = np.asarray(H, dtype=float)
     S = np.asarray(S, dtype=float)
     N = T.size
-    if N == 0:
-        return np.zeros(0)
-    if N == 1:
-        return np.zeros(1)
+    if N <= 1:
+        I_values = np.zeros(N)
+        return I_values if i_target is None else (I_values, None)
     if T[0] < T[-1]:
         raise errors.PercolationError(
             "T is not decreasing in percIntegralODE."
@@ -964,6 +972,14 @@ def percIntegralODE(
             -3.0 * J2 * transport * t,  # dJ3/du
         ]
 
+    events = []
+    if i_target is not None:
+        def _reaches_target(u, y):
+            return (4.0 * np.pi / 3.0) * vw**3 * y[3] - float(i_target)
+
+        _reaches_target.terminal = False
+        events.append(_reaches_target)
+
     sol = integrate.solve_ivp(
         rhs,
         t_span=(float(u_eval[0]), float(u_eval[-1])),
@@ -973,6 +989,7 @@ def percIntegralODE(
         rtol=1e-10,
         atol=1e-300,
         dense_output=False,
+        events=events or None,
     )
     if sol.status != 0:
         raise errors.PercolationError(
@@ -997,7 +1014,57 @@ def percIntegralODE(
         I_values = np.concatenate([np.zeros(n_trim), I_trimmed])
     else:
         I_values = I_trimmed
-    return np.asarray(I_values, dtype=float)
+    I_values = np.asarray(I_values, dtype=float)
+    if i_target is None:
+        return I_values
+    crossing = None
+    if sol.t_events and len(sol.t_events[0]) > 0:
+        crossing = float(np.exp(float(sol.t_events[0][-1])))
+    return I_values, crossing
+
+
+def percolation_temperature_from_ode(
+    T: np.ndarray,
+    H: np.ndarray,
+    S: np.ndarray,
+    *,
+    vw: float,
+    pot,
+    phase_symmetric,
+    time_temperature_mode: str | None,
+    f_perc: float,
+):
+    """Return the percolation temperature straight from the integrator.
+
+    The profile sweep tabulates the true-vacuum fraction on the support grid,
+    and the percolation temperature is normally recovered by interpolating
+    those samples and root-finding on them. That read-off moves when the
+    support points move. Here the same ODE is integrated once more with an
+    event at the target value of the percolation integral, so the crossing is
+    located by the integrator itself. Returns ``None`` if it cannot be found.
+    """
+    try:
+        target = -np.log(max(1.0 - float(f_perc), 1e-300))
+        sound_speed_sq, scale_factor = _time_temperature_factors(
+            pot,
+            phase_symmetric,
+            np.asarray(T, dtype=float),
+            time_temperature_mode,
+        )
+        _, crossing = percIntegralODE(
+            T,
+            H,
+            S,
+            vw=vw,
+            sound_speed_sq=sound_speed_sq,
+            scale_factor=scale_factor,
+            i_target=target,
+        )
+    except Exception:
+        return None
+    if crossing is None or not np.isfinite(crossing) or crossing <= 0.0:
+        return None
+    return float(crossing)
 
 
 def percIntegralODE_full_sweep(
@@ -1353,6 +1420,197 @@ def entropy_criterion_SYM_BRO(Tb: float, TBRO_ref: float, TSYM: float, TSYM_ref:
     return crit
 
 
+def _finite_difference(func, x: float, rel_step: float = 1e-6) -> float:
+    """Central difference of ``func`` at ``x`` with a relative step."""
+    h = rel_step * max(abs(float(x)), 1e-30)
+    return (func(float(x) + h) - func(float(x) - h)) / (2.0 * h)
+
+
+def integrate_broken_temperature(
+    pot,
+    phase_symmetric,
+    phase_broken,
+    TSYM: np.ndarray,
+    P: np.ndarray,
+    T_target: float,
+    *,
+    p_seed: float = 1e-6,
+    rtol: float = 1e-8,
+    atol: float = 0.0,
+):
+    r"""Integrate the broken-phase temperature down to ``T_target``.
+
+    The step-3 profile obtains the broken-phase temperature by stepping from one
+    support point to the next: an entropy-conserving update followed by an energy
+    correction for the volume fraction converted during the step. Those steps are
+    a first-order discretisation of
+
+    .. math::
+        \frac{dT_b}{dT} = \frac{3\,S(T_b)}{T\,S'(T_b)}
+        + \frac{P'(T)}{P(T)}\,\frac{e_s(T) - E(T_b)}{E'(T_b)} ,
+
+    with :math:`S(x) = [h_{\rm ds}(x) + h_{\rm SM}(x)]\,x^3` proportional to the
+    entropy density of the broken phase and :math:`E` its energy density. Reading
+    the reheating temperature off that tabulated trajectory makes it depend on
+    where the support points happen to sit, which shows up as point-to-point
+    scatter along smooth parameter scans. Solving the equation with an
+    error-controlled integrator makes the result depend on a tolerance instead.
+
+    The true-vacuum fraction enters through the source term. Its derivative is
+    taken on a spline of :math:`\ln I`, with :math:`I = -\ln(1-P)` the
+    percolation integral, which is smooth and monotone, rather than on a spline
+    of :math:`P`, which sweeps from 0 to 1 and whose derivative depends strongly
+    on the node placement. The integration starts where the true-vacuum fraction
+    first reaches ``p_seed``, located in the same variable, with the
+    instantaneous-reheating condition as initial value.
+
+    Returns the broken-phase temperature at ``T_target``, or ``None`` if the
+    integration could not be carried out.
+    """
+    temps = np.asarray(TSYM, dtype=float)
+    probs = np.asarray(P, dtype=float)
+    finite = np.isfinite(temps) & np.isfinite(probs)
+    if np.count_nonzero(finite) < 4:
+        return None
+    order = np.argsort(temps[finite])
+    t_asc, p_asc = temps[finite][order], probs[finite][order]
+    t_asc, unique_idx = np.unique(t_asc, return_index=True)
+    p_asc = p_asc[unique_idx]
+    if t_asc.size < 4:
+        return None
+
+    try:
+        p_spline = interpolate.CubicSpline(t_asc, p_asc, extrapolate=False)
+    except Exception:
+        return None
+    dp_spline = p_spline.derivative()
+
+    # dI/dT = I * dlnI/dT and dP/dT = (1-P) * dI/dT, with I = -ln(1-P).
+    with np.errstate(all="ignore"):
+        i_all = -np.log(np.clip(1.0 - p_asc, 1e-300, None))
+    ok = np.isfinite(i_all) & (i_all > 0.0)
+    log_i_spline = None
+    if np.count_nonzero(ok) >= 4:
+        try:
+            log_i_spline = interpolate.CubicSpline(t_asc[ok], np.log(i_all[ok]),
+                                                   extrapolate=False)
+            dlog_i_spline = log_i_spline.derivative()
+        except Exception:
+            log_i_spline = None
+
+    def profile_at(T):
+        """Return (P, dP/dT) at temperature ``T``."""
+        if log_i_spline is not None:
+            li = float(log_i_spline(T))
+            if np.isfinite(li):
+                i_val = float(np.exp(li))
+                p_val = -np.expm1(-i_val)
+                dp = (1.0 - p_val) * i_val * float(dlog_i_spline(T))
+                if np.isfinite(p_val) and np.isfinite(dp):
+                    return p_val, dp
+        return float(p_spline(T)), float(dp_spline(T))
+
+    target = float(T_target)
+    if not np.isfinite(target) or target <= float(t_asc[0]) or target >= float(t_asc[-1]):
+        return None
+
+    hotter = t_asc[t_asc > target]
+    if hotter.size == 0:
+        return None
+    seed_floor = float(hotter[0])
+
+    # Seed: where the true-vacuum fraction reaches p_seed. In the hot tail P runs
+    # over many orders of magnitude, so a spline through P can overshoot and give a
+    # spurious crossing; ln I between neighbouring support points is monotone, so
+    # interpolate linearly in (T, ln I) instead.
+    t_seed = None
+    if np.count_nonzero(ok) >= 2:
+        t_good, log_i = t_asc[ok], np.log(i_all[ok])
+        log_i_seed = np.log(-np.log(max(1.0 - p_seed, 1e-300)))
+        for hi, lo in zip(t_good[::-1][:-1], t_good[::-1][1:]):
+            if lo <= target:
+                break
+            a_hi = float(np.interp(hi, t_good, log_i))
+            a_lo = float(np.interp(lo, t_good, log_i))
+            if (a_hi - log_i_seed) * (a_lo - log_i_seed) <= 0.0 and a_hi != a_lo:
+                w = (log_i_seed - a_hi) / (a_lo - a_hi)
+                t_seed = float(hi + w * (lo - hi))
+                break
+        if t_seed is not None and (not np.isfinite(t_seed) or t_seed <= target):
+            t_seed = None
+    if t_seed is None:
+        for hi, lo in zip(t_asc[::-1][:-1], t_asc[::-1][1:]):
+            if lo <= target:
+                break
+            p_hi, p_lo = float(p_spline(hi)), float(p_spline(lo))
+            if (p_hi - p_seed) * (p_lo - p_seed) <= 0.0 and p_hi != p_lo:
+                try:
+                    t_seed = float(optimize.brentq(lambda x: float(p_spline(x)) - p_seed, lo, hi))
+                except Exception:
+                    t_seed = None
+                break
+    if t_seed is None or not np.isfinite(t_seed) or t_seed <= target:
+        t_seed = seed_floor
+    if t_seed <= target:
+        return None
+
+    def e_sym(T):
+        return energyDensity(pot, phase_symmetric, float(T), include_decoupled=False)
+
+    def e_bro(x):
+        return energyDensity(pot, phase_broken, float(x), include_decoupled=False)
+
+    def s_bro(x):
+        x = float(x)
+        return (h_eff_DS(x, pot, phase_broken) + td.s_geffSM(x, pot.conversionFactor)) * x**3
+
+    try:
+        tb_seed = optimize.brentq(
+            Tb_criterion,
+            float(phase_broken.Tmin),
+            float(phase_broken.Tmax),
+            args=(t_seed, phase_symmetric, phase_broken, pot),
+        )
+    except Exception:
+        return None
+
+    # Guard against a pathological right-hand side stalling the integrator; the
+    # caller falls back to the tabulated trajectory.
+    calls = {"n": 0}
+
+    def rhs(T, y):
+        calls["n"] += 1
+        if calls["n"] > 200000:
+            raise RuntimeError("integrate_broken_temperature: RHS evaluation cap reached")
+        tb = float(y[0])
+        if not np.isfinite(tb) or tb <= 0.0:
+            return [0.0]
+        ds = _finite_difference(s_bro, tb)
+        de = _finite_difference(e_bro, tb)
+        drift = 3.0 * s_bro(tb) / (T * ds) if ds != 0.0 else 0.0
+        source = 0.0
+        p_val, dp_val = profile_at(T)
+        if np.isfinite(p_val) and p_val > 0.0 and de != 0.0 and np.isfinite(dp_val):
+            source = dp_val * (e_sym(T) - e_bro(tb)) / (p_val * de)
+        total = drift + source
+        return [total if np.isfinite(total) else 0.0]
+
+    try:
+        sol = integrate.solve_ivp(
+            rhs,
+            (t_seed, target),
+            [float(tb_seed)],
+            method="LSODA",
+            rtol=rtol,
+            atol=atol if atol > 0.0 else 1e-12 * max(abs(float(tb_seed)), 1.0),
+            dense_output=False,
+        )
+    except Exception:
+        return None
+    if not sol.success or sol.y.shape[1] == 0:
+        return None
+    result = float(sol.y[0, -1])
+    return result if np.isfinite(result) and result > 0.0 else None
 
 
 def _solve_for_initial_Tperc(

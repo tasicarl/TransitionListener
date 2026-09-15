@@ -86,6 +86,13 @@ class specific_potential(generic_potential.generic_potential):
         """
         self.config.tracingConf.gen_mirror_phases = False
         self.config.tracingConf.tracing_field_accuracy = 1e-3  # for Hessian
+        # The bounce action of this nearly flat, radiatively generated potential is
+        # sensitive to the spline of V along the bounce path. With the default 1000
+        # samples the interpolation error biases Tperc, Treh and alpha towards strong
+        # supercooling, scatters them along smooth parameter lines, and makes some
+        # strongly supercooled points fail. 10000 samples agree with the unsplined
+        # potential, at about twice the cost per point.
+        self.config.tracingConf.tunneling_params["V_spline_samples"] = 10000
 
     def V0(self, X):
         """

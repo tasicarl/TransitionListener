@@ -27,6 +27,7 @@ from transitionlistener.bubbledynamics import (
     calcMeanBubbleSeparation,
     calcTf,
     Tb_criterion,
+    integrate_broken_temperature,
     HubbleParameter,
     energyDensity,
     PercolationDiagnostics,
@@ -648,12 +649,26 @@ class TransitionObservables:
             if ctx.verbose:
                 print("Calculating reheating temperature...")
             # Paper definition: reheating follows the gradual conversion of the
-            # true-vacuum energy density tracked during percolation, so evaluate
-            # the evolved broken-phase temperature spline at Tperc. Fall back to
-            # the instantaneous-reheating Tb_criterion solve only when the
-            # trajectory spline is unavailable.
-            Treh = None
-            if percolation.TBROint is not None:
+            # true-vacuum energy density tracked during percolation. Integrate
+            # the broken-phase temperature down to Tperc with an error-controlled
+            # solver, so that the result is set by a tolerance rather than by
+            # where the support points of the tabulated trajectory happen to sit.
+            # Fall back to evaluating the tabulated trajectory, and then to the
+            # instantaneous-reheating Tb_criterion solve, when that fails.
+            try:
+                Treh = integrate_broken_temperature(
+                    pot,
+                    ctx.phase_symmetric,
+                    ctx.phase_broken,
+                    percolation.TSYM,
+                    percolation.P,
+                    percolation.Tperc,
+                )
+            except Exception:
+                Treh = None
+            if Treh is not None and not np.isfinite(Treh):
+                Treh = None
+            if Treh is None and percolation.TBROint is not None:
                 try:
                     Treh = float(percolation.TBROint(percolation.Tperc))
                     if not np.isfinite(Treh):

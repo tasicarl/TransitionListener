@@ -12,6 +12,7 @@ import pytest
 from transitionlistener.bubbledynamics import (
     Gamma,
     HubbleParameter,
+    integrate_broken_temperature,
     logGamma,
     percIntegral,
     percIntegralODE,
@@ -209,4 +210,64 @@ class TestPercIntegralODE:
                 I_ode[-1], I_no_outlier[-1], rtol=1e-6,
                 err_msg="Hot-end outlier trimming changed the integral value",
             )
+
+
+class TestPercIntegralTargetEvent:
+    """The percolation temperature can be taken from the integrator itself."""
+
+    def test_event_leaves_values_unchanged(self):
+        T, H, S = _synthetic_grid(n=60)
+        I_plain = percIntegralODE(T, H, S, vw=1.0)
+        target = 0.5 * float(I_plain[-1])
+        I_event, crossing = percIntegralODE(T, H, S, vw=1.0, i_target=target)
+        np.testing.assert_array_equal(I_event, I_plain)
+        assert crossing is not None
+
+    def test_crossing_agrees_with_dense_reference(self):
+        T, H, S = _synthetic_grid(n=60)
+        I_coarse = percIntegralODE(T, H, S, vw=1.0)
+        target = 0.3 * float(I_coarse[-1])
+        _, crossing = percIntegralODE(T, H, S, vw=1.0, i_target=target)
+        # Bracketed by the grid points on either side of the target ...
+        above = T[I_coarse < target]
+        below = T[I_coarse >= target]
+        assert below.max() <= crossing <= above.min()
+        # ... and consistent with a finely resolved integral.
+        T_hr, H_hr, S_hr = _synthetic_grid(n=2000)
+        I_hr = percIntegralODE(T_hr, H_hr, S_hr, vw=1.0)
+        order = np.argsort(I_hr)
+        T_ref = float(np.interp(np.log(target), np.log(I_hr[order][I_hr[order] > 0]),
+                                T_hr[order][I_hr[order] > 0]))
+        assert crossing == pytest.approx(T_ref, rel=1e-3)
+
+    def test_unreached_target_gives_none(self):
+        T, H, S = _synthetic_grid(n=40)
+        I_plain = percIntegralODE(T, H, S, vw=1.0)
+        _, crossing = percIntegralODE(T, H, S, vw=1.0, i_target=10.0 * float(I_plain[-1]) + 1.0)
+        assert crossing is None
+
+    def test_degenerate_grid_keeps_pair_contract(self):
+        for n in (0, 1):
+            T = np.linspace(2.0, 1.0, n)
+            H = np.ones(n)
+            S = np.full(n, 100.0)
+            assert isinstance(percIntegralODE(T, H, S), np.ndarray)
+            I_values, crossing = percIntegralODE(T, H, S, i_target=1.0)
+            assert I_values.shape == (n,)
+            assert crossing is None
+
+
+class TestIntegrateBrokenTemperatureGuards:
+    """Inputs the reheating integration cannot work with return None, not raise."""
+
+    def test_too_few_samples(self):
+        T = np.array([2.0, 1.5, 1.0])
+        P = np.array([0.0, 0.3, 0.9])
+        assert integrate_broken_temperature(None, None, None, T, P, 1.2) is None
+
+    def test_target_outside_profile(self):
+        T = np.linspace(2.0, 1.0, 10)
+        P = np.linspace(0.0, 0.99, 10)
+        assert integrate_broken_temperature(None, None, None, T, P, 0.5) is None
+        assert integrate_broken_temperature(None, None, None, T, P, 2.5) is None
 
