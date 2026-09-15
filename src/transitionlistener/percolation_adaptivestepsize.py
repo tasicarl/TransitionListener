@@ -1336,6 +1336,17 @@ def _refine_percolation_temperature_dynamiczoomwindow(
             & np.isfinite(state.Hr)
         )
         if not np.any(active_mask):
+            # A P(T) profile that reaches percolation while carrying no evolved
+            # TBRO at all is the degenerate Pprev = 0 sweep right after a
+            # support rebuild, not a self-consistent solution. Report it as
+            # maximally inconsistent so the existing same-grid Picard retry
+            # recomputes the profile (with the fresh P as Pprev) before the
+            # controller judges or accepts it.
+            pr_values = np.asarray(state.Pr, dtype=float)
+            if np.any(np.isfinite(pr_values)) and float(np.nanmax(pr_values)) >= float(
+                settings.f_perc
+            ):
+                return math.inf
             return 0.0
 
         rho_from_h = 3.0 * np.asarray(state.Hr[active_mask], dtype=float) ** 2
@@ -1451,6 +1462,23 @@ def _refine_percolation_temperature_dynamiczoomwindow(
         Pint = interpolate.interp1d(TSYM, state.Pr)
         try:
             Tperc = optimize.brentq(lambda T: Pint(T) - settings.f_perc, TSYM[0], TSYM[-1])
+            # Prefer the crossing located by the percolation-integral solver
+            # itself: root-finding on the interpolated samples moves whenever the
+            # support points move, which propagates into every quantity that is
+            # evaluated at Tperc, the reheating temperature included.
+            if settings.integral_method == "ode":
+                tperc_ode = bd.percolation_temperature_from_ode(
+                    TSYM,
+                    state.Hr,
+                    state.Sr,
+                    vw=vw,
+                    pot=pot,
+                    phase_symmetric=phase_symmetric,
+                    time_temperature_mode=settings.time_temperature_mode,
+                    f_perc=settings.f_perc,
+                )
+                if tperc_ode is not None and float(TSYM[-1]) <= tperc_ode <= float(TSYM[0]):
+                    Tperc = tperc_ode
         except ValueError as err:
             msg = err.args[0]
             if msg.startswith("f(a) and f(b) must have different signs") and Pint(TSYM[-1]) < settings.f_perc:

@@ -5,6 +5,34 @@ All notable changes between releases of TransitionListener.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Treh scatter (#6)**: since 2.1.0 the reheating temperature was read off the
+  tabulated broken-phase temperature trajectory at `Tperc`, which made it depend
+  on where the adaptive support points happen to sit and produced
+  point-to-point scatter along smooth parameter scans. The broken-phase
+  temperature is now integrated down to `Tperc` with an error-controlled solver
+  (`integrate_broken_temperature`); the true-vacuum fraction enters through its
+  percolation integral `I = -ln(1 - P)`, whose logarithm is smooth, instead of
+  through a spline of `P`. The tabulated trajectory and the instantaneous
+  reheating solve remain as fallbacks. The read-off also carried a bias that
+  shrinks only linearly with the support spacing, so `Treh` moves down by a few
+  hundredths to a few tenths of a per cent, depending on the model.
+- **Tperc** in the adaptive step size solver is now taken from an event of the
+  percolation-integral ODE rather than from root-finding on interpolated
+  samples, so it no longer moves with the support points.
+- A degenerate step-3 profile, which reaches percolation without any evolved
+  broken-phase temperature right after a support rebuild, is no longer accepted
+  as self-consistent.
+- The conformal dark U(1) model splines the potential along the bounce path with
+  10000 instead of 1000 samples. With 1000 samples the bounce action was biased
+  towards strong supercooling (for `y = 0.01`, `v = 0.14 GeV`, `g = 0.554`:
+  `Tperc` 31 % too low, `alpha` 4.3 times too high), scattered along smooth
+  parameter lines, and some strongly supercooled points failed. The new setting
+  agrees with the unsplined potential to within 0.2 % in `Tperc`.
+
 ## [2.1.0] - 2026-07-28
 
 Bugfix release: reheating temperature (Treh) is now computed from the
