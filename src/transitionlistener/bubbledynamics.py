@@ -805,7 +805,7 @@ def percIntegralODE(
     sound_speed_sq: np.ndarray | None = None,
     scale_factor: np.ndarray | None = None,
     i_target: float | None = None,
-) -> np.ndarray:
+) -> np.ndarray | tuple[np.ndarray, float | None]:
     r"""Compute I(T_i) at every grid point via the J_n ODE chain.
 
     With ``i_target`` the solver additionally records the temperature at which
@@ -835,18 +835,18 @@ def percIntegralODE(
 
     Returns
     -------
-    np.ndarray
+    np.ndarray or tuple
         ``I(T_i)`` at each grid point (same length as *T*).
-        ``P(T_i) = 1 - exp(-I(T_i))``.
+        ``P(T_i) = 1 - exp(-I(T_i))``. With ``i_target``, the pair
+        ``(I_values, crossing_temperature)``.
     """
     T = np.asarray(T, dtype=float)
     H = np.asarray(H, dtype=float)
     S = np.asarray(S, dtype=float)
     N = T.size
-    if N == 0:
-        return np.zeros(0)
-    if N == 1:
-        return np.zeros(1)
+    if N <= 1:
+        I_values = np.zeros(N)
+        return I_values if i_target is None else (I_values, None)
     if T[0] < T[-1]:
         raise errors.PercolationError(
             "T is not decreasing in percIntegralODE."

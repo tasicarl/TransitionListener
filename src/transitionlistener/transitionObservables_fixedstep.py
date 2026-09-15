@@ -18,6 +18,7 @@ from transitionlistener.transitions import TransitionInfo
 from . import thermodynamics as td
 from . import errors
 from transitionlistener.hydrodynamics import Hydrodynamics, calc_kappas
+from transitionlistener.bubbledynamics import integrate_broken_temperature
 from transitionlistener.bubbledynamics_fixedstep import (
     calcPercAndEvolve,
     calcAlphas,
@@ -494,7 +495,24 @@ class TransitionObservables:
                     console.print(f"[bold yellow]WARNING:[/bold yellow] {msg}")
                 Treh = percolation.Tperc
             else:
-                Treh = percolation.TBROint(percolation.Tperc) if percolation.TBROint else percolation.Tperc
+                # Integrate the broken-phase temperature down to Tperc with an
+                # error-controlled solver, as the adaptive path does, instead of
+                # evaluating the spline of the tabulated trajectory, whose value
+                # depends on where the support points sit. Fall back to that
+                # spline when the integration fails.
+                try:
+                    Treh = integrate_broken_temperature(
+                        pot,
+                        ctx.phase_symmetric,
+                        ctx.phase_broken,
+                        percolation.TSYM,
+                        percolation.P,
+                        percolation.Tperc,
+                    )
+                except Exception:
+                    Treh = None
+                if Treh is None or not np.isfinite(Treh):
+                    Treh = percolation.TBROint(percolation.Tperc) if percolation.TBROint else percolation.Tperc
             derived["Treh"] = Treh
             derived["Treh_SM_GeV"] = Treh * pot.conversionFactor
 

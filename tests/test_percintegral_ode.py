@@ -246,6 +246,16 @@ class TestPercIntegralTargetEvent:
         _, crossing = percIntegralODE(T, H, S, vw=1.0, i_target=10.0 * float(I_plain[-1]) + 1.0)
         assert crossing is None
 
+    def test_degenerate_grid_keeps_pair_contract(self):
+        for n in (0, 1):
+            T = np.linspace(2.0, 1.0, n)
+            H = np.ones(n)
+            S = np.full(n, 100.0)
+            assert isinstance(percIntegralODE(T, H, S), np.ndarray)
+            I_values, crossing = percIntegralODE(T, H, S, i_target=1.0)
+            assert I_values.shape == (n,)
+            assert crossing is None
+
 
 class TestIntegrateBrokenTemperatureGuards:
     """Inputs the reheating integration cannot work with return None, not raise."""

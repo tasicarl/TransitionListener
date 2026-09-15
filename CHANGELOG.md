@@ -14,7 +14,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   on where the adaptive support points happen to sit and produced
   point-to-point scatter along smooth parameter scans. The broken-phase
   temperature is now integrated down to `Tperc` with an error-controlled solver
-  (`integrate_broken_temperature`); the true-vacuum fraction enters through its
+  (`integrate_broken_temperature`), in both the adaptive and the fixed step size
+  percolation solver; the true-vacuum fraction enters through its
   percolation integral `I = -ln(1 - P)`, whose logarithm is smooth, instead of
   through a spline of `P`. The tabulated trajectory and the instantaneous
   reheating solve remain as fallbacks. The read-off also carried a bias that
