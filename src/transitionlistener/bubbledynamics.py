@@ -1000,9 +1000,7 @@ def percIntegralODE(
             "below floating-point spacing and the solver gives up. "
             "Suggested fixes: (a) rerun with precision_mode: tunneltight or "
             "benchmark to tighten the bounce-action path deformation; "
-            "(b) probe the action with tests/probe_bounce_stability.py to "
-            "localise the jittery T-range; "
-            "(c) if the model is multi-field, lower precision_deform_fRatioConv "
+            "(b) if the model is multi-field, lower precision_deform_fRatioConv "
             "(default 1e-2 for Ndim>=2) further. "
             f"Underlying solver message: {sol.message}"
         )
