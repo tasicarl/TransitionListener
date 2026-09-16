@@ -15,6 +15,7 @@ from transitionlistener.generic_potential import generic_potential
 from transitionlistener.phases import PhaseInfo
 from transitionlistener import config
 from transitionlistener.transitions import TransitionInfo
+from transitionlistener.transitionObservables import _BoundedPchipInterpolator
 from . import thermodynamics as td
 from . import errors
 from transitionlistener.hydrodynamics import Hydrodynamics, calc_kappas
@@ -772,14 +773,25 @@ class TransitionObservables:
                 Tf_val = np.nan
             else:
                 try:
+                    # P saturates towards one, so a spline through P is flat where
+                    # P(Tf) = f_final; read Tf off an interpolation in
+                    # log(1 - P) instead, as in the adaptive step size backend.
+                    false_fraction_int = _BoundedPchipInterpolator(
+                        percolation.TSYM,
+                        percolation.P,
+                        fill_low=1.0,
+                        fill_high=0.0,
+                        clip=(0.0, 1.0),
+                        transform="log_false_fraction",
+                    )
                     Tf_val = calcTf(
                         percolation.Tperc,
                         percolation.TSYM[-1],
-                        percolation.Pint,
+                        false_fraction_int,
                         pot,
                         verbose=verbose,
                     )
-                except errors.PercolationError as err:
+                except (errors.PercolationError, ValueError) as err:
                     if verbose:
                         msg = (
                             "Could not compute the temperature at which the "
