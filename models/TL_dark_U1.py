@@ -69,10 +69,15 @@ class specific_potential(generic_potential.generic_potential):
 
         self.mass_spectrum = self._build_mass_spectrum()
 
-        # Calculate counter mass and counter coupling
-        self.x_eps = 0.1
+        # Calculate counter mass and counter coupling. This model has always
+        # taken these derivatives with a step of 0.1.
+        self.counterterm_derivative_step = 0.1
         dV1 = self.dV1atvev()
         d2V1 = self.d2V1atvev()
+        # The finite-difference derivatives of the potential (gradV, d2V) also
+        # use a step of 0.1, i.e. 1e-4 of the internal vev, instead of the
+        # tracing accuracy: with the benchmark accuracy of 1e-4 as step, rounding
+        # errors make points fail.
         self.x_eps = 0.1
         self.dmu2 = 3./2. * dV1 / self.v - 1./2. * d2V1
         self.dmu2_GeV2 = self.dmu2 * self.conversionFactor**2.
