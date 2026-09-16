@@ -530,6 +530,7 @@ def get_empty_result() -> dict:
            'WARNING:betaH_nonfinite': False,
            'WARNING:nucleationRate_nonexponential': False,
            'WARNING:not_T0_global_min': False,
+           'WARNING:false_vacuum_not_shrinking': False,
            'lnL_smoothened_NG15_14bins': np.nan,
            'lnL_PTArcade_NG15_14bins': np.nan,
            'lnL_mock_NG15_14bins': np.nan,

@@ -25,6 +25,8 @@ from transitionlistener.bubbledynamics import (
     calc_betaH_S3,
     calc_betaH_S3_approx,
     calcMeanBubbleSeparation,
+    falseVacuumVolumeGrowthRate,
+    percolation_sound_speed_sq,
     calcTf,
     Tb_criterion,
     integrate_broken_temperature,
@@ -401,6 +403,7 @@ class TransitionObservables:
         derived_params = {
             "WARNING:too_weak_to_compute_perc": False,
             "WARNING:no_perc_splines": False,
+            "WARNING:false_vacuum_not_shrinking": False,
             "WARNING:betaH_small": False,
             "WARNING:betaH_very_small": False,
             "WARNING:betaH_mismatch": False,
@@ -600,6 +603,72 @@ class TransitionObservables:
             metadata=metadata,
             successful=True,
         )
+
+    def _check_false_vacuum_shrinking(
+        self,
+        ctx: TransitionContext,
+        percolation: PercolationResult,
+    ) -> None:
+        """Warn when the physical false-vacuum volume still grows at ``Tperc``.
+
+        This is the Lewicki criterion, eq. (2.26) of arXiv:1809.08242 (Ellis,
+        Lewicki and No), which goes back to Turner, Weinberg and Widrow,
+        Phys. Rev. D 46 (1992) 2384: percolation alone does not guarantee that
+        a vacuum-dominated transition completes, because the false vacuum
+        inflates while the true-vacuum fraction grows.
+
+        Deliberately only a warning. TransitionListener decides completion by
+        solving for the temperature at which the true-vacuum fraction reaches
+        ``f_final``, which is the stronger and later statement; and the
+        original authors note that a violation at the percolation temperature
+        "cannot be immediately disproved", since the criterion is frequently
+        met at some lower temperature.
+        """
+        derived = ctx.derived_params
+        if percolation.TSYM is None or percolation.P is None:
+            return
+        if not np.isfinite(percolation.Tperc):
+            return
+
+        # The criterion has to use the time-temperature relation the percolation
+        # history was integrated with, not the sound speed of the GW settings.
+        cs_sq = percolation_sound_speed_sq(
+            ctx.pot,
+            ctx.phase_symmetric,
+            percolation.Tperc,
+            time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
+            integral_method=ctx.PercolationConf.integral_method,
+        )
+
+        growth = falseVacuumVolumeGrowthRate(
+            percolation.TSYM,
+            percolation.P,
+            percolation.Tperc,
+            cs_sq=cs_sq,
+        )
+        if not np.isfinite(growth):
+            if ctx.verbose:
+                print(
+                    "Could not evaluate the false-vacuum volume criterion; "
+                    "the percolation history is too sparse."
+                )
+            return
+
+        derived["WARNING:false_vacuum_not_shrinking"] = bool(growth >= 0.0)
+        if ctx.verbose:
+            print(
+                "False-vacuum volume criterion (Lewicki criterion): "
+                f"dlnV_false/dt / (3H) = {growth:.4g} at Tperc"
+            )
+        if growth >= 0.0:
+            msg = (
+                "The physical false-vacuum volume is still growing at the "
+                f"percolation temperature: dlnV_false/dt / (3H) = {growth:.4g} "
+                ">= 0 (Lewicki criterion, arXiv:1809.08242 eq. 2.26). The "
+                "transition may still complete at a lower temperature; "
+                "completion is decided by the final temperature Tf."
+            )
+            console.print(f"[bold yellow]WARNING:[/bold yellow] {msg}")
 
     def _populate_temperature_observables(
         self,
@@ -1174,6 +1243,7 @@ class TransitionObservables:
             and alpha_theta_milestone < ctx.PercolationConf.weak_threshold
         )
 
+        self._check_false_vacuum_shrinking(ctx, percolation)
         self._populate_temperature_observables(ctx, percolation)
         self._compute_alpha_parameters(ctx, percolation)
         self._compute_beta_and_separation(ctx, percolation, tmin, tmax)

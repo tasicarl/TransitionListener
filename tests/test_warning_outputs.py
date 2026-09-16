@@ -21,6 +21,7 @@ class WarningOutputTests(unittest.TestCase):
             "WARNING:betaH_mismatch",
             "WARNING:betaH_nonfinite",
             "WARNING:nucleationRate_nonexponential",
+            "WARNING:false_vacuum_not_shrinking",
         ):
             with self.subTest(key=key):
                 self.assertIn(key, config.all_observables)
