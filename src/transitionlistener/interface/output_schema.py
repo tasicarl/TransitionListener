@@ -67,6 +67,7 @@ WARNING_COLUMN_ORDER = [
     "WARNING:betaH_nonfinite",
     "WARNING:nucleationRate_nonexponential",
     "WARNING:not_T0_global_min",
+    "WARNING:false_vacuum_not_shrinking",
 ]
 SNR_COLUMN_ORDER = [
     "B-DECIGO_SNR",

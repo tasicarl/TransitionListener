@@ -2400,6 +2400,90 @@ def calc_betaH_S3_approx(T, outdict, pot, phase_sym, phase_bro, tmin, tmax, verb
     return betaH
 
 
+def falseVacuumVolumeGrowthRate(TSYM, P, T, cs_sq: float = 1.0 / 3.0) -> float:
+    r"""Growth rate of the physical false-vacuum volume, in units of ``3H``.
+
+    The false vacuum occupies a physical volume
+    :math:`\mathcal{V}_{\rm false} \propto a^3 (1 - P_{\rm true}) = a^3 e^{-I}`,
+    which has to shrink for the transition to complete rather than to inflate
+    forever. This requirement goes back to Turner, Weinberg and Widrow,
+    Phys. Rev. D 46 (1992) 2384; the temperature form used here is eq. (2.26)
+    of Ellis, Lewicki and No, arXiv:1809.08242, and we refer to it as the
+    Lewicki criterion,
+
+    .. math::
+        \frac{1}{\mathcal{V}_{\rm false}}
+        \frac{{\rm d}\mathcal{V}_{\rm false}}{{\rm d}t}
+        = H\left(3 + T\frac{{\rm d}I}{{\rm d}T}\right) < 0 \,.
+
+    That form assumes the radiation relation :math:`{\rm d}T/{\rm d}t = -HT`.
+    TransitionListener integrates the percolation history with the generalized
+    relation :math:`{\rm d}T/{\rm d}t = -3 c_{\rm s}^2 H T`, for which
+
+    .. math::
+        \frac{1}{\mathcal{V}_{\rm false}}
+        \frac{{\rm d}\mathcal{V}_{\rm false}}{{\rm d}t}
+        = 3H\left(1 + c_{\rm s}^2 T \frac{{\rm d}I}{{\rm d}T}\right) \,,
+
+    and the returned quantity is the bracket. With :math:`c_{\rm s}^2 = 1/3` it
+    reduces to :math:`(3 + T\,{\rm d}I/{\rm d}T)/3`, i.e. to the published
+    criterion divided by three, so the sign is unchanged.
+
+    The derivative is taken on a monotonic spline of :math:`\ln I` rather than
+    of :math:`P`, because :math:`I = -\ln(1 - P_{\rm true})` spans decades over
+    the sampled range while :math:`P` saturates.
+
+    Parameters
+    ----------
+    TSYM : array_like
+        Symmetric-phase temperatures of the percolation history.
+    P : array_like
+        True-vacuum fraction at those temperatures.
+    T : float
+        Temperature at which to evaluate the criterion, typically ``Tperc``.
+    cs_sq : float, optional
+        Sound speed squared entering the time-temperature relation. Pass
+        ``1/3`` for the bag limit, which reproduces the published form.
+
+    Returns
+    -------
+    float
+        ``1 + cs_sq * T * dI/dT``. Negative means the false-vacuum volume is
+        shrinking, i.e. the criterion is fulfilled. ``np.nan`` when the
+        percolation history is too sparse to differentiate.
+    """
+    temperatures = np.asarray(TSYM, dtype=float)
+    fractions = np.asarray(P, dtype=float)
+    if temperatures.size != fractions.size or not np.isfinite(T):
+        return float("nan")
+
+    integral = -np.log1p(-np.clip(fractions, 0.0, 1.0 - 1e-15))
+    usable = np.isfinite(temperatures) & np.isfinite(integral) & (integral > 0.0)
+    temperatures = temperatures[usable]
+    integral = integral[usable]
+    if temperatures.size < 3:
+        return float("nan")
+
+    order = np.argsort(temperatures)
+    temperatures = temperatures[order]
+    integral = integral[order]
+    keep = np.concatenate(([True], np.diff(temperatures) > 0))
+    temperatures = temperatures[keep]
+    integral = integral[keep]
+    if temperatures.size < 3 or not (temperatures[0] <= T <= temperatures[-1]):
+        return float("nan")
+
+    try:
+        log_integral = interpolate.PchipInterpolator(
+            temperatures, np.log(integral), extrapolate=False
+        )
+        dIdT = float(np.exp(log_integral(T)) * log_integral(T, 1))
+    except Exception:
+        return float("nan")
+    if not np.isfinite(dIdT):
+        return float("nan")
+    return 1.0 + float(cs_sq) * float(T) * dIdT
+
 def calcMeanBubbleSeparation(
     T,
     Tmax,

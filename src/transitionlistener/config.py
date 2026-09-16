@@ -182,4 +182,5 @@ all_observables = {
     "WARNING:spline_tnuc_not_reached": R"$\mathrm{WARNING:} T_\mathrm{nuc} \mathrm{\ criterion\ not\ reached}$",
     "WARNING:spline_tnuc_failed": R"$\mathrm{WARNING:} T_\mathrm{nuc} \mathrm{\ spline\ failed}$",
     "WARNING:not_T0_global_min": R"$\mathrm{WARNING:} T=0 \mathrm{\ not\ global\ min}$",
+    "WARNING:false_vacuum_not_shrinking": R"$\mathrm{WARNING:} \mathcal{V}_\mathrm{false} \mathrm{\ growing\ at\ } T_\mathrm{perc}$",
 }
