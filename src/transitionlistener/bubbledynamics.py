@@ -2484,6 +2484,33 @@ def falseVacuumVolumeGrowthRate(TSYM, P, T, cs_sq: float = 1.0 / 3.0) -> float:
         return float("nan")
     return 1.0 + float(cs_sq) * float(T) * dIdT
 
+
+def percolation_sound_speed_sq(
+    pot,
+    phase_symmetric,
+    T: float,
+    *,
+    time_temperature_mode: str | None = None,
+    integral_method: str | None = None,
+) -> float:
+    """Sound speed squared of the time-temperature relation used for the percolation history.
+
+    Mirrors ``percIntegralODE_full_sweep``: the double integral and the ``bag``
+    mode integrate with ``dT/dt = -H T``, i.e. ``c_s^2 = 1/3``; the ODE in
+    ``sound_speed`` mode uses the symmetric-phase value from
+    ``_time_temperature_factors``, including its fallback to ``1/3``.
+    """
+    method = "ode" if integral_method is None else str(integral_method)
+    if method == "double_integral":
+        return 1.0 / 3.0
+    sound_speed_sq, _ = _time_temperature_factors(
+        pot, phase_symmetric, np.array([float(T)]), time_temperature_mode
+    )
+    if sound_speed_sq is None:
+        return 1.0 / 3.0
+    return float(sound_speed_sq[0])
+
+
 def calcMeanBubbleSeparation(
     T,
     Tmax,

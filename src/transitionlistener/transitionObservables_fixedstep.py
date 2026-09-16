@@ -18,7 +18,10 @@ from transitionlistener.transitions import TransitionInfo
 from . import thermodynamics as td
 from . import errors
 from transitionlistener.hydrodynamics import Hydrodynamics, calc_kappas
-from transitionlistener.bubbledynamics import integrate_broken_temperature
+from transitionlistener.bubbledynamics import (
+    falseVacuumVolumeGrowthRate,
+    integrate_broken_temperature,
+)
 from transitionlistener.bubbledynamics_fixedstep import (
     calcPercAndEvolve,
     calcAlphas,
@@ -228,6 +231,7 @@ class TransitionObservables:
         derived_params = {
             "WARNING:too_weak_to_compute_perc": False,
             "WARNING:no_perc_splines": False,
+            "WARNING:false_vacuum_not_shrinking": False,
             "WARNING:betaH_small": False,
         }
         return TransitionContext(
@@ -450,6 +454,53 @@ class TransitionObservables:
             TBROint=TBROint,
             successful=True,
         )
+
+    def _check_false_vacuum_shrinking(
+        self,
+        ctx: TransitionContext,
+        percolation: PercolationResult,
+    ) -> None:
+        """Warn when the physical false-vacuum volume still grows at ``Tperc``.
+
+        Same Lewicki criterion as in the adaptive step-size backend, see
+        ``bubbledynamics.falseVacuumVolumeGrowthRate``. This backend determines
+        ``Tperc`` from the true-vacuum fraction integrated with
+        ``dT/dt = -H T``, so the criterion is evaluated with ``c_s^2 = 1/3``.
+        """
+        if percolation.TSYM is None or percolation.P is None:
+            return
+        if not np.isfinite(percolation.Tperc):
+            return
+
+        growth = falseVacuumVolumeGrowthRate(
+            percolation.TSYM,
+            percolation.P,
+            percolation.Tperc,
+            cs_sq=1.0 / 3.0,
+        )
+        if not np.isfinite(growth):
+            if ctx.verbose:
+                print(
+                    "Could not evaluate the false-vacuum volume criterion; "
+                    "the percolation history is too sparse."
+                )
+            return
+
+        ctx.derived_params["WARNING:false_vacuum_not_shrinking"] = bool(growth >= 0.0)
+        if ctx.verbose:
+            print(
+                "False-vacuum volume criterion (Lewicki criterion): "
+                f"dlnV_false/dt / (3H) = {growth:.4g} at Tperc"
+            )
+        if growth >= 0.0:
+            msg = (
+                "The physical false-vacuum volume is still growing at the "
+                f"percolation temperature: dlnV_false/dt / (3H) = {growth:.4g} "
+                ">= 0 (Lewicki criterion, arXiv:1809.08242 eq. 2.26). The "
+                "transition may still complete at a lower temperature; "
+                "completion is decided by the final temperature Tf."
+            )
+            console.print(f"[bold yellow]WARNING:[/bold yellow] {msg}")
 
     def _populate_temperature_observables(
         self,
@@ -927,6 +978,7 @@ class TransitionObservables:
         self._ensure_wall_velocity(ctx, percolation.Tperc)
         self._ensure_sound_speed(ctx, percolation.Tperc)
 
+        self._check_false_vacuum_shrinking(ctx, percolation)
         self._populate_temperature_observables(ctx, percolation)
         self._compute_alpha_parameters(ctx, percolation)
         self._compute_beta_and_separation(ctx, percolation, tmin, tmax)

@@ -26,6 +26,7 @@ from transitionlistener.bubbledynamics import (
     calc_betaH_S3_approx,
     calcMeanBubbleSeparation,
     falseVacuumVolumeGrowthRate,
+    percolation_sound_speed_sq,
     calcTf,
     Tb_criterion,
     integrate_broken_temperature,
@@ -603,7 +604,6 @@ class TransitionObservables:
             successful=True,
         )
 
-
     def _check_false_vacuum_shrinking(
         self,
         ctx: TransitionContext,
@@ -630,11 +630,15 @@ class TransitionObservables:
         if not np.isfinite(percolation.Tperc):
             return
 
-        cs_sq = 1.0 / 3.0
-        if str(ctx.PercolationConf.time_temperature_mode) == "sound_speed":
-            c_s_sym = derived.get("c_s_sym")
-            if c_s_sym is not None and np.isfinite(c_s_sym) and c_s_sym > 0.0:
-                cs_sq = float(c_s_sym) ** 2
+        # The criterion has to use the time-temperature relation the percolation
+        # history was integrated with, not the sound speed of the GW settings.
+        cs_sq = percolation_sound_speed_sq(
+            ctx.pot,
+            ctx.phase_symmetric,
+            percolation.Tperc,
+            time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
+            integral_method=ctx.PercolationConf.integral_method,
+        )
 
         growth = falseVacuumVolumeGrowthRate(
             percolation.TSYM,
