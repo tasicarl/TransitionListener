@@ -530,12 +530,19 @@ class TransitionObservables:
         Pint = Sint = Hint = TBROint = entropyInt = coolingInt = None
         core_spline_error = None
         try:
+            # Interpolate the false-vacuum fraction logarithmically, i.e. in
+            # the percolation integral I = -log(1 - P) itself. P saturates
+            # exponentially towards one, so a spline through P is flat where
+            # the transition completes and the read-off of the final
+            # temperature from P(Tf) = f_final = 0.99 becomes ill-conditioned;
+            # in log space the same nodes give a well-conditioned root.
             Pint = _BoundedPchipInterpolator(
                 TSYM,
                 P,
                 fill_low=1.0,
                 fill_high=0.0,
                 clip=(0.0, 1.0),
+                transform="log_false_fraction",
             )
         except Exception as err:
             core_spline_error = err
@@ -833,21 +840,21 @@ class TransitionObservables:
                     console.print(f"[bold yellow]WARNING:[/bold yellow] {msg}")
                 derived["RH"] = np.nan
             else:
+                # The bubble number density counts every bubble nucleated since
+                # the critical temperature, so integrate up to Tcrit rather than
+                # stopping at the nucleation temperature, a threshold crossing
+                # with numerical noise of its own. The integrand is exponentially
+                # suppressed above Tnuc, and the percolation support still sets
+                # the upper bound.
                 support_tmax = float(np.nanmax(percolation.TSYM))
                 tmax_rh = support_tmax
-                metadata_tnuc = (
-                    None
-                    if percolation.metadata is None
-                    else getattr(percolation.metadata, "spline_tnuc", None)
-                )
-                for tnuc_candidate in (ctx.tr.Tnuc, metadata_tnuc):
-                    if (
-                        tnuc_candidate is not None
-                        and np.isfinite(tnuc_candidate)
-                        and float(tnuc_candidate) > percolation.Tperc
-                    ):
-                        tmax_rh = min(float(tnuc_candidate), support_tmax)
-                        break
+                tcrit = getattr(ctx.tr, "Tcrit", None)
+                if (
+                    tcrit is not None
+                    and np.isfinite(tcrit)
+                    and float(tcrit) > percolation.Tperc
+                ):
+                    tmax_rh = min(float(tcrit), support_tmax)
                 Rsep = calcMeanBubbleSeparation(
                     percolation.Tperc,
                     tmax_rh,
