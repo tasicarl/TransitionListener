@@ -118,6 +118,22 @@ class generic_potential():
         May be overridden by subclasses; defaults to 1000.0 in internal units.
     """
 
+    #: Finite-difference step, in internal field units, for the derivatives of
+    #: the zero-temperature one-loop potential at the vev that fix the
+    #: counterterms (``dV1atvev``, ``d2V1atvev``, ``dV1physatvev``). It is kept
+    #: separate from the phase-tracing accuracy ``x_eps`` on purpose: tightening a
+    #: tracing tolerance must not change the potential. For the abelian dark
+    #: Higgs, with |V_CW| of order 1e9 at the vev, steps below 1e-3 are dominated
+    #: by round-off (1e-4 shifts the second derivative by up to 1.4 %). Above it
+    #: the second derivative drifts with the logarithm of the step, by 0.05 % to
+    #: 0.5 % per decade: the tree-level Goldstone mass vanishes at the vacuum, so
+    #: its Coleman-Weinberg term is infrared divergent there and the step acts as
+    #: the regulator. The physical cure is the resummation of the Goldstone
+    #: contributions, m_G^2 -> m_G^2 + (1/phi) dV_1,phys/dphi (arXiv:1406.2652,
+    #: arXiv:1406.2355). 1e-3 is the step these counterterms have always been
+    #: computed with in the default setup. Models may override it.
+    counterterm_derivative_step: float = 1.0e-3
+
     def __init__(self, *args, **dargs) -> None:
         """Prepare configuration objects and delegate to :meth:`init` for setup."""
 
@@ -800,9 +816,10 @@ class generic_potential():
 
         This uses :func:`helper_functions.gradientFunction` to calculate the
         gradient using finite differences, with differences
-        given by `self.x_eps`. Note that `self.x_eps` is only used directly
-        the first time this function is called, so subsequently changing it
-        will not have an effect.
+        given by `self.counterterm_derivative_step`, which is independent of
+        the phase-tracing accuracy `self.x_eps`. The result is cached the first
+        time this function is called, so subsequently changing the step will
+        not have an effect.
         
         Returns
         -------
@@ -826,7 +843,8 @@ class generic_potential():
                 return self.V1(bosonsvev0, fermionsvev)
 
             dV1 = helper_functions.gradientFunction(
-                V_coleman_weinberg, eps=self.x_eps, Ndim=self.Ndim, order=self.deriv_order)
+                V_coleman_weinberg, eps=self.counterterm_derivative_step, Ndim=self.Ndim,
+                order=self.deriv_order)
 
             # Use np.squeeze to shrink array sizes from (1,1) and (1,) to a 0d
             # array... otherways problems when evaluating Vtot at more than one
@@ -844,9 +862,10 @@ class generic_potential():
 
         This uses :func:`helper_functions.gradientFunction` to calculate the
         gradient using finite differences, with differences
-        given by `self.x_eps`. Note that `self.x_eps` is only used directly
-        the first time this function is called, so subsequently changing it
-        will not have an effect.
+        given by `self.counterterm_derivative_step`, which is independent of
+        the phase-tracing accuracy `self.x_eps`. The result is cached the first
+        time this function is called, so subsequently changing the step will
+        not have an effect.
         
         Returns
         -------
@@ -869,7 +888,8 @@ class generic_potential():
                 fermionsvev = self.fermion_massSq(X)
                 return self.V1phys(bosonsvev0, fermionsvev)
             dV1 = helper_functions.gradientFunction(
-                V_coleman_weinberg, eps = self.x_eps, Ndim = self.Ndim, order = self.deriv_order)
+                V_coleman_weinberg, eps=self.counterterm_derivative_step, Ndim=self.Ndim,
+                order=self.deriv_order)
            
             # Use np.squeeze to shrink array sizes from (1,1) and (1,) to a 0d
             # array... otherways problems when evaluating Vtot at more than one
@@ -1089,9 +1109,10 @@ class generic_potential():
 
         This uses :func:`helper_functions.gradientFunction` to calculate the
         gradient using finite differences, with differences
-        given by `self.x_eps`. Note that `self.x_eps` is only used directly
-        the first time this function is called, so subsequently changing it
-        will not have an effect.
+        given by `self.counterterm_derivative_step`, which is independent of
+        the phase-tracing accuracy `self.x_eps`. The result is cached the first
+        time this function is called, so subsequently changing the step will
+        not have an effect.
         
         Returns
         -------
@@ -1114,7 +1135,8 @@ class generic_potential():
                 return self.V1(bosonsvev0, fermionsvev)
 
             d2V1 = helper_functions.hessianFunction(
-                V_coleman_weinberg, eps=self.x_eps, Ndim=self.Ndim, order=self.deriv_order)
+                V_coleman_weinberg, eps=self.counterterm_derivative_step, Ndim=self.Ndim,
+                order=self.deriv_order)
 
             # Use np.squeeze to shrink array sizes from (1,1) and (1,) to a 0d
             # array... otherways problems when evaluating Vtot at more than one
