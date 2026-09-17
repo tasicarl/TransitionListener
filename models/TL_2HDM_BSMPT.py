@@ -27,26 +27,33 @@ class R2HDM(_BaseR2HDM):
     """2HDM with BSMPT-tabulated g_eff and matched radiation energy density."""
 
     def geff(self, T):
-        TmeV = T * self.conversionFactor * 1000.0
+        """BSMPT's g_eff at temperature ``T`` (internal units), element-wise for arrays."""
+        TmeV = np.asarray(T, dtype=float) * self.conversionFactor * 1000.0
         TQCD = 214.0
-        if TmeV < _GstarLow.x[0]:
-            return _GstarLow.y[0]
-        if TmeV < TQCD:
-            return _GstarLow(TmeV)
-        if TmeV > _GstarHigh.x[-1]:
-            return _GstarHigh.y[-1]
         THigh = 1_000_000.0
         NHiggs = 8  # 2 Higgs doublets
         gb = 8 * 2 + 4 * 2 + NHiggs
         gf = 6 * 3 * 2 * 2 + 3 * 2 * 2 + 3 * 2
         geff = gb + 7.0 / 8.0 * gf
-        return (
-            np.power(TmeV / TQCD, np.log(geff / _GstarHigh(THigh)) / np.log(THigh / TQCD))
-            * _GstarHigh(TmeV)
+        # Evaluate each branch only inside its own range, then pick per element.
+        low = _GstarLow(np.clip(TmeV, _GstarLow.x[0], TQCD))
+        t_high = np.clip(TmeV, TQCD, _GstarHigh.x[-1])
+        high = (
+            np.power(t_high / TQCD, np.log(geff / _GstarHigh(THigh)) / np.log(THigh / TQCD))
+            * _GstarHigh(t_high)
         )
+        result = np.where(
+            TmeV < _GstarLow.x[0], _GstarLow.y[0],
+            np.where(TmeV < TQCD, low, np.where(TmeV > _GstarHigh.x[-1], _GstarHigh.y[-1], high)),
+        )
+        return result[()]
 
-    def radiationEnergyDensity(self, X: np.ndarray, T: float, include_decoupled: bool = True) -> float:
-        return np.pi**2 / 30.0 * self.geff(T) * T**4
+    def radiationEnergyDensity(self, X: np.ndarray, T: float | np.ndarray,
+                               include_decoupled: bool = True) -> float | np.ndarray:
+        # Field independent, but the result has the broadcast (X, T) shape like the base class.
+        shape = np.broadcast_shapes(np.shape(X)[:-1], np.shape(T))
+        T = np.asarray(T, dtype=float)
+        return (np.pi**2 / 30.0 * self.geff(T) * T**4 * np.ones(shape))[()]
 
 
 # Tabulated SM DOFs from BSMPTv3 (kept verbatim for reproducibility).
