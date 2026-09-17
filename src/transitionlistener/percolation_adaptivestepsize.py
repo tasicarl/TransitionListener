@@ -86,14 +86,14 @@ def _new_controller_added_points(
 def _rate_repair_budget(state: PercolationState, settings) -> int:
     """Extra support budget granted once the rate criterion has repaired the grid.
 
-    Points added to resolve the rise of the nucleation rate do not count against
-    ``n_action_max``. A grid that needed that repair started out with the
-    transition outside its window, so the refinement of ``P`` that follows gets
-    one further ``n_action_max`` as well. A profile that never needed the repair
-    keeps exactly the historical budget.
+    A grid that needed the repair started out with the transition outside its
+    window, so the refinement of ``P`` that follows gets one further
+    ``n_action_max``. The repair points themselves need no allowance here: their
+    actions are computed by the next sweep, which releases them into the free
+    bank. A profile that never needed the repair keeps exactly the historical
+    budget.
     """
-    points = int(state.rate_refine_points)
-    return points + int(settings.n_action_max) if points > 0 else 0
+    return int(settings.n_action_max) if int(state.rate_refine_points) > 0 else 0
 
 
 def _log_support_rebuild(
