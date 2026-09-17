@@ -528,6 +528,7 @@ def get_empty_result() -> dict:
            'WARNING:betaH_very_small': False,
            'WARNING:betaH_mismatch': False,
            'WARNING:betaH_nonfinite': False,
+           'WARNING:betaH_S3_fit_unstable': False,
            'WARNING:nucleationRate_nonexponential': False,
            'WARNING:not_T0_global_min': False,
            'WARNING:false_vacuum_not_shrinking': False,

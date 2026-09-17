@@ -116,6 +116,23 @@ class PercolationConf:
     # Strength-based validity flag.
     weak_threshold = 1e-4                 # Below this alpha at Tperc, the percolation result is flagged invalid.
 
+    # beta/H from the action derivative, T d(S3/T)/dT at Tperc, estimated by a local least-squares
+    # quadratic through the action samples of the percolation support. Interpolating splines are not
+    # used for this: the adaptive support places samples as close as 1e-6 Tperc apart, and their
+    # slope turns an irregular 1e-2 error in S3/T into errors of hundreds in beta/H.
+    # CAUTION: the defaults below were validated on ONE model class only, the 2HDM BSMPT benchmark
+    # (lambda3 line, 5 points against converged references, 4 bounce-precision variants): with 11
+    # samples the fit reproduced the converged beta/H within 0.5 %. The adaptive support there put
+    # 56-108 samples in total, 6-36 within 0.3 % of Tperc, and the 11 nearest spanned at most 0.95 %
+    # of Tperc. Models with a sparser support near Tperc, or with sharper structure in S3/T on the
+    # scale of that span, may need different values - re-validate before trusting them there.
+    betaH_S3_fit_points = 11              # Support samples nearest Tperc used for the fit.
+    betaH_S3_fit_check_points = 7         # Smaller subset refitted as a stability check.
+    betaH_S3_fit_rel_tol = 0.03           # WARNING if the two fits differ by more than this (2HDM: median 0.14 %, max 2.0 %).
+    betaH_S3_fit_min_per_side = 2         # Samples required both below and above Tperc; otherwise fall back.
+    betaH_S3_fit_max_rel_span = 0.02      # Largest |T/Tperc - 1| allowed among the samples; otherwise fall back.
+    betaH_S3_fallback_rel_step = 2e-3     # Fallback: 5 new actions at Tperc (1 + k step), k = -2..2, same fit.
+
 
 class GWConf:
     """Settings for calculating the gravitational-wave signal."""
@@ -177,6 +194,7 @@ all_observables = {
     "WARNING:betaH_very_small": R"$\mathrm{WARNING:} (\beta/H)_{RH} \mathrm{\ very\ small}$",
     "WARNING:betaH_mismatch": R"$\mathrm{WARNING:} (\beta/H)_{S_3} \mathrm{\ vs\ } (\beta/H)_{RH} \mathrm{\ mismatch}$",
     "WARNING:betaH_nonfinite": R"$\mathrm{WARNING:} (\beta/H)_{S_3} \mathrm{\ or\ } (\beta/H)_{RH} \mathrm{\ nonfinite}$",
+    "WARNING:betaH_S3_fit_unstable": R"$\mathrm{WARNING:} (\beta/H)_{S_3} \mathrm{\ fit\ unstable}$",
     "WARNING:nucleationRate_nonexponential": R"$\mathrm{WARNING:} \mathrm{nucleation\ rate\ nonexponential}$",
     "WARNING:spline_tnuc_unavailable": R"$\mathrm{WARNING:} T_\mathrm{nuc} \mathrm{\ spline\ unavailable}$",
     "WARNING:spline_tnuc_not_reached": R"$\mathrm{WARNING:} T_\mathrm{nuc} \mathrm{\ criterion\ not\ reached}$",

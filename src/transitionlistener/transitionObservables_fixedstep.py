@@ -234,6 +234,9 @@ class TransitionObservables:
             "WARNING:no_perc_splines": False,
             "WARNING:false_vacuum_not_shrinking": False,
             "WARNING:betaH_small": False,
+            # This backend keeps the spline-slope estimate of betaH_S3 on its
+            # regular temperature grid, so the fit stability check does not apply.
+            "WARNING:betaH_S3_fit_unstable": False,
         }
         return TransitionContext(
             tr=tr,
