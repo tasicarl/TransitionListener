@@ -73,6 +73,43 @@ class GWSpectrumPlotTests(unittest.TestCase):
             self.assertEqual(list(Path(tmp).iterdir()), [])
         self.assertEqual(plt.get_fignums(), [])
 
+    def test_axes_without_figure_are_saved(self):
+        fig, ax = plt.subplots()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                plots.plotGWSpectrum(GW_PARAMS, showplot=False, foldername=tmp + "/", ax=ax)
+                assert_complete_pdf(self, (Path(tmp) / "GW_spectrum.pdf").read_bytes())
+        finally:
+            plt.close("all")
+
+    def test_line_and_grid_plots_leave_no_truncated_file(self):
+        from transitionlistener import gridplots, lineplots
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("simulated PDF backend failure")
+
+        def line_plot(path):
+            fig, ax = plt.subplots()
+            ax.plot([0.0, 1.0], [0.0, 1.0])
+            lineplots._finish_plot(fig, ax, "x", "lin", np.array([0.0, 1.0]), "title", path)
+
+        def grid_plot(path):
+            fig, ax = plt.subplots()
+            im = ax.pcolormesh(np.arange(3.0), np.arange(3.0), np.ones((2, 2)))
+            gridplots._finish_plot(fig, ax, ("x", "y"), im, "linlin", "title", path)
+
+        for label, make in (("line", line_plot), ("grid", grid_plot)):
+            with self.subTest(plot=label), tempfile.TemporaryDirectory() as tmp:
+                path = str(Path(tmp) / "plot.pdf")
+                make(path)
+                assert_complete_pdf(self, Path(path).read_bytes())
+                Path(path).unlink()
+                with mock.patch("matplotlib.backends.backend_pdf.RendererPdf.draw_path", boom):
+                    with self.assertRaises(RuntimeError):
+                        make(path)
+                self.assertEqual(list(Path(tmp).iterdir()), [])
+            plt.close("all")
+
     def test_every_hatch_is_visible_in_raster_output(self):
         # Agg draws a hatch in the edge colour including its alpha, whereas the
         # PDF backend ignores that alpha: alpha=0 hid the predicted-sensitivity

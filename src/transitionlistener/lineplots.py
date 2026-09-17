@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FixedLocator, FuncFormatter
 from .colors import *
 from .plot_settings import plot_settings as TL_plot_settings
-from .plot_settings import add_TL_logo
+from .plot_settings import add_TL_logo, save_figure
 from .plot_settings import TLcmap
 
 _MASS_GROUP_PREFIX = "mass_spectrum_T0_"
@@ -122,7 +122,7 @@ def _finish_plot(fig : plt.Figure, ax: plt.Axes, x_plot_name: str, scale: str,
     ax.set_xlim(x[0], x[-1])
     ax.set_title(title)
     add_TL_logo(loc="upper right", ax=ax)
-    plt.savefig(save_path)
+    save_figure(fig, save_path)
     plt.close(fig)
 
 
@@ -585,7 +585,7 @@ class plot1dData(GW_Sensitivity_Data):
 
         # Savefig
         add_TL_logo(loc="upper right", ax=ax4)
-        plt.savefig(self.foldername+"overview_plot.pdf")
+        save_figure(fig, self.foldername + "overview_plot.pdf")
         plt.close(fig)
         
     def plot_errors(self):

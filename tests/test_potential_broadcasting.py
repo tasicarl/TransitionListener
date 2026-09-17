@@ -37,6 +37,13 @@ MODELS = {
         lambda0=0.005098, lambda1=0.002144, lambda12=0.003078,
         v_GeV=3.728330741601088, y=0.972319, gamma=0.7532)),
     "template": ("models/templatePotential.py", "TemplatePotenital", {}),
+    # The BSMPT variants override the radiation degrees of freedom (paper figs. 15-16).
+    "2HDM_BSMPT": ("models/TL_2HDM_BSMPT.py", "R2HDM", dict(
+        lambda1=0.28894, lambda2=0.26237, lambda3=5.73, lambda4=-2.17494, lambda5=-2.2417,
+        m12_sq_GeV2=1573.171, tan_beta=21.3949, yukawa_type=1, v_GeV=246.22)),
+    "2HDM_BSMPT_highacc": ("models/TL_2HDM_BSMPT_highacc.py", "R2HDM_HighAcc_NAct100_Conv1_FRatio005", dict(
+        lambda1=0.28894, lambda2=0.26237, lambda3=5.73, lambda4=-2.17494, lambda5=-2.2417,
+        m12_sq_GeV2=1573.171, tan_beta=21.3949, yukawa_type=1, v_GeV=246.22)),
 }
 
 
@@ -99,6 +106,8 @@ class PotentialBroadcastingTests(unittest.TestCase):
                 "gradV": pot.gradV,
                 "d2V": pot.d2V,
                 "dgradV_dT": pot.dgradV_dT,
+                "radiationEnergyDensity": pot.radiationEnergyDensity,
+                "energyDensity": pot.energyDensity,
             }
             for label, fn in checks.items():
                 with self.subTest(model=name, fn=label):

@@ -1298,7 +1298,7 @@ class generic_potential():
         """
         return approxNucleationCriterion(T, S, self, high_phase, low_phase)
 
-    def radiationEnergyDensity(self, X: np.ndarray, T: float, include_decoupled=True) -> float:
+    def radiationEnergyDensity(self, X: np.ndarray, T: float | np.ndarray, include_decoupled=True) -> float:
         r"""Return the energy density in radiation that is not
         field dependent.
 
@@ -1306,8 +1306,8 @@ class generic_potential():
         ----------
         X : np.ndarray
             The scalar field values
-        T : float
-            Temperature
+        T : float or np.ndarray
+            Temperature. ``X.shape[:-1]`` and ``T.shape`` must be broadcastable.
         include_decoupled : bool, optional
             If true, include the enery density of the decoupled radiation bath
 
@@ -1319,6 +1319,9 @@ class generic_potential():
         # Radiation energy density of particles that interact with the
         # scalars from the potential
         T2 = T * T
+        if np.ndim(T) > 0:
+            # one axis for the particle species, as in Vtot
+            T2 = np.asanyarray(T2, dtype=float)[..., np.newaxis]
         bosons0 = self.boson_massSq(X, 0.0)
         fermions = self.fermion_massSq(X)
         m2b, nb, _, _ = bosons0
@@ -1378,6 +1381,19 @@ class generic_potential():
         -------
         float|np.ndarray :
             The energy density at `T`."""
+
+        if np.ndim(T) > 0 or np.ndim(X) > 1:
+            T = np.asanyarray(T, dtype=float)
+            X = broadcast_fields(X, T)
+            V0 = self.V0(X) + self.Vct(X) + self.V1_from_X(X)
+            DV0 = V0 - (self.V0(self.X0) + self.Vct(self.X0) + self.V1_from_X(self.X0))
+            # Numerical stability:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                DV0 = np.where(DV0 / np.abs(V0) < 1e-10, 0.0, DV0)
+            etot = DV0 + self.energyDensityDaisy(X, T)
+            hot = T != 0.0
+            radiation = self.radiationEnergyDensity(X, np.where(hot, T, 1.0), include_decoupled)
+            return etot + np.where(hot, radiation, 0.0)
 
         V0 = self.V0(X) + self.Vct(X) + self.V1_from_X(X)
         DV0 = V0 - (self.V0(self.X0) + self.Vct(self.X0) + self.V1_from_X(self.X0))
