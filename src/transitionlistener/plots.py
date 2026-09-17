@@ -1157,6 +1157,8 @@ def plotSensitivities(gw, showplot : bool =False, call_from_spectrum=False, nfre
     """
     if ax == None:
         fig, ax = plt.subplots(figsize=(6.4, 3.5))
+    elif fig is None:
+        fig = ax.figure
     transparency = 1
     
     for det_name in gw.det:

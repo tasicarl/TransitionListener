@@ -82,6 +82,20 @@ class GWSpectrumPlotTests(unittest.TestCase):
         finally:
             plt.close("all")
 
+    def test_sensitivities_with_axes_but_no_figure_are_saved(self):
+        from transitionlistener.gwfopt import FOPTspectrum
+        from transitionlistener.observability import Observability
+
+        gw = Observability(FOPTspectrum(GW_PARAMS, {}, verbose=False), verbose=False, include_smbhb=False)
+        fig, ax = plt.subplots()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                gw.foldername = tmp + "/"
+                plots.plotSensitivities(gw, showplot=False, ax=ax)
+                assert_complete_pdf(self, (Path(tmp) / "GW_sensitivities.pdf").read_bytes())
+        finally:
+            plt.close("all")
+
     def test_line_and_grid_plots_leave_no_truncated_file(self):
         from transitionlistener import gridplots, lineplots
 
