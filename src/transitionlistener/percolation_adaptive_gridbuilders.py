@@ -33,6 +33,7 @@ from transitionlistener.percolation_adaptive_rate import (
     _find_value_crossing,
     _hot_head_underresolved,
     _log_gamma_h4_array,
+    _log10_gamma_h4_array,
     _probability_anchor_presence_tolerance,
     _probability_at,
     _rate_interval_is_post_peak_inert,
@@ -770,6 +771,63 @@ def _build_dynamiczoomwindow_jump_grid(
         refined = np.linspace(jump_high, jump_low, int(max_new_points) + 2, dtype=float)[1:-1]
     refined = _temperature_grid(refined)
     return refined if refined.size > 0 else None
+
+
+def _build_rate_step_grid(
+    temperatures: np.ndarray,
+    actions: np.ndarray,
+    hubble: np.ndarray,
+    settings,
+    *,
+    max_new_points: int,
+) -> np.ndarray | None:
+    """Return points for the interval across which the nucleation rate jumps most.
+
+    The percolation integral interpolates ``log(Gamma/H^4)`` between neighbouring
+    support points. An interval across which that logarithm changes by many
+    decades therefore carries an unresolved rise: the integral stays at zero
+    across it and then jumps, and ``P(T)`` looks like a step at the cold end of
+    the interval rather than the smooth rise it is. Refining the ``P`` jump
+    cannot cure that, because the jump is not where the rise happens.
+    """
+    if max_new_points <= 0:
+        return None
+    threshold = float(getattr(settings, "max_log10_rate_step", 0.0))
+    if not np.isfinite(threshold) or threshold <= 0.0:
+        return None
+    temps = np.asarray(temperatures, dtype=float)
+    log10_rate = _log10_gamma_h4_array(temps, actions, hubble)
+    finite = np.isfinite(temps) & np.isfinite(log10_rate)
+    if int(np.count_nonzero(finite)) < 2:
+        return None
+    temps = temps[finite]
+    log10_rate = log10_rate[finite]
+    order = np.argsort(-temps)
+    temps = temps[order]
+    log10_rate = log10_rate[order]
+    steps = np.abs(np.diff(log10_rate))
+    offending = np.flatnonzero(np.isfinite(steps) & (steps > threshold))
+    if offending.size == 0:
+        return None
+    # Refine every offending interval in the same rebuild, worst first, with enough
+    # points to bring each below the threshold: every rebuild costs a full profile
+    # sweep and an iteration of the controller, which the Delta P refinement needs
+    # afterwards.
+    offending = offending[np.argsort(-steps[offending])]
+    budget = int(max_new_points)
+    pieces = []
+    for index in offending:
+        if budget <= 0:
+            break
+        needed = max(int(math.ceil(float(steps[index]) / threshold)), 2) - 1
+        count = min(needed, budget)
+        points = _build_dynamiczoomwindow_jump_grid(float(temps[index]), float(temps[index + 1]), max_new_points=count)
+        if points is not None and points.size > 0:
+            pieces.append(points)
+            budget -= int(points.size)
+    if not pieces:
+        return None
+    return _temperature_grid(np.concatenate(pieces))
 
 
 def _largest_probability_jump_interval(

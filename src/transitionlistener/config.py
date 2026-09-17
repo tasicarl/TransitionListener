@@ -113,6 +113,16 @@ class PercolationConf:
     acc_tfinal = 1e-2                     # Relative accuracy goal on Tfinal.
     acc_rh = 1e-2                         # Relative accuracy goal on RH.
 
+    # Largest change of log10(Gamma/H^4) allowed between neighbouring support points. The
+    # percolation integral interpolates the logarithm of the nucleation rate between the
+    # samples, so an interval across which the rate rises by many decades is not resolved:
+    # the integral stays at zero through the interval and then jumps, which the controller
+    # then mistakes for a sharp transition and tries to refine at the wrong place. Seen on
+    # the abelian dark Higgs benchmark (g = 1, v = 0.1 GeV, lambda = 0.03323), where a
+    # 46 GeV wide gap in the support carried 290 decades of rate and the point was lost
+    # with error code 10 although its transition is healthy.
+    max_log10_rate_step = 12.0
+
     # Strength-based validity flag.
     weak_threshold = 1e-4                 # Below this alpha at Tperc, the percolation result is flagged invalid.
 

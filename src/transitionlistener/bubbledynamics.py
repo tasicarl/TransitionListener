@@ -101,6 +101,9 @@ class PercolationState:
     Tb: np.ndarray
     explored_tmin: float | None = None
     rebuild_count: int = 0
+    # Support points added to resolve the rise of the nucleation rate; they have
+    # their own allowance and do not use up n_action_max.
+    rate_refine_points: int = 0
     support_bank: np.ndarray | None = None
     free_support_bank: np.ndarray | None = None
     action_temperatures: np.ndarray | None = None
