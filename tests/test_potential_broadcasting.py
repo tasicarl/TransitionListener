@@ -96,6 +96,16 @@ class PotentialBroadcastingTests(unittest.TestCase):
                         np.testing.assert_allclose(got, ref, rtol=1e-12, atol=0)
             pot.daisy = "ArnoldEspinosa"
 
+    def test_energy_densities_match_pointwise_evaluation(self):
+        for name, pot in self.pots.items():
+            for label, (X, T) in self._cases(pot).items():
+                for fn in (pot.radiationEnergyDensity, pot.energyDensity):
+                    with self.subTest(model=name, fn=fn.__name__, shapes=label):
+                        got = fn(X, T)
+                        ref = loop(fn, X, T)
+                        self.assertEqual(np.shape(got), ref.shape)
+                        np.testing.assert_allclose(got, ref, rtol=1e-12, atol=0)
+
     def test_mass_spectrum_and_derivatives_broadcast(self):
         for name, pot in self.pots.items():
             X, T = self._cases(pot)["X(N) T(4)"]

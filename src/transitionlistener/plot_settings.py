@@ -26,12 +26,17 @@ def save_figure(fig, path) -> None:
     during ``savefig`` leaves a PDF without xref table that no reader opens.
     Writing to a temporary file in the same directory and renaming it only
     after a successful save keeps either the complete new file or nothing.
+    A path without extension gets the default format and its extension, as
+    ``savefig`` does.
     """
     path = Path(path)
+    fmt = path.suffix[1:] or plt.rcParams["savefig.format"]
+    if not path.suffix:
+        path = path.with_name(f"{path.name}.{fmt}")
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.stem}.partial{path.suffix}")
     try:
-        fig.savefig(tmp)
+        fig.savefig(tmp, format=fmt)
         os.replace(tmp, path)
     finally:
         if tmp.exists():

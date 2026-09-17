@@ -48,8 +48,12 @@ class R2HDM(_BaseR2HDM):
         )
         return result[()]
 
-    def radiationEnergyDensity(self, X: np.ndarray, T: float, include_decoupled: bool = True) -> float:
-        return np.pi**2 / 30.0 * self.geff(T) * T**4
+    def radiationEnergyDensity(self, X: np.ndarray, T: float | np.ndarray,
+                               include_decoupled: bool = True) -> float | np.ndarray:
+        # Field independent, but the result has the broadcast (X, T) shape like the base class.
+        shape = np.broadcast_shapes(np.shape(X)[:-1], np.shape(T))
+        T = np.asarray(T, dtype=float)
+        return (np.pi**2 / 30.0 * self.geff(T) * T**4 * np.ones(shape))[()]
 
 
 # Tabulated SM DOFs from BSMPTv3 (kept verbatim for reproducibility).

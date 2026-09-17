@@ -96,6 +96,14 @@ class GWSpectrumPlotTests(unittest.TestCase):
         finally:
             plt.close("all")
 
+    def test_filename_without_extension_uses_the_default_format(self):
+        # plt.savefig("spectrum") writes spectrum.png; the atomic save must do the same.
+        with tempfile.TemporaryDirectory() as tmp:
+            plots.plotGWSpectrum(GW_PARAMS, showplot=False, foldername=tmp + "/", filename="spectrum")
+            fmt = matplotlib.rcParams["savefig.format"]
+            self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), [f"spectrum.{fmt}"])
+        plt.close("all")
+
     def test_line_and_grid_plots_leave_no_truncated_file(self):
         from transitionlistener import gridplots, lineplots
 
@@ -123,6 +131,51 @@ class GWSpectrumPlotTests(unittest.TestCase):
                         make(path)
                 self.assertEqual(list(Path(tmp).iterdir()), [])
             plt.close("all")
+
+    def assert_hatches_visible(self, fig, hatched):
+        def render():
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", dpi=100)
+            buf.seek(0)
+            return plt.imread(buf)
+
+        self.assertGreaterEqual(len(hatched), 2)
+        reference = render()
+        for artist in hatched:
+            hatch = artist.get_hatch()
+            artist.set_hatch(None)
+            try:
+                with self.subTest(artist=artist.get_label() or repr(artist)):
+                    self.assertFalse(np.array_equal(render(), reference),
+                                     "hatch is invisible in the PNG output")
+            finally:
+                artist.set_hatch(hatch)
+
+    def test_every_pta_hatch_is_visible_in_raster_output(self):
+        # plotSensitivitiesPTA draws the predicted sensitivities separately from plotSensitivities;
+        # plotSpectrum2PTA adds a figure legend to it.
+        from transitionlistener.gwfopt import FOPTspectrum
+        from transitionlistener.observability import Observability
+
+        gw = Observability(FOPTspectrum(GW_PARAMS, {}, verbose=False), verbose=False, include_smbhb=False)
+        fig, ax = plots.plotSensitivitiesPTA(gw, showplot=False, call_from_spectrum=True, nfreq=14)
+        try:
+            legend = fig.legend(bbox_to_anchor=(0.99, 0.55), ncol=1, fontsize=7)
+            (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+
+            def drawn(collection):
+                # Detectors such as LISA reach into this frequency window only above the upper
+                # limit of the plot, so nothing of their area is drawn in the axes.
+                vertices = np.concatenate([p.vertices for p in collection.get_paths()])
+                inside = (vertices[:, 0] > x0) & (vertices[:, 0] < x1) & (vertices[:, 1] < y1)
+                return bool(np.any(inside))
+
+            hatched = [c for c in ax.collections if c.get_hatch() and drawn(c)]
+            hatched += [h for h in legend.legend_handles if getattr(h, "get_hatch", lambda: None)()]
+            self.assertTrue(any(c.get_hatch() == "\\\\" for c in ax.collections))
+            self.assert_hatches_visible(fig, hatched)
+        finally:
+            plt.close(fig)
 
     def test_every_hatch_is_visible_in_raster_output(self):
         # Agg draws a hatch in the edge colour including its alpha, whereas the

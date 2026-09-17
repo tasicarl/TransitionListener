@@ -1298,7 +1298,8 @@ class generic_potential():
         """
         return approxNucleationCriterion(T, S, self, high_phase, low_phase)
 
-    def radiationEnergyDensity(self, X: np.ndarray, T: float | np.ndarray, include_decoupled=True) -> float:
+    def radiationEnergyDensity(self, X: np.ndarray, T: float | np.ndarray,
+                               include_decoupled=True) -> float | np.ndarray:
         r"""Return the energy density in radiation that is not
         field dependent.
 
@@ -1313,8 +1314,9 @@ class generic_potential():
 
         Returns
         -------
-        float :
-            The energy density in pure radiation at temperature T."""
+        float or np.ndarray :
+            The energy density in pure radiation at temperature T, with shape
+            ``np.broadcast_shapes(X.shape[:-1], np.shape(T))``."""
 
         # Radiation energy density of particles that interact with the
         # scalars from the potential
@@ -1357,7 +1359,7 @@ class generic_potential():
         return np.asarray(X)[..., 0] * 0.0
 
     def energyDensity(self, X: np.ndarray, T: float | np.ndarray,
-                      include_decoupled: bool = True) -> float:
+                      include_decoupled: bool = True) -> float | np.ndarray:
         r"""Calculate the total energy density.
         It is important that Vtot includes the field independent
         terms (i.e. radiation terms which are prop to T^4).
