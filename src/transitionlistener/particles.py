@@ -19,6 +19,24 @@ import numpy as np
 ThermalPrefactor = float | Callable[[np.ndarray], np.ndarray]
 
 
+def broadcast_fields(X, T):
+    """Return ``X`` broadcast so that ``X.shape[:-1]`` covers ``np.shape(T)``.
+
+    ``generic_potential.Vtot`` only requires ``X.shape[:-1]`` and ``T.shape`` to
+    be broadcastable, but model mass functions allocate their output from the
+    field shape and ``Vtot`` accumulates its terms in place. Broadcasting ``X``
+    first (a read-only view, no copy) gives every field-shaped array the full
+    (X, T) shape. ``X`` is returned unchanged when ``T`` adds no dimensions.
+    """
+    X = np.asanyarray(X)
+    if np.ndim(T) == 0:  # fast path: a scalar temperature never adds dimensions
+        return X
+    shape = np.broadcast_shapes(X.shape[:-1], np.shape(T))
+    if X.shape[:-1] != shape:
+        X = np.broadcast_to(X, shape + X.shape[-1:])
+    return X
+
+
 def _ensure_callable(name: str, fn):
     """Return ``fn`` unchanged when callable and raise a targeted error otherwise."""
     if fn is None or callable(fn):
@@ -202,7 +220,7 @@ class MassSpectrum:
         tuple
             ``(masses_sq, dof, c_constants, is_physical)``.
         """
-        M2 = self.boson_massSq_fn(X, T)
+        M2 = self.boson_massSq_fn(broadcast_fields(X, T), T)
         return M2, self.dof_bosons, self.c_bosons, self.is_physical_bosons
 
     def fermion_massSq(self, X: np.ndarray):

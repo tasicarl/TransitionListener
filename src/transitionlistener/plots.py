@@ -8,6 +8,7 @@ Authors:
     Carlo Tasillo <carlo.tasillo@ific.uv.es>
 """
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -44,6 +45,25 @@ from . import thermodynamics as td
 from .helper_functions import import_file, load_potential
 
 plt.rcParams.update(TL_plot_settings)
+
+
+def _save_figure(fig, path) -> None:
+    """Save ``fig`` to ``path`` without ever leaving a truncated file behind.
+
+    The PDF backend streams objects to disk while drawing, so an exception
+    during ``savefig`` leaves a PDF without xref table that no reader opens.
+    Writing to a temporary file in the same directory and renaming it only
+    after a successful save keeps either the complete new file or nothing.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.stem}.partial{path.suffix}")
+    try:
+        fig.savefig(tmp)
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
 
 DATA_DIR = Path(__file__).resolve().parent / "tab_data"
 
@@ -1200,8 +1220,7 @@ def plotSensitivities(gw, showplot : bool =False, call_from_spectrum=False, nfre
                 np.log10(gw.det[det_name]["f_PLI"]),
                 np.log10(gw.det[det_name]["PLI"]),
                 0,
-                alpha=0,
-                color="none",
+                facecolor="none",
                 hatch="\\\\",
                 edgecolor=gw.det[det_name]["color"],
                 linewidth=0.0,
@@ -1319,8 +1338,7 @@ def plotSensitivitiesPTA(gw, showplot : bool = False, call_from_spectrum : bool 
                 np.log10(gw.det[det_name]["f_PLI"]),
                 np.log10(gw.det[det_name]["PLI"]),
                 0,
-                alpha=0,
-                color="none",
+                facecolor="none",
                 hatch="\\\\",
                 edgecolor=gw.det[det_name]["color"],
                 linewidth=0.0,
@@ -1519,13 +1537,10 @@ def plotGWSpectrum(gwparams_dict: dict, showplot: bool=False, saveplot: bool=Tru
         plt.show()
         plt.close(fig)
     elif saveplot:
-        from pathlib import Path
-        Path(foldername).mkdir(parents=True, exist_ok=True)
-        if filename != "":
-            plt.savefig(foldername+filename)
-        else:
-            plt.savefig(foldername+"GW_spectrum.pdf")
-        plt.close(fig)
+        try:
+            _save_figure(fig, foldername + (filename or "GW_spectrum.pdf"))
+        finally:
+            plt.close(fig)
     else:
         return fig, ax
 

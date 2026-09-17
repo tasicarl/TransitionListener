@@ -245,9 +245,13 @@ class PlotExecutor:
             self.mark_gw_skipped("Skipping GW spectrum plot because no valid transition was found.", colour="yellow")
             return
         console.print(f"[bold green]Create the gw_spectrum plot[/bold green]")
-        plots.plotGWSpectrum(strongest, showplot=False, foldername=self._outpath, legendfontsize=5)
-        console.print(f"[bold green]Done: gw_spectrum plot.[/bold green]")
         self._executed.add("gw_spectrum")
+        try:
+            plots.plotGWSpectrum(strongest, showplot=False, foldername=self._outpath, legendfontsize=5)
+        except Exception as err:
+            console.print(f"[bold yellow]Skipping gw_spectrum plot: {err}[/bold yellow]")
+            return
+        console.print(f"[bold green]Done: gw_spectrum plot.[/bold green]")
 
 
 def _write_input_parameters(outpath: str, input_params: dict):

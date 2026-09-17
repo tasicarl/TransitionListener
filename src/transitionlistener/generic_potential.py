@@ -51,6 +51,7 @@ from . import console
 from transitionlistener.particles import (
     MassSpectrum,
     SpectrumSnapshot,
+    broadcast_fields,
 )
 
 
@@ -677,7 +678,7 @@ class generic_potential():
         """
 
         T = np.asanyarray(T)
-        X = np.asanyarray(X)
+        X = broadcast_fields(X, T)
 
         bosons0 = self.boson_massSq(X, T*0.0)
         bosonsT = self.boson_massSq(X, T)
@@ -1098,6 +1099,8 @@ class generic_potential():
             f = self._d2V
         # Need to add extra axes to T since extra axes get added to X in
         # the helper function.
+        # hessianFunction allocates its output from X.shape
+        X = broadcast_fields(X, T)
         T = np.asanyarray(T)[..., np.newaxis]
         return f(X, T, False)
 
