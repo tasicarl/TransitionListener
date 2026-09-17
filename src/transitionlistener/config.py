@@ -90,11 +90,12 @@ class PercolationConf:
     rel_increment = 0.10                  # Relative T-range growth when the initial range is too small.
     max_boundary_ratio = 0.45             # Max share of T-range allowed on plateaus where P_true = 0 or 1.
 
-    # Support-bank budget (adaptive step size mode).
+    # Support-bank budget (adaptive step size mode). DZW, "dynamic zoom window", is the
+    # internal name of the adaptive solver (the *_dynamiczoomwindow_* functions).
     n_action_min = 15                     # Min support points built before a DZW sweep.
     n_action_increment = 5                # Support points added per DZW refinement iteration.
-    n_action_max = 60                     # Hard cap on total support points across DZW iterations.
-    max_action_temperatures = 100         # Absolute ceiling on distinct action evaluations per run.
+    n_action_max = 60                     # Max new support points per DZW support update; points with a cached action are free.
+    max_action_temperatures = 100         # Max action evaluations of the step-1 scout while it brackets the transition.
 
     # fixed_step_size support count.
     n_action = 30                         # Fixed support count used by the fixed_step_size path.
@@ -119,8 +120,8 @@ class PercolationConf:
     # the integral stays at zero through the interval and then jumps, which the controller
     # then mistakes for a sharp transition and tries to refine at the wrong place. Seen on
     # the abelian dark Higgs benchmark (g = 1, v = 0.1 GeV, lambda = 0.03323), where a
-    # 46 GeV wide gap in the support carried 290 decades of rate and the point was lost
-    # with error code 10 although its transition is healthy.
+    # 4.6 MeV wide gap in the support (35.9 to 40.5 MeV) carried 290 decades of rate and
+    # the point was lost with error code 10 although its transition is healthy.
     max_log10_rate_step = 12.0
 
     # Strength-based validity flag.

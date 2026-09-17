@@ -68,6 +68,21 @@ def _controller_added_support_points(
     return int(count)
 
 
+def _new_controller_added_points(
+    support_bank_before: np.ndarray | None,
+    support_bank_after: np.ndarray | None,
+    free_support_bank_after: np.ndarray | None,
+) -> int:
+    """Count the points one support update added that need a new action.
+
+    Both counts use the free bank after the update, which holds every action
+    computed before it, so points added by earlier updates cancel.
+    """
+    after = _controller_added_support_points(support_bank_after, free_support_bank_after)
+    before = _controller_added_support_points(support_bank_before, free_support_bank_after)
+    return max(int(after) - int(before), 0)
+
+
 def _rate_repair_budget(state: PercolationState, settings) -> int:
     """Extra support budget granted once the rate criterion has repaired the grid.
 
@@ -110,7 +125,12 @@ def _apply_dynamiczoomwindow_support_update(
     *,
     max_new_points: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Apply one support-grid update while keeping dormant scout points inactive."""
+    """Apply one support-grid update while keeping dormant scout points inactive.
+
+    ``max_new_points`` caps the support points without a cached action. The caller
+    adds every action computed so far to ``free_support_bank`` first, so in practice
+    this caps the points one update may add.
+    """
     current_active = _temperature_grid(current_active_grid)
     bank = _temperature_grid(support_bank)
     free_bank = _temperature_grid(free_support_bank)
@@ -352,6 +372,24 @@ def _dynamiczoomwindow_accuracy_warning_message(
     )
 
 
+def _try_dynamiczoomwindow_rate_refinement(temperatures, actions, hubble, settings, apply_candidate_grid) -> bool:
+    """Fill support intervals across which the nucleation rate rises too steeply.
+
+    The repair is tried whatever is left of the ordinary refinement budget. It has an
+    allowance of its own (see ``_apply_candidate_grid``), so a rise it cannot resolve,
+    such as the steep action close to the critical temperature, where the rate is
+    negligible anyway, does not use up the iterations of the pass.
+    """
+    rate_grid = _build_rate_step_grid(
+        temperatures,
+        actions,
+        hubble,
+        settings,
+        max_new_points=int(settings.n_action_max),
+    )
+    return rate_grid is not None and apply_candidate_grid(rate_grid, "rate_step_refine")
+
+
 def _try_dynamiczoomwindow_local_refinement(
     temperatures: np.ndarray,
     hubble: np.ndarray,
@@ -364,14 +402,7 @@ def _try_dynamiczoomwindow_local_refinement(
     apply_candidate_grid,
 ) -> tuple[bool, int]:
     """Spend one refinement batch on the most local unresolved feature."""
-    rate_grid = _build_rate_step_grid(
-        temperatures,
-        actions,
-        hubble,
-        settings,
-        max_new_points=int(settings.n_action_max),
-    )
-    if rate_grid is not None and apply_candidate_grid(rate_grid, "rate_step_refine"):
+    if _try_dynamiczoomwindow_rate_refinement(temperatures, actions, hubble, settings, apply_candidate_grid):
         return True, int(remaining_budget)
 
     if remaining_budget <= 0:
@@ -624,6 +655,11 @@ def _dynamiczoomwindow_post_sweep_controller(
         if should_retry:
             return "retry", previous_estimate, int(remaining_budget), hot_head_needs_support
         return "accept", previous_estimate, int(remaining_budget), hot_head_needs_support
+
+    if iterator < settings.maxit and remaining_budget <= 0 and _try_dynamiczoomwindow_rate_refinement(
+        temperatures, actions, hubble, settings, apply_candidate_grid
+    ):
+        return "retry", None, int(remaining_budget), hot_head_needs_support
 
     if iterator >= settings.maxit or remaining_budget <= 0:
         print(
@@ -1151,12 +1187,14 @@ def _initial_percolation_scan_dynamiczoomwindow(
     def _apply_candidate_grid(candidate_grid: np.ndarray, reason: str, *, extra_budget: int = 0) -> bool:
         nonlocal TSYM
         rate_refine = reason == "rate_step_refine"
+        bank_before = state.support_bank
         if rate_refine:
-            allowance = max(int(settings.n_action_max) - int(state.rate_refine_points), 0)
-            if allowance <= 0:
+            # The rate repair may add n_action_max points per run: a rebuild starts while
+            # that allowance is not used up and admits its whole grid (at most
+            # n_action_max new points).
+            if int(state.rate_refine_points) >= int(settings.n_action_max):
                 return False
-            extra_budget = max(int(extra_budget), int(state.rate_refine_points) + allowance)
-            added_before = _controller_added_support_points(state.support_bank, state.free_support_bank)
+            extra_budget = max(int(extra_budget), int(settings.n_action_max))
         else:
             extra_budget = max(int(extra_budget), _rate_repair_budget(state, settings))
         changed, TSYM, state.support_bank, state.free_support_bank = _apply_dynamiczoomwindow_candidate_grid(
@@ -1176,8 +1214,9 @@ def _initial_percolation_scan_dynamiczoomwindow(
             extra_budget=extra_budget,
         )
         if rate_refine and changed:
-            added_after = _controller_added_support_points(state.support_bank, state.free_support_bank)
-            state.rate_refine_points += max(int(added_after) - int(added_before), 0)
+            state.rate_refine_points += _new_controller_added_points(
+                bank_before, state.support_bank, state.free_support_bank
+            )
         return changed
 
     def _promote_cached_action_points(reason: str) -> bool:
@@ -1408,12 +1447,14 @@ def _refine_percolation_temperature_dynamiczoomwindow(
     def _apply_candidate_grid(candidate_grid: np.ndarray, reason: str, *, extra_budget: int = 0) -> bool:
         nonlocal TSYM
         rate_refine = reason == "rate_step_refine"
+        bank_before = state.support_bank
         if rate_refine:
-            allowance = max(int(settings.n_action_max) - int(state.rate_refine_points), 0)
-            if allowance <= 0:
+            # The rate repair may add n_action_max points per run: a rebuild starts while
+            # that allowance is not used up and admits its whole grid (at most
+            # n_action_max new points).
+            if int(state.rate_refine_points) >= int(settings.n_action_max):
                 return False
-            extra_budget = max(int(extra_budget), int(state.rate_refine_points) + allowance)
-            added_before = _controller_added_support_points(state.support_bank, state.free_support_bank)
+            extra_budget = max(int(extra_budget), int(settings.n_action_max))
         else:
             extra_budget = max(int(extra_budget), _rate_repair_budget(state, settings))
         changed, TSYM, state.support_bank, state.free_support_bank = _apply_dynamiczoomwindow_candidate_grid(
@@ -1433,8 +1474,9 @@ def _refine_percolation_temperature_dynamiczoomwindow(
             extra_budget=extra_budget,
         )
         if rate_refine and changed:
-            added_after = _controller_added_support_points(state.support_bank, state.free_support_bank)
-            state.rate_refine_points += max(int(added_after) - int(added_before), 0)
+            state.rate_refine_points += _new_controller_added_points(
+                bank_before, state.support_bank, state.free_support_bank
+            )
         return changed
 
     def _promote_cached_action_points(reason: str) -> bool:
