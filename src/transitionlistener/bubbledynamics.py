@@ -2219,8 +2219,11 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
       otherwise five new actions are computed at T (1 + k step), k = -2..2,
       with step ``betaH_S3_fallback_rel_step``, and the same fit is applied;
     * the fit is repeated with the ``betaH_S3_fit_check_points`` nearest samples,
-      and a relative difference above ``betaH_S3_fit_rel_tol`` is reported
-      through ``diagnostics["fit_unstable"]``.
+      and a relative difference above ``betaH_S3_fit_rel_tol``, measured against
+      the larger of the two, is reported through ``diagnostics["fit_unstable"]``.
+
+    Both sample counts are clamped: a quadratic needs three samples, and the
+    check fit uses at most as many as the fit itself, in which case it is skipped.
 
     See the CAUTION note in ``PercolationConf``: the defaults were validated on
     the 2HDM BSMPT benchmark only.
@@ -2248,8 +2251,10 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
     float :
         The transition speed beta/H."""
     conf = pot.config.percolationConf
-    n_fit = int(getattr(conf, "betaH_S3_fit_points", 11))
-    n_check = int(getattr(conf, "betaH_S3_fit_check_points", 7))
+    # A quadratic needs three samples, and the check fit has to be the smaller one;
+    # runtime overrides enforce that, a hand-edited config does not.
+    n_fit = max(int(getattr(conf, "betaH_S3_fit_points", 11)), 3)
+    n_check = min(max(int(getattr(conf, "betaH_S3_fit_check_points", 7)), 3), n_fit)
     rel_tol = float(getattr(conf, "betaH_S3_fit_rel_tol", 0.03))
     min_side = int(getattr(conf, "betaH_S3_fit_min_per_side", 2))
     max_span = float(getattr(conf, "betaH_S3_fit_max_rel_span", 0.02))
@@ -2306,7 +2311,9 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
     diag.update(betaH_fit=betaH, n_fit=int(min(n_fit, T_samples.size)))
     if n_check < n_fit and T_samples.size >= max(n_check, 3):
         check = _fit_action_slope(T_samples, S_samples, T, n_check)
-        rel = abs(check - betaH) / max(abs(betaH), 1e-300)
+        # Symmetric scale: near a zero of beta/H the two fits must not look
+        # inconsistent only because the larger one is in the denominator.
+        rel = abs(check - betaH) / max(abs(betaH), abs(check), 1e-300)
         diag.update(betaH_check=check, check_rel_diff=rel, fit_unstable=bool(rel > rel_tol))
     else:
         diag.update(fit_unstable=False)

@@ -92,6 +92,30 @@ class CalcBetaHS3Tests(unittest.TestCase):
         self.assertAlmostEqual(beta, BETA_H_EXACT, places=6)
         self.assertFalse(diag["fit_unstable"])
 
+    def test_fit_sizes_are_clamped_to_a_quadratic(self):
+        # A hand-edited config asking for two fit samples and a larger check fit than
+        # fit: the quadratic still gets its three samples and the check is dropped.
+        T = T_PERC * (1.0 + np.linspace(-0.004, 0.004, 11))
+        Sint, pot, phase = _setup(T)
+        pot.config.percolationConf.betaH_S3_fit_points = 2
+        pot.config.percolationConf.betaH_S3_fit_check_points = 9
+        pot.config.percolationConf.betaH_S3_fit_min_per_side = 1
+        diag = {}
+        beta = bd.calc_betaH_S3(T_PERC, Sint, {}, pot, phase, phase, diagnostics=diag)
+        self.assertAlmostEqual(beta, BETA_H_EXACT, places=6)
+        self.assertEqual(diag["n_fit"], 3)
+        self.assertFalse(diag["fit_unstable"])
+
+    def test_the_stability_check_uses_a_symmetric_scale(self):
+        # Close to a zero of beta/H the two fits must not look inconsistent only
+        # because the smaller of the two sets the scale.
+        T = T_PERC * (1.0 + np.linspace(-0.004, 0.004, 11))
+        Sint, pot, phase = _setup(T)
+        diag = {}
+        with mock.patch.object(bd, "_fit_action_slope", side_effect=[1e-6, 2e-6]):
+            bd.calc_betaH_S3(T_PERC, Sint, {}, pot, phase, phase, diagnostics=diag)
+        self.assertAlmostEqual(diag["check_rel_diff"], 0.5, places=12)
+
     def test_outside_the_phase_overlap_gives_nan(self):
         T = T_PERC * (1.0 + np.linspace(-0.004, 0.004, 11))
         Sint, pot, _ = _setup(T)
