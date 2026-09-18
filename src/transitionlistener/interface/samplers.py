@@ -503,6 +503,7 @@ def get_empty_result() -> dict:
            'betaH_RH': np.nan,
            'RH': np.nan,
            'Treh_SM_GeV': np.nan,
+           'Treh_DS_GeV': np.nan,
            'Tperc_SM_GeV': np.nan,
            'g_eff_tot_reh': np.nan,
            'h_eff_tot_reh': np.nan,

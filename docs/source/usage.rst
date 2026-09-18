@@ -159,6 +159,41 @@ The tracing and tunnelling precision presets are configurable through
   computation of over one hour, in the case of multi-dimensional scalar potentials.
 
 
+Radiation baths
+---------------
+
+Radiation that is not part of the potential belongs to one of two baths, set
+in the model's ``init``:
+
+- ``kin_coupled_e_geff`` and ``kin_coupled_p_geff`` (default: the Standard
+  Model) describe radiation in thermal contact with the fields of the
+  potential. Together they form the transitioning sector, which is reheated
+  inside the bubbles.
+- ``kin_decoupled_e_geff`` and ``kin_decoupled_p_geff`` (default: empty)
+  describe radiation that is not. It keeps the temperature of the surrounding
+  false vacuum and enters only the expansion rate and the redshift of the
+  gravitational-wave spectrum.
+
+For a dark sector decoupled from the Standard Model, move ``e_geffSM`` and
+``p_geffSM`` from the coupled to the decoupled bath and set
+``pot.config.gwConf.coupled_hydrodynamics = False``, so that the Standard Model
+does not enter the hydrodynamics either. TL takes the bath whose tables are
+``e_geffSM`` as the Standard Model bath; if the tables are wrapped, set
+``self.SM_bath = "decoupled"`` (or ``"coupled"``) in the model.
+
+Both baths share the temperature before the transition, so ``Tnuc_SM_GeV`` and
+``Tperc_SM_GeV`` apply to both. ``Treh_SM_GeV`` is the temperature of the
+Standard Model bath at reheating, which happens at percolation: the reheated
+temperature if the Standard Model is coupled, ``Tperc`` if it is decoupled.
+``Treh_DS_GeV`` is the reheating temperature of the transitioning sector.
+``g_eff_tot_reh`` and ``h_eff_tot_reh`` sum the fields of the potential, the
+coupled bath and the decoupled bath, each weighted by its temperature ratio to
+the Standard Model bath to the fourth and third power. The redshift assumes
+that the energy and entropy of the dark sector end up in the photon bath
+without entropy injection (dilution factor ``D = 1``); the evolution of the
+temperature ratio after the transition is not modelled.
+
+
 Random and nested sampling scans
 --------------------------------
 You can also run a random scan by using the following command:

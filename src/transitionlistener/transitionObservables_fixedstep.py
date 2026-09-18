@@ -54,6 +54,7 @@ class TransitionObservableInfo:
     Tnuc_SM_GeV: float = np.nan
     Treh: float = np.nan
     Treh_SM_GeV: float = np.nan
+    Treh_DS_GeV: float = np.nan
     alpha: float = np.nan
     alpha_theta: float = np.nan
     alpha_p: float = np.nan
@@ -347,6 +348,7 @@ class TransitionObservables:
                     "), using Tnuc as Treh",
                 )
             derived["Treh_SM_GeV"] = ctx.Tnuc * pot.conversionFactor
+            derived["Treh_DS_GeV"] = ctx.Tnuc * pot.conversionFactor
             derived["WARNING:too_weak_to_compute_perc"] = True
             derived["WARNING:no_perc_splines"] = True
             return PercolationResult(
@@ -538,7 +540,7 @@ class TransitionObservables:
                 print("Calculating nucleation temperature...")
             derived["Tnuc_SM_GeV"] = ctx.tr.Tnuc * pot.conversionFactor
 
-        if "Treh_SM_GeV" in ctx.derived_param_names:
+        if "Treh_SM_GeV" in ctx.derived_param_names or "Treh_DS_GeV" in ctx.derived_param_names:
             if ctx.verbose:
                 print("Calculating reheating temperature...")
             if derived.get("WARNING:no_perc_splines", False):
@@ -569,7 +571,11 @@ class TransitionObservables:
                 if Treh is None or not np.isfinite(Treh):
                     Treh = percolation.TBROint(percolation.Tperc) if percolation.TBROint else percolation.Tperc
             derived["Treh"] = Treh
-            derived["Treh_SM_GeV"] = Treh * pot.conversionFactor
+            derived["Treh_DS_GeV"] = Treh * pot.conversionFactor
+            # Only a Standard Model coupled to the transitioning sector is reheated; a
+            # decoupled one is still at Tperc.
+            Treh_SM = percolation.Tperc if td.sm_bath(pot) == "decoupled" else Treh
+            derived["Treh_SM_GeV"] = Treh_SM * pot.conversionFactor
 
     def _compute_alpha_parameters(
         self,
@@ -651,39 +657,29 @@ class TransitionObservables:
                 RsepHperc = Rsep * percolation.Hint(percolation.Tperc)
                 derived["RH"] = RsepHperc
 
-        # This combines the dark-sector contribution with the SM bath and
-        # therefore assumes a DS + SM setup.
-        if "g_eff_tot_reh" in ctx.derived_param_names:
+        # Degrees of freedom right after reheating, referred to the temperature of the
+        # Standard Model bath, with which the redshift of the spectrum pairs them. A
+        # decoupled bath was not reheated and is still at Tperc.
+        if "g_eff_tot_reh" in ctx.derived_param_names or "h_eff_tot_reh" in ctx.derived_param_names:
             if verbose:
-                print("Calculating g_eff_tot_reh...")
-            bosons = pot.boson_massSq(ctx.phase_broken.valAt(percolation.Tperc), percolation.Tperc)
-            fermions = pot.fermion_massSq(ctx.phase_broken.valAt(percolation.Tperc))
-            gefftotreh = td.e_geffDS(
-                bosons*(~pot.mass_spectrum.is_SM_bosons),
-                fermions*(~pot.mass_spectrum.is_SM_fermions),
-                percolation.Tperc,
-            ) + td.e_geffSM(percolation.Tperc, pot.conversionFactor)
-            derived["g_eff_tot_reh"] = gefftotreh
-
-        # This combines the dark-sector contribution with the SM bath and
-        # therefore assumes a DS + SM setup.
-        if "h_eff_tot_reh" in ctx.derived_param_names:
-            if verbose:
-                print("Calculating h_eff_tot_reh...")
-            bosons = pot.boson_massSq(ctx.phase_broken.valAt(percolation.Tperc), percolation.Tperc)
-            fermions = pot.fermion_massSq(ctx.phase_broken.valAt(percolation.Tperc))
-            hefftotreh = td.s_geffDS(
-                bosons*(~pot.mass_spectrum.is_SM_bosons),
-                fermions*(~pot.mass_spectrum.is_SM_fermions),
-                percolation.Tperc,
-            ) + td.s_geffSM(percolation.Tperc, pot.conversionFactor)
-            derived["h_eff_tot_reh"] = hefftotreh
+                print("Calculating g_eff_tot_reh and h_eff_tot_reh...")
+            Treh_DS = derived.get("Treh", None)
+            Treh_DS = float(Treh_DS) if Treh_DS is not None and np.isfinite(Treh_DS) else percolation.Tperc
+            try:
+                X_reh = ctx.phase_broken.valAt(Treh_DS)
+            except Exception:
+                X_reh = ctx.phase_broken.valAt(percolation.Tperc)
+            gefftotreh, hefftotreh, _ = td.reheating_geff(pot, X_reh, Treh_DS, percolation.Tperc)
+            if "g_eff_tot_reh" in ctx.derived_param_names:
+                derived["g_eff_tot_reh"] = gefftotreh
+            if "h_eff_tot_reh" in ctx.derived_param_names:
+                derived["h_eff_tot_reh"] = hefftotreh
 
         if "g0" in ctx.derived_param_names:
             derived["g0"] = 2
 
         if "h0" in ctx.derived_param_names:
-            derived["h0"] = 3.91
+            derived["h0"] = 3.931  # Saikawa and Shirai, arXiv:1803.01038
 
         if (
                 "betaH_S3" in ctx.derived_param_names

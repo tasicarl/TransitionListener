@@ -181,6 +181,7 @@ all_observables = {
     "betaH_RH": R"$(\beta /H)_{RH}$",
     "RH": R"$RH$",
     "Treh_SM_GeV": R"$T^{\mathrm{reh}}_{\mathrm{SM}}$ / $\mathrm{GeV}$",
+    "Treh_DS_GeV": R"$T^{\mathrm{reh}}_{\mathrm{DS}}$ / $\mathrm{GeV}$",
     "Tperc_SM_GeV": R"$T^{\mathrm{perc}}_{\mathrm{SM}}$ / $\mathrm{GeV}$",
     "g_eff_tot_reh": R"$g^{\mathrm{reh}}_{\mathrm{tot}}$",
     "h_eff_tot_reh": R"$h^{\mathrm{reh}}_{\mathrm{tot}}$",

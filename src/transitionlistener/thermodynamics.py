@@ -684,3 +684,54 @@ def e_geffDS(mSq_bosons, mSq_fermions, T):
     for i in range(len(m2f)):
         geff += e_geff(np.sqrt(m2f[i]), T, gf[i], 'f')
     return geff
+
+
+def h_eff_radiation(e_geff, p_geff, T: float, CF: float) -> float:
+    """Entropy degrees of freedom of a radiation bath given by its energy and pressure degrees of freedom.
+
+    The Standard Model has its own entropy table; for any other bath ``s = (e + p)/T``
+    gives ``h = (3 g_e + g_p)/4``.
+    """
+    if e_geff is e_geffSM and p_geff is p_geffSM:
+        return s_geffSM(T, CF)
+    return (3.0 * e_geff(T, CF) + p_geff(T, CF)) / 4.0
+
+
+def sm_bath(pot) -> str:
+    """Radiation bath that holds the Standard Model: ``"coupled"`` or ``"decoupled"``.
+
+    ``pot.SM_bath`` decides if set; otherwise the bath whose energy degrees of freedom are the
+    Standard Model table ``e_geffSM``, and the coupled one if neither is.
+    """
+    explicit = getattr(pot, "SM_bath", None)
+    if explicit is not None:
+        if explicit not in ("coupled", "decoupled"):
+            raise ValueError(f"SM_bath must be 'coupled' or 'decoupled', not {explicit!r}.")
+        return explicit
+    return "decoupled" if pot.kin_decoupled_e_geff is e_geffSM else "coupled"
+
+
+def reheating_geff(pot, X_broken, T_DS: float, T_dec: float) -> tuple[float, float, float]:
+    """Energy and entropy degrees of freedom right after reheating, referred to the SM bath.
+
+    Three baths contribute: the fields of the potential (the transitioning sector, "DS") in
+    the broken phase at ``X_broken``, reheated to ``T_DS``; the coupled bath, reheated with
+    them; and the decoupled bath, still at ``T_dec``. Each enters with its temperature ratio to
+    the bath that holds the Standard Model, ``g = sum g_i (T_i/T_SM)^4`` and
+    ``h = sum h_i (T_i/T_SM)^3`` (arXiv:2109.06208, 2311.06346). Returns ``(g, h, T_SM)``.
+    """
+    CF = pot.conversionFactor
+    T_c = T_DS
+    T_SM = T_dec if sm_bath(pot) == "decoupled" else T_c
+    bosons = pot.boson_massSq(X_broken, T_DS)
+    fermions = pot.fermion_massSq(X_broken)
+    bosons_DS = bosons * (~pot.mass_spectrum.is_SM_bosons)
+    fermions_DS = fermions * (~pot.mass_spectrum.is_SM_fermions)
+    r_DS, r_c, r_dec = T_DS / T_SM, T_c / T_SM, T_dec / T_SM
+    g = e_geffDS(bosons_DS, fermions_DS, T_DS) * r_DS**4 \
+        + pot.kin_coupled_e_geff(T_c, CF) * r_c**4 \
+        + pot.kin_decoupled_e_geff(T_dec, CF) * r_dec**4
+    h = s_geffDS(bosons_DS, fermions_DS, T_DS) * r_DS**3 \
+        + h_eff_radiation(pot.kin_coupled_e_geff, pot.kin_coupled_p_geff, T_c, CF) * r_c**3 \
+        + h_eff_radiation(pot.kin_decoupled_e_geff, pot.kin_decoupled_p_geff, T_dec, CF) * r_dec**3
+    return float(g), float(h), float(T_SM)

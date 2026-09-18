@@ -145,6 +145,9 @@ class generic_potential():
 
         self.kin_decoupled_e_geff = lambda T, cf: 0.0 * T  # If the SM is decoupled, put e_geffSM here
         self.kin_decoupled_p_geff = lambda T, cf: 0.0 * T  # If the SM is decoupled, put p_geffSM here
+        # Bath that holds the Standard Model, "coupled" or "decoupled". None takes the bath
+        # whose e_geff is e_geffSM, and the coupled one if neither is.
+        self.SM_bath = None
 
         # The parameters below need to be specified in subclass init()
         self.verbose = False

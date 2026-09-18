@@ -336,7 +336,7 @@ class FOPTspectrum():
             * self.g_eff_tot_reh / self.g0
 
         # Hubble parameter at the time of the phase transition redshifted to today in Hertz
-        H_p0_Hz = 1.65e-5 * self.D**(-4/3) * (self.Treh_SM_GeV / 100)
+        H_p0_Hz = 1.65e-5 * self.D**(-1/3) * (self.Treh_SM_GeV / 100)
         H_p0_Hz *= (self.g_eff_tot_reh / 100)**(1/2)
         H_p0_Hz *= (100 / self.h_eff_tot_reh)**(1/3)
 

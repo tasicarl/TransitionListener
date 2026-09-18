@@ -108,6 +108,7 @@ class TemplatePotenital(generic_potential):
         # put the SM geff here. 
         # self.kin_decoupled_e_geff = lambda T, cf: 0.0 * T  # If the SM is decoupled, put e_geffSM here
         # self.kin_decoupled_p_geff = lambda T, cf: 0.0 * T  # If the SM is decoupled, put p_geffSM here
+        # self.SM_bath = "decoupled"  # Bath that holds the SM; detected from e_geffSM if not set
 
         # Include the input and derived parameters in the class.
         self.derived_param_names = [name for name in config.all_observables.keys()]

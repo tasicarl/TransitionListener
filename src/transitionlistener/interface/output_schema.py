@@ -38,6 +38,7 @@ DERIVED_PREFERRED_ORDER = [
     "betaH_RH",
     "RH",
     "Treh_SM_GeV",
+    "Treh_DS_GeV",
     "Tperc_SM_GeV",
     "g_eff_tot_reh",
     "h_eff_tot_reh",

@@ -85,6 +85,17 @@ def h_eff_DS(T_DS: float, pot, phase) -> float:
     return geff
 
 
+def h_eff_coupled_radiation(T: float, pot) -> float:
+    """Entropy degrees of freedom of the radiation coupled to the transitioning sector.
+
+    That radiation (``pot.kin_coupled_*``, by default the Standard Model) is reheated
+    inside the bubbles together with the transitioning sector, a decoupled bath is not.
+    For the default Standard Model bath the tabulated entropy degrees of freedom are
+    used; otherwise ``s = (e + p)/T`` gives ``h = (3 g_e + g_p)/4``.
+    """
+    return td.h_eff_radiation(pot.kin_coupled_e_geff, pot.kin_coupled_p_geff, T, pot.conversionFactor)
+
+
 def energyDensity(pot, phase, T: float | np.ndarray, include_decoupled=True) -> float | np.ndarray:
     r"""This function calls the implementation in the effective potential.
 
@@ -890,10 +901,11 @@ def entropy_criterion_SYM_BRO(Tb: float, TBRO_ref: float, TSYM: float, TSYM_ref:
     float
         Zero when the condition is met.
     """
+    # A decoupled bath is not reheated and does not enter.
     heff_ds_pt = h_eff_DS(TBRO_ref, pot, phase_broken)
-    heff_SM_pt = td.s_geffSM(TBRO_ref, pot.conversionFactor)
+    heff_SM_pt = h_eff_coupled_radiation(TBRO_ref, pot)
     heff_ds = h_eff_DS(Tb, pot, phase_broken)
-    heff_SM = td.s_geffSM(Tb, pot.conversionFactor)
+    heff_SM = h_eff_coupled_radiation(Tb, pot)
     crit = (heff_ds + heff_SM) * Tb**3
     crit -= (heff_ds_pt + heff_SM_pt) * TBRO_ref**3 * TSYM**3 / TSYM_ref**3
     return crit
@@ -1362,6 +1374,11 @@ def _refine_percolation_temperature(
         for i, T in enumerate(TSYM):
             if not is_Pr_converged:
                 eSYM = energyDensity(pot, phase_symmetric, T)
+                # Only the transitioning sector and the radiation coupled to it are
+                # reheated inside the bubbles; a decoupled bath keeps the background
+                # temperature T and enters the Hubble rate as it is.
+                eSYM_PT = eSYM
+                e_decoupled = 0.0
                 if i == 0: # High temperature bin
                     # Pprev must be zero here
                     state.Hr[i] = HubbleParameter(eSYM, CF)
@@ -1395,11 +1412,13 @@ def _refine_percolation_temperature(
                         entropy_criterion_SYM_BRO, TBROmin, TBROmax,
                         args=(state.Tb[i - 1], T, TSYM[i - 1], phase_broken, pot)
                     )
-                    eBRO = energyDensity(pot, phase_broken, TBRO)
+                    eSYM_PT = energyDensity(pot, phase_symmetric, T, include_decoupled=False)
+                    e_decoupled = eSYM - eSYM_PT
+                    eBRO = energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
                     P = Pprev[i]
                     dP = Pprev[i] - Pprev[i - 1]
-                    energy_release = eBRO * (P - dP) + dP * eSYM
+                    energy_release = eBRO * (P - dP) + dP * eSYM_PT
                     relative_energy_release = energy_release / eBRO
                     if relative_energy_release < 1e-50:
                         # If the energy release between two steps is too small, we don't need to
@@ -1418,7 +1437,7 @@ def _refine_percolation_temperature(
                                 energy_criterion_BRO,
                                 TBROmin,
                                 TBROmax,
-                                args=(eSYM, eBRO, Pprev[i], Pprev[i] - Pprev[i - 1], phase_broken, pot),
+                                args=(eSYM_PT, eBRO, Pprev[i], Pprev[i] - Pprev[i - 1], phase_broken, pot),
                             )
                             state.Tb[i] = TBRO
                         except ValueError as err:
@@ -1445,7 +1464,7 @@ def _refine_percolation_temperature(
                                 f"{err}. Please check this input parameters again by hand."
                             )
 
-                        eBRO = energyDensity(pot, phase_broken, TBRO)
+                        eBRO = energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
                     if state.Tb[i] < TSYM[i]:
                         raise ValueError(
@@ -1455,7 +1474,7 @@ def _refine_percolation_temperature(
                         )
 
                 state.Sr[i] = calcAction(pot, T, phase_symmetric, phase_broken, outdict)
-                state.Hr[i] = HubbleParameter(Pprev[i] * eBRO + (1 - Pprev[i]) * eSYM, CF)
+                state.Hr[i] = HubbleParameter(Pprev[i] * eBRO + (1 - Pprev[i]) * eSYM_PT + e_decoupled, CF)
                 state.soundSpSq[i] = calcSoundSpeedSq(pot, phase_symmetric.valAt(T), T)
                 state.scalef_ratio[i] = scalefactorRatio(pot, TSYM[0], T,
                                                          phase_symmetric.valAt(T))

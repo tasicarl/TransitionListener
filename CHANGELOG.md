@@ -9,6 +9,46 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Decoupled radiation baths**: runs with radiation in `kin_decoupled_*`,
+  the setting 2.0.0 prescribes for a sector decoupled from the Standard Model,
+  ended with error code 8 or gave wrong results without an error. Both
+  percolation solvers mixed the decoupled bath into the reheating of the
+  bubbles: the energy balance counted it in the released energy but not in the
+  broken phase, the expansion rate evaluated it at the temperature inside the
+  bubbles, and the entropy conservation between support points and the
+  integration of `Treh` added the Standard Model entropy table whatever the
+  baths were. Now only the transitioning sector, i.e. the fields of the
+  potential and the coupled bath, is reheated; the decoupled bath keeps the
+  temperature of the surrounding false vacuum and enters the expansion rate.
+  Results without a decoupled bath are unchanged.
+- **Redshift of the gravitational-wave spectrum**: `g_eff_tot_reh` and
+  `h_eff_tot_reh` were evaluated at `Tperc` but paired with `Treh_SM_GeV` in
+  the redshift, and with a decoupled Standard Model `Treh_SM_GeV` held the
+  reheating temperature of the transitioning sector. `Treh_SM_GeV` is now the
+  temperature of the Standard Model bath at reheating: the reheated
+  temperature if the Standard Model is coupled, `Tperc` if it is decoupled. The
+  new column `Treh_DS_GeV` holds the reheating temperature of the transitioning
+  sector. `g_eff_tot_reh` and `h_eff_tot_reh` sum the fields of the potential,
+  the coupled bath and the decoupled bath, each at its own temperature after
+  reheating and weighted by its temperature ratio to the Standard Model bath,
+  `(T_i/T_SM)^4` and `(T_i/T_SM)^3` (arXiv:2109.06208, arXiv:2311.06346), with
+  the radiation parts taken from `kin_coupled_*` and `kin_decoupled_*` instead
+  of the Standard Model tables; with a coupled Standard Model this evaluates
+  them at the reheating temperature (arXiv:2502.19478). TL takes the bath whose
+  tables are `e_geffSM` as the Standard Model bath; the new model attribute
+  `SM_bath` overrides this. The energy and entropy of a decoupled dark sector
+  are assumed to end up in the photon bath without entropy injection
+  (`D = 1`). Spectra move by a fraction of a per cent where the
+  degrees of freedom barely change between `Tperc` and `Treh`, but strongly
+  supercooled transitions across a threshold move substantially: on the
+  conformal dark U(1) line (`y = 0.01`, `v = 0.14 GeV`), where `Tperc` falls
+  to 40 keV and `Treh` is 10.6 MeV, by up to a factor 1.36 in peak frequency
+  and 0.75 in amplitude.
+- Today's entropy degrees of freedom `h0` are 3.931 (arXiv:1803.01038) instead
+  of 3.91, which raises all amplitudes by 0.7 %.
+- In `h2Omega_0_sum` the break frequencies were redshifted with `D^(-4/3)`
+  instead of `D^(-1/3)`; the amplitude keeps `D^(-4/3)`. No effect for the
+  default `D = 1`.
 - **Treh scatter (#6)**: since 2.1.0 the reheating temperature was read off the
   tabulated broken-phase temperature trajectory at `Tperc`, which made it depend
   on where the adaptive support points happen to sit and produced

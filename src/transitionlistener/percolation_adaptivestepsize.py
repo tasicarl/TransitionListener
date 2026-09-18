@@ -1004,6 +1004,12 @@ def _compute_step3_profile(
             eSYM = bd.energyDensity(pot, phase_symmetric, T)
             state.Sr[i] = bd.calcAction(pot, T, phase_symmetric, phase_broken, outdict)
             P = float(previous_probability[i]) if np.isfinite(previous_probability[i]) else 0.0
+            if P > 1e-12:
+                # Only the transitioning sector and the radiation coupled to it are
+                # reheated inside the bubbles; a decoupled bath keeps the background
+                # temperature T and enters the Hubble rate as it is.
+                eSYM_PT = bd.energyDensity(pot, phase_symmetric, T, include_decoupled=False)
+                e_decoupled = eSYM - eSYM_PT
 
             if P <= 1e-12:
                 state.Hr[i] = bd.HubbleParameter(eSYM, CF)
@@ -1022,8 +1028,8 @@ def _compute_step3_profile(
                         f"{err}. The phase tracing or tunneling precision may be too low."
                     )
                 state.Tb[i] = TBRO
-                eBRO = bd.energyDensity(pot, phase_broken, TBRO)
-                state.Hr[i] = bd.HubbleParameter(P * eBRO + (1.0 - P) * eSYM, CF)
+                eBRO = bd.energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
+                state.Hr[i] = bd.HubbleParameter(P * eBRO + (1.0 - P) * eSYM_PT + e_decoupled, CF)
             else:
                 P_prev = float(previous_probability[i - 1]) if np.isfinite(previous_probability[i - 1]) else 0.0
                 previous_tb = float(state.Tb[i - 1]) if np.isfinite(state.Tb[i - 1]) else np.nan
@@ -1063,10 +1069,10 @@ def _compute_step3_profile(
                             TBROmax,
                             args=(T, phase_symmetric, phase_broken, pot),
                         )
-                eBRO = bd.energyDensity(pot, phase_broken, TBRO)
+                eBRO = bd.energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
                 dP = P - P_prev
-                energy_release = eBRO * (P - dP) + dP * eSYM
+                energy_release = eBRO * (P - dP) + dP * eSYM_PT
                 if energy_release / eBRO < 1e-50:
                     state.Tb[i] = TBRO
                 else:
@@ -1075,13 +1081,13 @@ def _compute_step3_profile(
                             bd.energy_criterion_BRO,
                             TBROmin,
                             TBROmax,
-                            args=(eSYM, eBRO, P, dP, phase_broken, pot),
+                            args=(eSYM_PT, eBRO, P, dP, phase_broken, pot),
                         )
                         state.Tb[i] = TBRO
                     except ValueError:
                         state.Tb[i] = state.Tb[i - 1]
                         TBRO = state.Tb[i]
-                    eBRO = bd.energyDensity(pot, phase_broken, TBRO)
+                    eBRO = bd.energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
                 if state.Tb[i] < TSYM[i]:
                     raise ValueError(
@@ -1089,7 +1095,7 @@ def _compute_step3_profile(
                         "T_bro < T_sym. This is usually not allowed."
                     )
 
-                state.Hr[i] = bd.HubbleParameter(P * eBRO + (1.0 - P) * eSYM, CF)
+                state.Hr[i] = bd.HubbleParameter(P * eBRO + (1.0 - P) * eSYM_PT + e_decoupled, CF)
         else:
             state.Sr[i] = np.nan
             state.Hr[i] = bd.HubbleParameter(bd.energyDensity(pot, phase_symmetric, T), CF)

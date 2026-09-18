@@ -910,7 +910,7 @@ class TLPlots():
             for tr in self.transitions:
                 if getattr(tr, "type", 0) == 1:
                     Tperc_GeV = tr.derived_params.get("Tperc_SM_GeV", np.nan)
-                    Treh_GeV = tr.derived_params.get("Treh_SM_GeV", np.nan)
+                    Treh_GeV = tr.derived_params.get("Treh_DS_GeV", tr.derived_params.get("Treh_SM_GeV", np.nan))
                     for ax in axes:
                         ax.axvline(Tperc_GeV, ls="--", color=DESYpetrol, alpha=0.5)
                         ax.axvline(Treh_GeV, ls="-.", color=DESYmagenta, alpha=0.5)
@@ -1054,7 +1054,7 @@ class TLPlots():
         for tr in self.transitions:
             if tr.type == 1:
                 Tperc_GeV = tr.derived_params["Tperc_SM_GeV"]
-                Treh_GeV = tr.derived_params["Treh_SM_GeV"]
+                Treh_GeV = tr.derived_params.get("Treh_DS_GeV", tr.derived_params["Treh_SM_GeV"])
                 if not no_label1:
                     for ax in axes:
                         ax.axvline(Tperc_GeV, ls="--", color=DESYpetrol, alpha=0.5, label=r"$T_\mathrm{perc}$")
