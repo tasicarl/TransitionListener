@@ -126,6 +126,12 @@ The most important controls are:
 - ``percolation_jitter_GH4_threshold``: the bounce-rate jitter detector
   (in :math:`\log_{10}(\Gamma/H^4)`) -- default ``1.0``; raise to ``2.0`` or so on
   models with very steep, deeply supercooled action profiles.
+- ``percolation_max_log10_rate_step``: largest change of
+  :math:`\log_{10}(\Gamma/H^4)` allowed between neighbouring support points --
+  default ``12.0``. Intervals above it are refined before jumps in :math:`P`,
+  because the percolation integral interpolates the logarithm of the rate and
+  cannot resolve a rise that happens inside one interval. Zero switches the
+  criterion off.
 - ``percolation_acc_tperc``, ``percolation_acc_tfinal``,
   ``percolation_acc_rh``: refinement and stopping controls for
   ``adaptive_step_size``.
