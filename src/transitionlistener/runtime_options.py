@@ -48,6 +48,7 @@ PERCOLATION_OVERRIDE_KEYS = (
     "percolation_acc_rh",
     "percolation_weak_threshold",
     "percolation_jitter_GH4_threshold",
+    "percolation_max_log10_rate_step",
     "percolation_action_jitter_tunneltight_rescue",
     "percolation_n_jitter_save",
 )
@@ -203,6 +204,7 @@ def apply_percolation_overrides(percolation_conf, overrides: dict[str, object]) 
         "percolation_acc_rh": ("acc_rh", 0.0),
         "percolation_weak_threshold": ("weak_threshold", 0.0),
         "percolation_jitter_GH4_threshold": ("jitter_GH4_threshold", 0.0),
+        "percolation_max_log10_rate_step": ("max_log10_rate_step", 0.0),
     }
     for key, (attr, minimum) in float_minimums.items():
         if overrides[key] is not None:

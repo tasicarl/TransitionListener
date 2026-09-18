@@ -10,6 +10,7 @@ import numpy as np
 
 from transitionlistener import percolation_adaptive_gridbuilders as gridbuilders
 from transitionlistener import percolation_adaptivestepsize as pas
+from transitionlistener import runtime_options
 
 
 def settings(**overrides):
@@ -90,6 +91,29 @@ class RateStepGridTests(unittest.TestCase):
     def test_no_points_without_two_finite_samples(self):
         self.assertIsNone(self.rate_step_grid([np.nan, 100.0]))
         self.assertIsNone(self.rate_step_grid([50.0]))
+
+
+class RateStepOverrideTests(unittest.TestCase):
+    """The threshold is tunable per run, like the other adaptive-grid controls."""
+
+    @staticmethod
+    def percolation_conf(**overrides):
+        conf = types.SimpleNamespace(max_log10_rate_step=12.0, n_action_min=15, n_action_max=60)
+        runtime_options.apply_percolation_overrides(conf, overrides)
+        return conf
+
+    def test_the_threshold_is_a_percolation_override(self):
+        self.assertIn("percolation_max_log10_rate_step", runtime_options.PERCOLATION_OVERRIDE_KEYS)
+        self.assertEqual(self.percolation_conf(percolation_max_log10_rate_step=6.0).max_log10_rate_step, 6.0)
+
+    def test_a_negative_threshold_switches_the_criterion_off(self):
+        conf = self.percolation_conf(percolation_max_log10_rate_step=-1.0)
+        self.assertEqual(conf.max_log10_rate_step, 0.0)
+        with mock.patch.object(gridbuilders, "_log10_gamma_h4_array", lambda t, a, h: np.array([0.0, 500.0])):
+            grid = gridbuilders._build_rate_step_grid(
+                np.array([10.0, 1.0]), np.zeros(2), np.ones(2), conf, max_new_points=10,
+            )
+        self.assertIsNone(grid)
 
 
 class ControllerTests(unittest.TestCase):

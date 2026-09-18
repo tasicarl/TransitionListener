@@ -121,7 +121,8 @@ class PercolationConf:
     # then mistakes for a sharp transition and tries to refine at the wrong place. Seen on
     # the abelian dark Higgs benchmark (g = 1, v = 0.1 GeV, lambda = 0.03323), where a
     # 4.6 MeV wide gap in the support (35.9 to 40.5 MeV) carried 290 decades of rate and
-    # the point was lost with error code 10 although its transition is healthy.
+    # the point was lost with error code 10 although its transition is healthy. Tunable
+    # per run as percolation_max_log10_rate_step; zero switches the criterion off.
     max_log10_rate_step = 12.0
 
     # Strength-based validity flag.
