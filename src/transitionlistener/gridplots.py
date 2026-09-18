@@ -19,7 +19,7 @@ from matplotlib.collections import QuadMesh
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 from .colors import *
 from .plot_settings import plot_settings as TL_plot_settings
-from .plot_settings import add_TL_logo
+from .plot_settings import add_TL_logo, save_figure
 from .plot_settings import TLcmap
 
 _MASS_GROUP_PREFIX = "mass_spectrum_T0_"
@@ -98,7 +98,7 @@ def _finish_plot(fig : plt.Figure, ax: plt.Axes, xy_plot_names: tuple[str, str],
         ax.set_xscale('log')
         ax.set_yscale('log')
     add_TL_logo(loc="upper right", ax=ax)
-    plt.savefig(save_path)
+    save_figure(fig, save_path)
     plt.close(fig)
 
         
@@ -560,7 +560,7 @@ class plot2dData(GW_Sensitivity_Data):
 
         # Savefig
         add_TL_logo(loc="upper right", ax=ax4)
-        plt.savefig(self.foldername+"overview_plot.pdf")
+        save_figure(fig, self.foldername + "overview_plot.pdf")
         plt.close(fig)
 
     def plot_log_params(self):

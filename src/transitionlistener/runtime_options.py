@@ -51,6 +51,12 @@ PERCOLATION_OVERRIDE_KEYS = (
     "percolation_max_log10_rate_step",
     "percolation_action_jitter_tunneltight_rescue",
     "percolation_n_jitter_save",
+    "percolation_betaH_S3_fit_points",
+    "percolation_betaH_S3_fit_check_points",
+    "percolation_betaH_S3_fit_rel_tol",
+    "percolation_betaH_S3_fit_min_per_side",
+    "percolation_betaH_S3_fit_max_rel_span",
+    "percolation_betaH_S3_fallback_rel_step",
 )
 
 GW_OVERRIDE_KEYS = (
@@ -193,6 +199,9 @@ def apply_percolation_overrides(percolation_conf, overrides: dict[str, object]) 
         "percolation_maxit": ("maxit", 1),
         "percolation_max_action_temperatures": ("max_action_temperatures", 1),
         "percolation_n_jitter_save": ("n_jitter_save", 0),
+        "percolation_betaH_S3_fit_points": ("betaH_S3_fit_points", 3),
+        "percolation_betaH_S3_fit_check_points": ("betaH_S3_fit_check_points", 3),
+        "percolation_betaH_S3_fit_min_per_side": ("betaH_S3_fit_min_per_side", 1),
     }
     for key, (attr, minimum) in int_minimums.items():
         if overrides[key] is not None:
@@ -205,6 +214,9 @@ def apply_percolation_overrides(percolation_conf, overrides: dict[str, object]) 
         "percolation_weak_threshold": ("weak_threshold", 0.0),
         "percolation_jitter_GH4_threshold": ("jitter_GH4_threshold", 0.0),
         "percolation_max_log10_rate_step": ("max_log10_rate_step", 0.0),
+        "percolation_betaH_S3_fit_rel_tol": ("betaH_S3_fit_rel_tol", 0.0),
+        "percolation_betaH_S3_fit_max_rel_span": ("betaH_S3_fit_max_rel_span", 0.0),
+        "percolation_betaH_S3_fallback_rel_step": ("betaH_S3_fallback_rel_step", 0.0),
     }
     for key, (attr, minimum) in float_minimums.items():
         if overrides[key] is not None:

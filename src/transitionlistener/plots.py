@@ -35,7 +35,7 @@ def _select_observables_class(pot):
     return _TransitionObservablesAdaptiveStepSize
 from .phases import Phases, reconstructTransitionHistory
 from .plot_settings import plot_settings as TL_plot_settings
-from .plot_settings import add_TL_logo
+from .plot_settings import add_TL_logo, save_figure
 from .colors import *
 import transitionlistener.constants as cn
 from .observability import Observability
@@ -44,6 +44,7 @@ from . import thermodynamics as td
 from .helper_functions import import_file, load_potential
 
 plt.rcParams.update(TL_plot_settings)
+
 
 DATA_DIR = Path(__file__).resolve().parent / "tab_data"
 
@@ -426,7 +427,7 @@ class TLPlots():
         ax2.set_yscale("log")
         add_TL_logo(loc="lower left", magnification=2, ax=ax2)
         fig.tight_layout()
-        if save: fig.savefig(self.output_folder_name + "action.pdf")
+        if save: save_figure(fig, self.output_folder_name + "action.pdf")
         if show: plt.show()
         if savetxt:
             output_array = np.vstack((Trange * self.pot.conversionFactor,
@@ -491,7 +492,7 @@ class TLPlots():
         ax.set_title(self.plot_description + f": Potential at {T_str}" + r"$\,\mathrm{GeV}$")
         add_TL_logo(loc="upper left", ax=ax)
         fig.tight_layout() 
-        if save: fig.savefig(self.output_folder_name + "potential.pdf")
+        if save: save_figure(fig, self.output_folder_name + "potential.pdf")
         if show: plt.show()
         
     def plotPercolation(
@@ -634,7 +635,7 @@ class TLPlots():
                     if show:
                         plt.show()
                     else:
-                        fig.savefig(self.output_folder_name + "percolation_" + str(i) + ".pdf")
+                        save_figure(fig, self.output_folder_name + "percolation_" + str(i) + ".pdf")
             except Exception as e:
                 print("Error in transition "+str(i)+":", e)
                 print("Skipping this transition.")
@@ -662,7 +663,7 @@ class TLPlots():
         axes[-1].set_xlabel(r"Bubble radius / $\mathrm{GeV}^{-1}$")
         add_TL_logo(loc="lower right", magnification=2, ax=axes[-1])
         fig.tight_layout()
-        fig.savefig(self.output_folder_name + "profile.pdf")
+        save_figure(fig, self.output_folder_name + "profile.pdf")
 
     def plotProfileV(self, phi1 : int, phi2 : int):
         """Show the potential along the tunnelling path between two field values.
@@ -785,7 +786,7 @@ class TLPlots():
             axes[idx].set_ylim(phi_ranges_GeV[2], phi_ranges_GeV[3])
         add_TL_logo(loc="lower right", magnification=1, ax=axes[-1])
         fig.tight_layout()
-        fig.savefig(self.output_folder_name + "profileV.pdf")
+        save_figure(fig, self.output_folder_name + "profileV.pdf")
 
     def plotPhases(self, Tmin_GeV: float = np.nan, Tmax_GeV: float = np.nan,
                    include_transitions: bool = True, save: bool = True,
@@ -940,7 +941,7 @@ class TLPlots():
         fig.tight_layout()
 
         if save_path:
-            fig.savefig(save_path)
+            save_figure(fig, save_path)
         if show:
             plt.show()
         plt.close(fig)
@@ -1083,7 +1084,7 @@ class TLPlots():
         axes[1].set_xlim(Tmin * CF, Tmax * CF)
         axes[1].set_xlabel(R"$T$ / $\mathrm{GeV}$")
         fig.tight_layout()
-        fig.savefig(self.output_folder_name + "dofs.pdf")
+        save_figure(fig, self.output_folder_name + "dofs.pdf")
 
     def plotEnergyDensity(self, Tmin_GeV : float =np.nan, Tmax_GeV : float =np.nan,
                           show_plot=False):
@@ -1135,7 +1136,7 @@ class TLPlots():
         if show_plot:
             plt.show()
         else:
-            fig.savefig(self.output_folder_name + "rho.pdf")
+            save_figure(fig, self.output_folder_name + "rho.pdf")
 
 def plotSensitivities(gw, showplot : bool =False, call_from_spectrum=False, nfreq : int =5,
                       fig=None, ax=None):
@@ -1156,6 +1157,8 @@ def plotSensitivities(gw, showplot : bool =False, call_from_spectrum=False, nfre
     """
     if ax == None:
         fig, ax = plt.subplots(figsize=(6.4, 3.5))
+    elif fig is None:
+        fig = ax.figure
     transparency = 1
     
     for det_name in gw.det:
@@ -1200,8 +1203,7 @@ def plotSensitivities(gw, showplot : bool =False, call_from_spectrum=False, nfre
                 np.log10(gw.det[det_name]["f_PLI"]),
                 np.log10(gw.det[det_name]["PLI"]),
                 0,
-                alpha=0,
-                color="none",
+                facecolor="none",
                 hatch="\\\\",
                 edgecolor=gw.det[det_name]["color"],
                 linewidth=0.0,
@@ -1264,9 +1266,7 @@ def plotSensitivities(gw, showplot : bool =False, call_from_spectrum=False, nfre
         if showplot:
             plt.show()
         else:
-            from pathlib import Path
-            Path(gw.foldername).mkdir(parents=True, exist_ok=True)
-            plt.savefig(gw.foldername+"GW_sensitivities.pdf")
+            save_figure(fig, gw.foldername + "GW_sensitivities.pdf")
         plt.close(fig)
     else:
         return fig, ax
@@ -1319,8 +1319,7 @@ def plotSensitivitiesPTA(gw, showplot : bool = False, call_from_spectrum : bool 
                 np.log10(gw.det[det_name]["f_PLI"]),
                 np.log10(gw.det[det_name]["PLI"]),
                 0,
-                alpha=0,
-                color="none",
+                facecolor="none",
                 hatch="\\\\",
                 edgecolor=gw.det[det_name]["color"],
                 linewidth=0.0,
@@ -1382,9 +1381,7 @@ def plotSensitivitiesPTA(gw, showplot : bool = False, call_from_spectrum : bool 
         if showplot:
             plt.show()
         else:
-            from pathlib import Path
-            Path(gw.foldername).mkdir(parents=True, exist_ok=True)
-            plt.savefig(gw.foldername+"GW_sensitivities.pdf")
+            save_figure(fig, gw.foldername + "GW_sensitivities.pdf")
         plt.close(fig)
     else:
         return fig, ax
@@ -1415,9 +1412,7 @@ def plotSpectrum(gw, showplot : bool=True):
     if showplot:
         plt.show()
     else:
-        from pathlib import Path
-        Path(gw.foldername).mkdir(parents=True, exist_ok=True)
-        plt.savefig(gw.foldername+"GW_spectrum.pdf")
+        save_figure(fig, gw.foldername + "GW_spectrum.pdf")
     plt.close(fig)
 
 
@@ -1502,6 +1497,8 @@ def plotGWSpectrum(gwparams_dict: dict, showplot: bool=False, saveplot: bool=Tru
         figwasnone = True
     if ax == None:
         fig, ax = plotSensitivities(gw, showplot=False, call_from_spectrum=True, fig=fig, ax=ax)
+    elif fig is None:
+        fig = ax.figure
     frequencies_Hz = np.logspace(-10, 4, 1000)  # Hz
     sourcecolors = [DESYcyan, DESYorange, DESYmagenta]
     with np.errstate(divide='ignore'):
@@ -1519,13 +1516,10 @@ def plotGWSpectrum(gwparams_dict: dict, showplot: bool=False, saveplot: bool=Tru
         plt.show()
         plt.close(fig)
     elif saveplot:
-        from pathlib import Path
-        Path(foldername).mkdir(parents=True, exist_ok=True)
-        if filename != "":
-            plt.savefig(foldername+filename)
-        else:
-            plt.savefig(foldername+"GW_spectrum.pdf")
-        plt.close(fig)
+        try:
+            save_figure(fig, foldername + (filename or "GW_spectrum.pdf"))
+        finally:
+            plt.close(fig)
     else:
         return fig, ax
 
@@ -1553,12 +1547,7 @@ def plotSpectrum2PTA(gwparams_dict : dict, showplot : bool=True,
     if showplot:
         plt.show()
     else:
-        from pathlib import Path
-        Path(foldername).mkdir(parents=True, exist_ok=True)
-        if filename != "":
-            plt.savefig(foldername+filename)
-        else:
-            plt.savefig(foldername+"GW_spectrum_PTA.pdf")
+        save_figure(fig, foldername + (filename or "GW_spectrum_PTA.pdf"))
     plt.close(fig)
 
 def plot2d(pot : generic_potential, box : tuple, ax : Optional[plt.Axes] = None,

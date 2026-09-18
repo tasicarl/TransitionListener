@@ -65,6 +65,7 @@ WARNING_COLUMN_ORDER = [
     "WARNING:betaH_very_small",
     "WARNING:betaH_mismatch",
     "WARNING:betaH_nonfinite",
+    "WARNING:betaH_S3_fit_unstable",
     "WARNING:nucleationRate_nonexponential",
     "WARNING:not_T0_global_min",
     "WARNING:false_vacuum_not_shrinking",
