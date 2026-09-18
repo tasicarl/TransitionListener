@@ -663,7 +663,10 @@ class TransitionObservables:
         # decoupled bath was not reheated and is still at Tperc.
         if "g_eff_tot_reh" in ctx.derived_param_names or "h_eff_tot_reh" in ctx.derived_param_names:
             if verbose:
-                print("Calculating g_eff_tot_reh and h_eff_tot_reh...")
+                if "g_eff_tot_reh" in ctx.derived_param_names:
+                    print("Calculating g_eff_tot_reh...")
+                if "h_eff_tot_reh" in ctx.derived_param_names:
+                    print("Calculating h_eff_tot_reh...")
             Treh_DS = derived.get("Treh", None)
             Treh_DS = float(Treh_DS) if Treh_DS is not None and np.isfinite(Treh_DS) else percolation.Tperc
             T_field = min(max(Treh_DS, float(ctx.phase_broken.Tmin)), float(ctx.phase_broken.Tmax))
@@ -945,8 +948,10 @@ class TransitionObservables:
                                                     rtol=1e-4, nAction=50):
         """Calculate the GW observables after the phase tracing and the
         computation of the nucleation temperature have been performed.
-        This function assumes kinetic equilibrium between the dark sector and
-        the SM.
+        Radiation in ``pot.kin_coupled_*`` is in thermal equilibrium with the
+        fields of the potential and reheated with them; radiation in
+        ``pot.kin_decoupled_*`` is not reheated and keeps the temperature of the
+        false vacuum (see "Radiation baths" in the usage documentation).
 
         Parameters
         ----------
