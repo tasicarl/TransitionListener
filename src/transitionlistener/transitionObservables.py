@@ -408,6 +408,7 @@ class TransitionObservables:
             "WARNING:betaH_very_small": False,
             "WARNING:betaH_mismatch": False,
             "WARNING:betaH_nonfinite": False,
+            "WARNING:betaH_S3_fit_unstable": False,
             "WARNING:nucleationRate_nonexponential": False,
             "WARNING:spline_tnuc_unavailable": False,
             "WARNING:spline_tnuc_not_reached": False,
@@ -949,6 +950,7 @@ class TransitionObservables:
                     verbose=verbose,
                 )
             else:
+                betaH_diag: dict = {}
                 derived["betaH_S3"] = calc_betaH_S3(
                     percolation.Tperc,
                     percolation.Sint,
@@ -957,7 +959,20 @@ class TransitionObservables:
                     ctx.phase_symmetric,
                     ctx.phase_broken,
                     verbose,
+                    diagnostics=betaH_diag,
                 )
+                if betaH_diag.get("fit_unstable", False):
+                    derived["WARNING:betaH_S3_fit_unstable"] = True
+                    if verbose:
+                        msg = (
+                            "The fitted action derivative for betaH_S3 depends on the number of "
+                            f"samples: {betaH_diag.get('betaH_fit'):.6g} with "
+                            f"{betaH_diag.get('n_fit')} samples against "
+                            f"{betaH_diag.get('betaH_check'):.6g} with fewer "
+                            f"(relative difference {betaH_diag.get('check_rel_diff'):.3g}). "
+                            "S3/T may have structure on the scale of the support spacing."
+                        )
+                        console.print(f"[bold yellow]WARNING:[/bold yellow] {msg}")
             if np.isfinite(derived.get("betaH_S3", np.nan)):
                 derived["betaH_S3"] *= beta_time_factor
 

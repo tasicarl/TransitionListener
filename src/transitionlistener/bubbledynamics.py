@@ -22,7 +22,6 @@ from scipy import integrate
 
 from transitionlistener import thermodynamics as td
 from transitionlistener import constants as cn
-from transitionlistener.helper_functions import derivative
 from transitionlistener import errors
 from transitionlistener.pathDeformation import bounceAction
 from transitionlistener.finiteT import Jb_spline as Jb
@@ -796,6 +795,11 @@ def _log_bag_gamma_source_array(
     return result
 
 
+# Value of the percolation integral I at which the ODE sweep stops: the false-vacuum
+# fraction exp(-I) is then 2e-22, far below anything an observable can resolve.
+_PERC_INTEGRAL_STOP = 50.0
+
+
 def percIntegralODE(
     T: np.ndarray,
     H: np.ndarray,
@@ -978,7 +982,21 @@ def percIntegralODE(
             return (4.0 * np.pi / 3.0) * vw**3 * y[3] - float(i_target)
 
         _reaches_target.terminal = False
+        _reaches_target.direction = 0.0
         events.append(_reaches_target)
+
+    # Stop once the false vacuum is gone for all practical purposes. Nothing
+    # colder can change Tperc, Tf, Treh or R*, and the grid can extend far below
+    # completion into regions where the traced false vacuum is no longer a
+    # sensible equilibrium (its sound speed passes through zero, the scale
+    # factor blows up by e^700), which used to make the integrator fail on
+    # an otherwise healthy transition (2HDM benchmark, lambda3 = 5.7175).
+    def _false_vacuum_gone(u, y):
+        return (4.0 * np.pi / 3.0) * vw**3 * y[3] - _PERC_INTEGRAL_STOP
+
+    _false_vacuum_gone.terminal = True
+    _false_vacuum_gone.direction = 1.0
+    events.append(_false_vacuum_gone)
 
     sol = integrate.solve_ivp(
         rhs,
@@ -989,9 +1007,9 @@ def percIntegralODE(
         rtol=1e-10,
         atol=1e-300,
         dense_output=False,
-        events=events or None,
+        events=events,
     )
-    if sol.status != 0:
+    if sol.status == -1:
         raise errors.PercolationError(
             "percIntegralODE: the percolation integral solver could not reach "
             "the cold end of the temperature grid. The action S_3(T) is most "
@@ -1005,7 +1023,12 @@ def percIntegralODE(
             f"Underlying solver message: {sol.message}"
         )
 
-    J3 = sol.y[3]  # J3 at each T_i
+    J3 = sol.y[3]  # J3 at each T_i reached before a terminal event
+    if J3.size < u_eval.size:
+        # Stopped at _PERC_INTEGRAL_STOP: the colder points keep that value, so
+        # the true-vacuum fraction there is 1 to within exp(-_PERC_INTEGRAL_STOP).
+        j3_stop = float(sol.y_events[-1][0][3]) if len(sol.y_events[-1]) else float(J3[-1])
+        J3 = np.concatenate([J3, np.full(u_eval.size - J3.size, max(j3_stop, float(J3[-1]) if J3.size else 0.0))])
     I_trimmed = (4.0 * np.pi / 3.0) * vw**3 * J3
     # Restore trimmed hot-end points with I = 0 (A ≈ 0 there).
     if n_trim > 0:
@@ -2164,15 +2187,53 @@ def estimate_spline_tnuc_from_rate_history(
 
 
 
-def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phase_sym, phase_bro, verbose=False) -> float:
+def _fit_action_slope(T_samples, S_samples, T: float, n_points: int) -> float:
+    """Return T d(S3/T)/dT at ``T`` from a least-squares quadratic in S3/T.
+
+    The quadratic is fitted to the ``n_points`` samples nearest to ``T`` in the
+    variable ``T - T_ref``, so that the slope at ``T`` is its linear coefficient.
+    """
+    order = np.argsort(np.abs(T_samples - T))[:n_points]
+    x = T_samples[order] - T
+    y = S_samples[order] / T_samples[order]
+    coeffs = np.polyfit(x, y, 2)
+    return float(T * coeffs[1])
+
+
+def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phase_sym, phase_bro, verbose=False,
+                  diagnostics: dict | None = None) -> float:
     """Calculate the phase transition speed from the action derivative.
+
+    beta/H = T d(S3/T)/dT at ``T``, estimated by a local least-squares quadratic
+    through the action samples of the percolation support rather than from the
+    slope of an interpolating spline. The adaptive support places samples as
+    close as 1e-6 T apart; an interpolant forced exactly through them converts
+    an irregular 1e-2 error in S3/T (path-deformation noise) into errors of
+    hundreds in beta/H, while a fit over the nearest samples averages it out.
+
+    The sample selection is controlled by ``percolationConf``:
+
+    * ``betaH_S3_fit_points`` nearest samples are used;
+    * at least ``betaH_S3_fit_min_per_side`` of them must lie on each side of
+      ``T`` and none further than ``betaH_S3_fit_max_rel_span`` in |T'/T - 1|,
+      otherwise five new actions are computed at T (1 + k step), k = -2..2,
+      with step ``betaH_S3_fallback_rel_step``, and the same fit is applied;
+    * the fit is repeated with the ``betaH_S3_fit_check_points`` nearest samples,
+      and a relative difference above ``betaH_S3_fit_rel_tol``, measured against
+      the larger of the two, is reported through ``diagnostics["fit_unstable"]``.
+
+    Both sample counts are clamped: a quadratic needs three samples, and the
+    check fit uses at most as many as the fit itself, in which case it is skipped.
+
+    See the CAUTION note in ``PercolationConf``: the defaults were validated on
+    the 2HDM BSMPT benchmark only.
 
     Parameters
     ----------
     T : float
         The temperature at which to evaluate beta/H
     Sint: interpolate.interp1d
-        Interpolation function of the action
+        Interpolation of the action; its nodes ``Sint.x`` are the support samples
     outdict : dict
         Dictionary storing the action evaluations, key is `T`
     pot : generic_potential
@@ -2180,13 +2241,26 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
     phase_sym : PhaseInfo
         Information about the high temperature (symmetric) phase
     phase_bro : PhaseInfo
-        Information about the low temperature (broken) phaes
+        Information about the low temperature (broken) phase
+    diagnostics : dict, optional
+        Filled with the samples used, the fallback flag, the check-fit value
+        and ``fit_unstable``.
 
     Returns
     ----------
     float :
         The transition speed beta/H."""
-    dT = T * 1e-5
+    conf = pot.config.percolationConf
+    # A quadratic needs three samples, and the check fit has to be the smaller one;
+    # runtime overrides enforce that, a hand-edited config does not.
+    n_fit = max(int(getattr(conf, "betaH_S3_fit_points", 11)), 3)
+    n_check = min(max(int(getattr(conf, "betaH_S3_fit_check_points", 7)), 3), n_fit)
+    rel_tol = float(getattr(conf, "betaH_S3_fit_rel_tol", 0.03))
+    min_side = int(getattr(conf, "betaH_S3_fit_min_per_side", 2))
+    max_span = float(getattr(conf, "betaH_S3_fit_max_rel_span", 0.02))
+    fallback_step = float(getattr(conf, "betaH_S3_fallback_rel_step", 2e-3))
+    diag = diagnostics if diagnostics is not None else {}
+
     tmin = max(float(phase_sym.Tmin), float(phase_bro.Tmin))
     tmax = min(float(phase_sym.Tmax), float(phase_bro.Tmax))
     if tmin >= tmax or T <= tmin or T >= tmax:
@@ -2196,37 +2270,53 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
                 f"T={T:.8g}, overlap=[{tmin:.8g}, {tmax:.8g}]"
             )
         return np.nan
-    # Check if the derivative can actually be calculated
-    # in the range of interest. If not, make the points
-    # support for the derivative closer to each other.
-    if T - 2 * dT < tmin or T + 2 * dT > tmax:
-        dT = np.minimum((T - tmin) / 100, (tmax - T) / 100)
 
-    if len(Sint.x) >= 10 and Sint.x[0] < T - 2 * dT and Sint.x[-1] > T + 2 * dT:
-        dSdT = derivative(Sint, T, dT)
-        betaH = dSdT - Sint(T) / T
-    else:
-        # not enough evaluations of S for accuracy
-        Tr = []
-        Sr = []
-        for i in range(-2, 3, 1):
-            S = calcAction(pot, T - dT * i, phase_sym, phase_bro, outdict)
-            Tr.append(T - dT * i)
-            Sr.append(S)
-        T_ar = np.array(Tr[::-1])  # We need increasing T for the spline interpolation
-        S_ar = np.array(Sr[::-1])
-        if np.all(np.isinf(S_ar)):
+    T_samples = np.asarray(getattr(Sint, "x", []), dtype=float)
+    S_samples = np.asarray(Sint(T_samples), dtype=float).reshape(-1) if T_samples.size else np.array([])
+    usable = np.isfinite(T_samples) & np.isfinite(S_samples)
+    T_samples, S_samples = T_samples[usable], S_samples[usable]
+
+    use_support = T_samples.size >= n_fit
+    if use_support:
+        nearest = T_samples[np.argsort(np.abs(T_samples - T))[:n_fit]]
+        below = int(np.sum(nearest < T))
+        above = int(np.sum(nearest > T))
+        span = float(np.max(np.abs(nearest / T - 1.0)))
+        use_support = below >= min_side and above >= min_side and span <= max_span
+        diag.update(n_below=below, n_above=above, max_rel_offset=span)
+
+    if not use_support:
+        # The support does not bracket T densely enough: compute a small symmetric
+        # set of actions of our own, kept inside the phase overlap.
+        step = fallback_step * T
+        step = min(step, 0.2 * (T - tmin), 0.2 * (tmax - T))
+        T_samples = T + step * np.arange(-2, 3)
+        S_samples = np.array([calcAction(pot, float(t), phase_sym, phase_bro, outdict) for t in T_samples])
+        if np.all(np.isinf(S_samples)):
             if verbose:
-                print("WARNING: All elements of S_ar are infinite. Unable to proceed with calculation on beta/H.")
-                print(
-                    "Most likely the transition is so weak that the action is infinite. "
-                    "Correspondingly, beta/H is also set to inf."
-                )
+                print("WARNING: All actions around T are infinite; beta/H is set to inf.")
             return np.inf
-        tckS = interpolate.splrep(T_ar, S_ar, s=0)
-        S = interpolate.splev(T, tckS, der=0)
-        dSdT = interpolate.splev(T, tckS, der=1)
-        betaH = dSdT - S / T
+        finite = np.isfinite(S_samples)
+        T_samples, S_samples = T_samples[finite], S_samples[finite]
+        if T_samples.size < 3:
+            return np.nan
+        n_fit = n_check = int(T_samples.size)
+        diag.update(fallback=True)
+        if verbose:
+            print("betaH_S3: support too sparse around T, used five fresh actions for the fit.")
+    else:
+        diag.update(fallback=False)
+
+    betaH = _fit_action_slope(T_samples, S_samples, T, n_fit)
+    diag.update(betaH_fit=betaH, n_fit=int(min(n_fit, T_samples.size)))
+    if n_check < n_fit and T_samples.size >= max(n_check, 3):
+        check = _fit_action_slope(T_samples, S_samples, T, n_check)
+        # Symmetric scale: near a zero of beta/H the two fits must not look
+        # inconsistent only because the larger one is in the denominator.
+        rel = abs(check - betaH) / max(abs(betaH), abs(check), 1e-300)
+        diag.update(betaH_check=check, check_rel_diff=rel, fit_unstable=bool(rel > rel_tol))
+    else:
+        diag.update(fit_unstable=False)
     return betaH
 
 

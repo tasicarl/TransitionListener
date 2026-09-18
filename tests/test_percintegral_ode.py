@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from transitionlistener.bubbledynamics import (
+    _PERC_INTEGRAL_STOP,
     Gamma,
     HubbleParameter,
     integrate_broken_temperature,
@@ -122,6 +123,11 @@ class TestPercIntegralODE:
         # Build high-res reference
         T_hr, H_hr, S_hr = _synthetic_grid(n=2000)
         I_truth = percIntegral(T_hr, H_hr, S_hr, vw=1.0)
+        if I_truth >= _PERC_INTEGRAL_STOP:
+            # The sweep stops once the false vacuum is gone (exp(-I) < exp(-stop));
+            # colder points hold the stop value instead of the exact integral.
+            assert I_ode[-1] == pytest.approx(_PERC_INTEGRAL_STOP, rel=1e-6)
+            return
         err_ode = abs(I_ode[-1] - I_truth) / I_truth
         err_trap = abs(I_ref - I_truth) / I_truth
         assert err_ode < 0.001, f"ODE error {err_ode:.4e} > 0.1%"
@@ -158,7 +164,12 @@ class TestPercIntegralODE:
         interp_hr = PchipInterpolator(T_hr[::-1], I_hr_all[::-1], extrapolate=True)
         I_ref_at_coarse = interp_hr(T[::-1])[::-1]
 
-        mask = I_ref_at_coarse > 1e-10
+        # Exact below the stop value (with margin for the coarse-grid reference);
+        # at and beyond it the sweep holds the stop value.
+        beyond = I_ref_at_coarse > 1.05 * _PERC_INTEGRAL_STOP
+        if np.any(beyond):
+            assert np.all(I_ode[beyond] >= _PERC_INTEGRAL_STOP * (1.0 - 1e-6))
+        mask = (I_ref_at_coarse > 1e-10) & (I_ref_at_coarse < 0.95 * _PERC_INTEGRAL_STOP)
         if np.any(mask):
             rel_err = np.abs(I_ode[mask] - I_ref_at_coarse[mask]) / I_ref_at_coarse[mask]
             assert np.max(rel_err) < 0.005, (
@@ -171,7 +182,8 @@ class TestPercIntegralODE:
         T, H, S = _synthetic_grid(n=40)
         I_1 = percIntegralODE(T, H, S, vw=1.0)
         I_half = percIntegralODE(T, H, S, vw=0.5)
-        mask = I_1 > 1e-30
+        # The scaling holds wherever neither sweep has reached its stop value.
+        mask = (I_1 > 1e-30) & (I_1 < 0.95 * _PERC_INTEGRAL_STOP)
         if np.any(mask):
             np.testing.assert_allclose(
                 I_half[mask], I_1[mask] * 0.5**3, rtol=1e-10,
