@@ -75,6 +75,15 @@ class RateStepGridTests(unittest.TestCase):
         self.assertEqual(grid.size, 5)
         self.assertTrue(np.all((grid < 9.0) & (grid > 8.0)))
 
+    def test_a_sample_without_a_rate_separates_its_neighbours(self):
+        # The rate of the middle support point is unusable, so the outer two are not
+        # neighbours and the 100 decades between them are not one interval.
+        temps = np.array([10.0, 9.0, 8.0])
+        self.assertIsNone(self.rate_step_grid([0.0, np.nan, 100.0], temperatures=temps))
+        # With the same samples as true neighbours the interval is refined.
+        grid = self.rate_step_grid([0.0, 100.0], temperatures=np.array([10.0, 8.0]))
+        self.assertIsNotNone(grid)
+
     def test_no_points_without_a_threshold(self):
         self.assertIsNone(self.rate_step_grid([0.0, 100.0], threshold=0.0))
 

@@ -797,15 +797,19 @@ def _build_rate_step_grid(
         return None
     temps = np.asarray(temperatures, dtype=float)
     log10_rate = _log10_gamma_h4_array(temps, actions, hubble)
-    finite = np.isfinite(temps) & np.isfinite(log10_rate)
-    if int(np.count_nonzero(finite)) < 2:
+    on_axis = np.isfinite(temps)
+    if int(np.count_nonzero(on_axis & np.isfinite(log10_rate))) < 2:
         return None
-    temps = temps[finite]
-    log10_rate = log10_rate[finite]
+    temps = temps[on_axis]
+    log10_rate = log10_rate[on_axis]
     order = np.argsort(-temps)
     temps = temps[order]
     log10_rate = log10_rate[order]
-    steps = np.abs(np.diff(log10_rate))
+    # Only compare neighbouring support points: a sample without a rate, which the
+    # percolation integrator reads as no rate at all, separates its neighbours rather
+    # than bringing them together.
+    neighbours = np.isfinite(log10_rate[:-1]) & np.isfinite(log10_rate[1:])
+    steps = np.where(neighbours, np.abs(np.diff(log10_rate)), np.nan)
     offending = np.flatnonzero(np.isfinite(steps) & (steps > threshold))
     if offending.size == 0:
         return None
