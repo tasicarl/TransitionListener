@@ -10,6 +10,7 @@ import numpy as np
 
 from transitionlistener import bubbledynamics as bd
 from transitionlistener import percolation_adaptivestepsize as pas
+from transitionlistener import percolation_fixedstepsize as pfs
 from transitionlistener import thermodynamics as td
 
 DELTA_V = 1.0   # vacuum energy released by the transition
@@ -81,6 +82,49 @@ class Step3ProfileTests(unittest.TestCase):
         first = int(np.flatnonzero(P > 1e-12)[0])
         expected = (TSYM[first] ** 4 + DELTA_V / A_PT) ** 0.25
         self.assertAlmostEqual(state.Tb[first] / expected, 1.0, places=10)
+
+
+class FixedStepProfileTests(unittest.TestCase):
+    """The same synthetic transition in the fixed-step refinement reached through calcPercAndEvolve."""
+
+    def refine(self, b_decoupled):
+        sym = types.SimpleNamespace(name="sym")
+        bro = types.SimpleNamespace(name="bro")
+
+        def energy_density(pot, phase, T, include_decoupled=True):
+            e = (DELTA_V if phase is sym else 0.0) + A_PT * T**4
+            return e + (b_decoupled * T**4 if include_decoupled else 0.0)
+
+        TSYM = np.linspace(1.0, 0.8, 40)
+        P = np.clip((1.0 - TSYM) / 0.15, 0.0, 1.0) ** 2 * 0.999
+        Tperc = float(np.interp(0.3, np.sort(P), TSYM[np.argsort(P)]))
+        n = TSYM.size
+        state = bd.PercolationState(TSYM=TSYM.copy(), Sr=np.zeros(n), Hr=np.zeros(n), Pr=P.copy(), Tb=np.zeros(n))
+        grid = bd.PercolationGrid(TSYM=TSYM, Tstart=1.0, TpercApprox=Tperc, tmin=0.5, tmax=1.5, TBROmin=0.5, TBROmax=5.0)
+        settings = types.SimpleNamespace(f_start=1e-3, f_final=0.99, f_perc=0.3, max_boundary_n=2, maxit=10,
+                                         rel_increment=0.1)
+        with mock.patch.object(bd, "energyDensity", energy_density), \
+                mock.patch.object(pfs, "energyDensity", energy_density), \
+                mock.patch.object(pfs, "calcAction", lambda *args: 100.0), \
+                mock.patch.object(pfs, "percIntegral", lambda TS, H, S, vw=1.0: -np.log(1.0 - P[len(TS) - 1])), \
+                mock.patch.object(bd, "h_eff_DS", lambda T, pot, phase: H_DS), \
+                mock.patch.object(bd, "h_eff_coupled_radiation", lambda T, pot: 0.0, create=True):
+            _, state = pfs._refine_percolation_temperature(state, grid, settings, {}, types.SimpleNamespace(conversionFactor=1.0),
+                                                           sym, bro, 1.0, 1.0, Tperc, 1e-6, False)
+        return TSYM, P, state
+
+    def test_the_bath_does_not_change_the_temperature_inside_the_bubbles(self):
+        _, P, alone = self.refine(0.0)
+        _, _, with_bath = self.refine(50.0)
+        np.testing.assert_allclose(with_bath.Tb, alone.Tb, rtol=1e-12, equal_nan=True)
+
+    def test_the_bath_enters_the_hubble_rate_at_the_background_temperature(self):
+        b = 50.0
+        TSYM, P, state = self.refine(b)
+        active = np.isfinite(state.Sr) & (np.arange(TSYM.size) > 0)
+        e_sym = DELTA_V + A_PT * TSYM**4
+        rho = P * A_PT * state.Tb**4 + (1.0 - P) * e_sym + b * TSYM**4
+        np.testing.assert_allclose(state.Hr[active], bd.HubbleParameter(rho, 1.0)[active], rtol=1e-12)
 
 
 class ReheatingDegreesOfFreedomTests(unittest.TestCase):

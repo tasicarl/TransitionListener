@@ -265,6 +265,11 @@ def _refine_percolation_temperature(
         for i, T in enumerate(TSYM):
             if not is_Pr_converged:
                 eSYM = energyDensity(pot, phase_symmetric, T)
+                # Only the transitioning sector and the radiation coupled to it are
+                # reheated inside the bubbles; a decoupled bath keeps the background
+                # temperature T and enters the Hubble rate as it is.
+                eSYM_PT = eSYM
+                e_decoupled = 0.0
                 if i == 0: # High temperature bin
                     # Pprev must be zero here
                     state.Hr[i] = HubbleParameter(eSYM, CF)
@@ -312,11 +317,13 @@ def _refine_percolation_temperature(
                             entropy_criterion_SYM_BRO, TBROmin, TBROmax,
                             args=(state.Tb[i - 1], T, TSYM[i - 1], phase_broken, pot)
                         )
-                    eBRO = energyDensity(pot, phase_broken, TBRO)
+                    eSYM_PT = energyDensity(pot, phase_symmetric, T, include_decoupled=False)
+                    e_decoupled = eSYM - eSYM_PT
+                    eBRO = energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
                     P = Pprev[i]
                     dP = Pprev[i] - Pprev[i - 1]
-                    energy_release = eBRO * (P - dP) + dP * eSYM
+                    energy_release = eBRO * (P - dP) + dP * eSYM_PT
                     relative_energy_release = energy_release / eBRO
                     if relative_energy_release < 1e-50:
                         # If the energy release between two steps is too small, we don't need to
@@ -335,7 +342,7 @@ def _refine_percolation_temperature(
                                 energy_criterion_BRO,
                                 TBROmin,
                                 TBROmax,
-                                args=(eSYM, eBRO, Pprev[i], Pprev[i] - Pprev[i - 1], phase_broken, pot),
+                                args=(eSYM_PT, eBRO, Pprev[i], Pprev[i] - Pprev[i - 1], phase_broken, pot),
                             )
                             state.Tb[i] = TBRO
                         except ValueError as err:
@@ -362,7 +369,7 @@ def _refine_percolation_temperature(
                                 f"{err}. Please check this input parameters again by hand."
                             )
 
-                        eBRO = energyDensity(pot, phase_broken, TBRO)
+                        eBRO = energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
                     if state.Tb[i] < TSYM[i]:
                         raise ValueError(
@@ -372,7 +379,7 @@ def _refine_percolation_temperature(
                         )
 
                 state.Sr[i] = calcAction(pot, T, phase_symmetric, phase_broken, outdict)
-                state.Hr[i] = HubbleParameter(Pprev[i] * eBRO + (1 - Pprev[i]) * eSYM, CF)
+                state.Hr[i] = HubbleParameter(Pprev[i] * eBRO + (1 - Pprev[i]) * eSYM_PT + e_decoupled, CF)
                 state.Pr[i] = 1 - np.exp(
                     -percIntegral(
                         TSYM[0 : i + 1],
