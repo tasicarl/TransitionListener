@@ -48,7 +48,7 @@ class FOPTspectrum():
             self.D = gwparams_dict.get("D", 1.0)  # Default to 1.0 if not provided
             self.alpha_hyd = gwparams_dict.get("alpha_hyd", self.alpha)  # Default to alpha if not provided
             self.g0 = gwparams_dict.get("g0", 2)  # Default to 2 if not provided
-            self.h0 = gwparams_dict.get("h0", 3.9309363)  # Default to h0 from LISA update paper
+            self.h0 = gwparams_dict.get("h0", c.h_eff_today)
             self.betaH = gwparams_dict.get(
                 "betaH",
                 (8 * np.pi / 0.28957) ** (1 / 3) / self.RH * max(self.v_wall, self.c_s),
@@ -440,7 +440,7 @@ class FOPTspectrum():
         '''
 
         self.sources = ["Bubble collisions", "Sound waves", "Turbulence"]
-        self.h0 = 3.9309363
+        self.h0 = c.h_eff_today
         self.kappa_sw = self.alphaDS / (0.73 + 0.083 * np.sqrt(self.alphaDS) + self.alphaDS)
 
         # Kinetic energy fractions. KswDS is used for the computation of the sound wave source lifetime

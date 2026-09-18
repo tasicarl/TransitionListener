@@ -686,15 +686,15 @@ def e_geffDS(mSq_bosons, mSq_fermions, T):
     return geff
 
 
-def h_eff_radiation(e_geff, p_geff, T: float, CF: float) -> float:
+def h_eff_radiation(e_geff_fn, p_geff_fn, T: float, CF: float) -> float:
     """Entropy degrees of freedom of a radiation bath given by its energy and pressure degrees of freedom.
 
     The Standard Model has its own entropy table; for any other bath ``s = (e + p)/T``
     gives ``h = (3 g_e + g_p)/4``.
     """
-    if e_geff is e_geffSM and p_geff is p_geffSM:
+    if e_geff_fn is e_geffSM and p_geff_fn is p_geffSM:
         return s_geffSM(T, CF)
-    return (3.0 * e_geff(T, CF) + p_geff(T, CF)) / 4.0
+    return (3.0 * e_geff_fn(T, CF) + p_geff_fn(T, CF)) / 4.0
 
 
 def sm_bath(pot) -> str:
@@ -719,14 +719,17 @@ def reheating_geff(pot, X_broken, T_DS: float, T_dec: float) -> tuple[float, flo
     them; and the decoupled bath, still at ``T_dec``. Each enters with its temperature ratio to
     the bath that holds the Standard Model, ``g = sum g_i (T_i/T_SM)^4`` and
     ``h = sum h_i (T_i/T_SM)^3`` (arXiv:2109.06208, 2311.06346). Returns ``(g, h, T_SM)``.
+
+    All fields of the potential count, including those flagged ``is_SM``, as in
+    ``radiationEnergyDensity``: the Standard Model tables are capped below the lightest
+    Standard Model field of the potential (``set_sm_temperature_cap``), so they do not
+    contain it.
     """
     CF = pot.conversionFactor
     T_c = T_DS
     T_SM = T_dec if sm_bath(pot) == "decoupled" else T_c
-    bosons = pot.boson_massSq(X_broken, T_DS)
-    fermions = pot.fermion_massSq(X_broken)
-    bosons_DS = bosons * (~pot.mass_spectrum.is_SM_bosons)
-    fermions_DS = fermions * (~pot.mass_spectrum.is_SM_fermions)
+    bosons_DS = pot.boson_massSq(X_broken, T_DS)
+    fermions_DS = pot.fermion_massSq(X_broken)
     r_DS, r_c, r_dec = T_DS / T_SM, T_c / T_SM, T_dec / T_SM
     g = e_geffDS(bosons_DS, fermions_DS, T_DS) * r_DS**4 \
         + pot.kin_coupled_e_geff(T_c, CF) * r_c**4 \

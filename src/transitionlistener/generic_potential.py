@@ -37,7 +37,7 @@ import rich
 from transitionlistener.finiteT import Jb_spline as Jb
 from transitionlistener.finiteT import Jf_spline as Jf
 from transitionlistener import helper_functions
-from transitionlistener.thermodynamics import e_geffSM, p_geffSM, set_sm_temperature_cap
+from transitionlistener.thermodynamics import e_geffSM, p_geffSM, set_sm_temperature_cap, sm_bath
 
 from transitionlistener.bubbledynamics import approxNucleationCriterion
 
@@ -192,9 +192,20 @@ class generic_potential():
         self.checkInitialisation()
         self.generateInvGroupElements()
         self._update_sm_temperature_cap()
+        self._check_radiation_baths()
 
         if self.verbose:
             self.makePrettyDictionaryPrint(self.derived_parameters)
+
+    def _check_radiation_baths(self) -> None:
+        """Validate ``SM_bath`` and warn if both baths hold the Standard Model table."""
+        sm_bath(self)
+        if self.kin_coupled_e_geff is e_geffSM and self.kin_decoupled_e_geff is e_geffSM:
+            print(
+                "Warning: both the coupled and the decoupled radiation bath hold the Standard "
+                "Model table e_geffSM, so the Standard Model is counted twice. To decouple it, "
+                "also set kin_coupled_e_geff and kin_coupled_p_geff to zero."
+            )
 
     def init(self, *args, **dargs) -> None:
         """

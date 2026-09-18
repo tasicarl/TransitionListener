@@ -21,6 +21,7 @@ import scipy.constants as sc
 yr = sc.Julian_year  #: One Julian year in seconds (:math:`365.25` days).
 Mpl_GeV = 1.220910e19  #: Planck mass in GeV.
 Omega_gamma_h2 = 2.473e-5  #: Photon energy density today in units of :math:`h^2`.
+h_eff_today = 3.9309363  #: Entropy degrees of freedom today (Saikawa and Shirai, arXiv:1803.01038).
 T0_SM_GeV = 2.35253655e-13  #: CMB temperature :math:`T_0 = 2.725\,\\mathrm{K}` in GeV.
 GeV_Hz = 1.0 / 6.582119e-25  #: Conversion between GeV and Hz.
 H100_Hz = 100 / 3.0857e19  #: Hubble constant :math:`H_0 = 100\,\\mathrm{km/s/Mpc}` in Hz.

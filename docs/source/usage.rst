@@ -170,16 +170,19 @@ in the model's ``init``:
   potential. Together they form the transitioning sector, which is reheated
   inside the bubbles.
 - ``kin_decoupled_e_geff`` and ``kin_decoupled_p_geff`` (default: empty)
-  describe radiation that is not. It keeps the temperature of the surrounding
-  false vacuum and enters only the expansion rate and the redshift of the
-  gravitational-wave spectrum.
+  describe radiation that is not. It is not reheated inside the bubbles, keeps
+  the temperature of the surrounding false vacuum and enters the expansion rate
+  and the redshift of the gravitational-wave spectrum. With
+  ``pot.config.gwConf.coupled_hydrodynamics = True`` (the default) it also moves
+  with the fluid and enters the hydrodynamics and the strength ``alpha``.
 
 For a dark sector decoupled from the Standard Model, move ``e_geffSM`` and
-``p_geffSM`` from the coupled to the decoupled bath and set
-``pot.config.gwConf.coupled_hydrodynamics = False``, so that the Standard Model
-does not enter the hydrodynamics either. TL takes the bath whose tables are
-``e_geffSM`` as the Standard Model bath; if the tables are wrapped, set
-``self.SM_bath = "decoupled"`` (or ``"coupled"``) in the model.
+``p_geffSM`` from the coupled to the decoupled bath, set the coupled bath to
+zero, and set ``pot.config.gwConf.coupled_hydrodynamics = False``, so that the
+Standard Model does not enter the hydrodynamics either. TL takes the bath whose
+tables are ``e_geffSM`` as the Standard Model bath; if the tables are wrapped,
+set ``self.SM_bath = "decoupled"`` (or ``"coupled"``) in the model. It warns if
+both baths hold ``e_geffSM``.
 
 Both baths share the temperature before the transition, so ``Tnuc_SM_GeV`` and
 ``Tperc_SM_GeV`` apply to both. ``Treh_SM_GeV`` is the temperature of the
@@ -190,8 +193,13 @@ temperature if the Standard Model is coupled, ``Tperc`` if it is decoupled.
 coupled bath and the decoupled bath, each weighted by its temperature ratio to
 the Standard Model bath to the fourth and third power. The redshift assumes
 that the energy and entropy of the dark sector end up in the photon bath
-without entropy injection (dilution factor ``D = 1``); the evolution of the
-temperature ratio after the transition is not modelled.
+without entropy injection (dilution factor ``D = 1``). Two simplifications
+apply: the decoupled bath is evaluated at the temperature of the transitioning
+sector until the transition, although the two can drift apart where the
+degrees of freedom of either change, and the evolution of the temperature ratio
+after the transition is not modelled. For the same reason a decoupled bath is
+only consistent for the first of several transitions: after it, the bath is
+colder than the transitioning sector.
 
 
 Random and nested sampling scans

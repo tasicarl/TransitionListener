@@ -17,6 +17,7 @@ from transitionlistener import config
 from transitionlistener.transitions import TransitionInfo
 from transitionlistener.transitionObservables import _BoundedPchipInterpolator
 from . import thermodynamics as td
+from . import constants as cn
 from . import errors
 from transitionlistener.hydrodynamics import Hydrodynamics, calc_kappas
 from transitionlistener.bubbledynamics import (
@@ -665,10 +666,8 @@ class TransitionObservables:
                 print("Calculating g_eff_tot_reh and h_eff_tot_reh...")
             Treh_DS = derived.get("Treh", None)
             Treh_DS = float(Treh_DS) if Treh_DS is not None and np.isfinite(Treh_DS) else percolation.Tperc
-            try:
-                X_reh = ctx.phase_broken.valAt(Treh_DS)
-            except Exception:
-                X_reh = ctx.phase_broken.valAt(percolation.Tperc)
+            T_field = min(max(Treh_DS, float(ctx.phase_broken.Tmin)), float(ctx.phase_broken.Tmax))
+            X_reh = ctx.phase_broken.valAt(T_field)
             gefftotreh, hefftotreh, _ = td.reheating_geff(pot, X_reh, Treh_DS, percolation.Tperc)
             if "g_eff_tot_reh" in ctx.derived_param_names:
                 derived["g_eff_tot_reh"] = gefftotreh
@@ -679,7 +678,7 @@ class TransitionObservables:
             derived["g0"] = 2
 
         if "h0" in ctx.derived_param_names:
-            derived["h0"] = 3.931  # Saikawa and Shirai, arXiv:1803.01038
+            derived["h0"] = cn.h_eff_today
 
         if (
                 "betaH_S3" in ctx.derived_param_names
