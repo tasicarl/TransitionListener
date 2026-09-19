@@ -974,6 +974,27 @@ def _compute_step2_profile(
             )
 
 
+def _profile_energy_density(pot, phase_symmetric, phase_broken, TSYM, TBRO, P) -> np.ndarray:
+    """Energy density behind the step-3 Hubble rate, ``P e_bro + (1 - P) e_sym + e_dec``.
+
+    As in ``_compute_step3_profile``, only the transitioning sector is reheated to
+    ``TBRO``; a decoupled bath enters once, at the background temperature ``TSYM``.
+    """
+    from transitionlistener import bubbledynamics as bd
+
+    e_sym_total = np.asarray([bd.energyDensity(pot, phase_symmetric, float(T)) for T in TSYM], dtype=float)
+    e_sym = np.asarray(
+        [bd.energyDensity(pot, phase_symmetric, float(T), include_decoupled=False) for T in TSYM],
+        dtype=float,
+    )
+    e_bro = np.asarray(
+        [bd.energyDensity(pot, phase_broken, float(T), include_decoupled=False) for T in TBRO],
+        dtype=float,
+    )
+    P = np.asarray(P, dtype=float)
+    return P * e_bro + (1.0 - P) * e_sym + (e_sym_total - e_sym)
+
+
 def _compute_step3_profile(
     state: PercolationState,
     TSYM: np.ndarray,
@@ -1004,6 +1025,14 @@ def _compute_step3_profile(
             eSYM = bd.energyDensity(pot, phase_symmetric, T)
             state.Sr[i] = bd.calcAction(pot, T, phase_symmetric, phase_broken, outdict)
             P = float(previous_probability[i]) if np.isfinite(previous_probability[i]) else 0.0
+            # Only the transitioning sector and the radiation coupled to it are
+            # reheated inside the bubbles; a decoupled bath keeps the background
+            # temperature T and enters the Hubble rate as it is.
+            eSYM_PT = eSYM
+            e_decoupled = 0.0
+            if P > 1e-12:
+                eSYM_PT = bd.energyDensity(pot, phase_symmetric, T, include_decoupled=False)
+                e_decoupled = eSYM - eSYM_PT
 
             if P <= 1e-12:
                 state.Hr[i] = bd.HubbleParameter(eSYM, CF)
@@ -1022,8 +1051,8 @@ def _compute_step3_profile(
                         f"{err}. The phase tracing or tunneling precision may be too low."
                     )
                 state.Tb[i] = TBRO
-                eBRO = bd.energyDensity(pot, phase_broken, TBRO)
-                state.Hr[i] = bd.HubbleParameter(P * eBRO + (1.0 - P) * eSYM, CF)
+                eBRO = bd.energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
+                state.Hr[i] = bd.HubbleParameter(P * eBRO + (1.0 - P) * eSYM_PT + e_decoupled, CF)
             else:
                 P_prev = float(previous_probability[i - 1]) if np.isfinite(previous_probability[i - 1]) else 0.0
                 previous_tb = float(state.Tb[i - 1]) if np.isfinite(state.Tb[i - 1]) else np.nan
@@ -1063,10 +1092,10 @@ def _compute_step3_profile(
                             TBROmax,
                             args=(T, phase_symmetric, phase_broken, pot),
                         )
-                eBRO = bd.energyDensity(pot, phase_broken, TBRO)
+                eBRO = bd.energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
                 dP = P - P_prev
-                energy_release = eBRO * (P - dP) + dP * eSYM
+                energy_release = eBRO * (P - dP) + dP * eSYM_PT
                 if energy_release / eBRO < 1e-50:
                     state.Tb[i] = TBRO
                 else:
@@ -1075,13 +1104,13 @@ def _compute_step3_profile(
                             bd.energy_criterion_BRO,
                             TBROmin,
                             TBROmax,
-                            args=(eSYM, eBRO, P, dP, phase_broken, pot),
+                            args=(eSYM_PT, eBRO, P, dP, phase_broken, pot),
                         )
                         state.Tb[i] = TBRO
                     except ValueError:
                         state.Tb[i] = state.Tb[i - 1]
                         TBRO = state.Tb[i]
-                    eBRO = bd.energyDensity(pot, phase_broken, TBRO)
+                    eBRO = bd.energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
                 if state.Tb[i] < TSYM[i]:
                     raise ValueError(
@@ -1089,7 +1118,7 @@ def _compute_step3_profile(
                         "T_bro < T_sym. This is usually not allowed."
                     )
 
-                state.Hr[i] = bd.HubbleParameter(P * eBRO + (1.0 - P) * eSYM, CF)
+                state.Hr[i] = bd.HubbleParameter(P * eBRO + (1.0 - P) * eSYM_PT + e_decoupled, CF)
         else:
             state.Sr[i] = np.nan
             state.Hr[i] = bd.HubbleParameter(bd.energyDensity(pot, phase_symmetric, T), CF)
@@ -1401,8 +1430,9 @@ def _refine_percolation_temperature_dynamiczoomwindow(
 
         Step 3 updates H(T) from the previous Picard iterate Pprev(T).  Once the
         current iterate P(T) is known, a fully self-consistent solution should
-        satisfy rho(H) ~= P * eBRO(TBRO) + (1 - P) * eSYM(TSYM) over the region
-        where TBRO is still actively evolved. Large deviations mean that Tperc
+        satisfy rho(H) ~= P * eBRO(TBRO) + (1 - P) * eSYM(TSYM) + e_dec(TSYM) over
+        the region where TBRO is still actively evolved, with the transitioning
+        sector in eBRO and eSYM and a decoupled bath once, at TSYM. Large deviations mean that Tperc
         may already look stable while the underlying P/H/TBRO profile has not
         yet caught up.
         """
@@ -1429,18 +1459,14 @@ def _refine_percolation_temperature_dynamiczoomwindow(
         rho_from_h = 3.0 * np.asarray(state.Hr[active_mask], dtype=float) ** 2
         rho_from_h *= (cn.Mpl_GeV / CF) ** 2 / (8.0 * np.pi)
 
-        tsym_active = np.asarray(TSYM[active_mask], dtype=float)
-        tbro_active = np.asarray(state.Tb[active_mask], dtype=float)
-        e_sym = np.asarray(
-            [bd.energyDensity(pot, phase_symmetric, float(temp)) for temp in tsym_active],
-            dtype=float,
+        rho_target = _profile_energy_density(
+            pot,
+            phase_symmetric,
+            phase_broken,
+            np.asarray(TSYM[active_mask], dtype=float),
+            np.asarray(state.Tb[active_mask], dtype=float),
+            np.asarray(state.Pr[active_mask], dtype=float),
         )
-        e_bro = np.asarray(
-            [bd.energyDensity(pot, phase_broken, float(temp)) for temp in tbro_active],
-            dtype=float,
-        )
-        rho_target = np.asarray(state.Pr[active_mask], dtype=float) * e_bro
-        rho_target += (1.0 - np.asarray(state.Pr[active_mask], dtype=float)) * e_sym
         scale = np.maximum(np.maximum(np.abs(rho_target), np.abs(rho_from_h)), 1.0e-30)
         return float(np.nanmax(np.abs(rho_from_h - rho_target) / scale))
 

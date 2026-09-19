@@ -7,8 +7,72 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Output column `Treh_DS_GeV`: the reheating temperature of the
+  transitioning sector, i.e. the fields of the potential and the coupled
+  radiation bath.
+- Model attribute `SM_bath` (`"coupled"` or `"decoupled"`) that names the
+  radiation bath holding the Standard Model. If it is not set, TL takes the
+  bath whose tables are `e_geffSM`, and warns if both are. A model with
+  Standard Model fields in its potential (e.g. the 2HDM) cannot decouple the
+  Standard Model; TL raises an error when it is set up that way.
+- `constants.h_eff_today`, today's entropy degrees of freedom.
+
+### Changed
+
+- **Redshift of the gravitational-wave spectrum**: `Treh_SM_GeV` is the
+  temperature of the Standard Model bath at reheating: the reheated
+  temperature if the Standard Model is coupled to the transitioning sector,
+  `Tperc` if it is decoupled; before, it always held the reheating temperature
+  of the transitioning sector. `g_eff_tot_reh` and `h_eff_tot_reh` sum the
+  fields of the potential, the coupled bath and the decoupled bath, each at its
+  own temperature after reheating and weighted by its temperature ratio to the
+  Standard Model bath, `(T_i/T_SM)^4` and `(T_i/T_SM)^3` (arXiv:2109.06208,
+  arXiv:2311.06346), with the radiation parts taken from `kin_coupled_*` and
+  `kin_decoupled_*`. Before, they were evaluated at `Tperc` but paired with the
+  reheating temperature; with a coupled Standard Model they are now evaluated
+  at the reheating temperature (arXiv:2502.19478). The energy and entropy of a
+  decoupled dark sector are assumed to end up in the photon bath without
+  entropy injection (`D = 1`). This changes spectra and signal-to-noise ratios
+  also without a decoupled bath: by a fraction of a per cent where the degrees
+  of freedom barely change between `Tperc` and `Treh`, but by up to a factor
+  1.36 in peak frequency and 0.75 in amplitude on the strongly supercooled
+  conformal dark U(1) line (`y = 0.01`, `v = 0.14 GeV`), where `Tperc` falls
+  to 40 keV and `Treh` is 10.6 MeV.
+- `g_eff_tot_reh` and `h_eff_tot_reh` count the Standard Model fields of the
+  potential. The 2HDM models put W, Z, t, h and further Standard Model fields
+  into the potential and flag them `is_SM`; these were masked out while the
+  Standard Model tables are capped below them, so they were counted nowhere,
+  and `g_eff_tot_reh` came out near 69 instead of near 98. The 2HDM spectra
+  move by about +6 % in peak frequency and -10 % in amplitude; models without
+  Standard Model fields in the potential are unaffected.
+- Today's entropy degrees of freedom `h0` passed to the spectrum were 3.91;
+  they are now 3.9309 (arXiv:1803.01038), the value `gwfopt` already used as
+  its default. All amplitudes rise by 0.7 %.
+
 ### Fixed
 
+- **Decoupled radiation baths**: runs with radiation in `kin_decoupled_*`,
+  the setting 2.0.0 prescribes for a sector decoupled from the Standard Model,
+  ended with error code 8 or gave wrong results without an error. The
+  percolation solvers mixed the decoupled bath into the reheating of the
+  bubbles: the energy balance counted it in the released energy but not in the
+  broken phase, the expansion rate evaluated it at the temperature inside the
+  bubbles, and the entropy conservation between support points and the
+  integration of `Treh` added the Standard Model entropy table whatever the
+  baths were. Now only the transitioning sector is reheated; the decoupled bath
+  keeps the temperature of the surrounding false vacuum and enters the
+  expansion rate. This holds in the adaptive solver including its
+  self-consistency check, in the fixed step size solver of the pipeline
+  (`bubbledynamics_fixedstep`) and in the one reached through
+  `bubbledynamics.calcPercAndEvolve` (`percolation_fixedstepsize`). The
+  `radiationEnergyDensity` of the BSMPT 2HDM models now includes a decoupled
+  bath like the base class. Percolation results without a decoupled bath are
+  unchanged.
+- In `h2Omega_0_sum` the break frequencies were redshifted with `D^(-4/3)`
+  instead of `D^(-1/3)`; the amplitude keeps `D^(-4/3)`. No effect for the
+  default `D = 1`.
 - **Treh scatter (#6)**: since 2.1.0 the reheating temperature was read off the
   tabulated broken-phase temperature trajectory at `Tperc`, which made it depend
   on where the adaptive support points happen to sit and produced

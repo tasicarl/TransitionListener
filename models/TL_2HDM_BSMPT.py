@@ -53,7 +53,12 @@ class R2HDM(_BaseR2HDM):
         # Field independent, but the result has the broadcast (X, T) shape like the base class.
         shape = np.broadcast_shapes(np.shape(X)[:-1], np.shape(T))
         T = np.asarray(T, dtype=float)
-        return (np.pi**2 / 30.0 * self.geff(T) * T**4 * np.ones(shape))[()]
+        geff = self.geff(T)
+        # A decoupled bath enters as in the base class. It cannot hold the Standard Model,
+        # which geff contains as part of the transitioning sector (see _check_radiation_baths).
+        if include_decoupled:
+            geff = geff + self.kin_decoupled_e_geff(T, self.conversionFactor)
+        return (np.pi**2 / 30.0 * geff * T**4 * np.ones(shape))[()]
 
 
 # Tabulated SM DOFs from BSMPTv3 (kept verbatim for reproducibility).

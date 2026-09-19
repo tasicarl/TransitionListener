@@ -480,6 +480,17 @@ def h_eff_DS(T_DS: float, pot, phase) -> float:
     return geff
 
 
+def h_eff_coupled_radiation(T: float, pot) -> float:
+    """Entropy degrees of freedom of the radiation coupled to the transitioning sector.
+
+    That radiation (``pot.kin_coupled_*``, by default the Standard Model) is reheated
+    inside the bubbles together with the transitioning sector, a decoupled bath is not.
+    For the default Standard Model bath the tabulated entropy degrees of freedom are
+    used; otherwise ``s = (e + p)/T`` gives ``h = (3 g_e + g_p)/4``.
+    """
+    return td.h_eff_radiation(pot.kin_coupled_e_geff, pot.kin_coupled_p_geff, T, pot.conversionFactor)
+
+
 def energyDensity(pot, phase, T: float | np.ndarray, include_decoupled=True) -> float | np.ndarray:
     r"""This function calls the implementation in the effective potential.
 
@@ -1430,15 +1441,15 @@ def entropy_criterion_SYM_BRO(Tb: float, TBRO_ref: float, TSYM: float, TSYM_ref:
     float
         Zero when the condition is met.
     """
-    # Working assumption: the broken bubble reheats the DS and the coupled SM
-    # plasma to one local common temperature Tb, while the cosmological scale
+    # Working assumption: the broken bubble reheats the DS and the coupled
+    # radiation to one local common temperature Tb, while the cosmological scale
     # factor between successive steps is still inferred from the background
-    # symmetric-phase temperatures TSYM / TSYM_ref. Revisit this hybrid
-    # assumption if the TBRO evolution remains suspect.
+    # symmetric-phase temperatures TSYM / TSYM_ref. A decoupled bath is not
+    # reheated and does not enter.
     heff_ds_pt = h_eff_DS(TBRO_ref, pot, phase_broken)
-    heff_SM_pt = td.s_geffSM(TBRO_ref, pot.conversionFactor)
+    heff_SM_pt = h_eff_coupled_radiation(TBRO_ref, pot)
     heff_ds = h_eff_DS(Tb, pot, phase_broken)
-    heff_SM = td.s_geffSM(Tb, pot.conversionFactor)
+    heff_SM = h_eff_coupled_radiation(Tb, pot)
     crit = (heff_ds + heff_SM) * Tb**3
     crit -= (heff_ds_pt + heff_SM_pt) * TBRO_ref**3 * TSYM**3 / TSYM_ref**3
     return crit
@@ -1586,7 +1597,7 @@ def integrate_broken_temperature(
 
     def s_bro(x):
         x = float(x)
-        return (h_eff_DS(x, pot, phase_broken) + td.s_geffSM(x, pot.conversionFactor)) * x**3
+        return (h_eff_DS(x, pot, phase_broken) + h_eff_coupled_radiation(x, pot)) * x**3
 
     try:
         tb_seed = optimize.brentq(

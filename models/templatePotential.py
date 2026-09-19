@@ -105,9 +105,11 @@ class TemplatePotenital(generic_potential):
 
         # This specifies additional radiation that is not coupled to the sector undergoing
         # a phase transition. If e.g. a dark sector is completely decoupled from the SM,
-        # put the SM geff here. 
+        # put the SM geff here, set the kin_coupled_* above to zero, and set
+        # self.config.gwConf.coupled_hydrodynamics = False in setConfigParameters.
         # self.kin_decoupled_e_geff = lambda T, cf: 0.0 * T  # If the SM is decoupled, put e_geffSM here
         # self.kin_decoupled_p_geff = lambda T, cf: 0.0 * T  # If the SM is decoupled, put p_geffSM here
+        # self.SM_bath = "decoupled"  # Bath that holds the SM; detected from e_geffSM if not set
 
         # Include the input and derived parameters in the class.
         self.derived_param_names = [name for name in config.all_observables.keys()]
