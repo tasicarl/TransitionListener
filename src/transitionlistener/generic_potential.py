@@ -198,8 +198,22 @@ class generic_potential():
             self.makePrettyDictionaryPrint(self.derived_parameters)
 
     def _check_radiation_baths(self) -> None:
-        """Validate ``SM_bath`` and warn if both baths hold the Standard Model table."""
-        sm_bath(self)
+        """Validate ``SM_bath``, and the Standard Model's place among the radiation baths.
+
+        A potential with Standard Model fields (flagged ``is_SM``, e.g. the 2HDM) contains the
+        Standard Model in its transitioning sector, so the Standard Model cannot be decoupled
+        from it. Warns if both baths hold the Standard Model table.
+        """
+        spectrum = getattr(self, "mass_spectrum", None)
+        has_sm_fields = spectrum is not None and bool(
+            np.any(spectrum.is_SM_bosons) or np.any(spectrum.is_SM_fermions)
+        )
+        if sm_bath(self) == "decoupled" and has_sm_fields:
+            raise ValueError(
+                "The potential contains Standard Model fields (flagged is_SM), so the Standard "
+                "Model belongs to the transitioning sector and cannot be put into the decoupled "
+                "bath. The decoupled bath can hold other radiation, e.g. of a dark sector."
+            )
         if self.kin_coupled_e_geff is e_geffSM and self.kin_decoupled_e_geff is e_geffSM:
             print(
                 "Warning: both the coupled and the decoupled radiation bath hold the Standard "

@@ -252,6 +252,27 @@ class SpectrumAndModelTests(unittest.TestCase):
         added = pot.radiationEnergyDensity(X, T) - default
         np.testing.assert_allclose(added, np.pi**2 / 30 * td.e_geffSM(T, pot.conversionFactor) * T**4, rtol=1e-12)
 
+    def test_a_potential_with_standard_model_fields_cannot_decouple_the_standard_model(self):
+        base = load_potential("models/TL_2HDM_BSMPT.py", "R2HDM")
+        params = {"lambda1": 0.28894, "lambda2": 0.26237, "lambda3": 5.7702, "lambda4": -2.17494,
+                  "lambda5": -2.2417, "m12_sq_GeV2": 1573.171, "tan_beta": 21.3949, "yukawa_type": 1, "v_GeV": 246.22}
+
+        class DecoupledSM(base):
+            def setConfigParameters(self):
+                super().setConfigParameters()
+                self.kin_coupled_e_geff = self.kin_coupled_p_geff = lambda T, cf: 0.0 * T
+                self.kin_decoupled_e_geff, self.kin_decoupled_p_geff = td.e_geffSM, td.p_geffSM
+
+        class DarkRadiation(base):
+            def setConfigParameters(self):
+                super().setConfigParameters()
+                self.kin_decoupled_e_geff = self.kin_decoupled_p_geff = lambda T, cf: 2.0 + 0.0 * T
+
+        with self.assertRaises(ValueError):
+            DecoupledSM(params)
+        pot = DarkRadiation(params)
+        self.assertEqual(td.sm_bath(pot), "coupled")
+
     def test_a_standard_model_in_both_baths_is_flagged(self):
         pot = types.SimpleNamespace(SM_bath=None, kin_coupled_e_geff=td.e_geffSM, kin_decoupled_e_geff=td.e_geffSM)
         out = io.StringIO()

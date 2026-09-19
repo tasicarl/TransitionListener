@@ -14,7 +14,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   radiation bath.
 - Model attribute `SM_bath` (`"coupled"` or `"decoupled"`) that names the
   radiation bath holding the Standard Model. If it is not set, TL takes the
-  bath whose tables are `e_geffSM`, and warns if both are.
+  bath whose tables are `e_geffSM`, and warns if both are. A model with
+  Standard Model fields in its potential (e.g. the 2HDM) cannot decouple the
+  Standard Model; TL raises an error when it is set up that way.
 - `constants.h_eff_today`, today's entropy degrees of freedom.
 
 ### Changed

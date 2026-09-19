@@ -182,7 +182,10 @@ zero, and set ``pot.config.gwConf.coupled_hydrodynamics = False``, so that the
 Standard Model does not enter the hydrodynamics either. TL takes the bath whose
 tables are ``e_geffSM`` as the Standard Model bath; if the tables are wrapped,
 set ``self.SM_bath = "decoupled"`` (or ``"coupled"``) in the model. It warns if
-both baths hold ``e_geffSM``.
+both baths hold ``e_geffSM``. A model whose potential contains Standard Model
+fields (flagged ``is_SM``, e.g. the 2HDM) has the Standard Model in its
+transitioning sector; TL then refuses a decoupled Standard Model, while other
+radiation, e.g. of a dark sector, can still go into the decoupled bath.
 
 Both baths share the temperature before the transition, so ``Tnuc_SM_GeV`` and
 ``Tperc_SM_GeV`` apply to both. ``Treh_SM_GeV`` is the temperature of the
