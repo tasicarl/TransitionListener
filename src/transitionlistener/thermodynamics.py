@@ -714,6 +714,7 @@ def _sm_fields_spline(pot, kind: str, mask, spectrum):
     key = (kind, float(pot.conversionFactor), int(spectrum.Nscalars), X0.tobytes(),
            _model_parameter_fingerprint(pot),
            np.asarray(spectrum.dof_bosons, dtype=float).tobytes(),
+           np.asarray(getattr(spectrum, "dof_fermions", ()), dtype=float).tobytes(),
            np.asarray(mask[0], dtype=bool).tobytes(),
            np.asarray(mask[1], dtype=bool).tobytes())
     cache = getattr(pot, "_sm_fields_geff_splines", None)

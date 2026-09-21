@@ -215,7 +215,8 @@ class generic_potential():
                 "Model belongs to the transitioning sector and cannot be put into the decoupled "
                 "bath. The decoupled bath can hold other radiation, e.g. of a dark sector."
             )
-        if has_sm_fields and self.kin_coupled_e_geff is not e_geffSM:
+        if has_sm_fields and (self.kin_coupled_e_geff is not e_geffSM
+                              or self.kin_coupled_p_geff is not p_geffSM):
             # The Standard Model fields of the potential are subtracted from the coupled bath,
             # so that bath has to contain them. Check it, in energy and in pressure, rather
             # than only saying so: a bath that is smaller than the subtraction would give a

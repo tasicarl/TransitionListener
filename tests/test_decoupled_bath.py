@@ -373,9 +373,19 @@ class SpectrumAndModelTests(unittest.TestCase):
             generic_potential._check_radiation_baths(potential(20.0))
         self.assertEqual(out.getvalue(), "")
 
-        # and neither does the Standard Model table itself
+        # a custom pressure bath alone is checked too, not only a custom energy bath
         pot = potential(20.0)
         pot.kin_coupled_e_geff = td.e_geffSM
+        pot.kin_coupled_p_geff = lambda T, cf: 1.0 + 0.0 * np.asarray(T, dtype=float)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            generic_potential._check_radiation_baths(pot)
+        self.assertIn("comes out negative", out.getvalue())
+
+        # and the Standard Model tables themselves say nothing
+        pot = potential(20.0)
+        pot.kin_coupled_e_geff = td.e_geffSM
+        pot.kin_coupled_p_geff = td.p_geffSM
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             generic_potential._check_radiation_baths(pot)
@@ -408,6 +418,7 @@ class PotentialEntropyTests(unittest.TestCase):
             fermion_massSq=lambda X: (np.array([9.0]), np.array([12.0])),
             mass_spectrum=types.SimpleNamespace(
                 number_gauge_bosons=2, Nscalars=1, dof_bosons=np.array([6.0, 6.0]),
+                dof_fermions=np.array([12.0]),
                 is_SM_bosons=np.array([True, True]), is_SM_fermions=np.array([True])),
         )
 
@@ -460,6 +471,13 @@ class PotentialEntropyTests(unittest.TestCase):
         self.assertNotAlmostEqual(first, second, places=3)
         pot.mass_spectrum.is_SM_bosons = np.array([True, True])
         self.assertAlmostEqual(float(td.sm_fields_in_potential_geff(pot, T, "e")), first, places=12)
+        # a changed fermion sector enters the key, even when the bosons and the flags do not
+        pot.mass_spectrum.dof_fermions = np.array([6.0])
+        pot.fermion_massSq = lambda X: (np.array([9.0]), np.array([6.0]))
+        halved = float(td.sm_fields_in_potential_geff(pot, T, "e"))
+        self.assertAlmostEqual(halved, float(first - td.e_geff(3.0, T, 6.0, "f")), places=7)
+        pot.mass_spectrum.dof_fermions = np.array([12.0])
+        pot.fermion_massSq = lambda X: (np.array([9.0]), np.array([12.0]))
         # a changed model parameter enters the key as well, even when the flags do not move
         pot.model_parameters = {"lambda3": {"value": 1.0}}
         pot.boson_massSq = lambda X, T: (np.array([4.0, 4.0]), np.array([6.0, 6.0]),
