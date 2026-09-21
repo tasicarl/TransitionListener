@@ -735,10 +735,21 @@ def reheating_geff(pot, X_broken, T_DS: float, T_dec: float) -> tuple[float, flo
     fermions_DS = pot.fermion_massSq(X_broken)
     ghosts = pot.mass_spectrum.number_gauge_bosons
     r_DS, r_c, r_dec = T_DS / T_SM, T_c / T_SM, T_dec / T_SM
-    g = (potential_fields_geff(bosons_DS, fermions_DS, T_DS, "e") - e_geff(0.0, T_DS, ghosts, "b")) * r_DS**4 \
+    # Floored at zero as in ``bubbledynamics.g_eff_DS`` and ``h_eff_DS``: the ghosts are
+    # massless in the Landau gauge while the Goldstone modes they cancel are not, so a sector
+    # whose modes have all frozen out would otherwise enter the redshift with a negative
+    # number of degrees of freedom.
+    g_DS = max(float(potential_fields_geff(bosons_DS, fermions_DS, T_DS, "e")
+                     - e_geff(0.0, T_DS, ghosts, "b")), 0.0)
+    h_DS = max(float(potential_fields_geff(bosons_DS, fermions_DS, T_DS, "s")
+                     - s_geff(0.0, T_DS, ghosts, "b")), 0.0)
+    # The Standard Model fields of the potential are subtracted from the coupled bath, which
+    # is where they are: a potential that contains them cannot put the Standard Model into the
+    # decoupled bath, as ``generic_potential._check_radiation_baths`` refuses that setup.
+    g = g_DS * r_DS**4 \
         + (pot.kin_coupled_e_geff(T_c, CF) - sm_fields_in_potential_geff(pot, T_c, "e")) * r_c**4 \
         + pot.kin_decoupled_e_geff(T_dec, CF) * r_dec**4
-    h = (potential_fields_geff(bosons_DS, fermions_DS, T_DS, "s") - s_geff(0.0, T_DS, ghosts, "b")) * r_DS**3 \
+    h = h_DS * r_DS**3 \
         + (h_eff_radiation(pot.kin_coupled_e_geff, pot.kin_coupled_p_geff, T_c, CF)
            - sm_fields_in_potential_geff(pot, T_c, "s")) * r_c**3 \
         + h_eff_radiation(pot.kin_decoupled_e_geff, pot.kin_decoupled_p_geff, T_dec, CF) * r_dec**3

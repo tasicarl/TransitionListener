@@ -571,6 +571,21 @@ class ReheatingDegreesOfFreedomTests(unittest.TestCase):
         self.assertAlmostEqual(g, self.G_SM, places=12)
         self.assertAlmostEqual(h, self.G_SM, places=12)
 
+    def test_a_frozen_out_sector_does_not_redshift_with_negative_degrees_of_freedom(self):
+        # every mode of the potential heavy against the temperature: the modes die away, the
+        # massless ghosts do not, so the difference would be negative without the floor
+        pot = self.pot(False)
+        pot.X0 = np.zeros(1)
+        pot.mass_spectrum = types.SimpleNamespace(
+            number_gauge_bosons=2, Nscalars=0, dof_bosons=np.array([6.0]),
+            is_SM_bosons=np.zeros(1, bool), is_SM_fermions=np.zeros(0, bool))
+        pot.boson_massSq = lambda X, T: (np.array([1.0e6]), np.array([6.0]),
+                                         np.array([0.0]), np.array([True]))
+        pot.fermion_massSq = lambda X: (np.zeros(0), np.zeros(0))
+        g, h, _ = td.reheating_geff(pot, np.zeros(1), 1.0, 1.0)
+        self.assertAlmostEqual(g, self.G_SM, places=12)   # the bath alone, nothing negative
+        self.assertAlmostEqual(h, self.G_SM, places=12)
+
     def test_the_standard_model_bath_is_detected_and_can_be_set(self):
         zero = lambda T, cf: 0.0 * T
         pot = types.SimpleNamespace(SM_bath=None, kin_decoupled_e_geff=zero)
