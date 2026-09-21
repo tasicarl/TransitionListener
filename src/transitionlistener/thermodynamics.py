@@ -645,12 +645,31 @@ def sm_fields_in_potential_geff(pot, T, kind: str = "e"):
 _SM_FIELDS_T_GeV = np.logspace(-8.0, 10.0, 2881)
 
 
+def _model_parameter_fingerprint(pot):
+    """The values of the model parameters, as far as they can be read, for a cache key."""
+    parameters = getattr(pot, "model_parameters", None)
+    if not isinstance(parameters, dict):
+        return ()
+    fingerprint = []
+    for name in sorted(parameters):
+        entry = parameters[name]
+        value = entry.get("value") if isinstance(entry, dict) else entry
+        try:
+            fingerprint.append((name, float(value)))
+        except (TypeError, ValueError):
+            fingerprint.append((name, repr(value)))
+    return tuple(fingerprint)
+
+
 def _sm_fields_spline(pot, kind: str, mask, spectrum):
     """Cubic spline of ``sm_fields_in_potential_geff`` in log10(T/GeV), built once per model."""
-    # The table is keyed on everything it is built from, so a model whose vacuum, spectrum or
-    # is_SM flags change after it was first evaluated does not keep a stale table.
+    # The table is keyed on everything it is built from, so a model whose parameters, vacuum,
+    # spectrum or is_SM flags change after it was first evaluated does not keep a stale table.
+    # ``generic_potential.set_modelparams`` drops the tables as well, as it used to reset the
+    # temperature cap this replaces.
     X0 = np.atleast_2d(np.asarray(pot.X0, dtype=float))[0]
     key = (kind, float(pot.conversionFactor), int(spectrum.Nscalars), X0.tobytes(),
+           _model_parameter_fingerprint(pot),
            np.asarray(spectrum.dof_bosons, dtype=float).tobytes(),
            np.asarray(mask[0], dtype=bool).tobytes(),
            np.asarray(mask[1], dtype=bool).tobytes())

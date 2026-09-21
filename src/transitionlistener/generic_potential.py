@@ -292,6 +292,10 @@ class generic_potential():
                     f"Model parameter {key}={value} is out of range "
                     f"[{min_val}, {max_val}]."
                 )
+        # The Standard Model fields of the potential are tabulated per model and keyed on what
+        # they are built from; changing the parameters invalidates that table, as it used to
+        # reset the temperature cap of the Standard Model tables.
+        self._sm_fields_geff_splines = {}
         return mp
 
     def computeConversionFactor(self, v_stable: float, v_GeV: float) -> float:

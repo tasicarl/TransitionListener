@@ -439,6 +439,27 @@ class PotentialEntropyTests(unittest.TestCase):
         self.assertNotAlmostEqual(first, second, places=3)
         pot.mass_spectrum.is_SM_bosons = np.array([True, True])
         self.assertAlmostEqual(float(td.sm_fields_in_potential_geff(pot, T, "e")), first, places=12)
+        # a changed model parameter enters the key as well, even when the flags do not move
+        pot.model_parameters = {"lambda3": {"value": 1.0}}
+        pot.boson_massSq = lambda X, T: (np.array([4.0, 4.0]), np.array([6.0, 6.0]),
+                                         np.array([0.5, 1.5]), np.array([True, True]))
+        self.assertNotAlmostEqual(float(td.sm_fields_in_potential_geff(pot, T, "e")), first, places=3)
+
+    def test_setting_model_parameters_drops_the_tabulated_subtraction(self):
+        # set_modelparams used to reset the temperature cap of the Standard Model tables; it
+        # now drops the tables that replaced it, so a reused potential cannot keep a stale one
+        spec = importlib.util.spec_from_file_location("tl_2hdm_for_cache_test", "models/TL_2HDM.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        cls = [c for _, c in inspect.getmembers(module, inspect.isclass)
+               if issubclass(c, generic_potential) and c is not generic_potential
+               and c.__module__ == module.__name__][0]
+        with contextlib.redirect_stdout(io.StringIO()):
+            pot = cls({})
+            td.sm_fields_in_potential_geff(pot, 100.0 / pot.conversionFactor, "e")
+            self.assertTrue(pot._sm_fields_geff_splines)
+            pot.set_modelparams({})
+        self.assertEqual(pot._sm_fields_geff_splines, {})
 
     def test_the_degrees_of_freedom_at_zero_temperature(self):
         # the coefficients are the limits: a massless mode keeps its count, a massive one does
