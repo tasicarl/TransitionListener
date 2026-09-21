@@ -423,7 +423,12 @@ def _temperature_grid(
 
 
 def g_eff_DS(T_DS: float, pot, phase) -> float:
-    """Calculate the effective energy degrees of freedom in the dark sector.
+    """Calculate the effective energy degrees of freedom of the fields of the potential.
+
+    Every mode counts, the Goldstone modes included, and the ghosts of the gauge bosons are
+    subtracted, as in ``radiationEnergyDensity``. Fields flagged ``is_SM`` (e.g. W, Z, t and
+    h in the 2HDM) count here and are removed from the tabulated bath in turn
+    (``thermodynamics.sm_fields_in_potential_geff``), so that each of them is counted once.
 
     Parameters
     ----------
@@ -444,14 +449,21 @@ def g_eff_DS(T_DS: float, pot, phase) -> float:
         print("Warning: TBRO is too low for interpolation of vev, using T = 0 value")
         # Temperature is to low for interpolation of vev, use T = 0 value
         vevT = pot.X0
-    bosons = pot.boson_massSq(vevT, 0)*(~pot.mass_spectrum.is_SM_bosons)
-    fermions = pot.fermion_massSq(vevT)*(~pot.mass_spectrum.is_SM_fermions)
-    geff = td.e_geffDS(bosons, fermions, T_DS)
-    return geff
+    ghosts = td.e_geff(0.0, T_DS, pot.mass_spectrum.number_gauge_bosons, "b")
+    geff = td.potential_fields_geff(pot.boson_massSq(vevT, 0), pot.fermion_massSq(vevT), T_DS, "e")
+    # The ghosts are massless in the Landau gauge while the Goldstone modes they cancel are
+    # not, so once every mode of the potential is frozen out the difference would turn
+    # negative. A sector that has left the plasma contributes nothing, not less than nothing.
+    return max(float(geff - ghosts), 0.0)
 
 
 def h_eff_DS(T_DS: float, pot, phase) -> float:
-    """Calculate the effective entropy degrees of freedom in the dark sector.
+    """Calculate the effective entropy degrees of freedom of the fields of the potential.
+
+    Every mode counts, the Goldstone modes included, and the ghosts of the gauge bosons are
+    subtracted, as in ``radiationEnergyDensity``. Fields flagged ``is_SM`` (e.g. W, Z, t and
+    h in the 2HDM) count here and are removed from the tabulated bath in turn
+    (``thermodynamics.sm_fields_in_potential_geff``), so that each of them is counted once.
 
     Parameters
     ----------
@@ -473,11 +485,12 @@ def h_eff_DS(T_DS: float, pot, phase) -> float:
         # Temperature is to low for interpolation of vev, use T = 0 value
         vevT = pot.X0
 
-    # Set SM masses to zero:
-    bosons = pot.boson_massSq(vevT, 0)*(~pot.mass_spectrum.is_SM_bosons)
-    fermions = pot.fermion_massSq(vevT)*(~pot.mass_spectrum.is_SM_fermions)
-    geff = td.s_geffDS(bosons, fermions, T_DS)
-    return geff
+    ghosts = td.s_geff(0.0, T_DS, pot.mass_spectrum.number_gauge_bosons, "b")
+    geff = td.potential_fields_geff(pot.boson_massSq(vevT, 0), pot.fermion_massSq(vevT), T_DS, "s")
+    # The ghosts are massless in the Landau gauge while the Goldstone modes they cancel are
+    # not, so once every mode of the potential is frozen out the difference would turn
+    # negative. A sector that has left the plasma contributes nothing, not less than nothing.
+    return max(float(geff - ghosts), 0.0)
 
 
 def h_eff_coupled_radiation(T: float, pot) -> float:
@@ -488,7 +501,9 @@ def h_eff_coupled_radiation(T: float, pot) -> float:
     For the default Standard Model bath the tabulated entropy degrees of freedom are
     used; otherwise ``s = (e + p)/T`` gives ``h = (3 g_e + g_p)/4``.
     """
-    return td.h_eff_radiation(pot.kin_coupled_e_geff, pot.kin_coupled_p_geff, T, pot.conversionFactor)
+    table = td.h_eff_radiation(pot.kin_coupled_e_geff, pot.kin_coupled_p_geff, T, pot.conversionFactor)
+    # Standard Model fields of the potential are counted there, not in the tabulated bath.
+    return table - td.sm_fields_in_potential_geff(pot, T, "s")
 
 
 def energyDensity(pot, phase, T: float | np.ndarray, include_decoupled=True) -> float | np.ndarray:
@@ -638,19 +653,60 @@ def _time_temperature_factors(
 
     temperatures = np.asarray(T, dtype=float)
     sound_speed_sq = np.full_like(temperatures, 1.0 / 3.0, dtype=float)
+    entropy = np.full_like(temperatures, np.nan, dtype=float)
     for i, temp in enumerate(temperatures):
+        t = float(temp)
         try:
-            cs_sq = calcSoundSpeedSq(pot, phase.valAt(float(temp)), float(temp))
+            X = phase.valAt(t)
+        except Exception:
+            continue
+        # The two quantities are taken separately: a sound speed that could be computed stays
+        # in use even where the entropy cannot be, and the other way round.
+        try:
+            cs_sq = calcSoundSpeedSq(pot, X, t)
         except Exception:
             cs_sq = np.nan
-        if np.isfinite(cs_sq) and cs_sq > 0.0:
+        try:
+            # The entropy of the transitioning sector from its degrees of freedom, not from
+            # -dV/dT: the Arnold-Espinosa daisy term tends to -T/(12 pi) sum n m^3 once the
+            # modes are heavy, so its contribution to -dV/dT tends to a constant and the
+            # entropy taken from the potential stops falling like T^3. At 1 GeV that already
+            # overstates the entropy of the 2HDM plasma by a factor 3.7.
+            entropy_density = float(h_eff_DS(t, pot, phase) + h_eff_coupled_radiation(t, pot)) * t**3
+        except Exception:
+            entropy_density = np.nan
+        # A sound speed outside (0, 1] means the traced phase has stopped being a sensible
+        # equilibrium, which happens far below completion, where the grid still reaches but
+        # the false vacuum no longer describes a plasma. The bag value is the fallback there.
+        if np.isfinite(cs_sq) and 0.0 < cs_sq <= 1.0:
             sound_speed_sq[i] = float(cs_sq)
+        if np.isfinite(entropy_density) and entropy_density > 0.0:
+            entropy[i] = entropy_density
 
-    # d ln a / dT = -1 / (3 c_s^2 T), normalized to a(T_hot)=1.
-    with np.errstate(divide="ignore", invalid="ignore"):
-        integrand = -1.0 / (3.0 * sound_speed_sq * temperatures)
-    integrand = np.nan_to_num(integrand, nan=0.0, posinf=0.0, neginf=0.0)
-    ln_a = integrate.cumulative_trapezoid(integrand, x=temperatures, initial=0.0)
+    # The scale factor follows from entropy conservation, a^3 s = const, which is the integral
+    # form of d ln a / dT = -1 / (3 c_s^2 T). Taking the ratio of entropies instead of
+    # integrating the sound speed keeps a(T) accurate on the coarse grids of the percolation
+    # solver, which can span ten or more decades in temperature: one interval alone could
+    # otherwise contribute hundreds of e-folds, because the trapezoidal rule multiplies the
+    # width of the interval by a sound speed that is already meaningless at its cold end.
+    # Where the entropy is not usable, the bag relation a ~ 1/T continues the chain, and a
+    # step that would shrink the universe as it cools is replaced by it as well.
+    ln_a = np.zeros_like(temperatures)
+    for i in range(1, temperatures.size):
+        t_prev, t_cur = float(temperatures[i - 1]), float(temperatures[i])
+        s_prev, s_cur = entropy[i - 1], entropy[i]
+        if t_prev <= 0.0 or t_cur <= 0.0:
+            step = 0.0
+            ln_a[i] = ln_a[i - 1] + step
+            continue
+        bag_step = -(np.log(t_cur) - np.log(t_prev))
+        if np.isfinite(s_prev) and np.isfinite(s_cur):
+            step = -(np.log(s_cur) - np.log(s_prev)) / 3.0
+        else:
+            step = bag_step
+        if step * bag_step < 0.0:
+            step = bag_step
+        ln_a[i] = ln_a[i - 1] + step
     ln_a = np.clip(ln_a, -700.0, 700.0)
     scale_factor = np.exp(ln_a)
     return sound_speed_sq, scale_factor

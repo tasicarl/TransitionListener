@@ -542,9 +542,9 @@ class TLPlots():
                             "Running percolation diagnostics with "
                             f"n_action={n_action_eff}, "
                             f"T range={plot_range_msg}, "
-                            f"Tnuc={Tnuc * self.pot.conversionFactor:.6g} GeV."
+                            f"Tnuc={np.nan if Tnuc is None else Tnuc * self.pot.conversionFactor:.6g} GeV."
                         )
-                    Tperc, TSYM, H, P, TBRO, S, Pr_exp, scalef_ratio, soundSpSq = calcPercAndEvolve(
+                    Tperc, TSYM, H, P, TBRO, S = calcPercAndEvolve(
                         {},
                         Tnuc,
                         phase_symmetric,
@@ -579,7 +579,12 @@ class TLPlots():
                     # percolation data exists.
                     Tmin_data_GeV = float(TSYM_GeV[-1])
 
-                    Tnuc_GeV = Tnuc * self.pot.conversionFactor
+                    # Strongly supercooled transitions have no nucleation temperature; the
+                    # upper end of the percolation profile then sets the plotting range, and
+                    # nothing is drawn where the nucleation temperature would go.
+                    has_Tnuc = Tnuc is not None
+                    Tnuc_GeV = (Tnuc * self.pot.conversionFactor if has_Tnuc
+                                else float(TSYM_GeV[0]))
                     Tperc_GeV = Tperc * self.pot.conversionFactor
                     if np.isfinite(Tmin_GeV):
                         Tmin_plot_GeV = float(Tmin_GeV)
@@ -622,7 +627,8 @@ class TLPlots():
                     ax.set_title(self.plot_description)
                     ax.set_ylabel("True vacuum fraction")
                     ax.axvline(Tperc_GeV, ls="--", color="black", label="$T_\\mathrm{perc}$")
-                    ax.axvline(Tnuc_GeV, ls="-.", color="grey", label="$T_\\mathrm{nuc}$")
+                    if has_Tnuc:
+                        ax.axvline(Tnuc_GeV, ls="-.", color="grey", label="$T_\\mathrm{nuc}$")
                     x_right_GeV = Tmax_plot_GeV
                     if not np.isfinite(Tmax_GeV):
                         xpad_GeV = max(0.02 * max(Tnuc_GeV - Tmin_plot_GeV, 0.0), 5.0e-5)
@@ -983,8 +989,8 @@ class TLPlots():
             for axis in ['top','bottom','left','right']:
                 a.spines[axis].set_linewidth(0.5)
 
-        label_usage_geff = {"BSM": False, "SM": False, "Total": False}
-        label_usage_rho = {"BSM": False, "SM": False, "Total": False}
+        label_usage_geff = {"Potential": False, "Baths": False, "Total": False}
+        label_usage_rho = {"Potential": False, "Baths": False, "Total": False}
         for idx, segment in history.items():
             seg_low, seg_high = segment.bounds()
             seg_low = max(seg_low, Tmin)
@@ -1004,13 +1010,20 @@ class TLPlots():
 
             geffDS = []
             geffSM = []
+            ghosts = self.pot.mass_spectrum.number_gauge_bosons
             for phi_vec, T in zip(phi_vals, temps):
                 # Use the mass-spectrum tuple API directly; this is supported
                 # by all model files and avoids relying on optional sector wrappers.
+                # The two curves are counted as in ``radiationEnergyDensity``: every mode of
+                # the potential, minus the ghosts of the gauge bosons, against the tabulated
+                # baths minus the Standard Model fields that the potential already contains.
                 bosons = self.pot.boson_massSq(phi_vec, 0)
                 fermions = self.pot.fermion_massSq(phi_vec)
-                geffDS.append(td.e_geffDS(bosons, fermions, T))
-                geffSM.append(td.e_geffSM(T, CF))
+                geffDS.append(td.potential_fields_geff(bosons, fermions, T, "e")
+                              - td.e_geff(0.0, T, ghosts, "b"))
+                geffSM.append(self.pot.kin_coupled_e_geff(T, CF)
+                              + self.pot.kin_decoupled_e_geff(T, CF)
+                              - td.sm_fields_in_potential_geff(self.pot, T, "e"))
 
             geffDS = np.asarray(geffDS)
             geffSM = np.asarray(geffSM)
@@ -1019,30 +1032,30 @@ class TLPlots():
 
             temps_plot = temps * CF
 
-            label = None if label_usage_geff["BSM"] else "BSM"
+            label = None if label_usage_geff["Potential"] else "fields of the potential"
             axes[0].plot(temps_plot, geffDS, color="C0", label=label)
             if label:
-                label_usage_geff["BSM"] = True
+                label_usage_geff["Potential"] = True
 
-            label = None if label_usage_geff["SM"] else "SM"
+            label = None if label_usage_geff["Baths"] else "radiation baths"
             axes[0].plot(temps_plot, geffSM, color="C1", label=label)
             if label:
-                label_usage_geff["SM"] = True
+                label_usage_geff["Baths"] = True
 
             label = None if label_usage_geff["Total"] else "Total"
             axes[0].plot(temps_plot, geffDS + geffSM, color="black", label=label)
             if label:
                 label_usage_geff["Total"] = True
 
-            label = None if label_usage_rho["BSM"] else "BSM"
+            label = None if label_usage_rho["Potential"] else "fields of the potential"
             axes[1].plot(temps_plot, rhoDS * CF**4, color="C0", label=label)
             if label:
-                label_usage_rho["BSM"] = True
+                label_usage_rho["Potential"] = True
 
-            label = None if label_usage_rho["SM"] else "SM"
+            label = None if label_usage_rho["Baths"] else "radiation baths"
             axes[1].plot(temps_plot, rhoSM * CF**4, color="C1", label=label)
             if label:
-                label_usage_rho["SM"] = True
+                label_usage_rho["Baths"] = True
 
             label = None if label_usage_rho["Total"] else "Total"
             axes[1].plot(temps_plot, (rhoDS + rhoSM) * CF**4, color="black", label=label)

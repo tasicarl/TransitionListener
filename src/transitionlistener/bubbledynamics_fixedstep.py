@@ -28,7 +28,12 @@ from transitionlistener.finiteT import Jf_spline as Jf
 
 
 def g_eff_DS(T_DS: float, pot, phase) -> float:
-    """Calculate the effective energy degrees of freedom in the dark sector.
+    """Calculate the effective energy degrees of freedom of the fields of the potential.
+
+    Every mode counts, the Goldstone modes included, and the ghosts of the gauge bosons are
+    subtracted, as in ``radiationEnergyDensity``. Fields flagged ``is_SM`` (e.g. W, Z, t and
+    h in the 2HDM) count here and are removed from the tabulated bath in turn
+    (``thermodynamics.sm_fields_in_potential_geff``), so that each of them is counted once.
 
     Parameters
     ----------
@@ -49,14 +54,19 @@ def g_eff_DS(T_DS: float, pot, phase) -> float:
         print("Warning: TBRO is too low for interpolation of vev, using T = 0 value")
         # Temperature is to low for interpolation of vev, use T = 0 value
         vevT = pot.X0
-    bosons = pot.boson_massSq(vevT, 0)*(~pot.mass_spectrum.is_SM_bosons)
-    fermions = pot.fermion_massSq(vevT)*(~pot.mass_spectrum.is_SM_fermions)
-    geff = td.e_geffDS(bosons, fermions, T_DS)
-    return geff
+    ghosts = td.e_geff(0.0, T_DS, pot.mass_spectrum.number_gauge_bosons, "b")
+    geff = td.potential_fields_geff(pot.boson_massSq(vevT, 0), pot.fermion_massSq(vevT), T_DS, "e")
+    # See ``bubbledynamics``: a sector that has frozen out contributes nothing, not less.
+    return max(float(geff - ghosts), 0.0)
 
 
 def h_eff_DS(T_DS: float, pot, phase) -> float:
-    """Calculate the effective entropy degrees of freedom in the dark sector.
+    """Calculate the effective entropy degrees of freedom of the fields of the potential.
+
+    Every mode counts, the Goldstone modes included, and the ghosts of the gauge bosons are
+    subtracted, as in ``radiationEnergyDensity``. Fields flagged ``is_SM`` (e.g. W, Z, t and
+    h in the 2HDM) count here and are removed from the tabulated bath in turn
+    (``thermodynamics.sm_fields_in_potential_geff``), so that each of them is counted once.
 
     Parameters
     ----------
@@ -78,11 +88,10 @@ def h_eff_DS(T_DS: float, pot, phase) -> float:
         # Temperature is to low for interpolation of vev, use T = 0 value
         vevT = pot.X0
 
-    # Set SM masses to zero:
-    bosons = pot.boson_massSq(vevT, 0)*(~pot.mass_spectrum.is_SM_bosons)
-    fermions = pot.fermion_massSq(vevT)*(~pot.mass_spectrum.is_SM_fermions)
-    geff = td.s_geffDS(bosons, fermions, T_DS)
-    return geff
+    ghosts = td.s_geff(0.0, T_DS, pot.mass_spectrum.number_gauge_bosons, "b")
+    geff = td.potential_fields_geff(pot.boson_massSq(vevT, 0), pot.fermion_massSq(vevT), T_DS, "s")
+    # See ``bubbledynamics``: a sector that has frozen out contributes nothing, not less.
+    return max(float(geff - ghosts), 0.0)
 
 
 def h_eff_coupled_radiation(T: float, pot) -> float:
@@ -93,7 +102,9 @@ def h_eff_coupled_radiation(T: float, pot) -> float:
     For the default Standard Model bath the tabulated entropy degrees of freedom are
     used; otherwise ``s = (e + p)/T`` gives ``h = (3 g_e + g_p)/4``.
     """
-    return td.h_eff_radiation(pot.kin_coupled_e_geff, pot.kin_coupled_p_geff, T, pot.conversionFactor)
+    table = td.h_eff_radiation(pot.kin_coupled_e_geff, pot.kin_coupled_p_geff, T, pot.conversionFactor)
+    # Standard Model fields of the potential are counted there, not in the tabulated bath.
+    return table - td.sm_fields_in_potential_geff(pot, T, "s")
 
 
 def energyDensity(pot, phase, T: float | np.ndarray, include_decoupled=True) -> float | np.ndarray:

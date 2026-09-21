@@ -1,0 +1,184 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{bm}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue!55!black,urlcolor=blue!55!black]{hyperref}
+\usepackage{caption}
+\captionsetup{font=small,labelfont=bf}
+\setlength{\parskip}{0.35em}
+\newcommand{\code}[1]{\texttt{#1}}
+\let\oldunderscore\_
+\renewcommand{\_}{\oldunderscore\allowbreak}
+\setlength{\emergencystretch}{2.5em}
+
+\title{\vspace{-1.2cm}Counting every degree of freedom of the plasma of \code{TransitionListener} exactly once\\[0.2em]
+\large Notes on the degrees of freedom, the transverse photon and the scale factor}
+\date{September 2026}
+\author{Carlo Tasillo}
+
+\begin{document}
+\maketitle
+\vspace{-1.4cm}
+
+\section{What is counted where}
+
+\code{TL} keeps two inventories for the degrees of freedom in the plasma.
+The fields appearing in the effective potential are counted mode by mode, each polarization of
+a gauge boson separately, with their field- and temperature-dependent masses. Everything else is counted by the two
+tabulated radiation baths, the kinetically coupled bath \code{kin\_coupled\_*}
+(by default the Standard Model bath) and
+a kinetically decoupled bath \code{kin\_decoupled\_*} (which can be a secluded dark sector).
+Every particle which does not appear in the effective potential must appear in
+exactly one of the two.
+For a potential
+that contains Standard Model fields (for instance for the 2HDM models these are $W$, $Z$, $t$, $b$, $\tau$, $h$ and
+the Goldstone modes, which are flagged as \code{is\_SM}) the same fields were counted twice in
+some places and not at all in others: the energy density counted the photon both in the
+potential and in the tabulated bath, while the entropy counted essentially none of them: the
+frozen tables still hold what is left of the $\tau$ and the $b$ at the freezing temperature,
+but nothing of $W$, $Z$, $t$ and $h$.
+
+In the Landau gauge the modes appearing in the potential are not necessarily physical particles:
+each gauge boson
+contributes two transverse and one longitudinal mode, each broken generator adds a Goldstone
+mode, and each gauge boson comes with a ghost that removes one bosonic degree of freedom. For
+the Standard Model fields of the 2HDM at the zero-temperature vacuum,
+%
+\begin{align}
+  \underbrace{1}_{h} + \underbrace{1+2}_{G^0, G^\pm}
+  + \underbrace{2+1}_{Z_\text{T}, Z_\text{L}}
+  + \underbrace{2+1}_{\gamma_\text{T}, \gamma_\text{L}}
+  + \underbrace{4+2}_{W_\text{T}, W_\text{L}}
+  - \underbrace{4}_{\text{ghosts}} = 12
+  = \underbrace{1}_{h} + \underbrace{3}_{Z} + \underbrace{6}_{W^\pm} + \underbrace{2}_{\gamma} ,
+\end{align}
+%
+so the gauge-dependent modes cancel and the physical count remains; with the fermions $t$, $b$
+and $\tau$ included, this sums to $12 + \tfrac{7}{8}\cdot 28 = 36.5$ degrees of freedom at
+temperatures far above their masses.
+That number is the bridge between the two inventories.
+
+\section{The three corrections}
+
+\paragraph{1. The modes of the potential.} \code{h\_eff\_DS} and \code{g\_eff\_DS}, i.e.~the
+entropy and energy degrees of freedom, were originally calculated by masking out
+every field flagged \code{is\_SM}, skipping the Goldstone modes and keeping the ghosts. They now
+count every mode and subtract one ghost per gauge boson, which is the counting
+\code{radiationEnergyDensity} has always used. For the 2HDM the masked fields were counted
+nowhere: 68 entropy degrees of freedom at $T = 50\,\text{GeV}$ instead of 93. Subtracting the
+ghosts introduces a sign problem that the old counting did not have: the ghosts are massless in
+the Landau gauge, while the Goldstone modes they cancel are not, so once every mode of the
+potential is heavy compared with the temperature the modes die away and the ghost term does
+not, and the difference turns negative. A negative number of degrees of freedom has no
+meaning: when every mode is much heavier than the temperature, the sector has left the plasma
+and its entropy and energy are zero, not less than zero. The new count is therefore floored at
+zero, which is the correct limit.
+
+\paragraph{2. The Standard Model fields in the tabulated bath.} To leave room in the bath for
+the Standard Model fields that the potential already contains, \code{TL} froze the tabulated
+degrees of freedom above half the mass of the lightest massive \code{is\_SM} field
+($0.888\,\text{GeV}$ for the 2HDM), holding them at their value there for every higher
+temperature. Freezing is a blunt instrument for a selective job: it also froze the photon, the
+gluons, the light fermions and the QCD crossover, none of which the potential contains. The
+freezing temperature was also stored once for the whole module rather than per model, so in a
+session that builds several models the last one built decided which tables all of them used:
+constructing a dark model after a 2HDM removed the freezing again and silently changed the
+2HDM's degrees of freedom. It is
+replaced by subtracting exactly the Standard
+Model fields of the potential from the tables, at the masses they have in the zero-temperature
+vacuum. The inventories then close: in that vacuum the potential adds exactly what the table loses,
+so the total is the full Standard Model table plus the additional fields of the model. The
+subtraction depends only on the temperature once the model is built, so it is tabulated once
+per model and interpolated, to a relative accuracy of $3\times10^{-7}$.
+
+\paragraph{3. The transverse photon of the 2HDM.} The neutral gauge sector has two mass
+matrices in the $(W^3, B)$ basis, not one. The longitudinal modes carry the Debye masses
+$\Pi_{W_\text{L}}$ and $\Pi_{B_\text{L}}$, which are added to the matrix \emph{before} it is
+diagonalised -- since the two differ, the longitudinal mixing angle depends on the temperature
+and the longitudinal ``photon'' is not the photon direction. The transverse modes carry no
+thermal mass at this order, so their matrix is the same one without the Debye terms. \code{TL}
+took both eigenvalues of the longitudinal matrix, so the transverse photon carried the Debye
+mass of the longitudinal one. The transverse matrix has entries $g_2^2\phi^2/4$,
+$-g_1 g_2 \phi^2/4$ and $g_1^2\phi^2/4$; its determinant vanishes identically, so its
+eigenvalues are $(g_1^2+g_2^2)\phi^2/4$ and $0$ -- the transverse $Z$, and a transverse photon
+that is massless at every field value, as electromagnetism being unbroken requires. The wrong
+mass entered the thermal potential and, with two degrees of freedom, the daisy term, so it
+moved the barrier of every 2HDM run.
+
+\section{The scale factor of the percolation integral}
+
+The percolation integral needs the scale factor $a(T)$ of the false vacuum, which \code{TL}
+obtained by integrating $\mathrm{d}\ln a/\mathrm{d}T = -1/(3 c_s^2 T)$ with the trapezoidal
+rule over the solver's temperature grid. That grid spans the overlap of the two traced phases,
+which for the 2HDM benchmark runs over thirteen decades with 71 points. Far below completion
+the sound speed of the false vacuum is meaningless -- 43 of those 71 values were the silent
+fallback to $1/3$ -- and the trapezoidal rule weights each interval by the value at its cold
+end, so one interval alone contributed 311 e-folds: $a(T)$ jumped by $10^{135}$ between
+neighbouring grid points and reached $10^{217}$, and the integrator gave up with error~10,
+i.e. by an error marked (correctly) as stemming from a numerical source in the percolation solver.
+
+The integral form of the same relation is entropy conservation, $a^3 s = \text{const}$, which
+needs no integration over the temperature grid, in order to obtain the scale factor directly:
+$a(T)/a(T_\text{hot}) = [s(T_\text{hot})/s(T)]^{1/3}$. The
+entropy is taken from the degrees of freedom of the transitioning sector rather than from
+$-\partial V/\partial T$. The reason is that the Arnold--Espinosa daisy term tends to
+$-T \sum_i n_i m_i^3/(12\pi)$ once the modes are heavy, a term linear in the temperature, whose
+contribution to the entropy $s = -\partial V/\partial T$ is therefore a constant. That constant
+cannot be physical: a species that is much heavier than the temperature is Boltzmann
+suppressed and carries an entropy that falls at least as fast as $T^3$, so a plasma of such
+species cannot keep a temperature-independent entropy. It is an artefact of the
+high-temperature expansion the daisy term is derived from, and for the 2HDM benchmark it
+overstates the entropy of the plasma by a factor $3.7$ at $T = 1\,\text{GeV}$ and by two orders
+of magnitude at $T = 0.1\,\text{GeV}$.\footnote{The artefact itself is left for the next pull
+request, which switches the Debye masses off as the particles that build them leave the plasma,
+following arXiv:2010.09744 and arXiv:2306.17239. Here it is only avoided, by not taking the
+entropy from the potential.} Where the entropy cannot be used, the bag relation $a \propto 1/T$
+continues the chain, and a step that would contract the universe as it cools is replaced by it
+as well. For a pure radiation bath, where $a \propto 1/T$ is exact, the old rule was wrong by a
+factor $680$ at the cold end of a twelve-decade grid; the new one is exact.
+
+\section{What it changes}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrrrr}
+\toprule
+median change [\%] & counting & photon & scale factor & all three \\
+\midrule
+$T_\text{crit}$                & $0$     & $-0.26$  & $0$      & $-0.26$ \\
+$T_\text{perc}$                & $+0.02$ & $-0.35$  & $-0.001$ & $-0.34$ \\
+$T_\text{reh}$                 & $+0.04$ & $-0.27$  & $-0.001$ & $-0.27$ \\
+$\alpha$                       & $+1.4$  & $+1.4$   & $+0.002$ & $+2.9$ \\
+$(\beta/H)_{R_*}$              & $-1.0$  & $-0.2$   & $+0.03$  & $-0.6$ \\
+$g_\text{eff}$ after reheating & $-2.9$  & $-0.05$  & $-0.000$ & $-2.9$ \\
+$h_\text{eff}$ after reheating & $-1.8$  & $-0.05$  & $-0.000$ & $-1.8$ \\
+peak amplitude                 & $+3.9$  & $+3.7$   & $-0.05$  & $+7.1$ \\
+\bottomrule
+\end{tabular}
+\caption{2HDM type~I line of the code comparison, 49 values of $\lambda_3$, against the state
+before this pull request. The first column holds both halves of the counting, the modes of the
+potential and the subtraction from the tabulated bath, which were validated together; the
+second the transverse photon; the third the scale factor, which changes nothing but gives back
+the one point that the photon fix costs, so the line has 49 of 49 results.}
+\end{table}
+
+In the dark sector models implemented in the code, the percolation is essentially untouched:
+along the abelian dark Higgs line $T_\text{perc}$, $T_\text{reh}$, $\alpha$ and $\beta/H$ are
+bit-identical, and along the conformal line $T_\text{perc}$ moves by $10^{-5}\,\%$ and
+$T_\text{reh}$ by $+0.016\,\%$. What does move is the redshift: the degrees of freedom after
+reheating change by $-0.9\,\%$ (conformal) and $+0.3\,\%$ (abelian dark Higgs). Where the Goldstone modes are massless at the minimum the counting is unchanged to
+machine precision; where they are not, as in the conformal dark U(1) model, it changes by
+$16\,\%$ at $T = 0.1\,v$.
+
+\paragraph{Still open.} The daisy term is derived in the high-temperature expansion and leaves
+spurious temperature-independent pieces behind at $T \ll m$, which is why the sound speed
+of the broken phase drifts away from $1/3$ at low temperature instead of towards it. A
+following pull request will switch the Debye masses off as the particles that build them leave
+the plasma (see arXiv:2010.09744 and arXiv:2306.17239), validated on its own.
+
+\end{document}

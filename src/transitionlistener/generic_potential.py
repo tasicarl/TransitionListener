@@ -37,7 +37,7 @@ import rich
 from transitionlistener.finiteT import Jb_spline as Jb
 from transitionlistener.finiteT import Jf_spline as Jf
 from transitionlistener import helper_functions
-from transitionlistener.thermodynamics import e_geffSM, p_geffSM, set_sm_temperature_cap, sm_bath
+from transitionlistener.thermodynamics import e_geffSM, p_geffSM, sm_bath, sm_fields_in_potential_geff
 
 from transitionlistener.bubbledynamics import approxNucleationCriterion
 
@@ -191,7 +191,6 @@ class generic_potential():
         self.Tmax = self.config.tracingConf.Tmax_factor * self.v_stable
         self.checkInitialisation()
         self.generateInvGroupElements()
-        self._update_sm_temperature_cap()
         self._check_radiation_baths()
 
         if self.verbose:
@@ -213,6 +212,14 @@ class generic_potential():
                 "The potential contains Standard Model fields (flagged is_SM), so the Standard "
                 "Model belongs to the transitioning sector and cannot be put into the decoupled "
                 "bath. The decoupled bath can hold other radiation, e.g. of a dark sector."
+            )
+        if has_sm_fields and self.kin_coupled_e_geff is not e_geffSM:
+            print(
+                "Warning: the potential contains Standard Model fields (flagged is_SM), which "
+                "are subtracted from the coupled radiation bath so that they are counted once "
+                "(sm_fields_in_potential_geff). The coupled bath is not the Standard Model "
+                "table, so check that it contains those fields; otherwise the radiation of the "
+                "coupled bath comes out too small."
             )
         if self.kin_coupled_e_geff is e_geffSM and self.kin_decoupled_e_geff is e_geffSM:
             print(
@@ -285,7 +292,6 @@ class generic_potential():
                     f"Model parameter {key}={value} is out of range "
                     f"[{min_val}, {max_val}]."
                 )
-        self._update_sm_temperature_cap()
         return mp
 
     def computeConversionFactor(self, v_stable: float, v_GeV: float) -> float:
@@ -356,29 +362,6 @@ class generic_potential():
             "latex": self.mass_spectrum.fermion_labels("latex"),
             "text": self.mass_spectrum.fermion_labels("text"),
         }
-
-    def _update_sm_temperature_cap(self) -> None:
-        """Cache the SM temperature cap using the spectrum at the zero-T minimum."""
-        if (
-            not isinstance(self.mass_spectrum, MassSpectrum)
-            or self.conversionFactor is None
-            or self.X0 is None
-        ):
-            return
-        try:
-            bosons = self.boson_massSq(np.asarray(self.X0), 0.0)
-            fermions = self.fermion_massSq(np.asarray(self.X0))
-        except Exception as e:
-            msg = ("Could not evaluate mass spectrum at zero-T minimum "
-                   "to set SM temperature cap: ") + str(e)
-            console.print(f"[yellow]Warning: {msg}[/yellow]")
-            return
-        set_sm_temperature_cap(
-            self.conversionFactor,
-            bosons, self.mass_spectrum.is_SM_bosons,
-            fermions, self.mass_spectrum.is_SM_fermions,
-            verbose=self.verbose,
-        )
 
     def get_mass_spectrum(self, X: np.ndarray, T: float | np.ndarray) -> SpectrumSnapshot:
         """Evaluate bosonic and fermionic spectra at (X, T)."""
@@ -664,6 +647,9 @@ class generic_potential():
         """
         T = np.asanyarray(T, dtype=float)
         geff = self.kin_coupled_p_geff(T, self.conversionFactor)
+        # Standard Model fields of the potential are counted there, with their field- and
+        # temperature-dependent masses, so remove them from the tabulated bath.
+        geff = geff - sm_fields_in_potential_geff(self, T, "p")
 
         # in the landau gauge we have -1 massless DOF from each gauge boson
         # (rather from the ghost fields)
@@ -1365,6 +1351,9 @@ class generic_potential():
         # Radiation energy density of particles that are neglected in the
         # effective potential
         geff = self.kin_coupled_e_geff(T, self.conversionFactor)
+        # Standard Model fields of the potential are counted there, with their field- and
+        # temperature-dependent masses, so remove them from the tabulated bath.
+        geff = geff - sm_fields_in_potential_geff(self, T, "e")
 
         # remove unphysical contributions from the gauge bosons (effect of ghost fields)
         # in the landau gauge

@@ -9,6 +9,8 @@ from unittest import mock
 import numpy as np
 
 import contextlib
+import importlib.util
+import inspect
 import io
 
 from transitionlistener import bubbledynamics as bd
@@ -223,6 +225,74 @@ class ReheatingTemperatureTests(unittest.TestCase):
         self.assertAlmostEqual(with_bath / alone, 1.0, places=12)
 
 
+class TimeTemperatureFactorsTests(unittest.TestCase):
+    """The scale factor of the percolation integral follows entropy conservation."""
+
+    @staticmethod
+    def bath(masses, dofs, gauge_bosons=0):
+        """A potential whose modes have the given masses and degrees of freedom."""
+        masses = np.asarray(masses, dtype=float)
+        dofs = np.asarray(dofs, dtype=float)
+        zero = lambda T, cf: 0.0 * np.asarray(T, dtype=float)
+        return types.SimpleNamespace(
+            conversionFactor=1.0, T_eps=1.0e-12, X0=np.zeros(1),
+            boson_massSq=lambda X, T: (masses**2, dofs, np.zeros_like(dofs),
+                                       np.ones_like(dofs, dtype=bool)),
+            fermion_massSq=lambda X: (np.zeros(0), np.zeros(0)),
+            kin_coupled_e_geff=zero, kin_coupled_p_geff=zero,
+            mass_spectrum=types.SimpleNamespace(
+                number_gauge_bosons=gauge_bosons,
+                is_SM_bosons=np.zeros(dofs.size, dtype=bool), is_SM_fermions=np.zeros(0, dtype=bool)),
+        )
+
+    PHASE = types.SimpleNamespace(valAt=lambda T: np.zeros(1))
+
+    def test_the_scale_factor_is_the_entropy_ratio(self):
+        # Massless modes: the entropy of the transitioning sector is proportional to T^3, so
+        # a ~ 1/T exactly. A grid that spans twelve decades with few points, as the percolation
+        # solver builds it, defeats the trapezoidal integration of -1/(3 c_s^2 T), which
+        # overestimates every interval; entropy conservation is exact whatever the grid.
+        T = np.logspace(2, -10, 25)
+        cs2, a = bd._time_temperature_factors(self.bath([0.0], [100.0]), self.PHASE, T)
+        np.testing.assert_allclose(a, T[0] / T, rtol=1e-10)
+        self.assertEqual(cs2.shape, T.shape)
+
+    def test_degrees_of_freedom_that_freeze_out_slow_the_expansion(self):
+        # A mode of mass 1 leaves the plasma as the temperature falls below it, so the entropy
+        # falls faster than T^3 and a grows faster than 1/T, by the cube root of the ratio of
+        # the degrees of freedom.
+        T = np.array([100.0, 1.0e-3])
+        pot = self.bath([0.0, 1.0], [10.0, 90.0])
+        _, a = bd._time_temperature_factors(pot, self.PHASE, T)
+        h_hot = float(bd.h_eff_DS(T[0], pot, self.PHASE))
+        h_cold = float(bd.h_eff_DS(T[1], pot, self.PHASE))
+        self.assertAlmostEqual(h_cold, 10.0, places=6)
+        self.assertAlmostEqual(a[1] / (T[0] / T[1]), (h_hot / h_cold) ** (1 / 3), places=6)
+
+    def test_an_unusable_entropy_falls_back_to_the_bag_relation(self):
+        # Ghosts are subtracted as massless modes, so once every mode of the potential is
+        # heavy the count of degrees of freedom would turn negative; it is floored at zero,
+        # and the bag relation continues the chain where the entropy vanishes.
+        T = np.logspace(2, -10, 25)
+        pot = self.bath([0.0, 10.0], [1.0, 6.0], gauge_bosons=2)
+        self.assertEqual(float(bd.h_eff_DS(1.0e-6, pot, self.PHASE)), 0.0)   # floored, not negative
+        cs2, a = bd._time_temperature_factors(pot, self.PHASE, T)
+        self.assertTrue(np.all(np.isfinite(a)))
+        self.assertTrue(np.all(np.diff(a) > 0.0), "the scale factor must grow as T falls")
+        np.testing.assert_allclose(a[-1] / a[-2], T[-2] / T[-1], rtol=1e-10)
+
+    def test_the_universe_never_contracts_as_it_cools(self):
+        # An entropy that rises while the temperature falls would give a shrinking scale
+        # factor; the bag relation replaces such a step.
+        T = np.array([10.0, 1.0, 0.1])
+        entropies = {10.0: 1.0, 1.0: 1.0e6, 0.1: 1.0e12}
+        pot = self.bath([0.0], [1.0])
+        with mock.patch.object(bd, "h_eff_DS", lambda t, p, ph: entropies[round(float(t), 6)] / t**3), \
+                mock.patch.object(bd, "h_eff_coupled_radiation", lambda t, p: 0.0):
+            _, a = bd._time_temperature_factors(pot, self.PHASE, T)
+        np.testing.assert_allclose(a, T[0] / T, rtol=1e-10)
+
+
 class SpectrumAndModelTests(unittest.TestCase):
     GW = dict(alpha=0.5, RH=1e-2, Treh_SM_GeV=0.05, g_eff_tot_reh=10.0, h_eff_tot_reh=10.0,
               kappa_phi=0.0, kappa_sw=0.3, kappa_turb=0.03, v_wall=0.9)
@@ -273,6 +343,23 @@ class SpectrumAndModelTests(unittest.TestCase):
         pot = DarkRadiation(params)
         self.assertEqual(td.sm_bath(pot), "coupled")
 
+    def test_a_coupled_bath_without_the_standard_model_table_is_flagged(self):
+        # the Standard Model fields of the potential are subtracted from the coupled bath, so a
+        # coupled bath that does not contain them would come out too small
+        pot = types.SimpleNamespace(
+            SM_bath=None, kin_coupled_e_geff=(lambda T, cf: 2.0 + 0.0 * T),
+            kin_decoupled_e_geff=(lambda T, cf: 0.0 * T),
+            mass_spectrum=types.SimpleNamespace(is_SM_bosons=np.array([True]), is_SM_fermions=np.zeros(0, bool)))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            generic_potential._check_radiation_baths(pot)
+        self.assertIn("counted once", out.getvalue())
+        pot.kin_coupled_e_geff = td.e_geffSM
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            generic_potential._check_radiation_baths(pot)
+        self.assertEqual(out.getvalue(), "")
+
     def test_a_standard_model_in_both_baths_is_flagged(self):
         pot = types.SimpleNamespace(SM_bath=None, kin_coupled_e_geff=td.e_geffSM, kin_decoupled_e_geff=td.e_geffSM)
         out = io.StringIO()
@@ -284,6 +371,120 @@ class SpectrumAndModelTests(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             generic_potential._check_radiation_baths(pot)
         self.assertEqual(out.getvalue(), "")
+
+
+class PotentialEntropyTests(unittest.TestCase):
+    """The entropy of the fields of the potential counts Standard Model fields (e.g. of the 2HDM)."""
+
+    @staticmethod
+    def mock_potential():
+        # boson_massSq gives (m^2, dof, c, physical): one scalar mode of 6 degrees of freedom and
+        # two gauge bosons of 6 together, whose 2 ghosts are subtracted, plus one fermion mode.
+        return types.SimpleNamespace(
+            X0=np.zeros(1), conversionFactor=1.0,
+            boson_massSq=lambda X, T: (np.array([1.0, 4.0]), np.array([6.0, 6.0]),
+                                       np.array([0.5, 1.5]), np.array([True, True])),
+            fermion_massSq=lambda X: (np.array([9.0]), np.array([12.0])),
+            mass_spectrum=types.SimpleNamespace(
+                number_gauge_bosons=2, Nscalars=1, dof_bosons=np.array([6.0, 6.0]),
+                is_SM_bosons=np.array([True, True]), is_SM_fermions=np.array([True])),
+        )
+
+    @staticmethod
+    def landau_sum(fn, T):
+        return (fn(1.0, T, 6.0, "b") + fn(2.0, T, 6.0, "b") + fn(3.0, T, 12.0, "f")
+                - fn(0.0, T, 2.0, "b"))
+
+    def test_every_mode_of_the_potential_counts_and_the_ghosts_are_subtracted(self):
+        # Standard Model fields are no longer masked out, so every mode counts; the ghosts of the
+        # two gauge bosons are massless in the Landau gauge and are removed.
+        pot, T = self.mock_potential(), 3.0
+        phase = types.SimpleNamespace(valAt=lambda T: np.zeros(1))
+        for kind, fn, module_fn in (("e", td.e_geff, "g_eff_DS"), ("s", td.s_geff, "h_eff_DS")):
+            expected = self.landau_sum(fn, T)
+            for module in (bd, bdf):
+                with self.subTest(kind=kind, module=module.__name__):
+                    self.assertAlmostEqual(float(getattr(module, module_fn)(T, pot, phase)),
+                                           float(expected), places=12)
+
+    def test_the_standard_model_fields_are_removed_from_the_tabulated_bath(self):
+        # What is subtracted from the table are the physical degrees of freedom of the Standard
+        # Model fields of the potential: their modes in the Landau gauge, minus their ghosts. Here
+        # every field is one, so the potential adds exactly what the table loses.
+        pot, T = self.mock_potential(), 3.0
+        # the subtraction is interpolated in log T, so it matches the direct sum to the
+        # accuracy of that table rather than to machine precision
+        for kind, fn in (("e", td.e_geff), ("s", td.s_geff)):
+            with self.subTest(kind=kind):
+                self.assertAlmostEqual(float(td.sm_fields_in_potential_geff(pot, T, kind)),
+                                       float(self.landau_sum(fn, T)), places=7)
+        # only the fields flagged is_SM are removed, ghosts included for the gauge bosons among them
+        pot.mass_spectrum.is_SM_bosons = np.array([True, False])
+        pot.mass_spectrum.is_SM_fermions = np.array([False])
+        pot._sm_fields_geff_splines = {}   # the mask changed, so the table has to be rebuilt
+        self.assertAlmostEqual(float(td.sm_fields_in_potential_geff(pot, T, "e")),
+                               float(td.e_geff(1.0, T, 6.0, "b")), places=7)
+        # a potential without Standard Model fields leaves the table alone
+        pot.mass_spectrum.is_SM_bosons = np.zeros(2, bool)
+        pot._sm_fields_geff_splines = {}
+        self.assertEqual(td.sm_fields_in_potential_geff(pot, T, "s"), 0.0)
+
+    def test_the_pressure_degrees_of_freedom_take_vectors(self):
+        # potential_fields_geff runs inside Vtot, which passes arrays of temperatures.
+        T = np.array([0.5, 2.0, 50.0])
+        for m, g, ptype in ((0.0, 4.0, "b"), (7.0, 1.0, "b"), (3.0, 12.0, "f")):
+            with self.subTest(m=m, ptype=ptype):
+                np.testing.assert_allclose(td.p_geff(m, T, g, ptype),
+                                           [float(td.p_geff(m, float(t), g, ptype)) for t in T],
+                                           rtol=1e-12)
+        self.assertAlmostEqual(float(td.p_geff(0.0, 1.0, 4.0, "b")), 4.0, places=12)
+
+    def test_the_2hdm_entropy_matches_the_standard_model_tables(self):
+        # In the zero-temperature vacuum the Standard Model fields of the potential carry their
+        # Standard Model masses, so what the potential adds cancels what the table loses: the total
+        # is the Standard Model table plus the additional scalars of the 2HDM, exactly.
+        spec = importlib.util.spec_from_file_location("tl_2hdm_for_test", "models/TL_2HDM.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        cls = [c for _, c in inspect.getmembers(module, inspect.isclass)
+               if issubclass(c, generic_potential) and c is not generic_potential and c.__module__ == module.__name__][0]
+        with contextlib.redirect_stdout(io.StringIO()):
+            pot = cls({})
+        CF = pot.conversionFactor
+        X = pot.X0 if np.ndim(pot.X0) == 1 else pot.X0[0]
+        phase = types.SimpleNamespace(valAt=lambda T: X)
+        spectrum = pot.mass_spectrum
+        b, f = pot.boson_massSq(X, 0.0), pot.fermion_massSq(X)
+        not_SM = (~np.asarray(spectrum.is_SM_bosons, bool), ~np.asarray(spectrum.is_SM_fermions, bool))
+        for T_GeV in (10.0, 50.0, 100.0):
+            T = T_GeV / CF
+            with self.subTest(T_GeV=T_GeV):
+                for kind, bath, table in (("s", bd.h_eff_DS, td.s_geffSM), ("e", bd.g_eff_DS, td.e_geffSM)):
+                    total = bath(T, pot, phase) + (bd.h_eff_coupled_radiation(T, pot) if kind == "s"
+                                                   else pot.kin_coupled_e_geff(T, CF) - td.sm_fields_in_potential_geff(pot, T, "e"))
+                    reference = table(T, CF) + td.potential_fields_geff(b, f, T, kind, not_SM)
+                    # exact up to the accuracy of the tabulated subtraction, which is
+                    # interpolated in log T once per model rather than recomputed inside Vtot
+                    self.assertAlmostEqual(float(total) / float(reference), 1.0, places=8)
+        # at temperatures far above the Standard Model masses the subtracted piece is the physical
+        # count of h, W, Z, the photon and t, b, tau: 1 + 6 + 3 + 2 + 7/8 * 28
+        T_high = 1.0e5 / CF
+        self.assertAlmostEqual(float(td.sm_fields_in_potential_geff(pot, T_high, "e")), 36.5, places=3)
+        # the same counting reproduces radiationEnergyDensity, which uses the full thermal
+        # integrals, wherever the modes of the potential are not tachyonic
+        ghosts = spectrum.number_gauge_bosons
+        for T_GeV in (50.0, 100.0):
+            T = T_GeV / CF
+            with self.subTest(T_GeV=T_GeV):
+                counted = (td.potential_fields_geff(b, f, T, "e") - td.e_geff(0.0, T, ghosts, "b")
+                           + pot.kin_coupled_e_geff(T, CF) - td.sm_fields_in_potential_geff(pot, T, "e"))
+                integrated = pot.radiationEnergyDensity(np.asarray(X, float), T) / (np.pi**2 / 30 * T**4)
+                self.assertAlmostEqual(float(counted) / float(integrated), 1.0, places=6)
+        # Vtot and radiationEnergyDensity pass arrays of temperatures through the same routines
+        T_grid = np.linspace(20.0, 200.0, 5) / CF
+        X_grid = np.tile(np.asarray(X, float), (T_grid.size, 1))
+        self.assertEqual(np.shape(pot.radiationEnergyDensity(X_grid, T_grid)), (5,))
+        self.assertEqual(np.shape(pot.constantTerms(T_grid)), (5,))
 
 
 class ReheatingDegreesOfFreedomTests(unittest.TestCase):
@@ -298,7 +499,8 @@ class ReheatingDegreesOfFreedomTests(unittest.TestCase):
         pot = types.SimpleNamespace(
             conversionFactor=1.0, SM_bath="decoupled" if sm_decoupled else None,
             boson_massSq=lambda X, T: np.zeros(2), fermion_massSq=lambda X: np.zeros(1),
-            mass_spectrum=types.SimpleNamespace(is_SM_bosons=np.zeros(2, bool), is_SM_fermions=np.zeros(1, bool)),
+            mass_spectrum=types.SimpleNamespace(number_gauge_bosons=0, is_SM_bosons=np.zeros(2, bool),
+                                                is_SM_fermions=np.zeros(1, bool)),
             kin_coupled_e_geff=zero, kin_coupled_p_geff=zero,
             kin_decoupled_e_geff=zero, kin_decoupled_p_geff=zero)
         if sm_decoupled:
@@ -308,8 +510,9 @@ class ReheatingDegreesOfFreedomTests(unittest.TestCase):
         return pot
 
     def dof(self, sm_decoupled, T_DS, T_dec):
-        with mock.patch.object(td, "e_geffDS", lambda b, f, T: self.G_DS), \
-                mock.patch.object(td, "s_geffDS", lambda b, f, T: self.H_DS):
+        dof_of = {"e": self.G_DS, "s": self.H_DS}
+        with mock.patch.object(td, "potential_fields_geff",
+                               lambda b, f, T, kind="e", mask=None: dof_of[kind]):
             return td.reheating_geff(self.pot(sm_decoupled), None, T_DS, T_dec)
 
     def test_a_decoupled_standard_model_gives_the_temperature_ratio_formula(self):
@@ -334,17 +537,20 @@ class ReheatingDegreesOfFreedomTests(unittest.TestCase):
         g, h, T_SM = self.dof(False, 61.4, 53.9)
         self.assertEqual((g, h, T_SM), (self.G_DS + self.G_SM, self.H_DS + self.G_SM, 61.4))
 
-    def test_standard_model_fields_of_the_potential_count(self):
-        # The SM tables are capped below the SM fields of the potential (e.g. W, Z, t, h in
-        # the 2HDM), so those must be counted from the potential, not masked out.
+    def test_a_standard_model_field_of_the_potential_is_counted_once(self):
+        # A massless Standard Model field of the potential contributes its 2 degrees of freedom
+        # from the potential and is removed from the table, so the total is the table alone.
         pot = self.pot(False)
-        pot.mass_spectrum = types.SimpleNamespace(is_SM_bosons=np.array([True, False]), is_SM_fermions=np.array([True]))
-        pot.boson_massSq = lambda X, T: np.array([7.0, 1.0])
-        pot.fermion_massSq = lambda X: np.array([3.0])
-        with mock.patch.object(td, "e_geffDS", lambda b, f, T: float(np.sum(b) + np.sum(f))), \
-                mock.patch.object(td, "s_geffDS", lambda b, f, T: float(np.sum(b) + np.sum(f))):
-            g, h, _ = td.reheating_geff(pot, None, 61.4, 53.9)
-        self.assertEqual((g, h), (11.0 + self.G_SM, 11.0 + self.G_SM))
+        pot.X0 = np.zeros(1)
+        pot.mass_spectrum = types.SimpleNamespace(
+            number_gauge_bosons=0, Nscalars=1, dof_bosons=np.array([2.0]),
+            is_SM_bosons=np.array([True]), is_SM_fermions=np.zeros(0, bool))
+        pot.conversionFactor = 1.0
+        pot.boson_massSq = lambda X, T: (np.array([0.0]), np.array([2.0]), np.array([0.0]), np.array([True]))
+        pot.fermion_massSq = lambda X: (np.zeros(0), np.zeros(0))
+        g, h, _ = td.reheating_geff(pot, np.zeros(1), 61.4, 61.4)
+        self.assertAlmostEqual(g, self.G_SM, places=12)
+        self.assertAlmostEqual(h, self.G_SM, places=12)
 
     def test_the_standard_model_bath_is_detected_and_can_be_set(self):
         zero = lambda T, cf: 0.0 * T
