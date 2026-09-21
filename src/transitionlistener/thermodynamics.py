@@ -663,10 +663,14 @@ def _model_parameter_fingerprint(pot):
 
 def _sm_fields_spline(pot, kind: str, mask, spectrum):
     """Cubic spline of ``sm_fields_in_potential_geff`` in log10(T/GeV), built once per model."""
-    # The table is keyed on everything it is built from, so a model whose parameters, vacuum,
-    # spectrum or is_SM flags change after it was first evaluated does not keep a stale table.
-    # ``generic_potential.set_modelparams`` drops the tables as well, as it used to reset the
-    # temperature cap this replaces.
+    # The table is keyed on everything it is built from that is cheap to read, so a model whose
+    # parameters, vacuum, spectrum or is_SM flags change after it was first evaluated does not
+    # keep a stale table. ``generic_potential.set_modelparams`` drops the tables as well, as it
+    # used to reset the temperature cap this replaces. The masses themselves are deliberately
+    # not part of the key: evaluating them costs about 50 microseconds, and this runs inside
+    # ``Vtot``, so it would slow down every potential evaluation by roughly a sixth. A model
+    # whose masses are changed by assigning to its attributes, without going through
+    # ``set_modelparams``, is therefore not caught -- as it was not by the temperature cap.
     X0 = np.atleast_2d(np.asarray(pot.X0, dtype=float))[0]
     key = (kind, float(pot.conversionFactor), int(spectrum.Nscalars), X0.tobytes(),
            _model_parameter_fingerprint(pot),
