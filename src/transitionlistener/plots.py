@@ -582,7 +582,9 @@ class TLPlots():
                     # Strongly supercooled transitions have no nucleation temperature; the
                     # upper end of the percolation profile then sets the plotting range, and
                     # nothing is drawn where the nucleation temperature would go.
-                    has_Tnuc = Tnuc is not None
+                    # A transition can reach this point without a nucleation temperature, as
+                    # None or as NaN; both mean the same thing for the plot.
+                    has_Tnuc = Tnuc is not None and np.isfinite(Tnuc)
                     Tnuc_GeV = (Tnuc * self.pot.conversionFactor if has_Tnuc
                                 else float(TSYM_GeV[0]))
                     Tperc_GeV = Tperc * self.pot.conversionFactor
