@@ -656,8 +656,9 @@ def _sm_fields_spline(pot, kind: str, mask, spectrum):
     # One ghost per Standard Model gauge boson. The gauge bosons are listed mode by mode,
     # transverse and longitudinal, so their degrees of freedom add up to three per boson;
     # anything else means a mode is missing and the ghosts cannot be counted.
-    gauge_dof = float(np.sum(np.asarray(spectrum.dof_bosons, dtype=float)[spectrum.Nscalars:]
-                             [np.asarray(mask[0], dtype=bool)[spectrum.Nscalars:]]))
+    gauge_entries = np.asarray(spectrum.dof_bosons, dtype=float)[spectrum.Nscalars:]
+    gauge_is_SM = np.asarray(mask[0], dtype=bool)[spectrum.Nscalars:]
+    gauge_dof = float(np.sum(gauge_entries[gauge_is_SM]))
     if gauge_dof > 0.0 and abs(gauge_dof / 3.0 - round(gauge_dof / 3.0)) > 1e-9:
         raise ValueError(
             "The Standard Model gauge bosons of the potential carry "
