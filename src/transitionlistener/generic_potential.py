@@ -37,7 +37,9 @@ import rich
 from transitionlistener.finiteT import Jb_spline as Jb
 from transitionlistener.finiteT import Jf_spline as Jf
 from transitionlistener import helper_functions
-from transitionlistener.thermodynamics import e_geffSM, p_geffSM, sm_bath, sm_fields_in_potential_geff
+from transitionlistener.thermodynamics import (e_geffSM, p_geffSM, sm_bath,
+                                               sm_fields_in_potential_geff,
+                                               sm_fields_in_potential_geff_uncached)
 
 from transitionlistener.bubbledynamics import approxNucleationCriterion
 
@@ -214,13 +216,39 @@ class generic_potential():
                 "bath. The decoupled bath can hold other radiation, e.g. of a dark sector."
             )
         if has_sm_fields and self.kin_coupled_e_geff is not e_geffSM:
-            print(
-                "Warning: the potential contains Standard Model fields (flagged is_SM), which "
-                "are subtracted from the coupled radiation bath so that they are counted once "
-                "(sm_fields_in_potential_geff). The coupled bath is not the Standard Model "
-                "table, so check that it contains those fields; otherwise the radiation of the "
-                "coupled bath comes out too small."
-            )
+            # The Standard Model fields of the potential are subtracted from the coupled bath,
+            # so that bath has to contain them. Check it, in energy and in pressure, rather
+            # than only saying so: a bath that is smaller than the subtraction would give a
+            # negative radiation energy density or pressure.
+            shortfall = None
+            try:
+                for T_GeV in (1.0, 10.0, 100.0, 1000.0):
+                    T = T_GeV / self.conversionFactor
+                    for kind, bath in (("energy", self.kin_coupled_e_geff(T, self.conversionFactor)),
+                                       ("pressure", self.kin_coupled_p_geff(T, self.conversionFactor))):
+                        needed = float(sm_fields_in_potential_geff_uncached(self, T, kind[0]))
+                        missing = needed - float(np.squeeze(bath))
+                        if missing > 0.0 and (shortfall is None or missing > shortfall[3]):
+                            shortfall = (T_GeV, kind, float(np.squeeze(bath)), missing, needed)
+            except Exception as exc:
+                print(
+                    "Warning: the potential contains Standard Model fields (flagged is_SM), "
+                    "which are subtracted from the coupled radiation bath so that they are "
+                    "counted once, but the bath could not be evaluated to check that it "
+                    f"contains them: {exc}"
+                )
+            else:
+                if shortfall is not None:
+                    T_GeV, kind, bath_value, _, needed = shortfall
+                    print(
+                        "Warning: the potential contains Standard Model fields (flagged "
+                        "is_SM), which are subtracted from the coupled radiation bath so that "
+                        "they are counted once, but the coupled bath is smaller than what is "
+                        f"subtracted: at {T_GeV:g} GeV it provides {bath_value:.4g} {kind} "
+                        f"degrees of freedom against the {needed:.4g} of those fields, so the "
+                        "radiation of the coupled bath comes out negative. Put the Standard "
+                        "Model into the coupled bath, or do not flag those fields is_SM."
+                    )
         if self.kin_coupled_e_geff is e_geffSM and self.kin_decoupled_e_geff is e_geffSM:
             print(
                 "Warning: both the coupled and the decoupled radiation bath hold the Standard "

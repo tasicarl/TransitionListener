@@ -661,6 +661,45 @@ def _model_parameter_fingerprint(pot):
     return tuple(fingerprint)
 
 
+def sm_fields_in_potential_geff_uncached(pot, T, kind: str = "e"):
+    """``sm_fields_in_potential_geff`` without the tabulation, for one-off checks.
+
+    The tabulated version is built for the whole temperature range at once, which is wasted
+    work when a caller needs the value at a handful of temperatures, as the validation of the
+    radiation baths does.
+    """
+    spectrum = getattr(pot, "mass_spectrum", None)
+    if spectrum is None:
+        return 0.0
+    mask = (np.asarray(spectrum.is_SM_bosons, dtype=bool),
+            np.asarray(spectrum.is_SM_fermions, dtype=bool))
+    if not (mask[0].any() or mask[1].any()):
+        return 0.0
+    X0 = np.atleast_2d(np.asarray(pot.X0, dtype=float))[0]
+    gauge_dof = _sm_gauge_dof(spectrum, mask)
+    fn = {"e": e_geff, "p": p_geff, "s": s_geff}[kind]
+    return (potential_fields_geff(pot.boson_massSq(X0, 0.0), pot.fermion_massSq(X0), T, kind, mask)
+            - fn(0.0, T, gauge_dof / 3.0, "b"))
+
+
+def _sm_gauge_dof(spectrum, mask):
+    """Degrees of freedom of the Standard Model gauge bosons of the potential, validated."""
+    # One ghost per Standard Model gauge boson. The gauge bosons are listed mode by mode,
+    # transverse and longitudinal, so their degrees of freedom add up to three per boson;
+    # anything else means a mode is missing and the ghosts cannot be counted.
+    gauge_entries = np.asarray(spectrum.dof_bosons, dtype=float)[spectrum.Nscalars:]
+    gauge_is_SM = np.asarray(mask[0], dtype=bool)[spectrum.Nscalars:]
+    gauge_dof = float(np.sum(gauge_entries[gauge_is_SM]))
+    if gauge_dof > 0.0 and abs(gauge_dof / 3.0 - round(gauge_dof / 3.0)) > 1e-9:
+        raise ValueError(
+            "The Standard Model gauge bosons of the potential carry "
+            f"{gauge_dof} degrees of freedom, which is not three per gauge boson, so their "
+            "ghosts cannot be counted. List every mode of each gauge boson, the two "
+            "transverse ones and the longitudinal one."
+        )
+    return gauge_dof
+
+
 def _sm_fields_spline(pot, kind: str, mask, spectrum):
     """Cubic spline of ``sm_fields_in_potential_geff`` in log10(T/GeV), built once per model."""
     # The table is keyed on everything it is built from that is cheap to read, so a model whose
@@ -687,19 +726,7 @@ def _sm_fields_spline(pot, kind: str, mask, spectrum):
     if cache is not None and key in cache:
         return cache[key]
     bosons, fermions = pot.boson_massSq(X0, 0.0), pot.fermion_massSq(X0)
-    # One ghost per Standard Model gauge boson. The gauge bosons are listed mode by mode,
-    # transverse and longitudinal, so their degrees of freedom add up to three per boson;
-    # anything else means a mode is missing and the ghosts cannot be counted.
-    gauge_entries = np.asarray(spectrum.dof_bosons, dtype=float)[spectrum.Nscalars:]
-    gauge_is_SM = np.asarray(mask[0], dtype=bool)[spectrum.Nscalars:]
-    gauge_dof = float(np.sum(gauge_entries[gauge_is_SM]))
-    if gauge_dof > 0.0 and abs(gauge_dof / 3.0 - round(gauge_dof / 3.0)) > 1e-9:
-        raise ValueError(
-            "The Standard Model gauge bosons of the potential carry "
-            f"{gauge_dof} degrees of freedom, which is not three per gauge boson, so their "
-            "ghosts cannot be counted. List every mode of each gauge boson, the two "
-            "transverse ones and the longitudinal one."
-        )
+    gauge_dof = _sm_gauge_dof(spectrum, mask)
     fn = {"e": e_geff, "p": p_geff, "s": s_geff}[kind]
     T_internal = _SM_FIELDS_T_GeV / pot.conversionFactor
     values = np.array([float(potential_fields_geff(bosons, fermions, t, kind, mask)

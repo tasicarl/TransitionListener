@@ -343,17 +343,38 @@ class SpectrumAndModelTests(unittest.TestCase):
         pot = DarkRadiation(params)
         self.assertEqual(td.sm_bath(pot), "coupled")
 
-    def test_a_coupled_bath_without_the_standard_model_table_is_flagged(self):
+    def test_a_coupled_bath_smaller_than_the_subtraction_is_flagged(self):
         # the Standard Model fields of the potential are subtracted from the coupled bath, so a
-        # coupled bath that does not contain them would come out too small
-        pot = types.SimpleNamespace(
-            SM_bath=None, kin_coupled_e_geff=(lambda T, cf: 2.0 + 0.0 * T),
-            kin_decoupled_e_geff=(lambda T, cf: 0.0 * T),
-            mass_spectrum=types.SimpleNamespace(is_SM_bosons=np.array([True]), is_SM_fermions=np.zeros(0, bool)))
+        # coupled bath that does not contain them would come out negative
+        def potential(bath_dof):
+            const = lambda value: (lambda T, cf: value + 0.0 * np.asarray(T, dtype=float))
+            return types.SimpleNamespace(
+                SM_bath=None, conversionFactor=1.0, X0=np.zeros(1),
+                kin_coupled_e_geff=const(bath_dof), kin_coupled_p_geff=const(bath_dof),
+                kin_decoupled_e_geff=const(0.0),
+                boson_massSq=lambda X, T: (np.zeros(1), np.array([6.0]),
+                                           np.zeros(1), np.ones(1, dtype=bool)),
+                fermion_massSq=lambda X: (np.zeros(0), np.zeros(0)),
+                mass_spectrum=types.SimpleNamespace(
+                    Nscalars=1, dof_bosons=np.array([6.0]),
+                    is_SM_bosons=np.array([True]), is_SM_fermions=np.zeros(0, bool)))
+
+        # six massless degrees of freedom are subtracted; a bath of two cannot carry them
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            generic_potential._check_radiation_baths(pot)
-        self.assertIn("counted once", out.getvalue())
+            generic_potential._check_radiation_baths(potential(2.0))
+        message = out.getvalue()
+        self.assertIn("comes out negative", message)
+        self.assertIn("2", message)
+
+        # a bath that does carry them says nothing
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            generic_potential._check_radiation_baths(potential(20.0))
+        self.assertEqual(out.getvalue(), "")
+
+        # and neither does the Standard Model table itself
+        pot = potential(20.0)
         pot.kin_coupled_e_geff = td.e_geffSM
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
