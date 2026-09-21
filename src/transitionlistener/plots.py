@@ -1019,8 +1019,11 @@ class TLPlots():
                 # baths minus the Standard Model fields that the potential already contains.
                 bosons = self.pot.boson_massSq(phi_vec, 0)
                 fermions = self.pot.fermion_massSq(phi_vec)
-                geffDS.append(td.potential_fields_geff(bosons, fermions, T, "e")
-                              - td.e_geff(0.0, T, ghosts, "b"))
+                # floored at zero like ``bubbledynamics.g_eff_DS``: the ghosts are massless
+                # while the Goldstone modes they cancel are not, so a sector that has frozen
+                # out would otherwise be drawn with a negative number of degrees of freedom
+                geffDS.append(max(float(td.potential_fields_geff(bosons, fermions, T, "e")
+                                        - td.e_geff(0.0, T, ghosts, "b")), 0.0))
                 geffSM.append(self.pot.kin_coupled_e_geff(T, CF)
                               + self.pot.kin_decoupled_e_geff(T, CF)
                               - td.sm_fields_in_potential_geff(self.pot, T, "e"))

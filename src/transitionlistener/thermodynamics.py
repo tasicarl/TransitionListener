@@ -496,7 +496,12 @@ def e_geff(m, T, g, ptype):
 
 
 def p_geff(m, T, g, ptype):
-    """Pressure degrees of freedom, supports scalar or vector inputs for m and T."""
+    """Pressure degrees of freedom, supports scalar or vector inputs for m and T.
+
+    At exactly ``T = 0`` a massless mode returns its full count, as ``e_geff`` does, since
+    that is the limit of the coefficient; the pressure itself still vanishes, because every
+    caller multiplies by ``T**4``. A massive mode returns zero there.
+    """
     m = np.asarray(m)  # Ensure m is a numpy array
     T = np.asarray(T)  # Ensure T is a numpy array
     T = T + 1e-100
@@ -642,6 +647,13 @@ _SM_FIELDS_T_GeV = np.logspace(-8.0, 10.0, 2881)
 
 def _sm_fields_spline(pot, kind: str, mask, spectrum):
     """Cubic spline of ``sm_fields_in_potential_geff`` in log10(T/GeV), built once per model."""
+    # The table is keyed on everything it is built from, so a model whose vacuum, spectrum or
+    # is_SM flags change after it was first evaluated does not keep a stale table.
+    X0 = np.atleast_2d(np.asarray(pot.X0, dtype=float))[0]
+    key = (kind, float(pot.conversionFactor), int(spectrum.Nscalars), X0.tobytes(),
+           np.asarray(spectrum.dof_bosons, dtype=float).tobytes(),
+           np.asarray(mask[0], dtype=bool).tobytes(),
+           np.asarray(mask[1], dtype=bool).tobytes())
     cache = getattr(pot, "_sm_fields_geff_splines", None)
     if cache is None:
         cache = {}
@@ -649,9 +661,8 @@ def _sm_fields_spline(pot, kind: str, mask, spectrum):
             pot._sm_fields_geff_splines = cache
         except Exception:
             cache = None
-    if cache is not None and kind in cache:
-        return cache[kind]
-    X0 = np.atleast_2d(np.asarray(pot.X0, dtype=float))[0]
+    if cache is not None and key in cache:
+        return cache[key]
     bosons, fermions = pot.boson_massSq(X0, 0.0), pot.fermion_massSq(X0)
     # One ghost per Standard Model gauge boson. The gauge bosons are listed mode by mode,
     # transverse and longitudinal, so their degrees of freedom add up to three per boson;
@@ -672,7 +683,7 @@ def _sm_fields_spline(pot, kind: str, mask, spectrum):
                              - fn(0.0, t, gauge_dof / 3.0, "b")) for t in T_internal])
     spline = interpolate.CubicSpline(np.log10(_SM_FIELDS_T_GeV), values)
     if cache is not None:
-        cache[kind] = spline
+        cache[key] = spline
     return spline
 
 

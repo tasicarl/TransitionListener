@@ -421,13 +421,32 @@ class PotentialEntropyTests(unittest.TestCase):
         # only the fields flagged is_SM are removed, ghosts included for the gauge bosons among them
         pot.mass_spectrum.is_SM_bosons = np.array([True, False])
         pot.mass_spectrum.is_SM_fermions = np.array([False])
-        pot._sm_fields_geff_splines = {}   # the mask changed, so the table has to be rebuilt
         self.assertAlmostEqual(float(td.sm_fields_in_potential_geff(pot, T, "e")),
                                float(td.e_geff(1.0, T, 6.0, "b")), places=7)
         # a potential without Standard Model fields leaves the table alone
         pot.mass_spectrum.is_SM_bosons = np.zeros(2, bool)
-        pot._sm_fields_geff_splines = {}
         self.assertEqual(td.sm_fields_in_potential_geff(pot, T, "s"), 0.0)
+
+    def test_the_tabulated_subtraction_follows_a_changed_spectrum(self):
+        # the subtraction is tabulated once per model, so it has to notice when the flags,
+        # the vacuum or the degrees of freedom of that model change afterwards
+        pot, T = self.mock_potential(), 3.0
+        first = float(td.sm_fields_in_potential_geff(pot, T, "e"))
+        pot.mass_spectrum.is_SM_bosons = np.array([True, False])
+        second = float(td.sm_fields_in_potential_geff(pot, T, "e"))
+        expected = float(td.e_geff(1.0, T, 6.0, "b") + td.e_geff(3.0, T, 12.0, "f"))
+        self.assertAlmostEqual(second, expected, places=7)   # the gauge modes are no longer SM
+        self.assertNotAlmostEqual(first, second, places=3)
+        pot.mass_spectrum.is_SM_bosons = np.array([True, True])
+        self.assertAlmostEqual(float(td.sm_fields_in_potential_geff(pot, T, "e")), first, places=12)
+
+    def test_the_degrees_of_freedom_at_zero_temperature(self):
+        # the coefficients are the limits: a massless mode keeps its count, a massive one does
+        # not, and the pressure itself vanishes either way through the T^4 the callers apply
+        for fn in (td.e_geff, td.p_geff):
+            with self.subTest(fn=fn.__name__):
+                self.assertAlmostEqual(float(fn(0.0, 0.0, 4.0, "b")), 4.0, places=12)
+                self.assertAlmostEqual(float(fn(1.0, 0.0, 4.0, "b")), 0.0, places=12)
 
     def test_the_pressure_degrees_of_freedom_take_vectors(self):
         # potential_fields_geff runs inside Vtot, which passes arrays of temperatures.
