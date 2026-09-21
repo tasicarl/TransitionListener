@@ -3,6 +3,13 @@
 Subclasses ``models/TL_2HDM.py`` and overrides only ``geff`` (the effective
 relativistic DOF count) and ``radiationEnergyDensity`` so the comparison
 against BSMPT in figs. 15-16 is fair (matched degrees of freedom).
+
+Only the energy density is matched. The pressure of the tabulated bath in
+``constantTerms``, and with it the entropy that the percolation solver takes from
+the effective potential, still uses TL's own Standard Model tables, so this model
+counts its degrees of freedom two ways: BSMPT's for the expansion rate and TL's
+for the time-temperature relation. That is a property of the comparison setup,
+not of either code; do not use this model file for anything but the comparison.
 """
 
 from __future__ import annotations

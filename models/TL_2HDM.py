@@ -427,17 +427,25 @@ class R2HDM(generic_potential.generic_potential):
             M2[..., 4] = charged_large
             M2[..., 5] = charged_small
 
-            # Gauge bosons
+            # Gauge bosons. The neutral sector has two mass matrices in the (W^3, B) basis,
+            # one for the longitudinal modes, which carry the Debye masses, and one for the
+            # transverse modes, which carry none at this order. Each is diagonalised on its
+            # own, the Debye masses being added before the diagonalisation: since Pi_WL and
+            # Pi_BL differ, the longitudinal mixing angle is temperature dependent and the
+            # longitudinal "photon" is not the photon direction.
             Pi_WL = 2 * self.g2**2 * T2
             Pi_BL = 2 * self.g1**2 * T2
             a = 0.25 * self.g2**2 * phi_sq + Pi_WL
             b = -0.25 * self.g1 * self.g2 * phi_sq
             c = 0.25 * self.g1**2 * phi_sq + Pi_BL
             discr = np.sqrt(np.maximum(a**2 + 4.0 * b**2 - 2.0 * a * c + c**2, 0.0))
-            mZ2 = 0.25 * (self.g1**2 + self.g2**2) * phi_sq
             mZ2L = 0.5 * (a + c + discr)
             mA2L = 0.5 * (a + c - discr)
-            mA2 = 0.5 * (a + c - discr)
+            # The transverse matrix is the same one without Pi_WL and Pi_BL. Its determinant
+            # vanishes identically, so its eigenvalues are (g1^2 + g2^2) phi^2 / 4 and zero:
+            # the transverse Z, and a transverse photon that is massless at every field value.
+            mZ2 = 0.25 * (self.g1**2 + self.g2**2) * phi_sq
+            mA2 = np.zeros_like(phi_sq)
             mW2 = 0.25 * self.g2**2 * phi_sq
             mW2L = mW2 + Pi_WL
 

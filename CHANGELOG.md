@@ -43,7 +43,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - `g_eff_tot_reh` and `h_eff_tot_reh` count the Standard Model fields of the
   potential. The 2HDM models put W, Z, t, h and further Standard Model fields
   into the potential and flag them `is_SM`; these were masked out while the
-  Standard Model tables are capped below them, so they were counted nowhere,
+  Standard Model tables left no room for them, so they were counted nowhere,
   and `g_eff_tot_reh` came out near 69 instead of near 98. The 2HDM spectra
   move by about +6 % in peak frequency and -10 % in amplitude; models without
   Standard Model fields in the potential are unaffected.
@@ -53,6 +53,77 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Degrees of freedom of the fields of the potential**: `h_eff_DS` and
+  `g_eff_DS`, used for the temperature inside the bubbles, for the integration
+  of `Treh` and for the redshift, masked out every field flagged `is_SM`,
+  skipped the Goldstone modes and kept the ghosts of the gauge bosons. They now
+  count every mode and subtract the ghosts, i.e. the Landau gauge counting that
+  `radiationEnergyDensity` has always used. For the 2HDM models W, Z, t, b,
+  tau, h and the Goldstone modes were counted nowhere, since the Standard Model
+  tables were capped below them: 68 entropy degrees of freedom at 50 GeV
+  instead of 93. Where the Goldstone modes are massless at the minimum, as in
+  `models/TL_dark_U1.py`, the counting is unchanged to machine precision, since
+  the Goldstone that was dropped and the ghost that was kept cancel; where they
+  are not, as in `models/TL_conformal_dark_u1.py`, it changes, by -16 % at
+  `T = 0.1 v`. The count is floored at zero: the ghosts are massless in the
+  Landau gauge while the Goldstone modes they cancel are not, so once every mode
+  of the potential is frozen out the difference would otherwise turn negative.
+  `reheating_geff` now also evaluates the fields of the potential with their
+  zero-temperature masses, as `radiationEnergyDensity` and `h_eff_DS` do, rather
+  than with the Debye-corrected ones.
+- **Standard Model fields of the potential in the tabulated baths**: the
+  Standard Model tables were frozen above half the mass of the lightest massive
+  `is_SM` field of the potential (`set_sm_temperature_cap`, 0.888 GeV for the
+  2HDM) to leave room for those fields. The cap also froze the photon, the
+  gluons, the light fermions and the whole QCD crossover above that
+  temperature, and it was module-wide state that the construction of one
+  potential changed for all others. It is replaced by subtracting the Standard
+  Model fields of the potential from the tables, at the masses they have in the
+  zero-temperature vacuum, so that each field is counted exactly once: in the
+  zero-temperature vacuum the total is the full Standard Model table plus the
+  additional fields of the model. `set_sm_temperature_cap` is removed.
+  Together with the previous entry, this lowers the degrees of freedom after
+  reheating of the 2HDM benchmark line by 2.9 % in energy and 1.8 % in entropy,
+  moves `Tperc` by 0.02 % and `Treh` by 0.04 %, and `alpha`, which is built from
+  the sound speed, by 1.4 %; along the dark lines the percolation is unchanged
+  and only the redshift moves, by -0.87 % (conformal) and +0.29 % (abelian dark
+  Higgs) in the degrees of freedom after reheating.
+- **Transverse photon mass in `models/TL_2HDM.py`**: the transverse photon was
+  given the Debye mass of the longitudinal photon instead of zero, since both
+  eigenvalues were taken from the neutral gauge mass matrix including the Debye
+  terms. The transverse modes receive no thermal mass at this order, and that
+  eigenvalue vanishes identically without them. The wrong mass entered the
+  thermal potential and, with two degrees of freedom, the daisy term, so it
+  shifted the barrier of every 2HDM run, `TL_2HDM_BSMPT.py` included. Along the
+  benchmark line `Tcrit` falls by 0.26 %, `Tperc` by 0.35 %, `Treh` by 0.27 %,
+  `alpha` rises by 1.4 % (up to 7.5 %) and the peak amplitude by 3.7 %. The step
+  in `alpha` and `beta/H` at `lambda3 = 5.69`, which the daisy term produced, is
+  gone. One point of the 49-point line ends in error 10 where it had a result
+  before, and does not come back with more support points; its neighbours are
+  unaffected.
+- **Scale factor of the percolation integral**: `a(T)` was obtained by
+  integrating `d ln a / dT = -1 / (3 c_s^2 T)` with the trapezoidal rule over the
+  solver's temperature grid, which spans the overlap of the two traced phases and
+  can run over ten or more decades with few points. Each interval was weighted by
+  the sound speed at its cold end, where the false vacuum is far below completion
+  and its sound speed is meaningless, so single intervals contributed hundreds of
+  e-folds: for the 2HDM benchmark `a(T)` jumped by 10^135 between neighbouring
+  grid points and reached 10^217, and the percolation integral then failed with
+  error 10. It now uses the integral form of the same relation, entropy
+  conservation `a^3 s = const`, with the bag relation `a ~ 1/T` where the entropy
+  of the traced phase is not usable, and it accepts sound speeds only inside
+  `(0, 1]`. For a pure radiation bath, where `a ~ 1/T` exactly, the old rule was
+  wrong by a factor 680 at the cold end of a twelve-decade grid. Along the 2HDM
+  benchmark line the change moves `Tperc`, `Treh` and `alpha` by less than
+  0.01 %, and it gives back the one point that the transverse photon fix had
+  cost, so the line has a result at all 49 of its points.
+- **Diagnostic plots**: `plotDOFs` drew the fields of the potential against the
+  whole Standard Model table, so its total double counted the Standard Model
+  fields of the potential; both curves now use the counting of the solvers.
+  `plotPercolation` unpacked nine return values from `calcPercAndEvolve`, which
+  returns six, so it failed for every model; the three extra values were never
+  used. It also failed when a transition has no nucleation temperature, where
+  the upper end of the percolation profile now sets the plotting range.
 - **Decoupled radiation baths**: runs with radiation in `kin_decoupled_*`,
   the setting 2.0.0 prescribes for a sector decoupled from the Standard Model,
   ended with error code 8 or gave wrong results without an error. The

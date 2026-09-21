@@ -17,7 +17,6 @@ from scipy import special
 from scipy.signal import savgol_filter
 
 from .particles import BaseParticle
-from . import console
 
 import os
 myPath = os.path.abspath(os.path.dirname(__file__)) + "/"
@@ -306,113 +305,11 @@ def p_geffSM_fit(TSM: float | np.ndarray, CF: float) -> float | np.ndarray:
     """
     TSM_arr = np.asarray(TSM, dtype=float)
     TSM_GeV = TSM_arr * CF
-    if _sm_mass_cap_GeV is not None:
-        TSM_GeV = np.minimum(TSM_GeV, _sm_mass_cap_GeV)
     s_val = np.asarray(s_geffSM_fit(TSM_GeV), dtype=float)
     e_val = np.asarray(e_geffSM_fit(TSM_GeV), dtype=float)
     p_base = 4 * s_val - 3 * e_val
 
     return float(p_base) if np.asarray(p_base).shape == () else p_base
-
-
-_sm_mass_cap_GeV: float | None = None
-
-
-def set_sm_temperature_cap(
-    CF: float,
-    mSq_bosons: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None = None,
-    boson_is_SM: np.ndarray | None = None,
-    mSq_fermions: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None,
-    fermion_is_SM: np.ndarray | None = None,
-    verbose: bool = False,
-) -> float | None:
-    """Initialise the SM temperature cap from the spectrum at the true minimum.
-
-    Parameters
-    ----------
-    CF : float
-        Conversion factor to GeV.
-    mSq_bosons, mSq_fermions : tuple, optional
-        Spectra evaluated at the true vacuum.
-    verbose : bool, optional
-        Print a warning containing the lightest SM mass when saturation is applied.
-    """
-    global _sm_mass_cap_GeV
-
-    masses = []
-    selected_boson_m2 = np.array([], dtype=float)
-    selected_fermion_m2 = np.array([], dtype=float)
-
-    # Numerical massless floor:
-    # treat masses below one ULP of the characteristic SM m^2 scale as zero.
-    # The scale is computed in GeV^2 and mapped back to internal units with CF.
-    eps = np.finfo(float).eps
-
-    # Add only physical, non-BSM boson masses to the list
-    if mSq_bosons is not None:
-        m2b, _, _, physical = mSq_bosons
-        mask = (np.asarray(boson_is_SM, dtype=bool)) & np.asarray(physical, dtype=bool)
-        if np.any(mask):
-            selected = np.asarray(m2b, dtype=float)[..., mask]
-            selected_boson_m2 = np.abs(selected).ravel()
-
-    # Add only non-BSM fermion masses to the list
-    if mSq_fermions is not None:
-        m2f, _ = mSq_fermions
-        mask = np.asarray(fermion_is_SM, dtype=bool)
-        if np.any(mask):
-            selected = np.asarray(m2f, dtype=float)[..., mask]
-            selected_fermion_m2 = np.abs(selected).ravel()
-
-    selected_boson_m2 = selected_boson_m2[np.isfinite(selected_boson_m2)]
-    selected_fermion_m2 = selected_fermion_m2[np.isfinite(selected_fermion_m2)]
-
-    if selected_boson_m2.size:
-        m2_scale_b_internal = float(np.max(selected_boson_m2))
-        m2_scale_b_GeV2 = m2_scale_b_internal * CF * CF
-        m2_tol_b_internal = (eps * m2_scale_b_GeV2) / (CF * CF)
-    else:
-        m2_tol_b_internal = 0.0
-
-    if selected_fermion_m2.size:
-        m2_scale_f_internal = float(np.max(selected_fermion_m2))
-        m2_scale_f_GeV2 = m2_scale_f_internal * CF * CF
-        m2_tol_f_internal = (eps * m2_scale_f_GeV2) / (CF * CF)
-    else:
-        m2_tol_f_internal = 0.0
-
-    # Collect non-massless states using the numerical floor.
-    if mSq_bosons is not None:
-        m2b, _, _, physical = mSq_bosons
-        mask = (np.asarray(boson_is_SM, dtype=bool)) & np.asarray(physical, dtype=bool)
-        if np.any(mask):
-            selected = np.asarray(m2b, dtype=float)[..., mask]
-            masses.extend(np.sqrt(selected[selected > m2_tol_b_internal]).ravel())
-
-    if mSq_fermions is not None:
-        m2f, _ = mSq_fermions
-        mask = np.asarray(fermion_is_SM, dtype=bool)
-        if np.any(mask):
-            selected = np.asarray(m2f, dtype=float)[..., mask]
-            masses.extend(np.sqrt(selected[selected > m2_tol_f_internal]).ravel())
-
-    if masses:
-        lightest = float(np.min(masses))
-        previous_cap = _sm_mass_cap_GeV
-        _sm_mass_cap_GeV = 0.5 * lightest * CF
-        if verbose and previous_cap is None:
-            msg = (f"The lightest (non-massless) SM particle in the model "
-                   f"file has a mass of {lightest * CF:.3g} GeV. The tabulated SM "
-                   f"effective degrees of freedom will hence be capped at "
-                   f"{_sm_mass_cap_GeV:.3g} GeV. The model will compute the "
-                   f"effective degrees of freedom dynamically beyond that point.")
-            console.print(
-                f"[yellow]Warning: {msg}[/yellow]"
-            )
-    else:
-        _sm_mass_cap_GeV = None
-
-    return _sm_mass_cap_GeV
 
 
 def e_geffSM(
@@ -434,13 +331,11 @@ def e_geffSM(
         "smooth", "fit" or "data"
     """
     TSM_arr = np.asarray(TSM, dtype=float)
-    capped_T = TSM_arr * CF
-    if _sm_mass_cap_GeV is not None:
-        capped_T = np.minimum(capped_T, _sm_mass_cap_GeV)
+    T_GeV = TSM_arr * CF
     if mode == "smooth":
-        result = np.asarray(Ie_geffSM_smooth(np.log10(capped_T)), dtype=float)
+        result = np.asarray(Ie_geffSM_smooth(np.log10(T_GeV)), dtype=float)
     elif mode == "data":
-        result = np.asarray(Ie_geffSM(np.log10(capped_T)), dtype=float)
+        result = np.asarray(Ie_geffSM(np.log10(T_GeV)), dtype=float)
     elif mode == "fit":
         result = e_geffSM_fit(TSM, CF)
 
@@ -463,13 +358,11 @@ def s_geffSM(TSM: float | np.ndarray, CF: float, mode: str = "smooth"
         "fit", "smooth" or "data".
     """
     TSM_arr = np.asarray(TSM, dtype=float)
-    capped_T = TSM_arr * CF
-    if _sm_mass_cap_GeV is not None:
-        capped_T = np.minimum(capped_T, _sm_mass_cap_GeV)
+    T_GeV = TSM_arr * CF
     if mode == "smooth":
-        result = np.asarray(Is_geffSM_smooth(np.log10(capped_T)), dtype=float)
+        result = np.asarray(Is_geffSM_smooth(np.log10(T_GeV)), dtype=float)
     elif mode == "data":
-        result = np.asarray(Is_geffSM(np.log10(capped_T)), dtype=float)
+        result = np.asarray(Is_geffSM(np.log10(T_GeV)), dtype=float)
     elif mode == "fit":
         result = s_geffSM_fit(TSM, CF)
 
@@ -492,8 +385,6 @@ def p_geffSM(TSM: float | np.ndarray, CF: float, mode: str = "smooth"
     """
     TSM_arr = np.asarray(TSM, dtype=float)
     TSM_GeV = TSM_arr * CF
-    if _sm_mass_cap_GeV is not None:
-        TSM_GeV = np.minimum(TSM_GeV, _sm_mass_cap_GeV)
     if mode == "smooth":
         s_val = np.asarray(Is_geffSM_smooth(np.log10(TSM_GeV)), dtype=float)
         e_val = np.asarray(Ie_geffSM_smooth(np.log10(TSM_GeV)), dtype=float)
@@ -605,23 +496,31 @@ def e_geff(m, T, g, ptype):
 
 
 def p_geff(m, T, g, ptype):
-    """Pressure degrees of freedom, supports scalar or vector inputs for m and T."""
-    if T == 0.0:
-        return 0.0
-    x = m/T
-    res = 0.0
+    """Pressure degrees of freedom, supports scalar or vector inputs for m and T.
+
+    At exactly ``T = 0`` a massless mode returns its full count, as ``e_geff`` does, since
+    that is the limit of the coefficient; the pressure itself still vanishes, because every
+    caller multiplies by ``T**4``. A massive mode returns zero there.
+    """
+    m = np.asarray(m)  # Ensure m is a numpy array
+    T = np.asarray(T)  # Ensure T is a numpy array
+    T = T + 1e-100
+    x = np.where(T != 0, m / T, np.inf)  # Avoid division by zero
+    res = np.zeros_like(x)
+
     if ptype == "b":
-        if x < Ipb.x[0]:
-            res =  1.0
-        elif x < Ipb.x[-1]:
-            res = Ipb(x)
+        # the pressure interpolators raise outside their range, so evaluate them on clipped
+        # arguments and keep the massless (1) and Boltzmann-suppressed (0) limits by hand
+        xc = np.clip(x, Ipb.x[0], Ipb.x[-1])
+        res = np.where(x < Ipb.x[0], 1.0, res)
+        res = np.where((x >= Ipb.x[0]) & (x < Ipb.x[-1]), Ipb(xc), res)
     elif ptype == "f":
-        if x < Ipf.x[0]:
-            res =  (7/8)
-        elif x < Ipf.x[-1]:
-            res = Ipf(x)
+        xc = np.clip(x, Ipf.x[0], Ipf.x[-1])
+        res = np.where(x < Ipf.x[0], 7 / 8, res)
+        res = np.where((x >= Ipf.x[0]) & (x < Ipf.x[-1]), Ipf(xc), res)
     return res * g
-    
+
+
 def s_geff(m, T, g, ptype):
     """Entropy degrees of freedom, supports scalar or vector inputs for m and T."""
     return (3*e_geff(m, T, g, ptype) + p_geff(m, T, g, ptype))/4
@@ -686,6 +585,159 @@ def e_geffDS(mSq_bosons, mSq_fermions, T):
     return geff
 
 
+def potential_fields_geff(mSq_bosons, mSq_fermions, T, kind: str = "e", mask=None):
+    """Degrees of freedom of the fields of a potential, in the Landau gauge counting.
+
+    Every mode counts, the Goldstone modes included; the ghosts are subtracted by the caller,
+    as in ``generic_potential.radiationEnergyDensity``. Tachyonic modes count as massless, as
+    they do in ``e_geffDS``, on the grounds that the plasma gives them a thermal mass.
+
+    ``kind`` selects energy (``"e"``), pressure (``"p"``) or entropy (``"s"``) degrees of
+    freedom; ``mask`` restricts the sum to a subset of the fields, as a pair of boolean arrays
+    for bosons and fermions.
+    """
+    fn = {"e": e_geff, "p": p_geff, "s": s_geff}[kind]
+    m2b, gb, _, _ = mSq_bosons
+    m2f, gf = mSq_fermions
+    mask_b = np.ones(np.shape(m2b), dtype=bool) if mask is None or mask[0] is None else np.asarray(mask[0], dtype=bool)
+    mask_f = np.ones(np.shape(m2f), dtype=bool) if mask is None or mask[1] is None else np.asarray(mask[1], dtype=bool)
+    total = 0.0
+    for i in range(len(m2b)):
+        if mask_b[i]:
+            total = total + fn(np.sqrt(np.maximum(m2b[i], 0.0)), T, gb[i], "b")
+    for i in range(len(m2f)):
+        if mask_f[i]:
+            total = total + fn(np.sqrt(np.maximum(m2f[i], 0.0)), T, gf[i], "f")
+    return total
+
+
+def sm_fields_in_potential_geff(pot, T, kind: str = "e"):
+    """Tabulated degrees of freedom of the Standard Model fields that the potential contains.
+
+    The tables ``e_geffSM``, ``p_geffSM`` and ``s_geffSM`` describe the whole Standard Model.
+    A model that puts Standard Model fields into its potential (flagged ``is_SM``, e.g. W, Z,
+    t and h in the 2HDM) counts those fields there, with their field- and temperature-dependent
+    masses, so their tabulated contribution has to be removed once. It is evaluated at the
+    masses the fields have in the zero-temperature vacuum of the model, where they are the
+    Standard Model masses, and their ghosts are removed with them, so that the ghosts the
+    potential subtracts are not counted twice.
+    """
+    spectrum = getattr(pot, "mass_spectrum", None)
+    if spectrum is None:
+        return 0.0
+    is_boson_SM = np.asarray(spectrum.is_SM_bosons, dtype=bool)
+    is_fermion_SM = np.asarray(spectrum.is_SM_fermions, dtype=bool)
+    if not (is_boson_SM.any() or is_fermion_SM.any()):
+        return 0.0
+    # The subtraction depends on the temperature alone once the model is built, and it is
+    # evaluated inside ``Vtot``, so it is tabulated once per potential and interpolated.
+    spline = _sm_fields_spline(pot, kind, (is_boson_SM, is_fermion_SM), spectrum)
+    T_GeV = np.asarray(T, dtype=float) * pot.conversionFactor
+    x = np.clip(np.log10(np.where(T_GeV > 0.0, T_GeV, _SM_FIELDS_T_GeV[0])),
+                np.log10(_SM_FIELDS_T_GeV[0]), np.log10(_SM_FIELDS_T_GeV[-1]))
+    out = spline(x)
+    return float(out) if np.ndim(T) == 0 else out
+
+
+# Temperatures at which the Standard Model fields of a potential are tabulated, in GeV. The
+# range covers everything the tabulated baths themselves cover; outside it the contribution is
+# constant, zero below and the full count above, so clamping is exact.
+_SM_FIELDS_T_GeV = np.logspace(-8.0, 10.0, 2881)
+
+
+def _model_parameter_fingerprint(pot):
+    """The values of the model parameters, as far as they can be read, for a cache key."""
+    parameters = getattr(pot, "model_parameters", None)
+    if not isinstance(parameters, dict):
+        return ()
+    fingerprint = []
+    for name in sorted(parameters):
+        entry = parameters[name]
+        value = entry.get("value") if isinstance(entry, dict) else entry
+        try:
+            fingerprint.append((name, float(value)))
+        except (TypeError, ValueError):
+            fingerprint.append((name, repr(value)))
+    return tuple(fingerprint)
+
+
+def sm_fields_in_potential_geff_uncached(pot, T, kind: str = "e"):
+    """``sm_fields_in_potential_geff`` without the tabulation, for one-off checks.
+
+    The tabulated version is built for the whole temperature range at once, which is wasted
+    work when a caller needs the value at a handful of temperatures, as the validation of the
+    radiation baths does.
+    """
+    spectrum = getattr(pot, "mass_spectrum", None)
+    if spectrum is None:
+        return 0.0
+    mask = (np.asarray(spectrum.is_SM_bosons, dtype=bool),
+            np.asarray(spectrum.is_SM_fermions, dtype=bool))
+    if not (mask[0].any() or mask[1].any()):
+        return 0.0
+    X0 = np.atleast_2d(np.asarray(pot.X0, dtype=float))[0]
+    gauge_dof = _sm_gauge_dof(spectrum, mask)
+    fn = {"e": e_geff, "p": p_geff, "s": s_geff}[kind]
+    return (potential_fields_geff(pot.boson_massSq(X0, 0.0), pot.fermion_massSq(X0), T, kind, mask)
+            - fn(0.0, T, gauge_dof / 3.0, "b"))
+
+
+def _sm_gauge_dof(spectrum, mask):
+    """Degrees of freedom of the Standard Model gauge bosons of the potential, validated."""
+    # One ghost per Standard Model gauge boson. The gauge bosons are listed mode by mode,
+    # transverse and longitudinal, so their degrees of freedom add up to three per boson;
+    # anything else means a mode is missing and the ghosts cannot be counted.
+    gauge_entries = np.asarray(spectrum.dof_bosons, dtype=float)[spectrum.Nscalars:]
+    gauge_is_SM = np.asarray(mask[0], dtype=bool)[spectrum.Nscalars:]
+    gauge_dof = float(np.sum(gauge_entries[gauge_is_SM]))
+    if gauge_dof > 0.0 and abs(gauge_dof / 3.0 - round(gauge_dof / 3.0)) > 1e-9:
+        raise ValueError(
+            "The Standard Model gauge bosons of the potential carry "
+            f"{gauge_dof} degrees of freedom, which is not three per gauge boson, so their "
+            "ghosts cannot be counted. List every mode of each gauge boson, the two "
+            "transverse ones and the longitudinal one."
+        )
+    return gauge_dof
+
+
+def _sm_fields_spline(pot, kind: str, mask, spectrum):
+    """Cubic spline of ``sm_fields_in_potential_geff`` in log10(T/GeV), built once per model."""
+    # The table is keyed on everything it is built from that is cheap to read, so a model whose
+    # parameters, vacuum, spectrum or is_SM flags change after it was first evaluated does not
+    # keep a stale table. ``generic_potential.set_modelparams`` drops the tables as well, as it
+    # used to reset the temperature cap this replaces. The masses themselves are deliberately
+    # not part of the key: evaluating them costs about 50 microseconds, and this runs inside
+    # ``Vtot``, so it would slow down every potential evaluation by roughly a sixth. A model
+    # whose masses are changed by assigning to its attributes, without going through
+    # ``set_modelparams``, is therefore not caught -- as it was not by the temperature cap.
+    X0 = np.atleast_2d(np.asarray(pot.X0, dtype=float))[0]
+    key = (kind, float(pot.conversionFactor), int(spectrum.Nscalars), X0.tobytes(),
+           _model_parameter_fingerprint(pot),
+           np.asarray(spectrum.dof_bosons, dtype=float).tobytes(),
+           np.asarray(getattr(spectrum, "dof_fermions", ()), dtype=float).tobytes(),
+           np.asarray(mask[0], dtype=bool).tobytes(),
+           np.asarray(mask[1], dtype=bool).tobytes())
+    cache = getattr(pot, "_sm_fields_geff_splines", None)
+    if cache is None:
+        cache = {}
+        try:
+            pot._sm_fields_geff_splines = cache
+        except Exception:
+            cache = None
+    if cache is not None and key in cache:
+        return cache[key]
+    bosons, fermions = pot.boson_massSq(X0, 0.0), pot.fermion_massSq(X0)
+    gauge_dof = _sm_gauge_dof(spectrum, mask)
+    fn = {"e": e_geff, "p": p_geff, "s": s_geff}[kind]
+    T_internal = _SM_FIELDS_T_GeV / pot.conversionFactor
+    values = np.array([float(potential_fields_geff(bosons, fermions, t, kind, mask)
+                             - fn(0.0, t, gauge_dof / 3.0, "b")) for t in T_internal])
+    spline = interpolate.CubicSpline(np.log10(_SM_FIELDS_T_GeV), values)
+    if cache is not None:
+        cache[key] = spline
+    return spline
+
+
 def h_eff_radiation(e_geff_fn, p_geff_fn, T: float, CF: float) -> float:
     """Entropy degrees of freedom of a radiation bath given by its energy and pressure degrees of freedom.
 
@@ -720,21 +772,36 @@ def reheating_geff(pot, X_broken, T_DS: float, T_dec: float) -> tuple[float, flo
     the bath that holds the Standard Model, ``g = sum g_i (T_i/T_SM)^4`` and
     ``h = sum h_i (T_i/T_SM)^3`` (arXiv:2109.06208, 2311.06346). Returns ``(g, h, T_SM)``.
 
-    All fields of the potential count, including those flagged ``is_SM``, as in
-    ``radiationEnergyDensity``: the Standard Model tables are capped below the lightest
-    Standard Model field of the potential (``set_sm_temperature_cap``), so they do not
-    contain it.
+    The fields of the potential count in the Landau gauge counting, every mode including the
+    Goldstone modes and the ghosts of the gauge bosons subtracted, as in
+    ``radiationEnergyDensity``. Fields flagged ``is_SM`` count there and are removed from the
+    tabulated bath by ``sm_fields_in_potential_geff``, so that each is counted once.
     """
     CF = pot.conversionFactor
     T_c = T_DS
     T_SM = T_dec if sm_bath(pot) == "decoupled" else T_c
-    bosons_DS = pot.boson_massSq(X_broken, T_DS)
+    # zero-temperature masses, as in ``radiationEnergyDensity`` and ``bubbledynamics.h_eff_DS``:
+    # the daisy resummation is not part of the energy budget of the plasma anywhere else either
+    bosons_DS = pot.boson_massSq(X_broken, 0.0)
     fermions_DS = pot.fermion_massSq(X_broken)
+    ghosts = pot.mass_spectrum.number_gauge_bosons
     r_DS, r_c, r_dec = T_DS / T_SM, T_c / T_SM, T_dec / T_SM
-    g = e_geffDS(bosons_DS, fermions_DS, T_DS) * r_DS**4 \
-        + pot.kin_coupled_e_geff(T_c, CF) * r_c**4 \
+    # Floored at zero as in ``bubbledynamics.g_eff_DS`` and ``h_eff_DS``: the ghosts are
+    # massless in the Landau gauge while the Goldstone modes they cancel are not, so a sector
+    # whose modes have all frozen out would otherwise enter the redshift with a negative
+    # number of degrees of freedom.
+    g_DS = max(float(potential_fields_geff(bosons_DS, fermions_DS, T_DS, "e")
+                     - e_geff(0.0, T_DS, ghosts, "b")), 0.0)
+    h_DS = max(float(potential_fields_geff(bosons_DS, fermions_DS, T_DS, "s")
+                     - s_geff(0.0, T_DS, ghosts, "b")), 0.0)
+    # The Standard Model fields of the potential are subtracted from the coupled bath, which
+    # is where they are: a potential that contains them cannot put the Standard Model into the
+    # decoupled bath, as ``generic_potential._check_radiation_baths`` refuses that setup.
+    g = g_DS * r_DS**4 \
+        + (pot.kin_coupled_e_geff(T_c, CF) - sm_fields_in_potential_geff(pot, T_c, "e")) * r_c**4 \
         + pot.kin_decoupled_e_geff(T_dec, CF) * r_dec**4
-    h = s_geffDS(bosons_DS, fermions_DS, T_DS) * r_DS**3 \
-        + h_eff_radiation(pot.kin_coupled_e_geff, pot.kin_coupled_p_geff, T_c, CF) * r_c**3 \
+    h = h_DS * r_DS**3 \
+        + (h_eff_radiation(pot.kin_coupled_e_geff, pot.kin_coupled_p_geff, T_c, CF)
+           - sm_fields_in_potential_geff(pot, T_c, "s")) * r_c**3 \
         + h_eff_radiation(pot.kin_decoupled_e_geff, pot.kin_decoupled_p_geff, T_dec, CF) * r_dec**3
     return float(g), float(h), float(T_SM)
