@@ -1971,16 +1971,19 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     # survive the difference of the pseudo-traces. It is left out of theta on both sides,
     # consistently with calcSoundSpeedSq, and enters only the normalisations.
     csSq_sym = calcSoundSpeedSq(pot, high_phi, T)
-    V0 = pot.Vtot(pot.X0, pot.Tmin)
-    # The reference does not cancel in the difference of the pseudo-traces either, since the
-    # two phases divide it by different sound speeds, so it is taken without the bath as well.
-    V0_PT = pot.Vtot(pot.X0, pot.Tmin, include_decoupled=False)
+    # The pressure is -(Vtot - V0_ref) and energyDensity() subtracts the zero-temperature
+    # vacuum energy, so the two have to use the same reference: otherwise the enthalpy
+    # w = e + p keeps the difference between them instead of reducing to -T dV/dT. The
+    # reference used here was Vtot(X0, Tmin), which left the model's lowest temperature in
+    # every strength normalised to w. This is the reference the adaptive solver uses.
+    V0_ref = pot.V0(pot.X0) + pot.Vct(pot.X0) + pot.V1_from_X(pot.X0)
     theta_sym = (pot.energyDensity(high_phi, T, include_decoupled=False)
-                 + (pot.Vtot(high_phi, T, include_decoupled=False) - V0_PT)/csSq_sym)
+                 + (pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref)/csSq_sym)
     csSq_bro = calcSoundSpeedSq(pot, low_phi, T)
     theta_bro = (pot.energyDensity(low_phi, T, include_decoupled=False)
-                 + (pot.Vtot(low_phi, T, include_decoupled=False) - V0_PT)/csSq_bro)
-    alpha_theta = (theta_sym - theta_bro)/(3 * (-pot.Vtot(high_phi, T) + V0 + pot.energyDensity(high_phi, T)))
+                 + (pot.Vtot(low_phi, T, include_decoupled=False) - V0_ref)/csSq_bro)
+    alpha_theta = (theta_sym - theta_bro)/(3 * (-pot.Vtot(high_phi, T) + V0_ref
+                                                + pot.energyDensity(high_phi, T)))
     
 
     alpha_e = DeltaE / rho_rad_tot
@@ -2012,7 +2015,7 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
 
     # Enthalpy w = e + p of the symmetric phase of the transitioning sector alone,
     # without a decoupled radiation bath; the hydrodynamic alphas do not depend on it.
-    w_sym_PT = (V0_PT - pot.Vtot(high_phi, T, include_decoupled=False)
+    w_sym_PT = (V0_ref - pot.Vtot(high_phi, T, include_decoupled=False)
                 + pot.energyDensity(high_phi, T, include_decoupled=False))
 
     # alpha_inf and alpha_eq as defined in section 2 of 1903.09642, normalised to the
