@@ -2449,13 +2449,19 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     # theta_bro = pot.energyDensity(low_phi, T) + Veff_bro / csSq_bro
     # alpha_thetabar_old = (theta_sym - theta_bro) / (3 * (-Veff_sym + pot.energyDensity(high_phi, T)))
 
+    # The pseudo-trace difference is a property of the transition alone. A kinetically
+    # decoupled bath has the same energy and pressure on both sides of the wall, but the two
+    # phases have different sound speeds, so it does not cancel in the difference: it would
+    # survive as V_bath (1/cs_sym^2 - 1/cs_bro^2), which is 4% of the release for a dark
+    # photon next to a decoupled Standard Model. It is therefore left out of theta on both
+    # sides, consistently with calcSoundSpeedSq, and enters only the normalisations below.
     V0_ref = pot.V0(pot.X0) + pot.Vct(pot.X0) + pot.V1_from_X(pot.X0)
-    Veff_sym = pot.Vtot(high_phi, T) - V0_ref
-    Veff_bro = pot.Vtot(low_phi, T) - V0_ref
+    Veff_sym = pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref
+    Veff_bro = pot.Vtot(low_phi, T, include_decoupled=False) - V0_ref
     csSq_sym = calcSoundSpeedSq(pot, high_phi, T)
-    theta_sym = -T*pot.dVdT(high_phi, T, dT=dT) + Veff_sym * (1 + 1/ csSq_sym)
+    theta_sym = -T*pot.dVdT(high_phi, T, dT=dT, include_decoupled=False) + Veff_sym * (1 + 1/ csSq_sym)
     csSq_bro = calcSoundSpeedSq(pot, low_phi, T)
-    theta_bro = -T*pot.dVdT(low_phi, T, dT=dT) + Veff_bro * (1 + 1/ csSq_bro)
+    theta_bro = -T*pot.dVdT(low_phi, T, dT=dT, include_decoupled=False) + Veff_bro * (1 + 1/ csSq_bro)
     dedT = (pot.energyDensity(high_phi, T + dT) - pot.energyDensity(high_phi, T - dT))/(2*dT)
     alpha_thetabar = (theta_sym - theta_bro) / (3* csSq_sym * T * dedT)
 
@@ -2485,10 +2491,10 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     delta_m_bos = np.maximum(m_bos_after - m_bos_before, 0)
 
     # Enthalpy w = e + p of the symmetric phase of the transitioning sector alone,
-    # without a decoupled radiation bath. The vacuum parts cancel in e + p.
-    Veff_sym_PT = pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref
+    # without a decoupled radiation bath. The vacuum parts cancel in e + p, and Veff_sym
+    # above is already the transitioning sector's effective potential.
     e_sym_PT = pot.energyDensity(high_phi, T, include_decoupled=False)
-    w_sym_PT = -Veff_sym_PT + e_sym_PT
+    w_sym_PT = -Veff_sym + e_sym_PT
 
     # alpha_inf and alpha_eq as defined in section 2 of 1903.09642: the leading- and
     # next-to-leading-order friction pressures on the wall divided by the radiation energy

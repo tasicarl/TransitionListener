@@ -1966,11 +1966,20 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     alpha_p = DeltaV / rho_rad_tot
     # Evaluate the enthalpy-normalized trace-anomaly definition separately
     # from the bag-model alpha used above.
+    # As in the adaptive step size solver: a kinetically decoupled bath is the same on both
+    # sides of the wall but the sound speeds of the two phases are not, so the bath would
+    # survive the difference of the pseudo-traces. It is left out of theta on both sides,
+    # consistently with calcSoundSpeedSq, and enters only the normalisations.
     csSq_sym = calcSoundSpeedSq(pot, high_phi, T)
     V0 = pot.Vtot(pot.X0, pot.Tmin)
-    theta_sym = pot.energyDensity(high_phi, T) + (pot.Vtot(high_phi, T)- V0)/csSq_sym
+    # The reference does not cancel in the difference of the pseudo-traces either, since the
+    # two phases divide it by different sound speeds, so it is taken without the bath as well.
+    V0_PT = pot.Vtot(pot.X0, pot.Tmin, include_decoupled=False)
+    theta_sym = (pot.energyDensity(high_phi, T, include_decoupled=False)
+                 + (pot.Vtot(high_phi, T, include_decoupled=False) - V0_PT)/csSq_sym)
     csSq_bro = calcSoundSpeedSq(pot, low_phi, T)
-    theta_bro = pot.energyDensity(low_phi, T) + (pot.Vtot(low_phi, T) - V0)/csSq_bro
+    theta_bro = (pot.energyDensity(low_phi, T, include_decoupled=False)
+                 + (pot.Vtot(low_phi, T, include_decoupled=False) - V0_PT)/csSq_bro)
     alpha_theta = (theta_sym - theta_bro)/(3 * (-pot.Vtot(high_phi, T) + V0 + pot.energyDensity(high_phi, T)))
     
 
@@ -2003,7 +2012,7 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
 
     # Enthalpy w = e + p of the symmetric phase of the transitioning sector alone,
     # without a decoupled radiation bath; the hydrodynamic alphas do not depend on it.
-    w_sym_PT = (V0 - pot.Vtot(high_phi, T, include_decoupled=False)
+    w_sym_PT = (V0_PT - pot.Vtot(high_phi, T, include_decoupled=False)
                 + pot.energyDensity(high_phi, T, include_decoupled=False))
 
     # alpha_inf and alpha_eq as defined in section 2 of 1903.09642, normalised to the
