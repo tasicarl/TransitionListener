@@ -2390,7 +2390,8 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
     return betaH
 
 
-def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[float]:
+def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
+               return_wall_strength: bool = False) -> tuple[float, ...]:
     """Calculate the total transition strenght of the PT.
     Use several definitions.
 
@@ -2407,7 +2408,8 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     ----------
     tuple : float
         ``(alpha_p, alpha_theta, alpha_thetabar, alpha_e, alpha_hyd, alpha_inf,
-        alpha_eq)``. ``alpha_theta`` is the bag-model strength fed to the
+        alpha_eq)``, and ``alpha_hyd_wall`` as an eighth entry if
+        ``return_wall_strength`` is true. ``alpha_theta`` is the bag-model strength fed to the
         GW-signal / kappa() pipeline; ``alpha_thetabar`` is the beyond-bag
         pseudo-trace-anomaly definition from arXiv:2004.06995."""
 
@@ -2423,12 +2425,8 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
 
     # Use the symmetric-phase radiation bath when normalizing the release.
     # This differs slightly from the older broken-phase normalization below
-    # roughly 100 MeV.
-    rho_rad_PTsector = pot.radiationEnergyDensity(high_phi, T, include_decoupled=False)
-    # With include_decoupled=False, sectors thermally decoupled from the PT
-    # sector are excluded from this normalization.
-
-    # Here we assume that the decoupled sector has the same temperature as the PT sector
+    # roughly 100 MeV. Here we assume that the decoupled sector has the same
+    # temperature as the PT sector.
     rho_rad_tot = pot.radiationEnergyDensity(high_phi, T, include_decoupled=True)
 
     # Energy density:
@@ -2451,13 +2449,19 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     # theta_bro = pot.energyDensity(low_phi, T) + Veff_bro / csSq_bro
     # alpha_thetabar_old = (theta_sym - theta_bro) / (3 * (-Veff_sym + pot.energyDensity(high_phi, T)))
 
+    # The pseudo-trace difference is a property of the transition alone. A kinetically
+    # decoupled bath has the same energy and pressure on both sides of the wall, but the two
+    # phases have different sound speeds, so it does not cancel in the difference: it would
+    # survive as V_bath (1/cs_sym^2 - 1/cs_bro^2), which is 4% of the release for a dark
+    # photon next to a decoupled Standard Model. It is therefore left out of theta on both
+    # sides, consistently with calcSoundSpeedSq, and enters only the normalisations below.
     V0_ref = pot.V0(pot.X0) + pot.Vct(pot.X0) + pot.V1_from_X(pot.X0)
-    Veff_sym = pot.Vtot(high_phi, T) - V0_ref
-    Veff_bro = pot.Vtot(low_phi, T) - V0_ref
+    Veff_sym = pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref
+    Veff_bro = pot.Vtot(low_phi, T, include_decoupled=False) - V0_ref
     csSq_sym = calcSoundSpeedSq(pot, high_phi, T)
-    theta_sym = -T*pot.dVdT(high_phi, T, dT=dT) + Veff_sym * (1 + 1/ csSq_sym)
+    theta_sym = -T*pot.dVdT(high_phi, T, dT=dT, include_decoupled=False) + Veff_sym * (1 + 1/ csSq_sym)
     csSq_bro = calcSoundSpeedSq(pot, low_phi, T)
-    theta_bro = -T*pot.dVdT(low_phi, T, dT=dT) + Veff_bro * (1 + 1/ csSq_bro)
+    theta_bro = -T*pot.dVdT(low_phi, T, dT=dT, include_decoupled=False) + Veff_bro * (1 + 1/ csSq_bro)
     dedT = (pot.energyDensity(high_phi, T + dT) - pot.energyDensity(high_phi, T - dT))/(2*dT)
     alpha_thetabar = (theta_sym - theta_bro) / (3* csSq_sym * T * dedT)
 
@@ -2466,7 +2470,8 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     fermions_low = pot.fermion_massSq(low_phi)
     fermions_high = pot.fermion_massSq(high_phi)
 
-    # alpha_inf
+    # Delta m^2 = sum_i c_i N_i Delta m_i^2 with c_i = 1 (1/2) for bosons (fermions), eq. (2.8) of
+    # 1903.09642; the 1/24 of the leading-order pressure enters alpha_inf below.
     gauge_coupling = pot.mass_spectrum.boson_gauge_couplings
     m2_bos_after, dof_bos, _, is_physical = bosons_low
     m2_bos_before, _, _, _ = bosons_high
@@ -2474,10 +2479,10 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     m2_fer_before, _ = fermions_high
 
     delta_m2_bos = np.maximum(m2_bos_after - m2_bos_before, 0)
-    m2factor = np.sum(dof_bos * is_physical * delta_m2_bos, axis=-1) / 24.0
+    m2factor = np.sum(dof_bos * is_physical * delta_m2_bos, axis=-1)
 
     delta_m2_fer = np.maximum(m2_fer_after - m2_fer_before, 0)
-    m2factor += np.sum(dof_fer * delta_m2_fer, axis=-1) / 48.0
+    m2factor += np.sum(dof_fer * delta_m2_fer, axis=-1) / 2.0
 
     m_bos_after = np.sqrt(np.where(m2_bos_after > 0, m2_bos_after, 0))
     # Avoid sqrt of negative mass squares by setting negatives to zero.
@@ -2485,21 +2490,35 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     m_bos_before = np.sqrt(np.where(m2_bos_before > 0, m2_bos_before, 0))
     delta_m_bos = np.maximum(m_bos_after - m_bos_before, 0)
 
-    # alpha_eq, see eq. (2.16) in 1903.09642
-    # the hydrodynamic alphas do not depend on the decoupled radiation bath!
-    alpha_eq = T**3 / rho_rad_PTsector * np.sum(delta_m_bos * gauge_coupling**2 * dof_bos * is_physical, axis=-1)
-    alpha_inf = T**2 / (24 * rho_rad_PTsector) * m2factor
+    # Enthalpy w = e + p of the symmetric phase of the transitioning sector alone,
+    # without a decoupled radiation bath. The vacuum parts cancel in e + p, and Veff_sym
+    # above is already the transitioning sector's effective potential.
+    e_sym_PT = pot.energyDensity(high_phi, T, include_decoupled=False)
+    w_sym_PT = -Veff_sym + e_sym_PT
 
-    # alpha_hyd is the Giese-KKS strength fed to calc_kappas. Denominator is
-    # 3 * w_sym; w_sym must include the decoupled bath only when the two sectors
-    # are hydrodynamically coupled, otherwise the wall only does work on the PT
-    # sector.
+    # alpha_inf and alpha_eq as defined in section 2 of 1903.09642: the leading- and
+    # next-to-leading-order friction pressures on the wall divided by the radiation energy
+    # density of the plasma the wall moves through, taken here as 3 w / 4, which equals
+    # it for a relativistic plasma and is consistent with the enthalpy normalisation of
+    # the hydrodynamic strengths below.
+    rho_R_PT = 0.75 * w_sym_PT
+    alpha_eq = T**3 / rho_R_PT * np.sum(delta_m_bos * gauge_coupling**2 * dof_bos * is_physical, axis=-1)
+    alpha_inf = T**2 / (24 * rho_R_PT) * m2factor
+
+    # Giese-KKS strengths, 3 w_sym in the denominator. The bubble wall is pushed only by
+    # the transitioning sector, so the strength that enters the wall dynamics (gamma_eq and
+    # kappa_col in calc_kappas) excludes the decoupled bath. The strength that enters the
+    # sound waves includes it when the two sectors are hydrodynamically coupled.
+    alpha_hyd_wall = (theta_sym - theta_bro) / (3 * w_sym_PT)
     include_decoupled_in_enthalpy = bool(pot.config.gwConf.coupled_hydrodynamics)
     Veff_sym_w = pot.Vtot(high_phi, T, include_decoupled=include_decoupled_in_enthalpy) - V0_ref
     e_sym_w = pot.energyDensity(high_phi, T, include_decoupled=include_decoupled_in_enthalpy)
     alpha_hyd = (theta_sym - theta_bro) / (3 * (-Veff_sym_w + e_sym_w))
 
-    return alpha_p, alpha_theta, alpha_thetabar, alpha_e, alpha_hyd, alpha_inf, alpha_eq
+    alphas = (alpha_p, alpha_theta, alpha_thetabar, alpha_e, alpha_hyd, alpha_inf, alpha_eq)
+    if return_wall_strength:
+        return alphas + (alpha_hyd_wall,)
+    return alphas
 
 
 def calc_betaH_S3_approx(T, outdict, pot, phase_sym, phase_bro, tmin, tmax, verbose=False):

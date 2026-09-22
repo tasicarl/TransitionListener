@@ -1956,10 +1956,6 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     # This seemed wrong to me, so I put here the symmetric phase
     # Note that this gives slightly different alpha values for T < 100 MeV
 
-    # Rad. energy density of the sector with the PT
-    rho_rad_PTsector = pot.radiationEnergyDensity(high_phi, T, include_decoupled=False)
-    # Note: include_decoupled = False means that a secluded sector is not included
-
     # Here we assume that the decoupled sector has the same temperature as the PT sector
     rho_rad_tot = pot.radiationEnergyDensity(high_phi, T, include_decoupled=True)
 
@@ -1970,12 +1966,24 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     alpha_p = DeltaV / rho_rad_tot
     # Evaluate the enthalpy-normalized trace-anomaly definition separately
     # from the bag-model alpha used above.
+    # As in the adaptive step size solver: a kinetically decoupled bath is the same on both
+    # sides of the wall but the sound speeds of the two phases are not, so the bath would
+    # survive the difference of the pseudo-traces. It is left out of theta on both sides,
+    # consistently with calcSoundSpeedSq, and enters only the normalisations.
     csSq_sym = calcSoundSpeedSq(pot, high_phi, T)
-    V0 = pot.Vtot(pot.X0, pot.Tmin)
-    theta_sym = pot.energyDensity(high_phi, T) + (pot.Vtot(high_phi, T)- V0)/csSq_sym
+    # The pressure is -(Vtot - V0_ref) and energyDensity() subtracts the zero-temperature
+    # vacuum energy, so the two have to use the same reference: otherwise the enthalpy
+    # w = e + p keeps the difference between them instead of reducing to -T dV/dT. The
+    # reference used here was Vtot(X0, Tmin), which left the model's lowest temperature in
+    # every strength normalised to w. This is the reference the adaptive solver uses.
+    V0_ref = pot.V0(pot.X0) + pot.Vct(pot.X0) + pot.V1_from_X(pot.X0)
+    theta_sym = (pot.energyDensity(high_phi, T, include_decoupled=False)
+                 + (pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref)/csSq_sym)
     csSq_bro = calcSoundSpeedSq(pot, low_phi, T)
-    theta_bro = pot.energyDensity(low_phi, T) + (pot.Vtot(low_phi, T) - V0)/csSq_bro
-    alpha_theta = (theta_sym - theta_bro)/(3 * (-pot.Vtot(high_phi, T) + V0 + pot.energyDensity(high_phi, T)))
+    theta_bro = (pot.energyDensity(low_phi, T, include_decoupled=False)
+                 + (pot.Vtot(low_phi, T, include_decoupled=False) - V0_ref)/csSq_bro)
+    alpha_theta = (theta_sym - theta_bro)/(3 * (-pot.Vtot(high_phi, T) + V0_ref
+                                                + pot.energyDensity(high_phi, T)))
     
 
     alpha_e = DeltaE / rho_rad_tot
@@ -1985,7 +1993,8 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     fermions_low = pot.fermion_massSq(low_phi)
     fermions_high = pot.fermion_massSq(high_phi)
 
-    # alpha_inf
+    # Delta m^2 = sum_i c_i N_i Delta m_i^2 with c_i = 1 (1/2) for bosons (fermions), eq. (2.8) of
+    # 1903.09642; the 1/24 of the leading-order pressure enters alpha_inf below.
     gauge_coupling = pot.mass_spectrum.boson_gauge_couplings
     m2_bos_after, dof_bos, _, is_physical = bosons_low
     m2_bos_before, _, _, _ = bosons_high
@@ -1993,10 +2002,10 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     m2_fer_before, _ = fermions_high
 
     delta_m2_bos = np.maximum(m2_bos_after - m2_bos_before, 0)
-    m2factor = np.sum(dof_bos * is_physical * delta_m2_bos, axis=-1) / 24.0
+    m2factor = np.sum(dof_bos * is_physical * delta_m2_bos, axis=-1)
 
     delta_m2_fer = np.maximum(m2_fer_after - m2_fer_before, 0)
-    m2factor += np.sum(dof_fer * delta_m2_fer, axis=-1) / 48.0
+    m2factor += np.sum(dof_fer * delta_m2_fer, axis=-1) / 2.0
 
     m_bos_after = np.sqrt(np.where(m2_bos_after > 0, m2_bos_after, 0))
     # Avoid sqrt of negative mass squares by setting negatives to zero.
@@ -2004,14 +2013,17 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     m_bos_before = np.sqrt(np.where(m2_bos_before > 0, m2_bos_before, 0))
     delta_m_bos = np.maximum(m_bos_after - m_bos_before, 0)
 
-    # alpha_eq, see eq. (2.16) in 1903.09642
-    # the hydrodynamic alphas do not depend on the decoupled radiation bath!
-    alpha_eq = T**3 / rho_rad_PTsector * np.sum(delta_m_bos * gauge_coupling**2 * dof_bos * is_physical, axis=-1)
-    alpha_inf = T**2 / (24 * rho_rad_PTsector) * m2factor
-    # alpha_hyd = (DeltaE + 3 * DeltaV) / (4 * rho_rad_PTsector)
-    alpha_hyd = (theta_sym - theta_bro) / \
-        (3 * (V0-pot.Vtot(high_phi, T, include_decoupled=False) +
-              pot.energyDensity(high_phi, T, include_decoupled=False)))
+    # Enthalpy w = e + p of the symmetric phase of the transitioning sector alone,
+    # without a decoupled radiation bath; the hydrodynamic alphas do not depend on it.
+    w_sym_PT = (V0_ref - pot.Vtot(high_phi, T, include_decoupled=False)
+                + pot.energyDensity(high_phi, T, include_decoupled=False))
+
+    # alpha_inf and alpha_eq as defined in section 2 of 1903.09642, normalised to the
+    # radiation energy density taken as 3 w / 4, as in the adaptive step size solver.
+    rho_R_PT = 0.75 * w_sym_PT
+    alpha_eq = T**3 / rho_R_PT * np.sum(delta_m_bos * gauge_coupling**2 * dof_bos * is_physical, axis=-1)
+    alpha_inf = T**2 / (24 * rho_R_PT) * m2factor
+    alpha_hyd = (theta_sym - theta_bro) / (3 * w_sym_PT)
 
     return alpha_p, alpha_theta, alpha_e, alpha_hyd, alpha_inf, alpha_eq
 
