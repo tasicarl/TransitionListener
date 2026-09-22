@@ -569,7 +569,8 @@ class Hydrodynamics():
 
 
 def calc_kappas(alphaN: float, alpha_inf: float, alpha_eq: float,
-                vw: float, cs: float, Rsep: float, R0: float, config) -> tuple:
+                vw: float, cs: float, Rsep: float, R0: float, config,
+                alpha_wall: float | None = None) -> tuple:
     """
     Calculate the kappa parameters kappa_phi, kappa_sw and kappa_turb.
     These parameters quantify the amount of energy that is available
@@ -579,7 +580,8 @@ def calc_kappas(alphaN: float, alpha_inf: float, alpha_eq: float,
     Parameters
     ----------
     alphaN : float
-        alphaN = [alpha_hyd_coupled, alpha_hyd_config] from bubbledynamics.py
+        The strength of the phase transition that drives the sound waves
+        (``alpha_hyd`` of ``calcAlphas``).
     alpha_inf : float
         The critical strength of the phase transition at which bubbles
         would run away if there was only leading order friction.
@@ -600,6 +602,11 @@ def calc_kappas(alphaN: float, alpha_inf: float, alpha_eq: float,
         The configuration object containing for instance the
         epsilon parameter determining the importance of
         turbulence in the broken phase.
+    alpha_wall : float, optional
+        The strength that drives the bubble wall, normalised to the
+        transitioning sector only (``alpha_hyd_wall`` of ``calcAlphas``).
+        It enters ``gamma_eq`` and the bubble-collision efficiency. Defaults
+        to ``alphaN``.
 
     Returns
     ----------
@@ -618,7 +625,9 @@ def calc_kappas(alphaN: float, alpha_inf: float, alpha_eq: float,
     # Computation of kappa_phi
     # based on 1903.09642 by John Ellis, Marek 
     # Lewicki, José Miguel No & Ville Vaskonen
-    gamma_eq = np.inf if alpha_eq == 0 else (alphaN[0] - alpha_inf) / alpha_eq
+    if alpha_wall is None:
+        alpha_wall = alphaN
+    gamma_eq = np.inf if alpha_eq == 0 else (alpha_wall - alpha_inf) / alpha_eq
     gamma_star = 2 * Rsep / (3 * R0)
 
     def kappa_col(gamma_star, gamma_eq, alpha_inf, alpha):
@@ -637,7 +646,7 @@ def calc_kappas(alphaN: float, alpha_inf: float, alpha_eq: float,
     elif config.bw_collisions == "full":
         kappa_BW = 1
     elif config.bw_collisions == "NLO":
-        kappa_BW = kappa_col(gamma_star, gamma_eq, alpha_inf, alphaN[0])
+        kappa_BW = kappa_col(gamma_star, gamma_eq, alpha_inf, alpha_wall)
     else:
         raise ValueError("Wrong config input: bw_collisions must be 'off', 'full' or 'NLO'.")
 
@@ -646,7 +655,7 @@ def calc_kappas(alphaN: float, alpha_inf: float, alpha_eq: float,
     # based on  1004.4187 by Jose R. Espinosa, Thomas Konstandin,
     # Jose M. No & Geraldine Servant
 
-    alpha_eff = alphaN[1] * (1 - kappa_BW)
+    alpha_eff = alphaN * (1 - kappa_BW)
     kappa_SW = (1 - kappa_BW) * kappa_sw(alpha_eff, vw, cs)
     kappa_TURB = eps * kappa_SW
     return kappa_BW, kappa_SW, kappa_TURB

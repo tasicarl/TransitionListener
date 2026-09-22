@@ -1064,9 +1064,9 @@ class TransitionObservables:
             return
         if ctx.verbose:
             print("Calculating kappa parameters...")
-        _, alpha_thetaP, _, _, alpha_hydP, alpha_infP, alpha_eqP = calcAlphas(
+        _, alpha_thetaP, _, _, alpha_hydP, alpha_infP, alpha_eqP, alpha_hyd_wallP = calcAlphas(
             percolation.Tperc, ctx.pot, ctx.phase_symmetric, ctx.phase_broken,
-            verbose=ctx.verbose,
+            verbose=ctx.verbose, return_wall_strength=True,
         )
         # Compute the initial bubble radius R0. We take it to be
         # the radius of the bubble at the nucleation temperature,
@@ -1142,6 +1142,7 @@ class TransitionObservables:
             Rstar,
             R0,
             ctx.GWconfig,
+            alpha_wall=alpha_hyd_wallP,
         )
         ctx.derived_params["kappa_phi"] = kappa_phi
         ctx.derived_params["kappa_sw"] = kappa_sw
