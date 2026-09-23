@@ -909,7 +909,10 @@ def temperatureDerivativeStep(pot, T: float, X=None,
             if np.isfinite(magnitude) and np.isfinite(thermal) and thermal > 0.0:
                 rel = float(np.clip((np.finfo(float).eps * magnitude / thermal) ** (1.0 / 6.0),
                                     1.0e-4, 3.0e-2))
-        except Exception:
+        except (ValueError, TypeError, ArithmeticError, IndexError, AttributeError):
+            # A model whose tabulated bath is out of range, or a stand-in potential that
+            # does not implement both calls, falls back to the field-independent step
+            # rather than bringing the run down over the choice of a derivative step.
             rel = 1.0e-2
     dT = T_abs * rel
     if not np.isfinite(dT) or dT <= 0.0:

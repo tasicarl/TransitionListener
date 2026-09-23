@@ -2479,7 +2479,9 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     csSq_bro = calcSoundSpeedSq(pot, low_phi, T)
     theta_sym = -T*pot.dVdT(high_phi, T, dT=dT_sym, include_decoupled=False) + Veff_sym * (1 + 1/ csSq_bro)
     theta_bro = -T*pot.dVdT(low_phi, T, dT=dT_bro, include_decoupled=False) + Veff_bro * (1 + 1/ csSq_bro)
-    # This energy density keeps the decoupled bath, so its step is sized with it too
+    # This energy density keeps the decoupled bath, so its step is sized with it too. That
+    # the sound speed beside it in the denominator is computed without the bath is the
+    # separate question of which plasma 3 w refers to; it is not decided here.
     dT_e = temperatureDerivativeStep(pot, T, high_phi, include_decoupled=True)
     dedT = (pot.energyDensity(high_phi, T + dT_e)
             - pot.energyDensity(high_phi, T - dT_e))/(2*dT_e)
