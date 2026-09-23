@@ -23,6 +23,7 @@ from scipy import integrate
 from transitionlistener import thermodynamics as td
 from transitionlistener import constants as cn
 from transitionlistener import errors
+from transitionlistener.helper_functions import temperatureDerivativeStep
 from transitionlistener.pathDeformation import bounceAction
 from transitionlistener.finiteT import Jb_spline as Jb
 from transitionlistener.finiteT import Jf_spline as Jf
@@ -620,10 +621,10 @@ def calcSoundSpeedSq(pot, X, T) -> float:
     Decoupled radiation is excluded because it does not participate in the
     local time-temperature relation of the transitioning plasma.
     """
-    T_abs = abs(float(T))
-    dT = max(float(getattr(pot, "T_eps", 1.0e-3)), T_abs * 1.0e-4)
-    if T_abs > 0.0:
-        dT = min(dT, 0.25 * T_abs)
+    # The broken-phase potential carries a large temperature-independent vacuum offset;
+    # differencing it over too small a step is what made this sound speed noisy.
+    # See helper_functions.temperatureDerivativeStep.
+    dT = temperatureDerivativeStep(pot, T, X)
     dVdT = pot.dVdT(X, T, dT=dT, include_decoupled=False)
     d2VdT2 = pot.d2VdT2(X, T, dT=dT, include_decoupled=False)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -2419,7 +2420,13 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     DeltaV = np.abs(pot.Vtot(high_phi, T) - pot.Vtot(low_phi, T))
 
     # Derivative of the potential with respect to T
-    dT = T * 1e-5
+    # One step per phase: the broken phase carries a large vacuum offset that the stencil
+    # has to difference away, the symmetric phase does not, so a step that is accurate for
+    # one is not for the other. The difference of the two potentials has to cancel the
+    # larger of the two offsets, so it takes the larger step.
+    dT_sym = temperatureDerivativeStep(pot, T, high_phi)
+    dT_bro = temperatureDerivativeStep(pot, T, low_phi)
+    dT = max(dT_sym, dT_bro)
     dDeltaV_p = np.abs(pot.Vtot(high_phi, T + dT / 2) - pot.Vtot(low_phi, T + dT / 2))
     dDeltaV_m = np.abs(pot.Vtot(high_phi, T - dT / 2) - pot.Vtot(low_phi, T - dT / 2))
     dDeltaVdT = (dDeltaV_p - dDeltaV_m) / dT
@@ -2465,9 +2472,10 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     # which normalises alpha_thetabar
     csSq_sym = calcSoundSpeedSq(pot, high_phi, T)
     csSq_bro = calcSoundSpeedSq(pot, low_phi, T)
-    theta_sym = -T*pot.dVdT(high_phi, T, dT=dT, include_decoupled=False) + Veff_sym * (1 + 1/ csSq_bro)
-    theta_bro = -T*pot.dVdT(low_phi, T, dT=dT, include_decoupled=False) + Veff_bro * (1 + 1/ csSq_bro)
-    dedT = (pot.energyDensity(high_phi, T + dT) - pot.energyDensity(high_phi, T - dT))/(2*dT)
+    theta_sym = -T*pot.dVdT(high_phi, T, dT=dT_sym, include_decoupled=False) + Veff_sym * (1 + 1/ csSq_bro)
+    theta_bro = -T*pot.dVdT(low_phi, T, dT=dT_bro, include_decoupled=False) + Veff_bro * (1 + 1/ csSq_bro)
+    dedT = (pot.energyDensity(high_phi, T + dT_sym)
+            - pot.energyDensity(high_phi, T - dT_sym))/(2*dT_sym)
     alpha_thetabar = (theta_sym - theta_bro) / (3* csSq_sym * T * dedT)
 
     bosons_low = pot.boson_massSq(low_phi, 0)  # low-T phase masses

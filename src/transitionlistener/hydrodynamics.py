@@ -22,19 +22,21 @@ from scipy.optimize import root_scalar
 
 from transitionlistener import generic_potential
 from transitionlistener.phases import PhaseInfo
+from transitionlistener.helper_functions import temperatureDerivativeStep
 
 from . import console
 from rich import print
 from rich.panel import Panel
 
 
-def _local_temperature_step(pot, T: float) -> float:
-    """Finite-difference temperature step that keeps the stencil at T > 0."""
-    T_abs = abs(float(T))
-    dT = max(float(getattr(pot, "T_eps", 1e-3)), T_abs * 1.0e-4)
-    if T_abs > 0.0:
-        dT = min(dT, 0.25 * T_abs)
-    return dT
+def _local_temperature_step(pot, T: float, X=None) -> float:
+    """Finite-difference temperature step that keeps the stencil at T > 0.
+
+    See :func:`helper_functions.temperatureDerivativeStep`: the step balances the
+    round-off from differencing the vacuum offset of the potential against the
+    truncation error of the stencil, so it depends on the field value.
+    """
+    return temperatureDerivativeStep(pot, T, X)
 
 
 def kappa_sw(alpha : float, vw: float, cs: float) -> float:
@@ -116,8 +118,8 @@ class Hydrodynamics():
             speed of sound in the broken phase.
         """
         phase = self.high_phase if sym else self.low_phase
-        dT = _local_temperature_step(self.pot, T)
         phi = phase.valAt(T)
+        dT = _local_temperature_step(self.pot, T, phi)
         dVdT = self.pot.dVdT(phi, T, dT=dT, include_decoupled=False)
         ddVdT = self.pot.d2VdT2(phi, T, dT=dT, include_decoupled=False)
         cs = np.sqrt(dVdT/(T*ddVdT))
@@ -151,13 +153,15 @@ class Hydrodynamics():
         """
 
         coupled = bool(self.pot.config.gwConf.coupled_hydrodynamics)
-        dT = _local_temperature_step(self.pot, Tn)
         phi_s = self.high_phase.valAt(Tn)
         phi_b = self.low_phase.valAt(Tn)
-        dVdT_s = self.pot.dVdT(phi_s, Tn, dT=dT, include_decoupled=coupled)
-        dVdT_b = self.pot.dVdT(phi_b, Tn, dT=dT, include_decoupled=coupled)
-        ddVdT_s = self.pot.d2VdT2(phi_s, Tn, dT=dT, include_decoupled=coupled)
-        ddVdT_b = self.pot.d2VdT2(phi_b, Tn, dT=dT, include_decoupled=coupled)
+        # each phase gets the step that suits its own vacuum offset
+        dT_s = _local_temperature_step(self.pot, Tn, phi_s)
+        dT_b = _local_temperature_step(self.pot, Tn, phi_b)
+        dVdT_s = self.pot.dVdT(phi_s, Tn, dT=dT_s, include_decoupled=coupled)
+        dVdT_b = self.pot.dVdT(phi_b, Tn, dT=dT_b, include_decoupled=coupled)
+        ddVdT_s = self.pot.d2VdT2(phi_s, Tn, dT=dT_s, include_decoupled=coupled)
+        ddVdT_b = self.pot.d2VdT2(phi_b, Tn, dT=dT_b, include_decoupled=coupled)
 
         w_s = - Tn * dVdT_s
         w_b = - Tn * dVdT_b

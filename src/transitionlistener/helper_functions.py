@@ -841,3 +841,72 @@ def Nbspld2(t, x, k=3):
             + N[:,:-1]*_dt[:-1] - N[:,1:]*_dt[1:]
         N = N[:,:-1]*(x-t[:-k-1])*_dt[:-1] - N[:,1:]*(x-t[k+1:])*_dt[1:]
     return N, dN, d2N
+
+
+def temperatureDerivativeStep(pot, T: float, X=None) -> float:
+    r"""Finite-difference step for temperature derivatives of the potential.
+
+    The stencils in :meth:`generic_potential.dVdT` and
+    :meth:`generic_potential.d2VdT2` difference the *full* effective potential,
+    which in the broken phase can carry a large temperature-independent vacuum
+    piece. Cancelling that offset leaves a round-off error of order
+    :math:`\epsilon |V| / \Delta T^2` in the second derivative, while the
+    five-point stencils truncate at order :math:`\Delta T^4`. Balancing the two
+    gives
+
+    .. math::
+        \frac{\Delta T}{T} \simeq
+        \left(\epsilon \frac{|V|}{\rho_{\rm rad}}\right)^{1/6} \,,
+
+    where the radiation energy density stands in for the thermal scale that
+    sets the size of the temperature derivatives. The two regimes this has to
+    serve differ by orders of magnitude: for the conformal dark U(1)' benchmark
+    :math:`|V| \sim 3\times10^8` against a thermal scale of order one, so the
+    step has to be about a per cent of ``T`` or the sound speed in the broken
+    phase picks up a 0.1 % scatter and a 0.3 % bias; for the abelian dark Higgs
+    the vacuum offset is comparable to the thermal scale, no cancellation
+    occurs, and a per-cent step already costs 0.4 % of truncation error in
+    ``alpha``. The rule above lands on the accurate plateau in both, and is
+    clipped to :math:`[10^{-4}, 3\times10^{-2}]`.
+
+    Without ``X`` the field-independent fallback of ``1e-2`` is used.
+
+    Parameters
+    ----------
+    pot : generic_potential
+        Effective potential; used for ``Vtot``, ``radiationEnergyDensity`` and
+        the ``T_eps`` fallback.
+    T : float
+        Temperature at which the derivative is taken.
+    X : np.ndarray, optional
+        Field value at which the derivative is taken. The step depends on it,
+        because the vacuum offset does.
+
+    Returns
+    -------
+    float
+        Temperature step, capped at ``0.25 * T`` so the stencil stays at
+        positive temperature.
+    """
+    T_abs = abs(float(T))
+    rel = 1.0e-2
+    if X is not None:
+        try:
+            magnitude = float(np.abs(np.squeeze(pot.Vtot(X, T, include_decoupled=False))))
+            # The transitioning sector alone: the derivatives this step serves exclude a
+            # decoupled bath, so letting it into the step would make them depend on which
+            # bath the radiation is assigned to.
+            thermal = float(np.abs(np.squeeze(
+                pot.radiationEnergyDensity(X, T, include_decoupled=False))))
+            if np.isfinite(magnitude) and np.isfinite(thermal) and thermal > 0.0:
+                ratio = max(magnitude / thermal, 1.0)
+                rel = float(np.clip(
+                    (np.finfo(float).eps * ratio) ** (1.0 / 6.0), 1.0e-4, 3.0e-2))
+        except Exception:
+            rel = 1.0e-2
+    dT = T_abs * rel
+    if not np.isfinite(dT) or dT <= 0.0:
+        dT = float(getattr(pot, "T_eps", 1.0e-3))
+    if T_abs > 0.0:
+        dT = min(dT, 0.25 * T_abs)
+    return dT
