@@ -2461,7 +2461,9 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     V0_ref = pot.V0(pot.X0) + pot.Vct(pot.X0) + pot.V1_from_X(pot.X0)
     Veff_sym = pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref
     Veff_bro = pot.Vtot(low_phi, T, include_decoupled=False) - V0_ref
-    csSq_sym = calcSoundSpeedSq(pot, high_phi, T)   # only for the enthalpy, further down
+    # csSq_sym does not enter theta; it converts de/dT into the enthalpy 3 w below,
+    # which normalises alpha_thetabar
+    csSq_sym = calcSoundSpeedSq(pot, high_phi, T)
     csSq_bro = calcSoundSpeedSq(pot, low_phi, T)
     theta_sym = -T*pot.dVdT(high_phi, T, dT=dT, include_decoupled=False) + Veff_sym * (1 + 1/ csSq_bro)
     theta_bro = -T*pot.dVdT(low_phi, T, dT=dT, include_decoupled=False) + Veff_bro * (1 + 1/ csSq_bro)
