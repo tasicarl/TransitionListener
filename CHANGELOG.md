@@ -21,6 +21,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Sound speed in the pseudo-trace**: the pseudo-trace strengths now divide
+  the pressure of *both* phases by the broken-phase sound speed, as in
+  arXiv:2004.06995 eq. (2.13), arXiv:2010.09744 and arXiv:2206.01130 sec. 2.
+  Each phase was divided by its own, which leaves whatever the two phases
+  share, a radiation bath or the zero point of the potential, in the
+  difference. Affected: `alpha` and `alpha_hyd` in both solvers,
+  `alpha_thetabar` in the adaptive solver, and `alpha_theta` in the fixed step
+  size one, where that column holds the pseudo-trace strength; in the adaptive
+  solver `alpha_theta` is the bag-model strength and is unchanged, as are
+  `alpha_p` and `alpha_e`. `Tperc`, `Treh`, `beta/H` and the peak frequency are
+  unchanged, the amplitude is not. The sound speed of the percolation
+  integral's time-temperature relation is a different quantity and is
+  untouched.
+
 - **Redshift of the gravitational-wave spectrum**: `Treh_SM_GeV` is the
   temperature of the Standard Model bath at reheating: the reheated
   temperature if the Standard Model is coupled to the transitioning sector,

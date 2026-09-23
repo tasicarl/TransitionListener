@@ -1966,20 +1966,19 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     alpha_p = DeltaV / rho_rad_tot
     # Evaluate the enthalpy-normalized trace-anomaly definition separately
     # from the bag-model alpha used above.
-    # As in the adaptive step size solver: a kinetically decoupled bath is the same on both
-    # sides of the wall but the sound speeds of the two phases are not, so the bath would
-    # survive the difference of the pseudo-traces. It is left out of theta on both sides,
-    # consistently with calcSoundSpeedSq, and enters only the normalisations.
-    csSq_sym = calcSoundSpeedSq(pot, high_phi, T)
+    # As in the adaptive step size solver, the decoupled bath is left out of theta on both
+    # sides, consistently with calcSoundSpeedSq, and enters only the normalisations.
     # The pressure is -(Vtot - V0_ref) and energyDensity() subtracts the zero-temperature
     # vacuum energy, so the two have to use the same reference: otherwise the enthalpy
     # w = e + p keeps the difference between them instead of reducing to -T dV/dT. The
     # reference used here was Vtot(X0, Tmin), which left the model's lowest temperature in
     # every strength normalised to w. This is the reference the adaptive solver uses.
     V0_ref = pot.V0(pot.X0) + pot.Vct(pot.X0) + pot.V1_from_X(pot.X0)
-    theta_sym = (pot.energyDensity(high_phi, T, include_decoupled=False)
-                 + (pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref)/csSq_sym)
+    # One sound speed, that of the broken phase, in both phases, as in the adaptive solver
+    # (arXiv:2004.06995 eq. 2.13, arXiv:2010.09744, arXiv:2206.01130 sec. 2).
     csSq_bro = calcSoundSpeedSq(pot, low_phi, T)
+    theta_sym = (pot.energyDensity(high_phi, T, include_decoupled=False)
+                 + (pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref)/csSq_bro)
     theta_bro = (pot.energyDensity(low_phi, T, include_decoupled=False)
                  + (pot.Vtot(low_phi, T, include_decoupled=False) - V0_ref)/csSq_bro)
     alpha_theta = (theta_sym - theta_bro)/(3 * (-pot.Vtot(high_phi, T) + V0_ref

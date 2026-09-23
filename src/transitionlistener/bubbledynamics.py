@@ -2411,7 +2411,8 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
         alpha_eq)``, and ``alpha_hyd_wall`` as an eighth entry if
         ``return_wall_strength`` is true. ``alpha_theta`` is the bag-model strength fed to the
         GW-signal / kappa() pipeline; ``alpha_thetabar`` is the beyond-bag
-        pseudo-trace-anomaly definition from arXiv:2004.06995."""
+        pseudo-trace-anomaly definition from arXiv:2004.06995, which divides the
+        pressure of both phases by the sound speed of the broken phase."""
 
     high_phi = high_phase.valAt(T)  # Start phase phi values
     low_phi = low_phase.valAt(T)  # End phase phi values
@@ -2449,18 +2450,22 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     # theta_bro = pot.energyDensity(low_phi, T) + Veff_bro / csSq_bro
     # alpha_thetabar_old = (theta_sym - theta_bro) / (3 * (-Veff_sym + pot.energyDensity(high_phi, T)))
 
-    # The pseudo-trace difference is a property of the transition alone. A kinetically
-    # decoupled bath has the same energy and pressure on both sides of the wall, but the two
-    # phases have different sound speeds, so it does not cancel in the difference: it would
-    # survive as V_bath (1/cs_sym^2 - 1/cs_bro^2), which is 4% of the release for a dark
-    # photon next to a decoupled Standard Model. It is therefore left out of theta on both
-    # sides, consistently with calcSoundSpeedSq, and enters only the normalisations below.
+    # theta_bar = e - p / c_s^2 with ONE sound speed for both phases, that of the broken
+    # phase: arXiv:2004.06995 eq. (2.13) with the definition below its eq. (2.11),
+    # arXiv:2010.09744, and arXiv:2206.01130 sec. 2, which writes it out as
+    # D theta_bar(T_n) = theta_s(T_n) - theta_b(T_n) with theta_bar = e - p / c_{s,b}^2.
+    # Only then does everything the two phases share cancel in the difference; one sound
+    # speed per phase leaves a radiation bath, and the zero point of the potential, behind
+    # as (const) x (1/cs_sym^2 - 1/cs_bro^2). derived["c_s"] is already the broken-phase
+    # value. With p = -Veff, e - p/c_s^2 = (Veff - T dV/dT) + Veff/c_s^2, hence (1 + 1/c_s^2).
     V0_ref = pot.V0(pot.X0) + pot.Vct(pot.X0) + pot.V1_from_X(pot.X0)
     Veff_sym = pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref
     Veff_bro = pot.Vtot(low_phi, T, include_decoupled=False) - V0_ref
+    # csSq_sym does not enter theta; it converts de/dT into the enthalpy 3 w below,
+    # which normalises alpha_thetabar
     csSq_sym = calcSoundSpeedSq(pot, high_phi, T)
-    theta_sym = -T*pot.dVdT(high_phi, T, dT=dT, include_decoupled=False) + Veff_sym * (1 + 1/ csSq_sym)
     csSq_bro = calcSoundSpeedSq(pot, low_phi, T)
+    theta_sym = -T*pot.dVdT(high_phi, T, dT=dT, include_decoupled=False) + Veff_sym * (1 + 1/ csSq_bro)
     theta_bro = -T*pot.dVdT(low_phi, T, dT=dT, include_decoupled=False) + Veff_bro * (1 + 1/ csSq_bro)
     dedT = (pot.energyDensity(high_phi, T + dT) - pot.energyDensity(high_phi, T - dT))/(2*dT)
     alpha_thetabar = (theta_sym - theta_bro) / (3* csSq_sym * T * dedT)
