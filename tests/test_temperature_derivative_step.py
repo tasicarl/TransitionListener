@@ -56,6 +56,22 @@ class StepRuleTests(unittest.TestCase):
     def test_without_a_field_value_it_falls_back(self):
         self.assertAlmostEqual(temperatureDerivativeStep(self.pot, 20.0) / 20.0, 1.0e-2)
 
+    def test_the_lower_clip_is_a_guard_not_a_working_bound(self):
+        """A radiation-dominated phase has V = -p = -rho/3, so the ratio stays near 1/3."""
+        T = 400.0
+        for X in (np.array([0.0]), self.pot.findMinimum(np.array([1000.0]), T)):
+            with self.subTest():
+                rel = temperatureDerivativeStep(self.pot, T, X) / T
+                self.assertGreater(rel, (np.finfo(float).eps / 3.0) ** (1 / 6) * 0.99)
+                self.assertLess(rel, 5.0e-3)
+
+    def test_the_step_follows_the_sector_it_is_asked_for(self):
+        """With no decoupled bath the two selections agree exactly."""
+        T = 20.0
+        phi = self.pot.findMinimum(np.array([1000.0]), T)
+        self.assertEqual(temperatureDerivativeStep(self.pot, T, phi, include_decoupled=False),
+                         temperatureDerivativeStep(self.pot, T, phi, include_decoupled=True))
+
     def test_it_grows_with_the_vacuum_offset(self):
         """The broken phase needs a larger step than the symmetric one."""
         T = 20.0

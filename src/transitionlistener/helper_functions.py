@@ -843,7 +843,8 @@ def Nbspld2(t, x, k=3):
     return N, dN, d2N
 
 
-def temperatureDerivativeStep(pot, T: float, X=None) -> float:
+def temperatureDerivativeStep(pot, T: float, X=None,
+                              include_decoupled: bool = False) -> float:
     r"""Finite-difference step for temperature derivatives of the potential.
 
     The stencils in :meth:`generic_potential.dVdT` and
@@ -859,7 +860,11 @@ def temperatureDerivativeStep(pot, T: float, X=None) -> float:
         \left(\epsilon \frac{|V|}{\rho_{\rm rad}}\right)^{1/6} \,,
 
     where the radiation energy density stands in for the thermal scale that
-    sets the size of the temperature derivatives. The two regimes this has to
+    sets the size of the temperature derivatives. Both are taken for the sector the
+    derivative itself uses, selected by ``include_decoupled``. A radiation-dominated
+    phase has :math:`V = -p = -\rho/3`, so the ratio cannot fall much below one third
+    and the step stays above :math:`(\epsilon/3)^{1/6} \simeq 2\times10^{-3}`; the
+    lower clip is a guard, not a working bound. The two regimes this has to
     serve differ by orders of magnitude: for the conformal dark U(1)' benchmark
     :math:`|V| \sim 3\times10^8` against a thermal scale of order one, so the
     step has to be about a per cent of ``T`` or the sound speed in the broken
@@ -881,6 +886,9 @@ def temperatureDerivativeStep(pot, T: float, X=None) -> float:
     X : np.ndarray, optional
         Field value at which the derivative is taken. The step depends on it,
         because the vacuum offset does.
+    include_decoupled : bool, optional
+        Whether the decoupled radiation bath counts towards the offset and the
+        thermal scale. Pass what the derivative this step serves uses.
 
     Returns
     -------
@@ -892,16 +900,15 @@ def temperatureDerivativeStep(pot, T: float, X=None) -> float:
     rel = 1.0e-2
     if X is not None:
         try:
-            magnitude = float(np.abs(np.squeeze(pot.Vtot(X, T, include_decoupled=False))))
-            # The transitioning sector alone: the derivatives this step serves exclude a
-            # decoupled bath, so letting it into the step would make them depend on which
-            # bath the radiation is assigned to.
+            # The same sector the derivative will difference: a step sized on one plasma
+            # and applied to another reintroduces the cancellation it is meant to avoid.
+            magnitude = float(np.abs(np.squeeze(
+                pot.Vtot(X, T, include_decoupled=include_decoupled))))
             thermal = float(np.abs(np.squeeze(
-                pot.radiationEnergyDensity(X, T, include_decoupled=False))))
+                pot.radiationEnergyDensity(X, T, include_decoupled=include_decoupled))))
             if np.isfinite(magnitude) and np.isfinite(thermal) and thermal > 0.0:
-                ratio = max(magnitude / thermal, 1.0)
-                rel = float(np.clip(
-                    (np.finfo(float).eps * ratio) ** (1.0 / 6.0), 1.0e-4, 3.0e-2))
+                rel = float(np.clip((np.finfo(float).eps * magnitude / thermal) ** (1.0 / 6.0),
+                                    1.0e-4, 3.0e-2))
         except Exception:
             rel = 1.0e-2
     dT = T_abs * rel

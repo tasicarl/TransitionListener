@@ -2417,7 +2417,10 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
 
     high_phi = high_phase.valAt(T)  # Start phase phi values
     low_phi = low_phase.valAt(T)  # End phase phi values
-    DeltaV = np.abs(pot.Vtot(high_phi, T) - pot.Vtot(low_phi, T))
+    # A decoupled bath is field independent and cancels between the phases, so leaving it
+    # out changes nothing analytically and removes a cancellation the step is not sized for.
+    DeltaV = np.abs(pot.Vtot(high_phi, T, include_decoupled=False)
+                    - pot.Vtot(low_phi, T, include_decoupled=False))
 
     # Derivative of the potential with respect to T
     # One step per phase: the broken phase carries a large vacuum offset that the stencil
@@ -2427,8 +2430,10 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     dT_sym = temperatureDerivativeStep(pot, T, high_phi)
     dT_bro = temperatureDerivativeStep(pot, T, low_phi)
     dT = max(dT_sym, dT_bro)
-    dDeltaV_p = np.abs(pot.Vtot(high_phi, T + dT / 2) - pot.Vtot(low_phi, T + dT / 2))
-    dDeltaV_m = np.abs(pot.Vtot(high_phi, T - dT / 2) - pot.Vtot(low_phi, T - dT / 2))
+    dDeltaV_p = np.abs(pot.Vtot(high_phi, T + dT / 2, include_decoupled=False)
+                       - pot.Vtot(low_phi, T + dT / 2, include_decoupled=False))
+    dDeltaV_m = np.abs(pot.Vtot(high_phi, T - dT / 2, include_decoupled=False)
+                       - pot.Vtot(low_phi, T - dT / 2, include_decoupled=False))
     dDeltaVdT = (dDeltaV_p - dDeltaV_m) / dT
 
     # Use the symmetric-phase radiation bath when normalizing the release.
@@ -2474,8 +2479,10 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     csSq_bro = calcSoundSpeedSq(pot, low_phi, T)
     theta_sym = -T*pot.dVdT(high_phi, T, dT=dT_sym, include_decoupled=False) + Veff_sym * (1 + 1/ csSq_bro)
     theta_bro = -T*pot.dVdT(low_phi, T, dT=dT_bro, include_decoupled=False) + Veff_bro * (1 + 1/ csSq_bro)
-    dedT = (pot.energyDensity(high_phi, T + dT_sym)
-            - pot.energyDensity(high_phi, T - dT_sym))/(2*dT_sym)
+    # This energy density keeps the decoupled bath, so its step is sized with it too
+    dT_e = temperatureDerivativeStep(pot, T, high_phi, include_decoupled=True)
+    dedT = (pot.energyDensity(high_phi, T + dT_e)
+            - pot.energyDensity(high_phi, T - dT_e))/(2*dT_e)
     alpha_thetabar = (theta_sym - theta_bro) / (3* csSq_sym * T * dedT)
 
     bosons_low = pot.boson_massSq(low_phi, 0)  # low-T phase masses

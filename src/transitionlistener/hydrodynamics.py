@@ -29,14 +29,14 @@ from rich import print
 from rich.panel import Panel
 
 
-def _local_temperature_step(pot, T: float, X=None) -> float:
+def _local_temperature_step(pot, T: float, X=None, include_decoupled: bool = False) -> float:
     """Finite-difference temperature step that keeps the stencil at T > 0.
 
     See :func:`helper_functions.temperatureDerivativeStep`: the step balances the
     round-off from differencing the vacuum offset of the potential against the
     truncation error of the stencil, so it depends on the field value.
     """
-    return temperatureDerivativeStep(pot, T, X)
+    return temperatureDerivativeStep(pot, T, X, include_decoupled=include_decoupled)
 
 
 def kappa_sw(alpha : float, vw: float, cs: float) -> float:
@@ -155,9 +155,10 @@ class Hydrodynamics():
         coupled = bool(self.pot.config.gwConf.coupled_hydrodynamics)
         phi_s = self.high_phase.valAt(Tn)
         phi_b = self.low_phase.valAt(Tn)
-        # each phase gets the step that suits its own vacuum offset
-        dT_s = _local_temperature_step(self.pot, Tn, phi_s)
-        dT_b = _local_temperature_step(self.pot, Tn, phi_b)
+        # each phase gets the step that suits its own vacuum offset, sized on the same
+        # sector the derivatives below difference
+        dT_s = _local_temperature_step(self.pot, Tn, phi_s, include_decoupled=coupled)
+        dT_b = _local_temperature_step(self.pot, Tn, phi_b, include_decoupled=coupled)
         dVdT_s = self.pot.dVdT(phi_s, Tn, dT=dT_s, include_decoupled=coupled)
         dVdT_b = self.pot.dVdT(phi_b, Tn, dT=dT_b, include_decoupled=coupled)
         ddVdT_s = self.pot.d2VdT2(phi_s, Tn, dT=dT_s, include_decoupled=coupled)

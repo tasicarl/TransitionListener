@@ -183,9 +183,9 @@ class PseudoTraceConventionTests(unittest.TestCase):
                 De = q["coupled"]["e_sym"] - q["coupled"]["e_bro"]
                 Dp = q["coupled"]["p_sym"] - q["coupled"]["p_bro"]
                 # Dp needs no derivative and is bit-identical; De is taken with a
-                # finite-difference step that is chosen from the size of the potential, so
-                # the two bath assignments difference it with different steps and De
-                # carries the difference of two truncation errors, 3e-8 at T = 60
+                # finite-difference step chosen from the size of the potential, and the two
+                # bath assignments give different steps, so De carries the difference of two
+                # truncation errors, 3e-8 at T = 60
                 self.assertTrue(np.isclose(
                     De, q["decoupled"]["e_sym"] - q["decoupled"]["e_bro"], rtol=1e-6, atol=0))
                 self.assertTrue(np.isclose(
