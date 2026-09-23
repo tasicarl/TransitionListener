@@ -147,12 +147,21 @@ class PseudoTraceConventionTests(unittest.TestCase):
         """
         for T in TEMPERATURES:
             produced, q = produced_Dtheta(self.pot, T)
+            superseded = (q["e_sym"] - q["p_sym"] / q["csSq_sym"]) \
+                - (q["e_bro"] - q["p_bro"] / q["csSq_bro"])
             for factor in (1.0, -10.0):
                 C = factor * abs(q["p_sym"] - q["p_bro"])
                 with self.subTest(T=T, C=C):
                     shifted = ((q["e_sym"] + C) - (q["e_bro"] + C)) \
                         - ((q["p_sym"] - C) - (q["p_bro"] - C)) / q["csSq_bro"]
                     self.assertTrue(np.isclose(produced, shifted, rtol=1e-10, atol=0))
+                    # the superseded form moves with the offset, by C (1/cs_s^2 - 1/cs_b^2)
+                    superseded_shifted = ((q["e_sym"] + C) - (q["p_sym"] - C) / q["csSq_sym"]) \
+                        - ((q["e_bro"] + C) - (q["p_bro"] - C) / q["csSq_bro"])
+                    self.assertFalse(np.isclose(superseded_shifted, superseded, rtol=1e-6, atol=0))
+                    self.assertTrue(np.isclose(
+                        superseded_shifted - superseded,
+                        C * (1 / q["csSq_sym"] - 1 / q["csSq_bro"]), rtol=1e-8, atol=0))
 
     def test_the_bath_enters_only_through_the_broken_phase_sound_speed(self):
         """Moving the Standard Model to the decoupled bath changes c_{s,b}, nothing else.
