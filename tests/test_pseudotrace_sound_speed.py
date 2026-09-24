@@ -20,7 +20,7 @@ import numpy as np
 
 from transitionlistener import bubbledynamics as bd
 from transitionlistener import bubbledynamics_fixedstep as bdf
-from transitionlistener.helper_functions import load_potential
+from transitionlistener.helper_functions import load_potential, temperatureDerivativeStep
 from transitionlistener.thermodynamics import e_geffSM, p_geffSM
 
 REPO = Path(__file__).resolve().parents[1]
@@ -62,13 +62,14 @@ def build(decoupled_sm_bath=False):
 def pieces(pot, T):
     """Energy density, pressure and both sound speeds of the two phases at ``T``."""
     high, low = np.array([0.0]), pot.findMinimum(np.array([1000.0]), T)
-    dT = T * 1e-5
     ref = float(np.squeeze(pot.V0(pot.X0) + pot.Vct(pot.X0) + pot.V1_from_X(pot.X0)))
     out = {"high": high, "low": low,
            "csSq_sym": float(np.squeeze(bd.calcSoundSpeedSq(pot, high, T))),
            "csSq_bro": float(np.squeeze(bd.calcSoundSpeedSq(pot, low, T))),
            "csSq_bro_fixed": float(np.squeeze(bdf.calcSoundSpeedSq(pot, low, T)))}
     for name, phi in (("sym", high), ("bro", low)):
+        # the same step per phase that calcAlphas uses
+        dT = temperatureDerivativeStep(pot, T, phi)
         V = float(np.squeeze(pot.Vtot(phi, T, include_decoupled=False))) - ref
         dVdT = float(np.squeeze(pot.dVdT(phi, T, dT=dT, include_decoupled=False)))
         out[f"p_{name}"] = -V              # pressure, with the code's reference
@@ -181,13 +182,17 @@ class PseudoTraceConventionTests(unittest.TestCase):
                         alphas(pot, T, return_wall_strength=True)[7]))
                 De = q["coupled"]["e_sym"] - q["coupled"]["e_bro"]
                 Dp = q["coupled"]["p_sym"] - q["coupled"]["p_bro"]
+                # Dp needs no derivative and is bit-identical; De is taken with a
+                # finite-difference step chosen from the size of the potential, and the two
+                # bath assignments give different steps, so De carries the difference of two
+                # truncation errors, 3e-8 at T = 60
                 self.assertTrue(np.isclose(
-                    De, q["decoupled"]["e_sym"] - q["decoupled"]["e_bro"], rtol=1e-8, atol=0))
+                    De, q["decoupled"]["e_sym"] - q["decoupled"]["e_bro"], rtol=1e-6, atol=0))
                 self.assertTrue(np.isclose(
-                    Dp, q["decoupled"]["p_sym"] - q["decoupled"]["p_bro"], rtol=1e-8, atol=0))
+                    Dp, q["decoupled"]["p_sym"] - q["decoupled"]["p_bro"], rtol=1e-12, atol=0))
                 self.assertTrue(np.isclose(produced["decoupled"],
                                            De - Dp / q["decoupled"]["csSq_bro"],
-                                           rtol=1e-8, atol=0))
+                                           rtol=1e-6, atol=0))
 
 
 if __name__ == "__main__":

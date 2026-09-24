@@ -23,6 +23,7 @@ from scipy import integrate
 from transitionlistener import thermodynamics as td
 from transitionlistener import constants as cn
 from transitionlistener import errors
+from transitionlistener.helper_functions import temperatureDerivativeStep
 from transitionlistener.pathDeformation import bounceAction
 from transitionlistener.finiteT import Jb_spline as Jb
 from transitionlistener.finiteT import Jf_spline as Jf
@@ -620,10 +621,10 @@ def calcSoundSpeedSq(pot, X, T) -> float:
     Decoupled radiation is excluded because it does not participate in the
     local time-temperature relation of the transitioning plasma.
     """
-    T_abs = abs(float(T))
-    dT = max(float(getattr(pot, "T_eps", 1.0e-3)), T_abs * 1.0e-4)
-    if T_abs > 0.0:
-        dT = min(dT, 0.25 * T_abs)
+    # The broken-phase potential carries a large temperature-independent vacuum offset;
+    # differencing it over too small a step is what made this sound speed noisy.
+    # See helper_functions.temperatureDerivativeStep.
+    dT = temperatureDerivativeStep(pot, T, X)
     dVdT = pot.dVdT(X, T, dT=dT, include_decoupled=False)
     d2VdT2 = pot.d2VdT2(X, T, dT=dT, include_decoupled=False)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -2416,12 +2417,27 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
 
     high_phi = high_phase.valAt(T)  # Start phase phi values
     low_phi = low_phase.valAt(T)  # End phase phi values
-    DeltaV = np.abs(pot.Vtot(high_phi, T) - pot.Vtot(low_phi, T))
+    # A decoupled bath is field independent and cancels between the phases, so leaving it
+    # out changes nothing analytically and removes a cancellation the step is not sized for.
+    DeltaV = np.abs(pot.Vtot(high_phi, T, include_decoupled=False)
+                    - pot.Vtot(low_phi, T, include_decoupled=False))
 
     # Derivative of the potential with respect to T
-    dT = T * 1e-5
-    dDeltaV_p = np.abs(pot.Vtot(high_phi, T + dT / 2) - pot.Vtot(low_phi, T + dT / 2))
-    dDeltaV_m = np.abs(pot.Vtot(high_phi, T - dT / 2) - pot.Vtot(low_phi, T - dT / 2))
+    # One step per phase: the broken phase carries a large vacuum offset that the stencil
+    # has to difference away, the symmetric phase does not, so a step that is accurate for
+    # one is not for the other. The difference of the two potentials has to cancel the
+    # larger of the two offsets, so it takes the larger step.
+    dT_sym = temperatureDerivativeStep(pot, T, high_phi)
+    dT_bro = temperatureDerivativeStep(pot, T, low_phi)
+    # dDeltaVdT below is a two-point central difference, not one of the five-point
+    # stencils, so it balances at the cube root of the same ratio and takes a much
+    # smaller step; the five-point step would cost 2e-4 of truncation error here.
+    dT = max(temperatureDerivativeStep(pot, T, high_phi, two_point=True),
+             temperatureDerivativeStep(pot, T, low_phi, two_point=True))
+    dDeltaV_p = np.abs(pot.Vtot(high_phi, T + dT / 2, include_decoupled=False)
+                       - pot.Vtot(low_phi, T + dT / 2, include_decoupled=False))
+    dDeltaV_m = np.abs(pot.Vtot(high_phi, T - dT / 2, include_decoupled=False)
+                       - pot.Vtot(low_phi, T - dT / 2, include_decoupled=False))
     dDeltaVdT = (dDeltaV_p - dDeltaV_m) / dT
 
     # Use the symmetric-phase radiation bath when normalizing the release.
@@ -2465,9 +2481,15 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     # which normalises alpha_thetabar
     csSq_sym = calcSoundSpeedSq(pot, high_phi, T)
     csSq_bro = calcSoundSpeedSq(pot, low_phi, T)
-    theta_sym = -T*pot.dVdT(high_phi, T, dT=dT, include_decoupled=False) + Veff_sym * (1 + 1/ csSq_bro)
-    theta_bro = -T*pot.dVdT(low_phi, T, dT=dT, include_decoupled=False) + Veff_bro * (1 + 1/ csSq_bro)
-    dedT = (pot.energyDensity(high_phi, T + dT) - pot.energyDensity(high_phi, T - dT))/(2*dT)
+    theta_sym = -T*pot.dVdT(high_phi, T, dT=dT_sym, include_decoupled=False) + Veff_sym * (1 + 1/ csSq_bro)
+    theta_bro = -T*pot.dVdT(low_phi, T, dT=dT_bro, include_decoupled=False) + Veff_bro * (1 + 1/ csSq_bro)
+    # This energy density keeps the decoupled bath, so its step is sized with it too. That
+    # the sound speed beside it in the denominator is computed without the bath is the
+    # separate question of which plasma 3 w refers to; it is not decided here.
+    dT_e = temperatureDerivativeStep(pot, T, high_phi, include_decoupled=True,
+                                     two_point=True)
+    dedT = (pot.energyDensity(high_phi, T + dT_e)
+            - pot.energyDensity(high_phi, T - dT_e))/(2*dT_e)
     alpha_thetabar = (theta_sym - theta_bro) / (3* csSq_sym * T * dedT)
 
     bosons_low = pot.boson_massSq(low_phi, 0)  # low-T phase masses
