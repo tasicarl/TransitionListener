@@ -762,6 +762,7 @@ def percIntegral(
     *,
     entropy_density: np.ndarray | None = None,
     cooling_factor: np.ndarray | None = None,
+    scale_factor: np.ndarray | None = None,
 ) -> float:
     """Perform the percolation integral beteen Tstart and Tend.
 
@@ -775,12 +776,29 @@ def percIntegral(
     S : np.ndarray
         S3 Euclidian bounce action evaluated at T
     vw : float
+    entropy_density : np.ndarray, optional
+        Entropy density of the expansion history, ``s ~ a^-3``. Only its ratios enter.
+        With both this and ``scale_factor`` left at ``None`` the bag relation ``s ~ T^3``
+        is used.
+    cooling_factor : np.ndarray, optional
+        ``3 c_s^2``, the divisor of the transport factor, since
+        ``dt = -dT / (3 c_s^2 H T)``. ``None`` means the bag relation ``3 c_s^2 = 1``.
+    scale_factor : np.ndarray, optional
+        ``a(T)`` itself, in place of ``entropy_density``; only ratios to ``a(T[0])``
+        enter. Preferred where the history spans many e-folds, since ``a^-3`` underflows
+        to zero once ``ln a`` exceeds about 236 and the ratio then has to be rebuilt from
+        values that no longer carry it, while ``a`` stays representable to ``ln a`` of
+        709. Passing both is an error.
 
     Returns
     -------
     float
         The integral evaluated at the last temperature ``T[-1]``.
     """
+    if entropy_density is not None and scale_factor is not None:
+        raise errors.PercolationError(
+            "percIntegral takes either entropy_density or scale_factor, not both."
+        )
     # See eq. (4.57) in 2305.02357
     # The ordering of the array is important
     if len(T) > 1:
@@ -790,9 +808,33 @@ def percIntegral(
     T = np.asarray(T, dtype=float)
     H = np.asarray(H, dtype=float)
     S = np.asarray(S, dtype=float)
-    vol_int = np.array([integrate.trapezoid(1 / H[i:], x=T[i:]) for i in range(len(T))])
-    with np.errstate(invalid="ignore"):
-        integrant = Gamma(T, S) / T**4 / H * vol_int**3
+    if entropy_density is None and cooling_factor is None and scale_factor is None:
+        # Bag limit, a ~ 1/T and 3 c_s^2 = 1: the scale factor cancels.
+        vol_int = np.array([integrate.trapezoid(1 / H[i:], x=T[i:]) for i in range(len(T))])
+        with np.errstate(invalid="ignore"):
+            integrant = Gamma(T, S) / T**4 / H * vol_int**3
+    else:
+        # I = 4 pi/3 v^3 int dt' Gamma a(t')^3 (int_t'^t dt''/a)^3 with
+        # dt = -dT/(3 c_s^2 H T). Only ratios of the scale factor enter.
+        cooling = (np.ones_like(T) if cooling_factor is None
+                   else np.asarray(cooling_factor, dtype=float))
+        if scale_factor is not None:
+            a = np.asarray(scale_factor, dtype=float)
+            scale = a / a[0]
+        else:
+            entropy = T**3 if entropy_density is None else np.asarray(entropy_density, dtype=float)
+            scale = (entropy / entropy[0]) ** (-1.0 / 3.0)
+        # a(T')^3 belongs inside the cube of the comoving integral, not beside it: the two
+        # factors cancel to something of order one, but separately a^3 overflows and the
+        # transport factor underflows once the history spans a few hundred e-folds. The
+        # ratio a(T')/a(T'') never exceeds one here, since a grows as T falls.
+        base = 1.0 / (cooling * H * T)
+        vol_int = np.array([
+            integrate.trapezoid(base[i:] * (scale[i] / scale[i:]), x=T[i:])
+            for i in range(len(T))
+        ])
+        with np.errstate(invalid="ignore"):
+            integrant = Gamma(T, S) * base * vol_int**3
     y = integrate.trapezoid(np.nan_to_num(integrant), x=T)
     return 4 * np.pi / 3 * vw**3 * y
 
@@ -1191,8 +1233,27 @@ def percIntegralODE_full_sweep(
     """
     method = "ode" if integral_method is None else str(integral_method)
     if method == "double_integral":
+        # The double integral used to ignore the expansion history entirely; it now uses the
+        # same one as the ODE, so both methods read the same time-temperature relation.
+        sound_speed_sq, scale_factor = _time_temperature_factors(
+            pot,
+            phase_symmetric,
+            np.asarray(T, dtype=float),
+            time_temperature_mode,
+        )
+        if sound_speed_sq is None:
+            cooling_factor = None
+        else:
+            cooling_factor = 3.0 * sound_speed_sq
         I_values = np.asarray(
-            [percIntegral(T[: i + 1], H[: i + 1], S[: i + 1], vw=vw) for i in range(len(T))],
+            [
+                percIntegral(
+                    T[: i + 1], H[: i + 1], S[: i + 1], vw=vw,
+                    scale_factor=None if sound_speed_sq is None else scale_factor[: i + 1],
+                    cooling_factor=None if cooling_factor is None else cooling_factor[: i + 1],
+                )
+                for i in range(len(T))
+            ],
             dtype=float,
         )
     elif method == "ode":
@@ -2697,17 +2758,15 @@ def percolation_sound_speed_sq(
     T: float,
     *,
     time_temperature_mode: str | None = None,
-    integral_method: str | None = None,
 ) -> float:
     """Sound speed squared of the time-temperature relation used for the percolation history.
 
-    Mirrors ``percIntegralODE_full_sweep``: the double integral and the ``bag``
-    mode integrate with ``dT/dt = -H T``, i.e. ``c_s^2 = 1/3``; the ODE in
-    ``sound_speed`` mode uses the symmetric-phase value from
-    ``_time_temperature_factors``, including its fallback to ``1/3``.
+    Mirrors ``percIntegralODE_full_sweep``: the ``bag`` mode integrates with
+    ``dT/dt = -H T``, i.e. ``c_s^2 = 1/3``; ``sound_speed`` mode uses the symmetric-phase
+    value from ``_time_temperature_factors``, including its fallback to ``1/3``. The
+    integral method no longer enters, both integrate the same relation.
     """
-    method = "ode" if integral_method is None else str(integral_method)
-    if method == "double_integral":
+    if not percolation_uses_sound_speed(time_temperature_mode):
         return 1.0 / 3.0
     sound_speed_sq, _ = _time_temperature_factors(
         pot, phase_symmetric, np.array([float(T)]), time_temperature_mode
@@ -2715,6 +2774,67 @@ def percolation_sound_speed_sq(
     if sound_speed_sq is None:
         return 1.0 / 3.0
     return float(sound_speed_sq[0])
+
+
+def percolation_uses_sound_speed(time_temperature_mode: str | None) -> bool:
+    """Whether the percolation history uses the sound speed of the plasma.
+
+    Both integral methods do in ``sound_speed`` mode (the default); the ``bag`` mode
+    integrates with ``dT/dt = -H T``, i.e. ``c_s^2 = 1/3``. Every quantity read off that
+    history (``Tperc``, the mean bubble separation, ``beta/H``) must use the same relation.
+    """
+    mode = "sound_speed" if time_temperature_mode is None else str(time_temperature_mode)
+    if mode not in {"sound_speed", "bag"}:
+        raise errors.PercolationError(
+            f"Unknown percolation time-temperature mode {mode!r}. "
+            "Supported modes are 'sound_speed' and 'bag'."
+        )
+    return mode == "sound_speed"
+
+
+def expansion_interpolants(pot, phase_symmetric, T, *, time_temperature_mode: str | None = None):
+    """Interpolants of the expansion history for ``calcMeanBubbleSeparation``.
+
+    Built from the same ``_time_temperature_factors`` as the percolation integral, on the
+    temperatures ``T`` of the percolation support, so that the mean bubble separation uses
+    the history that fixed ``Tperc``. Adiabatic expansion gives
+    ``d ln a / dT = -1/(3 c_s^2 T)``, hence ``dt = -dT / (3 c_s^2 H T)`` and an entropy
+    density ``s ~ a^-3``.
+
+    Returns
+    -------
+    tuple
+        ``(logEntropyInt, coolingInt)`` with ``logEntropyInt(T) = ln s(T) = -3 ln a(T)``
+        up to an additive constant, and ``coolingInt(T) = 3 c_s^2(T)``; or ``(None, None)``
+        when the history is the bag limit, ``s ~ T^3`` and ``3 c_s^2 = 1``.
+
+        The logarithm is handed over rather than ``s`` itself because
+        ``_time_temperature_factors`` allows ``ln a`` up to 700, where ``s ~ a^-3``
+        underflows to zero and the ratio that the separation needs can no longer be
+        recovered from it.
+    """
+    if not percolation_uses_sound_speed(time_temperature_mode):
+        return None, None
+    temperatures = np.unique(np.asarray(T, dtype=float))
+    temperatures = temperatures[np.isfinite(temperatures) & (temperatures > 0.0)][::-1]
+    if temperatures.size < 2:
+        return None, None
+    sound_speed_sq, scale_factor = _time_temperature_factors(
+        pot, phase_symmetric, temperatures, time_temperature_mode
+    )
+    if sound_speed_sq is None:
+        return None, None
+    ascending = temperatures[::-1]
+    cs_sq_int = interpolate.PchipInterpolator(ascending, sound_speed_sq[::-1], extrapolate=True)
+    ln_a_int = interpolate.PchipInterpolator(ascending, np.log(scale_factor[::-1]), extrapolate=True)
+
+    def logEntropyInt(x):
+        return -3.0 * ln_a_int(np.asarray(x, dtype=float))
+
+    def coolingInt(x):
+        return 3.0 * cs_sq_int(np.asarray(x, dtype=float))
+
+    return logEntropyInt, coolingInt
 
 
 def calcMeanBubbleSeparation(
@@ -2726,6 +2846,8 @@ def calcMeanBubbleSeparation(
     entropyInt=None,
     coolingInt=None,
     verbose=False,
+    *,
+    logEntropyInt=None,
 ):
     """Calculate the mean bubble separation at temperature T.
 
@@ -2735,14 +2857,32 @@ def calcMeanBubbleSeparation(
         Symmetric phase temperature
     Tmax : float
         Upper limit of the integral, usually the nucleation temperature
-    phase_sym : scipy.interpolate.interp1d object
-        The symmetric phase
     Sint : scipy.interpolate.interp1d object
         The action
     Pint : scipy.interpolate.interp1d object
         The true vacuum fraction.
     Hint : scipy.interpolate.interp1d object
         The Hubble rate
+    entropyInt : callable, optional
+        Entropy density of the expansion history, ``entropyInt(T) ~ a(T)^-3``. Only its
+        ratios enter, so any normalisation will do. ``None`` falls back to the bag
+        relation ``s ~ T^3``, i.e. ``a ~ 1/T``. It is limited to histories of at most
+        about 236 e-folds, beyond which ``a^-3`` underflows; use ``logEntropyInt`` there.
+    logEntropyInt : callable, keyword only, optional
+        ``ln s(T) = -3 ln a(T)``, up to an additive constant, in place of ``entropyInt``.
+        The ratio is then formed as a difference of logarithms and stays exact over the
+        whole range ``_time_temperature_factors`` allows. This is what
+        ``expansion_interpolants`` returns. It takes precedence over ``entropyInt``.
+    coolingInt : callable, optional
+        ``coolingInt(T) = 3 c_s^2(T)``, the factor the integrand is *divided* by, since
+        ``dt = -dT / (3 c_s^2 H T)``. It is ``3 c_s^2``, not ``1 / (3 c_s^2)``. ``None``
+        falls back to the bag relation, ``3 c_s^2 = 1``.
+
+        Both come from ``expansion_interpolants``, built from the same factors as the
+        percolation integral, so that the separation uses the history that fixed
+        ``Tperc``. With both ``None`` the previous bag-limit integration is reproduced
+        exactly, on the same linear temperature grid.
+
     Returns
     ----------
     R : float
@@ -2751,7 +2891,7 @@ def calcMeanBubbleSeparation(
     # See eq. (5.42) in 2305.02357.
     if not (np.isfinite(T) and np.isfinite(Tmax)) or Tmax <= T:
         return np.inf
-    if entropyInt is None and coolingInt is None:
+    if entropyInt is None and coolingInt is None and logEntropyInt is None:
         # Preserve the bag-mode integration path exactly so RH/betaH_from_RH
         # remain comparable to fixed-grid reference runs.
         Tr = np.linspace(T, Tmax, 10_000)
@@ -2762,11 +2902,21 @@ def calcMeanBubbleSeparation(
             Tr = np.geomspace(T, Tmax, 10_000)
         else:
             Tr = np.linspace(T, Tmax, 10_000)
-        entropy_T = max(float(entropyInt(T)), 1e-300)
-        entropy_Tr = np.maximum(np.asarray(entropyInt(Tr), dtype=float), 1e-300)
-        entropy_ratio = np.clip(entropy_T / entropy_Tr, 0.0, np.inf)
-    if entropyInt is None:
+    if logEntropyInt is not None:
+        # s(T)/s(T') as a difference of logarithms: T' >= T and a falls with rising T, so
+        # the exponent is never positive and deep histories underflow to zero, which is
+        # the right limit. Clamping s itself instead would make both operands equal and
+        # silently return an unexpanding universe.
+        log_ratio = float(logEntropyInt(T)) - np.asarray(logEntropyInt(Tr), dtype=float)
+        entropy_ratio = np.exp(np.minimum(log_ratio, 0.0))
+    elif entropyInt is None:
         entropy_ratio = (T / Tr) ** 3
+    else:
+        entropy_T = float(entropyInt(T))
+        entropy_Tr = np.asarray(entropyInt(Tr), dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            entropy_ratio = entropy_T / entropy_Tr
+        entropy_ratio = np.nan_to_num(entropy_ratio, nan=0.0, posinf=0.0, neginf=0.0)
     if coolingInt is None:
         cooling_factor = 1.0
     else:

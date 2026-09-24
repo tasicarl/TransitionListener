@@ -73,24 +73,21 @@ class FalseVacuumVolumeGrowthRateTests(unittest.TestCase):
 
 
 class PercolationSoundSpeedTests(unittest.TestCase):
-    def test_bag_relations_use_one_third(self):
-        # A usable symmetric-phase sound speed is available, but the double
-        # integral and the bag mode integrate with dT/dt = -H T and must ignore it.
-        phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
-        for method, mode in (("double_integral", "sound_speed"), ("ode", "bag")):
-            with self.subTest(method=method, mode=mode):
-                with mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21):
-                    value = bd.percolation_sound_speed_sq(
-                        object(), phase, 0.5,
-                        time_temperature_mode=mode, integral_method=method,
-                    )
-                self.assertEqual(value, 1.0 / 3.0)
-
-    def test_ode_sound_speed_mode_uses_symmetric_phase_value(self):
+    def test_bag_mode_uses_one_third(self):
+        # A usable symmetric-phase sound speed is available, but the bag mode
+        # integrates with dT/dt = -H T and must ignore it.
         phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
         with mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21):
             value = bd.percolation_sound_speed_sq(
-                object(), phase, 0.5, time_temperature_mode="sound_speed", integral_method="ode"
+                object(), phase, 0.5, time_temperature_mode="bag"
+            )
+        self.assertEqual(value, 1.0 / 3.0)
+
+    def test_sound_speed_mode_uses_symmetric_phase_value(self):
+        phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
+        with mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21):
+            value = bd.percolation_sound_speed_sq(
+                object(), phase, 0.5, time_temperature_mode="sound_speed"
             )
         self.assertAlmostEqual(value, 0.21)
 
@@ -98,7 +95,7 @@ class PercolationSoundSpeedTests(unittest.TestCase):
         phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
         with mock.patch.object(bd, "calcSoundSpeedSq", return_value=np.nan):
             value = bd.percolation_sound_speed_sq(
-                object(), phase, 0.5, time_temperature_mode="sound_speed", integral_method="ode"
+                object(), phase, 0.5, time_temperature_mode="sound_speed"
             )
         self.assertEqual(value, 1.0 / 3.0)
 

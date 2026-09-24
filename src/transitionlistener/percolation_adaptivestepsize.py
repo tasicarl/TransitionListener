@@ -264,6 +264,10 @@ def _estimate_dynamiczoomwindow_accuracy(
         and np.isfinite(float(estimate["Tperc"]))
     ):
         try:
+            # Convergence indicator only, never the reported R_*: the criterion below
+            # compares it between iterations, where the expansion history cancels. It is
+            # kept on the bag relation so the iteration control does not pay for the
+            # thermodynamic derivatives of the history at every support temperature.
             bubble_separation = bd.calcMeanBubbleSeparation(
                 float(estimate["Tperc"]),
                 float(temps[0]),

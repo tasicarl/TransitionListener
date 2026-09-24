@@ -28,6 +28,7 @@ from transitionlistener.bubbledynamics import (
     calcMeanBubbleSeparation,
     falseVacuumVolumeGrowthRate,
     percolation_sound_speed_sq,
+    expansion_interpolants,
     calcTf,
     Tb_criterion,
     integrate_broken_temperature,
@@ -286,7 +287,7 @@ class PercolationResult:
     Sint: interpolate.interp1d | None
     Hint: interpolate.interp1d | None
     TBROint: interpolate.interp1d | None
-    entropyInt: interpolate.interp1d | None
+    logEntropyInt: interpolate.interp1d | None
     coolingInt: interpolate.interp1d | None
     metadata: PercolationDiagnostics | None
     successful: bool
@@ -530,7 +531,7 @@ class TransitionObservables:
 
         if verbose:
             print("Calculating percolation splines...")
-        Pint = Sint = Hint = TBROint = entropyInt = coolingInt = None
+        Pint = Sint = Hint = TBROint = logEntropyInt = coolingInt = None
         core_spline_error = None
         try:
             # Interpolate the false-vacuum fraction logarithmically, i.e. in
@@ -585,6 +586,24 @@ class TransitionObservables:
         except Exception:
             TBROint = None
 
+        # The mean bubble separation has to use the expansion history of the percolation
+        # integral: in sound-speed mode that is not a T^3 entropy density, e.g. across the
+        # QCD crossover or electron-positron annihilation. Without it, R_* was read off a
+        # different cosmology than the Tperc it belongs to.
+        try:
+            logEntropyInt, coolingInt = expansion_interpolants(
+                pot,
+                ctx.phase_symmetric,
+                TSYM,
+                time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
+            )
+        except Exception as err:
+            # Optional: without it the separation falls back to the bag relation, as on
+            # every release so far. It must not invalidate the percolation splines.
+            logEntropyInt = coolingInt = None
+            if verbose:
+                print("Error in computing the expansion history, using a ~ 1/T: ", err)
+
         if core_spline_error is not None:
             derived["WARNING:no_perc_splines"] = True
             if verbose:
@@ -595,7 +614,7 @@ class TransitionObservables:
                     "for further calculations."
                 )
                 console.print(f"[bold yellow]WARNING:[/bold yellow] {msg}")
-            Pint = Sint = Hint = TBROint = entropyInt = coolingInt = None
+            Pint = Sint = Hint = TBROint = logEntropyInt = coolingInt = None
 
         return PercolationResult(
             Tperc=Tperc,
@@ -608,7 +627,7 @@ class TransitionObservables:
             Sint=Sint,
             Hint=Hint,
             TBROint=TBROint,
-            entropyInt=entropyInt,
+            logEntropyInt=logEntropyInt,
             coolingInt=coolingInt,
             metadata=metadata,
             successful=True,
@@ -647,7 +666,6 @@ class TransitionObservables:
             ctx.phase_symmetric,
             percolation.Tperc,
             time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
-            integral_method=ctx.PercolationConf.integral_method,
         )
 
         growth = falseVacuumVolumeGrowthRate(
@@ -868,8 +886,8 @@ class TransitionObservables:
                     percolation.Sint,
                     percolation.Pint,
                     percolation.Hint,
-                    percolation.entropyInt,
-                    percolation.coolingInt,
+                    coolingInt=percolation.coolingInt,
+                    logEntropyInt=percolation.logEntropyInt,
                     verbose=verbose,
                 )
                 RsepHperc = Rsep * percolation.Hint(percolation.Tperc)
@@ -1034,14 +1052,23 @@ class TransitionObservables:
         ``T d(S_3/T)/dT``. For the generalized time-temperature relation,
         ``dT/dt = -3 c_s^2 H T``, the physical beta/H obtains an extra
         factor ``3 c_s^2`` evaluated in the symmetric phase.
+
+        It comes from the percolation history, through the same routine the integral and
+        the false-vacuum criterion use, not from ``derived["c_s_sym"]``: that one follows
+        ``GWconfig.sound_speed``, which is a setting of the spectrum and is ``1/3`` on
+        request. Reading it here would drop this factor while the history kept the sound
+        speed of the plasma. With ``sound_speed = "compute"``, the default, the two agree
+        to machine precision.
         """
-        if str(ctx.PercolationConf.time_temperature_mode) != "sound_speed":
-            return 1.0
-        c_s_sym = ctx.derived_params.get("c_s_sym")
-        if c_s_sym is None or not np.isfinite(c_s_sym):
-            hydr = Hydrodynamics(ctx.pot, ctx.phase_symmetric, ctx.phase_broken, ctx.verbose)
-            c_s_sym = hydr.calc_cs(temperature, sym=True)
-        return float(3.0 * c_s_sym * c_s_sym)
+        return float(
+            3.0
+            * percolation_sound_speed_sq(
+                ctx.pot,
+                ctx.phase_symmetric,
+                temperature,
+                time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
+            )
+        )
 
     def _compute_kappa_parameters(
         self,

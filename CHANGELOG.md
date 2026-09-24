@@ -131,6 +131,59 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   benchmark line the change moves `Tperc`, `Treh` and `alpha` by less than
   0.01 %, and it gives back the one point that the transverse photon fix had
   cost, so the line has a result at all 49 of its points.
+- **Expansion history of the mean bubble separation**: the bubble number density
+  `n_B` was integrated with the bag relation, `a ~ 1/T` and `dT/dt = -H T`, while
+  the percolation integral that fixed `Tperc` used the sound speed of the plasma
+  and an entropy-conserving `a(T)`, so `R_*` and `Tperc` described two different
+  cosmologies. `calcMeanBubbleSeparation` already accepted the history through
+  `entropyInt` and `coolingInt`, but nothing passed it. Both now come from
+  `expansion_interpolants`, built from the same routine the percolation integral
+  uses, so `Tperc`, `R_*` and `beta/H` belong to one expansion history. With
+  `C = 1/(3 c_s^2)` at `Tperc`, the old expression gave an `R_* H_*` too large by
+  `C^(1/3)`: for an exact exponential nucleation rate, `beta/H` read off `R_*`
+  keeps the same residual for `C = 1`, 1.08 and 1.2 once the history is shared,
+  and drifts by -1.7 % and -5.1 % without it. `Tperc`, `alpha`, `kappa_sw` and
+  `(beta/H)_S3` are unchanged; `R_* H_*`, `(beta/H)_RH` and the spectrum are not.
+  Along the abelian dark Higgs line (`C` from 0.974 to 1.090) `R_* H_*` moves by
+  a median -2.20 % (range -2.69 % to +0.83 %) and the peak amplitude by -4.34 %
+  (-5.31 % to +1.64 %); along the supercooled conformal line by -0.15 % (-2.06 %
+  to +0.83 %) and -0.31 %; along the 2HDM line by +0.28 % (-0.32 % to +1.01 %)
+  and +0.57 %. At single points: -2.51 % in `R_* H_*` for the abelian dark Higgs
+  at `lambda = 0.03`, -4.67 % for the conformal model at `v = 20 GeV`
+  (`C = 1.175`) and +0.92 % for the 2HDM benchmark, where `C = 0.972` is below
+  one and `R_*` grows instead. Every point keeps its error code, and the fixed
+  step size solver, which uses the bag relation throughout, is unchanged.
+  The expansion history is carried as `ln s = -3 ln a` rather than as `s` itself,
+  and the ratio the separation needs is formed as a difference of logarithms:
+  `a^-3` underflows to zero beyond about 236 e-folds, while the scale factor is
+  allowed 700, and a ratio of two underflowed entropies comes back as one, an
+  unexpanding universe. The integral over the separation also moved from a linear
+  to a logarithmic temperature grid, which matters where the percolation support
+  spans decades: at a support ratio of 1000 the linear grid was 1.6 % low at the
+  same number of points, at a ratio of 100 it was 0.10 % low. The `bag` mode keeps
+  the linear grid and the bag relation throughout and is unchanged.
+- **Sound speed of the `(beta/H)_S3` time-temperature factor**: the factor `3 c_s^2`
+  that converts `T d(S_3/T)/dT` into `(beta/H)_S3` was read from the sound speed of the
+  gravitational wave settings, `GWConf.sound_speed`. With `GWConf.sound_speed = "1/3"`
+  that factor became exactly one, so `(beta/H)_S3` lost the correction while the
+  percolation history kept the sound speed of the plasma. It now comes from the
+  percolation history itself, through the same routine the percolation integral,
+  the mean bubble separation and the false-vacuum criterion use. With the default
+  `GWConf.sound_speed = "compute"` the two agree to 2e-14 and no result changes.
+- **Double integral and the time-temperature mode**: with
+  `percolation_integral_method = "double_integral"`, `percIntegral` ignored the
+  expansion history whatever `percolation_time_temperature_mode` was set to,
+  while `(beta/H)_S3` still carried its `3 c_s^2` factor. `percIntegral` now
+  implements `entropy_density` and `cooling_factor` and receives the same factors
+  as the ODE; it reduces exactly to the previous expression in the bag limit, and
+  agrees with the ODE to better than 1e-3 wherever the percolation integral is of
+  order one. For the conformal model at `g = 0.692`, `Tperc` moves by +0.46 %,
+  +0.64 % and +1.41 % at `v = 2`, 6 and 20 GeV, `R_* H_*` by +5.7 %, +7.5 % and
+  +15.6 %, and the peak amplitude by +11.6 %, +15.6 % and +33.7 %. The default
+  method (`"ode"`) is unaffected. One rule, `percolation_uses_sound_speed`, now
+  decides for the percolation integral, `R_*`, `(beta/H)_S3` and
+  `percolation_sound_speed_sq` alike; the sound speed is used unless the mode is
+  `"bag"`, for both integral methods.
 - **Diagnostic plots**: `plotDOFs` drew the fields of the potential against the
   whole Standard Model table, so its total double counted the Standard Model
   fields of the potential; both curves now use the counting of the solvers.
