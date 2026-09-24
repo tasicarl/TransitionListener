@@ -287,7 +287,7 @@ class PercolationResult:
     Sint: interpolate.interp1d | None
     Hint: interpolate.interp1d | None
     TBROint: interpolate.interp1d | None
-    entropyInt: interpolate.interp1d | None
+    logEntropyInt: interpolate.interp1d | None
     coolingInt: interpolate.interp1d | None
     metadata: PercolationDiagnostics | None
     successful: bool
@@ -531,7 +531,7 @@ class TransitionObservables:
 
         if verbose:
             print("Calculating percolation splines...")
-        Pint = Sint = Hint = TBROint = entropyInt = coolingInt = None
+        Pint = Sint = Hint = TBROint = logEntropyInt = coolingInt = None
         core_spline_error = None
         try:
             # Interpolate the false-vacuum fraction logarithmically, i.e. in
@@ -591,7 +591,7 @@ class TransitionObservables:
         # QCD crossover or electron-positron annihilation. Without it, R_* was read off a
         # different cosmology than the Tperc it belongs to.
         try:
-            entropyInt, coolingInt = expansion_interpolants(
+            logEntropyInt, coolingInt = expansion_interpolants(
                 pot,
                 ctx.phase_symmetric,
                 TSYM,
@@ -600,7 +600,7 @@ class TransitionObservables:
         except Exception as err:
             # Optional: without it the separation falls back to the bag relation, as on
             # every release so far. It must not invalidate the percolation splines.
-            entropyInt = coolingInt = None
+            logEntropyInt = coolingInt = None
             if verbose:
                 print("Error in computing the expansion history, using a ~ 1/T: ", err)
 
@@ -614,7 +614,7 @@ class TransitionObservables:
                     "for further calculations."
                 )
                 console.print(f"[bold yellow]WARNING:[/bold yellow] {msg}")
-            Pint = Sint = Hint = TBROint = entropyInt = coolingInt = None
+            Pint = Sint = Hint = TBROint = logEntropyInt = coolingInt = None
 
         return PercolationResult(
             Tperc=Tperc,
@@ -627,7 +627,7 @@ class TransitionObservables:
             Sint=Sint,
             Hint=Hint,
             TBROint=TBROint,
-            entropyInt=entropyInt,
+            logEntropyInt=logEntropyInt,
             coolingInt=coolingInt,
             metadata=metadata,
             successful=True,
@@ -886,8 +886,8 @@ class TransitionObservables:
                     percolation.Sint,
                     percolation.Pint,
                     percolation.Hint,
-                    percolation.entropyInt,
-                    percolation.coolingInt,
+                    coolingInt=percolation.coolingInt,
+                    logEntropyInt=percolation.logEntropyInt,
                     verbose=verbose,
                 )
                 RsepHperc = Rsep * percolation.Hint(percolation.Tperc)

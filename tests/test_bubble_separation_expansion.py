@@ -141,6 +141,58 @@ class PercolationHistoryTests(unittest.TestCase):
                 self.assertTrue(np.isclose(bag_ratios[C], C ** (1 / 3), rtol=2e-3, atol=0))
 
 
+class DeepHistoryTests(unittest.TestCase):
+    """A history of hundreds of e-folds must not collapse to an unexpanding universe."""
+
+    def _separation(self, ln_a_span, **kw):
+        Tp, Tmax = 1.0, 1.5
+        Sint = lambda x: np.asarray(x, float) * (10.0 + 40.0 * (np.asarray(x, float) - 1.0))
+        Pint = lambda x: np.zeros_like(np.asarray(x, float))
+        Hint = lambda x: np.full_like(np.asarray(x, float), 1e-3)
+        return bd.calcMeanBubbleSeparation(Tp, Tmax, Sint, Pint, Hint, **kw)
+
+    def test_log_entropy_keeps_the_expansion(self):
+        # ln a grows linearly from 0 at Tmax to ln_a_span at Tperc, so
+        # ln s = -3 ln a and s(Tperc)/s(T') = exp(-3 (ln a(Tperc) - ln a(T'))).
+        Tp, Tmax, k = 1.0, 1.5, 3.0
+        for ln_a_span in (20.0, 300.0, 600.0):
+            with self.subTest(ln_a_span=ln_a_span):
+                def ln_a(x):
+                    x = np.asarray(x, dtype=float)
+                    return ln_a_span * (Tmax - x) / (Tmax - Tp)
+
+                log_sep = self._separation(
+                    ln_a_span, coolingInt=lambda x: np.full_like(np.asarray(x, float), k),
+                    logEntropyInt=lambda x: -3.0 * ln_a(x))
+                # No-expansion reference: a constant scale factor.
+                flat_sep = self._separation(
+                    ln_a_span, coolingInt=lambda x: np.full_like(np.asarray(x, float), k),
+                    logEntropyInt=lambda x: np.zeros_like(np.asarray(x, float)))
+                self.assertTrue(np.isfinite(log_sep))
+                self.assertGreater(abs(log_sep / flat_sep - 1), 1e-6)
+
+    def test_absolute_entropy_would_have_collapsed(self):
+        # The same history through the entropy itself: a^-3 underflows and the ratio is
+        # no longer recoverable, so it must not come back as the unexpanding answer.
+        Tp, Tmax, k = 1.0, 1.5, 3.0
+
+        def ln_a(x):
+            x = np.asarray(x, dtype=float)
+            return 600.0 * (Tmax - x) / (Tmax - Tp)
+
+        flat = self._separation(
+            600.0, coolingInt=lambda x: np.full_like(np.asarray(x, float), k),
+            logEntropyInt=lambda x: np.zeros_like(np.asarray(x, float)))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            underflowed = self._separation(
+                600.0, coolingInt=lambda x: np.full_like(np.asarray(x, float), k),
+                entropyInt=lambda x: np.exp(-3.0 * ln_a(x)))
+        # It degenerates visibly instead of coming back as the unexpanding answer, which
+        # is what clamping the underflowed entropy used to produce.
+        self.assertTrue(np.isfinite(flat))
+        self.assertTrue(np.isinf(underflowed))
+
+
 class FullSweepTests(unittest.TestCase):
     """The double integral must receive the history through percIntegralODE_full_sweep."""
 
@@ -206,7 +258,7 @@ class ModelThermodynamicsTests(unittest.TestCase):
             {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
         phase = FixedPhase([0.0])
         T = np.geomspace(50.0, 15.0, 200)
-        entropyInt, coolingInt = bd.expansion_interpolants(pot, phase, T)
+        logEntropyInt, coolingInt = bd.expansion_interpolants(pot, phase, T)
         for temp in (T[0], T[57], T[-1]):
             with self.subTest(T=temp):
                 cs_sq = bd.calcSoundSpeedSq(pot, phase.valAt(temp), temp)
@@ -217,7 +269,8 @@ class ModelThermodynamicsTests(unittest.TestCase):
             return -float(np.squeeze(pot.dVdT(phase.valAt(temp), temp, dT=dT, include_decoupled=False)))
 
         model_ratio = entropy_density(T[0]) / entropy_density(T[-1])
-        self.assertTrue(np.isclose(entropyInt(T[0]) / entropyInt(T[-1]), model_ratio, rtol=2e-3, atol=0))
+        ratio = float(np.exp(logEntropyInt(T[0]) - logEntropyInt(T[-1])))
+        self.assertTrue(np.isclose(ratio, model_ratio, rtol=2e-3, atol=0))
         # Across the crossover the entropy density is far from T^3.
         self.assertGreater(abs(model_ratio / (T[0] / T[-1]) ** 3 - 1), 0.2)
 

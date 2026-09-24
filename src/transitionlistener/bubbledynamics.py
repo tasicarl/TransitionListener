@@ -2804,9 +2804,14 @@ def expansion_interpolants(pot, phase_symmetric, T, *, time_temperature_mode: st
     Returns
     -------
     tuple
-        ``(entropyInt, coolingInt)`` with ``entropyInt(T) ~ a(T)^-3`` and
-        ``coolingInt(T) = 3 c_s^2(T)``, or ``(None, None)`` when the history is the bag
-        limit, ``s ~ T^3`` and ``3 c_s^2 = 1``.
+        ``(logEntropyInt, coolingInt)`` with ``logEntropyInt(T) = ln s(T) = -3 ln a(T)``
+        up to an additive constant, and ``coolingInt(T) = 3 c_s^2(T)``; or ``(None, None)``
+        when the history is the bag limit, ``s ~ T^3`` and ``3 c_s^2 = 1``.
+
+        The logarithm is handed over rather than ``s`` itself because
+        ``_time_temperature_factors`` allows ``ln a`` up to 700, where ``s ~ a^-3``
+        underflows to zero and the ratio that the separation needs can no longer be
+        recovered from it.
     """
     if not percolation_uses_sound_speed(time_temperature_mode):
         return None, None
@@ -2823,13 +2828,13 @@ def expansion_interpolants(pot, phase_symmetric, T, *, time_temperature_mode: st
     cs_sq_int = interpolate.PchipInterpolator(ascending, sound_speed_sq[::-1], extrapolate=True)
     ln_a_int = interpolate.PchipInterpolator(ascending, np.log(scale_factor[::-1]), extrapolate=True)
 
-    def entropyInt(x):
-        return np.exp(-3.0 * ln_a_int(np.asarray(x, dtype=float)))
+    def logEntropyInt(x):
+        return -3.0 * ln_a_int(np.asarray(x, dtype=float))
 
     def coolingInt(x):
         return 3.0 * cs_sq_int(np.asarray(x, dtype=float))
 
-    return entropyInt, coolingInt
+    return logEntropyInt, coolingInt
 
 
 def calcMeanBubbleSeparation(
@@ -2841,6 +2846,8 @@ def calcMeanBubbleSeparation(
     entropyInt=None,
     coolingInt=None,
     verbose=False,
+    *,
+    logEntropyInt=None,
 ):
     """Calculate the mean bubble separation at temperature T.
 
@@ -2859,7 +2866,13 @@ def calcMeanBubbleSeparation(
     entropyInt : callable, optional
         Entropy density of the expansion history, ``entropyInt(T) ~ a(T)^-3``. Only its
         ratios enter, so any normalisation will do. ``None`` falls back to the bag
-        relation ``s ~ T^3``, i.e. ``a ~ 1/T``.
+        relation ``s ~ T^3``, i.e. ``a ~ 1/T``. It is limited to histories of at most
+        about 236 e-folds, beyond which ``a^-3`` underflows; use ``logEntropyInt`` there.
+    logEntropyInt : callable, keyword only, optional
+        ``ln s(T) = -3 ln a(T)``, up to an additive constant, in place of ``entropyInt``.
+        The ratio is then formed as a difference of logarithms and stays exact over the
+        whole range ``_time_temperature_factors`` allows. This is what
+        ``expansion_interpolants`` returns. It takes precedence over ``entropyInt``.
     coolingInt : callable, optional
         ``coolingInt(T) = 3 c_s^2(T)``, the factor the integrand is *divided* by, since
         ``dt = -dT / (3 c_s^2 H T)``. It is ``3 c_s^2``, not ``1 / (3 c_s^2)``. ``None``
@@ -2878,7 +2891,7 @@ def calcMeanBubbleSeparation(
     # See eq. (5.42) in 2305.02357.
     if not (np.isfinite(T) and np.isfinite(Tmax)) or Tmax <= T:
         return np.inf
-    if entropyInt is None and coolingInt is None:
+    if entropyInt is None and coolingInt is None and logEntropyInt is None:
         # Preserve the bag-mode integration path exactly so RH/betaH_from_RH
         # remain comparable to fixed-grid reference runs.
         Tr = np.linspace(T, Tmax, 10_000)
@@ -2889,12 +2902,21 @@ def calcMeanBubbleSeparation(
             Tr = np.geomspace(T, Tmax, 10_000)
         else:
             Tr = np.linspace(T, Tmax, 10_000)
-    if entropyInt is None:
+    if logEntropyInt is not None:
+        # s(T)/s(T') as a difference of logarithms: T' >= T and a falls with rising T, so
+        # the exponent is never positive and deep histories underflow to zero, which is
+        # the right limit. Clamping s itself instead would make both operands equal and
+        # silently return an unexpanding universe.
+        log_ratio = float(logEntropyInt(T)) - np.asarray(logEntropyInt(Tr), dtype=float)
+        entropy_ratio = np.exp(np.minimum(log_ratio, 0.0))
+    elif entropyInt is None:
         entropy_ratio = (T / Tr) ** 3
     else:
-        entropy_T = max(float(entropyInt(T)), 1e-300)
-        entropy_Tr = np.maximum(np.asarray(entropyInt(Tr), dtype=float), 1e-300)
-        entropy_ratio = np.clip(entropy_T / entropy_Tr, 0.0, np.inf)
+        entropy_T = float(entropyInt(T))
+        entropy_Tr = np.asarray(entropyInt(Tr), dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            entropy_ratio = entropy_T / entropy_Tr
+        entropy_ratio = np.nan_to_num(entropy_ratio, nan=0.0, posinf=0.0, neginf=0.0)
     if coolingInt is None:
         cooling_factor = 1.0
     else:
