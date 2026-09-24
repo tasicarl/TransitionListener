@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+import types
 from unittest import mock
 
 import numpy as np
@@ -168,6 +169,34 @@ class FullSweepTests(unittest.TestCase):
         _, _, _, cs2, a = _exponential_history(1.1, n=401)
         T, H, S, I, _ = self._sweep("bag", cs2, a)
         self.assertTrue(np.isclose(I[-1], bd.percIntegral(T, H, S), rtol=1e-12, atol=0))
+
+
+class BetaTimeFactorTests(unittest.TestCase):
+    """The 3 c_s^2 factor on (beta/H)_S3 must come from the percolation history."""
+
+    def _factor(self, mode, gw_sound_speed):
+        from transitionlistener.transitionObservables import TransitionObservables
+
+        ctx = types.SimpleNamespace(
+            derived_params={"c_s_sym": 1 / np.sqrt(3) if gw_sound_speed == "1/3" else 0.6},
+            verbose=False,
+            pot=object(),
+            phase_symmetric=FixedPhase([0.0]),
+            PercolationConf=types.SimpleNamespace(time_temperature_mode=mode),
+        )
+        obs = TransitionObservables.__new__(TransitionObservables)
+        with mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21):
+            return TransitionObservables._beta_time_temperature_factor(obs, ctx, 0.5)
+
+    def test_gw_sound_speed_setting_does_not_enter(self):
+        # GWconfig.sound_speed = "1/3" puts 1/sqrt(3) into derived["c_s_sym"]. Reading it
+        # here would return 1.0 and silently drop the factor the history applied.
+        for gw in ("compute", "1/3"):
+            with self.subTest(gw_sound_speed=gw):
+                self.assertAlmostEqual(self._factor("sound_speed", gw), 3.0 * 0.21)
+
+    def test_bag_mode_gives_one(self):
+        self.assertAlmostEqual(self._factor("bag", "compute"), 1.0)
 
 
 class ModelThermodynamicsTests(unittest.TestCase):

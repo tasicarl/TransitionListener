@@ -158,6 +158,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   at a support ratio of 1000 the linear grid was 1.6 % low at the same number of
   points, at a ratio of 100 it was 0.10 % low. The `bag` mode keeps the linear
   grid and the bag relation throughout and is unchanged.
+- **Sound speed of the `(beta/H)_S3` time-temperature factor**: the factor `3 c_s^2`
+  that converts `T d(S_3/T)/dT` into `(beta/H)_S3` was read from the sound speed of the
+  gravitational wave settings, `GWConf.sound_speed`. With `GWConf.sound_speed = "1/3"`
+  that factor became exactly one, so `(beta/H)_S3` lost the correction while the
+  percolation history kept the sound speed of the plasma. It now comes from the
+  percolation history itself, through the same routine the percolation integral, the mean
+  bubble separation and the false-vacuum criterion use. With the default
+  `GWConf.sound_speed = "compute"` the two agree to 2e-14 and no result changes.
 - **Double integral and the time-temperature mode**: with
   `percolation_integral_method = "double_integral"`, `percIntegral` ignored the
   expansion history whatever `percolation_time_temperature_mode` was set to,

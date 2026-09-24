@@ -28,7 +28,6 @@ from transitionlistener.bubbledynamics import (
     calcMeanBubbleSeparation,
     falseVacuumVolumeGrowthRate,
     percolation_sound_speed_sq,
-    percolation_uses_sound_speed,
     expansion_interpolants,
     calcTf,
     Tb_criterion,
@@ -1053,14 +1052,23 @@ class TransitionObservables:
         ``T d(S_3/T)/dT``. For the generalized time-temperature relation,
         ``dT/dt = -3 c_s^2 H T``, the physical beta/H obtains an extra
         factor ``3 c_s^2`` evaluated in the symmetric phase.
+
+        It comes from the percolation history, through the same routine the integral and
+        the false-vacuum criterion use, not from ``derived["c_s_sym"]``: that one follows
+        ``GWconfig.sound_speed``, which is a setting of the spectrum and is ``1/3`` on
+        request. Reading it here would drop this factor while the history kept the sound
+        speed of the plasma. With ``sound_speed = "compute"``, the default, the two agree
+        to machine precision.
         """
-        if not percolation_uses_sound_speed(ctx.PercolationConf.time_temperature_mode):
-            return 1.0
-        c_s_sym = ctx.derived_params.get("c_s_sym")
-        if c_s_sym is None or not np.isfinite(c_s_sym):
-            hydr = Hydrodynamics(ctx.pot, ctx.phase_symmetric, ctx.phase_broken, ctx.verbose)
-            c_s_sym = hydr.calc_cs(temperature, sym=True)
-        return float(3.0 * c_s_sym * c_s_sym)
+        return float(
+            3.0
+            * percolation_sound_speed_sq(
+                ctx.pot,
+                ctx.phase_symmetric,
+                temperature,
+                time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
+            )
+        )
 
     def _compute_kappa_parameters(
         self,

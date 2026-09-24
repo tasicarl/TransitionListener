@@ -762,6 +762,7 @@ def percIntegral(
     *,
     entropy_density: np.ndarray | None = None,
     cooling_factor: np.ndarray | None = None,
+    scale_factor: np.ndarray | None = None,
 ) -> float:
     """Perform the percolation integral beteen Tstart and Tend.
 
@@ -775,12 +776,29 @@ def percIntegral(
     S : np.ndarray
         S3 Euclidian bounce action evaluated at T
     vw : float
+    entropy_density : np.ndarray, optional
+        Entropy density of the expansion history, ``s ~ a^-3``. Only its ratios enter.
+        With both this and ``scale_factor`` left at ``None`` the bag relation ``s ~ T^3``
+        is used.
+    cooling_factor : np.ndarray, optional
+        ``3 c_s^2``, the divisor of the transport factor, since
+        ``dt = -dT / (3 c_s^2 H T)``. ``None`` means the bag relation ``3 c_s^2 = 1``.
+    scale_factor : np.ndarray, optional
+        ``a(T)`` itself, in place of ``entropy_density``; only ratios to ``a(T[0])``
+        enter. Preferred where the history spans many e-folds, since ``a^-3`` underflows
+        to zero once ``ln a`` exceeds about 236 and the ratio then has to be rebuilt from
+        values that no longer carry it, while ``a`` stays representable to ``ln a`` of
+        709. Passing both is an error.
 
     Returns
     -------
     float
         The integral evaluated at the last temperature ``T[-1]``.
     """
+    if entropy_density is not None and scale_factor is not None:
+        raise errors.PercolationError(
+            "percIntegral takes either entropy_density or scale_factor, not both."
+        )
     # See eq. (4.57) in 2305.02357
     # The ordering of the array is important
     if len(T) > 1:
@@ -790,7 +808,7 @@ def percIntegral(
     T = np.asarray(T, dtype=float)
     H = np.asarray(H, dtype=float)
     S = np.asarray(S, dtype=float)
-    if entropy_density is None and cooling_factor is None:
+    if entropy_density is None and cooling_factor is None and scale_factor is None:
         # Bag limit, a ~ 1/T and 3 c_s^2 = 1: the scale factor cancels.
         vol_int = np.array([integrate.trapezoid(1 / H[i:], x=T[i:]) for i in range(len(T))])
         with np.errstate(invalid="ignore"):
@@ -798,14 +816,25 @@ def percIntegral(
     else:
         # I = 4 pi/3 v^3 int dt' Gamma a(t')^3 (int_t'^t dt''/a)^3 with
         # dt = -dT/(3 c_s^2 H T). Only ratios of the scale factor enter.
-        entropy = T**3 if entropy_density is None else np.asarray(entropy_density, dtype=float)
         cooling = (np.ones_like(T) if cooling_factor is None
                    else np.asarray(cooling_factor, dtype=float))
-        scale = (entropy / entropy[0]) ** (-1.0 / 3.0)
-        transport = 1.0 / (cooling * H * T * scale)
-        vol_int = np.array([integrate.trapezoid(transport[i:], x=T[i:]) for i in range(len(T))])
+        if scale_factor is not None:
+            a = np.asarray(scale_factor, dtype=float)
+            scale = a / a[0]
+        else:
+            entropy = T**3 if entropy_density is None else np.asarray(entropy_density, dtype=float)
+            scale = (entropy / entropy[0]) ** (-1.0 / 3.0)
+        # a(T')^3 belongs inside the cube of the comoving integral, not beside it: the two
+        # factors cancel to something of order one, but separately a^3 overflows and the
+        # transport factor underflows once the history spans a few hundred e-folds. The
+        # ratio a(T')/a(T'') never exceeds one here, since a grows as T falls.
+        base = 1.0 / (cooling * H * T)
+        vol_int = np.array([
+            integrate.trapezoid(base[i:] * (scale[i] / scale[i:]), x=T[i:])
+            for i in range(len(T))
+        ])
         with np.errstate(invalid="ignore"):
-            integrant = Gamma(T, S) * scale**3 / (cooling * H * T) * vol_int**3
+            integrant = Gamma(T, S) * base * vol_int**3
     y = integrate.trapezoid(np.nan_to_num(integrant), x=T)
     return 4 * np.pi / 3 * vw**3 * y
 
@@ -1213,15 +1242,14 @@ def percIntegralODE_full_sweep(
             time_temperature_mode,
         )
         if sound_speed_sq is None:
-            entropy_density = cooling_factor = None
+            cooling_factor = None
         else:
-            entropy_density = scale_factor ** -3
             cooling_factor = 3.0 * sound_speed_sq
         I_values = np.asarray(
             [
                 percIntegral(
                     T[: i + 1], H[: i + 1], S[: i + 1], vw=vw,
-                    entropy_density=None if entropy_density is None else entropy_density[: i + 1],
+                    scale_factor=None if sound_speed_sq is None else scale_factor[: i + 1],
                     cooling_factor=None if cooling_factor is None else cooling_factor[: i + 1],
                 )
                 for i in range(len(T))
