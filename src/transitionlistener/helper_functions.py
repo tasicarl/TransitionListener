@@ -844,7 +844,8 @@ def Nbspld2(t, x, k=3):
 
 
 def temperatureDerivativeStep(pot, T: float, X=None,
-                              include_decoupled: bool = False) -> float:
+                              include_decoupled: bool = False,
+                              two_point: bool = False) -> float:
     r"""Finite-difference step for temperature derivatives of the potential.
 
     The stencils in :meth:`generic_potential.dVdT` and
@@ -858,6 +859,13 @@ def temperatureDerivativeStep(pot, T: float, X=None,
     .. math::
         \frac{\Delta T}{T} \simeq
         \left(\epsilon \frac{|V|}{\rho_{\rm rad}}\right)^{1/6} \,,
+
+    for the five-point stencils. A two-point central difference of a *first* derivative
+    balances a round-off of order :math:`\epsilon |V| / \Delta T` against a truncation of
+    order :math:`\Delta T^2`, which gives the cube root of the same ratio instead; pass
+    ``two_point=True`` for those. The cube root is much smaller than the sixth root
+    whenever the ratio is large, so using the five-point step for a two-point derivative
+    costs truncation error: 2e-4 on the potential difference of the conformal benchmark.
 
     where the radiation energy density stands in for the thermal scale that
     sets the size of the temperature derivatives. Both are taken for the sector the
@@ -889,6 +897,9 @@ def temperatureDerivativeStep(pot, T: float, X=None,
     include_decoupled : bool, optional
         Whether the decoupled radiation bath counts towards the offset and the
         thermal scale. Pass what the derivative this step serves uses.
+    two_point : bool, optional
+        True for a two-point central difference of a first derivative, False (the
+        default) for the five-point stencils of ``dVdT`` and ``d2VdT2``.
 
     Returns
     -------
@@ -907,7 +918,8 @@ def temperatureDerivativeStep(pot, T: float, X=None,
             thermal = float(np.abs(np.squeeze(
                 pot.radiationEnergyDensity(X, T, include_decoupled=include_decoupled))))
             if np.isfinite(magnitude) and np.isfinite(thermal) and thermal > 0.0:
-                rel = float(np.clip((np.finfo(float).eps * magnitude / thermal) ** (1.0 / 6.0),
+                exponent = 1.0 / 3.0 if two_point else 1.0 / 6.0
+                rel = float(np.clip((np.finfo(float).eps * magnitude / thermal) ** exponent,
                                     1.0e-4, 3.0e-2))
         except (ValueError, TypeError, ArithmeticError, IndexError, AttributeError):
             # A model whose tabulated bath is out of range, or a stand-in potential that

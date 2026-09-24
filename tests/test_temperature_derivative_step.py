@@ -80,6 +80,55 @@ class StepRuleTests(unittest.TestCase):
                            temperatureDerivativeStep(self.pot, T, np.array([0.0])))
 
 
+class TwoPointStencilTests(unittest.TestCase):
+    """dDeltaVdT and dedT are two-point central differences and balance at the cube root."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.pot = build()
+
+    def dDeltaVdT(self, high, low, T, dT):
+        p = np.abs(self.pot.Vtot(high, T + dT / 2, include_decoupled=False)
+                   - self.pot.Vtot(low, T + dT / 2, include_decoupled=False))
+        m = np.abs(self.pot.Vtot(high, T - dT / 2, include_decoupled=False)
+                   - self.pot.Vtot(low, T - dT / 2, include_decoupled=False))
+        return float(np.squeeze((p - m) / dT))
+
+    def dedT(self, high, T, dT):
+        return float(np.squeeze(
+            (self.pot.energyDensity(high, T + dT) - self.pot.energyDensity(high, T - dT))
+            / (2 * dT)))
+
+    def test_it_is_smaller_than_the_five_point_step(self):
+        """The cube root of a large ratio is far below its sixth root."""
+        T = 5.0
+        phi = self.pot.findMinimum(np.array([1000.0]), T)
+        five = temperatureDerivativeStep(self.pot, T, phi)
+        two = temperatureDerivativeStep(self.pot, T, phi, two_point=True)
+        self.assertLess(two, five / 10.0)
+
+    def test_it_lands_on_the_plateau_and_the_five_point_step_does_not(self):
+        for T in (5.0, 20.0):
+            with self.subTest(T=T):
+                high = np.array([0.0])
+                low = self.pot.findMinimum(np.array([1000.0]), T)
+                reference = self.dDeltaVdT(high, low, T, 1.0e-4 * T)
+                two = temperatureDerivativeStep(self.pot, T, low, two_point=True)
+                five = temperatureDerivativeStep(self.pot, T, low)
+                self.assertLess(abs(self.dDeltaVdT(high, low, T, two) / reference - 1), 1e-5)
+                self.assertGreater(abs(self.dDeltaVdT(high, low, T, five) / reference - 1), 1e-5)
+
+    def test_the_energy_derivative_too(self):
+        T = 20.0
+        high = np.array([0.0])
+        reference = self.dedT(high, T, 1.0e-4 * T)
+        two = temperatureDerivativeStep(self.pot, T, high, include_decoupled=True,
+                                        two_point=True)
+        five = temperatureDerivativeStep(self.pot, T, high, include_decoupled=True)
+        self.assertLess(abs(self.dedT(high, T, two) / reference - 1), 1e-6)
+        self.assertGreater(abs(self.dedT(high, T, five) / reference - 1), 1e-6)
+
+
 class SoundSpeedAccuracyTests(unittest.TestCase):
     """Where the offset dominates, the old step misses the converged value."""
 

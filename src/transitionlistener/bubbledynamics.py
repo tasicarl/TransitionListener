@@ -2429,7 +2429,11 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     # larger of the two offsets, so it takes the larger step.
     dT_sym = temperatureDerivativeStep(pot, T, high_phi)
     dT_bro = temperatureDerivativeStep(pot, T, low_phi)
-    dT = max(dT_sym, dT_bro)
+    # dDeltaVdT below is a two-point central difference, not one of the five-point
+    # stencils, so it balances at the cube root of the same ratio and takes a much
+    # smaller step; the five-point step would cost 2e-4 of truncation error here.
+    dT = max(temperatureDerivativeStep(pot, T, high_phi, two_point=True),
+             temperatureDerivativeStep(pot, T, low_phi, two_point=True))
     dDeltaV_p = np.abs(pot.Vtot(high_phi, T + dT / 2, include_decoupled=False)
                        - pot.Vtot(low_phi, T + dT / 2, include_decoupled=False))
     dDeltaV_m = np.abs(pot.Vtot(high_phi, T - dT / 2, include_decoupled=False)
@@ -2482,7 +2486,8 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     # This energy density keeps the decoupled bath, so its step is sized with it too. That
     # the sound speed beside it in the denominator is computed without the bath is the
     # separate question of which plasma 3 w refers to; it is not decided here.
-    dT_e = temperatureDerivativeStep(pot, T, high_phi, include_decoupled=True)
+    dT_e = temperatureDerivativeStep(pot, T, high_phi, include_decoupled=True,
+                                     two_point=True)
     dedT = (pot.energyDensity(high_phi, T + dT_e)
             - pot.energyDensity(high_phi, T - dT_e))/(2*dT_e)
     alpha_thetabar = (theta_sym - theta_bro) / (3* csSq_sym * T * dedT)
