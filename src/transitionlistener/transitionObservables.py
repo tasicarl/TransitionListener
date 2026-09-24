@@ -28,6 +28,8 @@ from transitionlistener.bubbledynamics import (
     calcMeanBubbleSeparation,
     falseVacuumVolumeGrowthRate,
     percolation_sound_speed_sq,
+    percolation_uses_sound_speed,
+    expansion_interpolants,
     calcTf,
     Tb_criterion,
     integrate_broken_temperature,
@@ -585,6 +587,24 @@ class TransitionObservables:
         except Exception:
             TBROint = None
 
+        # The mean bubble separation has to use the expansion history of the percolation
+        # integral: in sound-speed mode that is not a T^3 entropy density, e.g. across the
+        # QCD crossover or electron-positron annihilation. Without it, R_* was read off a
+        # different cosmology than the Tperc it belongs to.
+        try:
+            entropyInt, coolingInt = expansion_interpolants(
+                pot,
+                ctx.phase_symmetric,
+                TSYM,
+                time_temperature_mode=pot.config.percolationConf.time_temperature_mode,
+            )
+        except Exception as err:
+            # Optional: without it the separation falls back to the bag relation, as on
+            # every release so far. It must not invalidate the percolation splines.
+            entropyInt = coolingInt = None
+            if verbose:
+                print("Error in computing the expansion history, using a ~ 1/T: ", err)
+
         if core_spline_error is not None:
             derived["WARNING:no_perc_splines"] = True
             if verbose:
@@ -647,7 +667,6 @@ class TransitionObservables:
             ctx.phase_symmetric,
             percolation.Tperc,
             time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
-            integral_method=ctx.PercolationConf.integral_method,
         )
 
         growth = falseVacuumVolumeGrowthRate(
@@ -1035,7 +1054,7 @@ class TransitionObservables:
         ``dT/dt = -3 c_s^2 H T``, the physical beta/H obtains an extra
         factor ``3 c_s^2`` evaluated in the symmetric phase.
         """
-        if str(ctx.PercolationConf.time_temperature_mode) != "sound_speed":
+        if not percolation_uses_sound_speed(ctx.PercolationConf.time_temperature_mode):
             return 1.0
         c_s_sym = ctx.derived_params.get("c_s_sym")
         if c_s_sym is None or not np.isfinite(c_s_sym):
