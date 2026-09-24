@@ -596,7 +596,7 @@ class TransitionObservables:
                 pot,
                 ctx.phase_symmetric,
                 TSYM,
-                time_temperature_mode=pot.config.percolationConf.time_temperature_mode,
+                time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
             )
         except Exception as err:
             # Optional: without it the separation falls back to the bag relation, as on

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 from scipy import integrate
 
 from transitionlistener import bubbledynamics as bd
+from transitionlistener import errors
 from transitionlistener.helper_functions import load_potential
 
 REPO = Path(__file__).resolve().parents[1]
@@ -25,6 +27,14 @@ class FixedPhase:
 
 
 class ConventionTests(unittest.TestCase):
+    def test_an_unknown_mode_is_rejected(self):
+        # It used to reach _time_temperature_factors, which raises; the predicate must not
+        # silently turn a mistyped mode into the bag limit.
+        for mode in ("sound-speed", "Bag", "", "ode"):
+            with self.subTest(mode=mode):
+                with self.assertRaises(errors.PercolationError):
+                    bd.percolation_uses_sound_speed(mode)
+
     def test_only_the_bag_mode_uses_the_bag_limit(self):
         self.assertTrue(bd.percolation_uses_sound_speed(None))
         self.assertTrue(bd.percolation_uses_sound_speed("sound_speed"))
@@ -128,6 +138,36 @@ class PercolationHistoryTests(unittest.TestCase):
             with self.subTest(C=C):
                 self.assertLess(abs(residuals[C] - residuals[1.0]), 1e-3)
                 self.assertTrue(np.isclose(bag_ratios[C], C ** (1 / 3), rtol=2e-3, atol=0))
+
+
+class FullSweepTests(unittest.TestCase):
+    """The double integral must receive the history through percIntegralODE_full_sweep."""
+
+    def _sweep(self, mode, cs2, a):
+        T, S, H, _, _ = _exponential_history(1.1, n=401)
+
+        def factors(pot, phase, temps, m):
+            return (None, None) if m == "bag" else (cs2, a)
+
+        with mock.patch.object(bd, "_time_temperature_factors", side_effect=factors):
+            I, P = bd.percIntegralODE_full_sweep(
+                T, H, S, pot=object(), phase_symmetric=object(),
+                time_temperature_mode=mode, integral_method="double_integral")
+        return T, H, S, I, P
+
+    def test_double_integral_sweep_uses_the_history(self):
+        _, _, _, cs2, a = _exponential_history(1.1, n=401)
+        T, H, S, I, P = self._sweep("sound_speed", cs2, a)
+        expected = bd.percIntegral(T, H, S, entropy_density=a**-3, cooling_factor=3.0 * cs2)
+        self.assertTrue(np.isclose(I[-1], expected, rtol=1e-12, atol=0))
+        self.assertTrue(np.allclose(P, 1 - np.exp(-I), rtol=0, atol=1e-12))
+        # It is a different answer from the bag limit, so the test can tell them apart.
+        self.assertGreater(abs(I[-1] / bd.percIntegral(T, H, S) - 1), 1e-3)
+
+    def test_bag_mode_sweep_ignores_the_history(self):
+        _, _, _, cs2, a = _exponential_history(1.1, n=401)
+        T, H, S, I, _ = self._sweep("bag", cs2, a)
+        self.assertTrue(np.isclose(I[-1], bd.percIntegral(T, H, S), rtol=1e-12, atol=0))
 
 
 class ModelThermodynamicsTests(unittest.TestCase):

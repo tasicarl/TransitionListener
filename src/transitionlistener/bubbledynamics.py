@@ -2756,6 +2756,11 @@ def percolation_uses_sound_speed(time_temperature_mode: str | None) -> bool:
     history (``Tperc``, the mean bubble separation, ``beta/H``) must use the same relation.
     """
     mode = "sound_speed" if time_temperature_mode is None else str(time_temperature_mode)
+    if mode not in {"sound_speed", "bag"}:
+        raise errors.PercolationError(
+            f"Unknown percolation time-temperature mode {mode!r}. "
+            "Supported modes are 'sound_speed' and 'bag'."
+        )
     return mode == "sound_speed"
 
 
@@ -2817,14 +2822,26 @@ def calcMeanBubbleSeparation(
         Symmetric phase temperature
     Tmax : float
         Upper limit of the integral, usually the nucleation temperature
-    phase_sym : scipy.interpolate.interp1d object
-        The symmetric phase
     Sint : scipy.interpolate.interp1d object
         The action
     Pint : scipy.interpolate.interp1d object
         The true vacuum fraction.
     Hint : scipy.interpolate.interp1d object
         The Hubble rate
+    entropyInt : callable, optional
+        Entropy density of the expansion history, ``entropyInt(T) ~ a(T)^-3``. Only its
+        ratios enter, so any normalisation will do. ``None`` falls back to the bag
+        relation ``s ~ T^3``, i.e. ``a ~ 1/T``.
+    coolingInt : callable, optional
+        ``coolingInt(T) = 3 c_s^2(T)``, the factor the integrand is *divided* by, since
+        ``dt = -dT / (3 c_s^2 H T)``. It is ``3 c_s^2``, not ``1 / (3 c_s^2)``. ``None``
+        falls back to the bag relation, ``3 c_s^2 = 1``.
+
+        Both come from ``expansion_interpolants``, built from the same factors as the
+        percolation integral, so that the separation uses the history that fixed
+        ``Tperc``. With both ``None`` the previous bag-limit integration is reproduced
+        exactly, on the same linear temperature grid.
+
     Returns
     ----------
     R : float
