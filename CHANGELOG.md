@@ -79,8 +79,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   the broken-phase sound speed and raised a division by zero; they are now not a
   number where no sound speed exists, with the reason reported in verbose mode.
   The strengths that need no sound speed, `alpha_p`, `alpha_theta`, `alpha_e`,
-  `alpha_inf` and `alpha_eq`, are unaffected. No result changes where the
-  broken-phase plasma exists.
+  `alpha_inf` and `alpha_eq`, are unaffected. The fixed step size solver has its
+  own copy of that calculation, where the same division produced an infinity and
+  then a not-a-number together with a floating-point warning rather than an
+  error, and where the pseudo-trace strength is called `alpha_theta`; it is
+  guarded in the same way. No result changes where the broken-phase plasma
+  exists.
 
 - **Degrees of freedom of the fields of the potential**: `h_eff_DS` and
   `g_eff_DS`, used for the temperature inside the bubbles, for the integration

@@ -8,6 +8,7 @@ as NaN, which two places used to carry into an integrator or a division.
 from __future__ import annotations
 
 import unittest
+import warnings
 from unittest import mock
 
 import numpy as np
@@ -38,9 +39,12 @@ class WallVelocityGuardTests(unittest.TestCase):
 
     def test_an_empty_broken_phase_gives_a_runaway(self):
         # psi_N = w_b/w_s = 0 means there is no broken-phase plasma for the wall to push
-        # against; c_b^2 = 0 is the same statement through the sound speed.
+        # against; c_b^2 = 0 is the same statement through the sound speed. A vanishing
+        # symmetric-phase sound speed would divide by zero in mu = 1 + 1/c_s^2.
         self.assertEqual(self._find_vw(0.1, 1 / 3, 1 / 3, 0.0), 1)
         self.assertEqual(self._find_vw(0.1, 0.0, 1 / 3, 0.9), 1)
+        self.assertEqual(self._find_vw(0.1, 1 / 3, 0.0, 0.9), 1)
+        self.assertEqual(self._find_vw(0.1, 1 / 3, -0.2, 0.9), 1)
 
     def test_usable_inputs_still_solve(self):
         vw = self._find_vw(0.1, 1 / 3, 1 / 3, 0.9)
@@ -93,12 +97,60 @@ class PseudoTraceGuardTests(unittest.TestCase):
                 self.assertTrue(np.isnan(alphas["alpha_thetabar"]))
                 self.assertTrue(np.isnan(alphas["alpha_hyd"]))
                 # ... and the ones that need no sound speed survive.
-                for name in ("alpha_p", "alpha_theta", "alpha_e", "alpha_inf"):
+                for name in ("alpha_p", "alpha_theta", "alpha_e", "alpha_inf", "alpha_eq"):
                     self.assertTrue(np.isfinite(alphas[name]), name)
 
     def test_a_usable_sound_speed_still_gives_the_pseudo_trace(self):
         alphas = self._alphas(1.0 / 3.0)
         self.assertTrue(np.isfinite(alphas["alpha_thetabar"]))
+        self.assertTrue(np.isfinite(alphas["alpha_hyd"]))
+
+
+class FixedStepPseudoTraceGuardTests(PseudoTraceGuardTests):
+    """The fixed step size solver has its own calcAlphas and needed the same guard.
+
+    Its naming differs: there ``alpha_theta`` is the pseudo-trace strength, while in the
+    adaptive solver that name holds the bag-model one and the pseudo-trace is
+    ``alpha_thetabar``.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.names = ("alpha_p", "alpha_theta", "alpha_e", "alpha_hyd",
+                      "alpha_inf", "alpha_eq")
+
+    def _alphas(self, broken_cs_sq):
+        from transitionlistener import bubbledynamics_fixedstep as bdf
+
+        real = bdf.calcSoundSpeedSq
+
+        def fake(pot, X, t):
+            if np.allclose(np.atleast_1d(X), self.low.valAt(t)):
+                return broken_cs_sq
+            return real(pot, X, t)
+
+        with mock.patch.object(bdf, "calcSoundSpeedSq", side_effect=fake):
+            values = bdf.calcAlphas(self.T, self.pot, self.high, self.low, verbose=False)
+        return dict(zip(self.names, (float(np.squeeze(v)) for v in values)))
+
+    def test_a_vanishing_broken_sound_speed_does_not_raise(self):
+        for cs_sq in (0.0, float("nan")):
+            with self.subTest(broken_cs_sq=cs_sq):
+                # Unguarded, this path divides a numpy float by zero: the result is inf,
+                # then inf - inf = nan, with a RuntimeWarning on the way. The strengths
+                # come out the same either way, so the warning is what the test watches.
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", RuntimeWarning)
+                    alphas = self._alphas(cs_sq)
+                # Here alpha_theta is the pseudo-trace strength, so it is the one that goes.
+                self.assertTrue(np.isnan(alphas["alpha_theta"]))
+                self.assertTrue(np.isnan(alphas["alpha_hyd"]))
+                for name in ("alpha_p", "alpha_e", "alpha_inf", "alpha_eq"):
+                    self.assertTrue(np.isfinite(alphas[name]), name)
+
+    def test_a_usable_sound_speed_still_gives_the_pseudo_trace(self):
+        alphas = self._alphas(1.0 / 3.0)
+        self.assertTrue(np.isfinite(alphas["alpha_theta"]))
         self.assertTrue(np.isfinite(alphas["alpha_hyd"]))
 
 

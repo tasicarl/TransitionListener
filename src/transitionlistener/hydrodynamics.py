@@ -483,7 +483,8 @@ class Hydrodynamics():
         # without this the solver would reach root_scalar and integrate the plasma from a
         # non-finite initial state. No plasma in the broken phase means nothing for the wall
         # to push against, i.e. a runaway.
-        if not all(np.isfinite(x) for x in (alN, cb2, cs2, psiN)) or psiN <= 0.0 or cb2 <= 0.0:
+        if (not all(np.isfinite(x) for x in (alN, cb2, cs2, psiN))
+                or psiN <= 0.0 or cb2 <= 0.0 or cs2 <= 0.0):
             if self.verbose:
                 print(
                     "No usable broken-phase plasma for the wall velocity "
