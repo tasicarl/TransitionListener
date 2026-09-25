@@ -77,17 +77,29 @@ class PseudoTraceGuardTests(unittest.TestCase):
         self.names = ("alpha_p", "alpha_theta", "alpha_thetabar", "alpha_e",
                       "alpha_hyd", "alpha_inf", "alpha_eq")
 
-    def _alphas(self, broken_cs_sq):
+    def _alphas(self, broken_cs_sq, symmetric_cs_sq=None):
         real = bd.calcSoundSpeedSq
 
         def fake(pot, X, t):
             if np.allclose(np.atleast_1d(X), self.low.valAt(t)):
                 return broken_cs_sq
+            if symmetric_cs_sq is not None:
+                return symmetric_cs_sq
             return real(pot, X, t)
 
         with mock.patch.object(bd, "calcSoundSpeedSq", side_effect=fake):
             values = bd.calcAlphas(self.T, self.pot, self.high, self.low, verbose=False)
         return dict(zip(self.names, (float(np.squeeze(v)) for v in values)))
+
+    def test_only_alpha_thetabar_needs_the_symmetric_sound_speed(self):
+        # c_s,sym^2 appears only in the denominator of alpha_thetabar; the pseudo-trace
+        # itself and the hydrodynamic strengths are built from the broken-phase value, so
+        # they must survive a symmetric-phase value that does not exist.
+        for bad in (0.0, float("nan")):
+            with self.subTest(symmetric_cs_sq=bad):
+                alphas = self._alphas(1.0 / 3.0, symmetric_cs_sq=bad)
+                self.assertTrue(np.isnan(alphas["alpha_thetabar"]))
+                self.assertTrue(np.isfinite(alphas["alpha_hyd"]))
 
     def test_a_vanishing_broken_sound_speed_does_not_raise(self):
         for cs_sq in (0.0, float("nan")):
@@ -118,6 +130,9 @@ class FixedStepPseudoTraceGuardTests(PseudoTraceGuardTests):
         super().setUp()
         self.names = ("alpha_p", "alpha_theta", "alpha_e", "alpha_hyd",
                       "alpha_inf", "alpha_eq")
+
+    def test_only_alpha_thetabar_needs_the_symmetric_sound_speed(self):
+        self.skipTest("the fixed step size solver has no alpha_thetabar")
 
     def _alphas(self, broken_cs_sq):
         from transitionlistener import bubbledynamics_fixedstep as bdf

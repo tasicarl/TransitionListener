@@ -78,6 +78,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   against. The pseudo-trace strengths `alpha_thetabar` and `alpha_hyd` divided by
   the broken-phase sound speed and raised a division by zero; they are now not a
   number where no sound speed exists, with the reason reported in verbose mode.
+  The two sound speeds are checked separately, because only the broken-phase one
+  builds the pseudo-trace while the symmetric-phase one appears solely in the
+  normalisation of `alpha_thetabar`: a usable broken-phase value still gives the
+  hydrodynamic strengths.
   The strengths that need no sound speed, `alpha_p`, `alpha_theta`, `alpha_e`,
   `alpha_inf` and `alpha_eq`, are unaffected. The fixed step size solver has its
   own copy of that calculation, where the same division produced an infinity and

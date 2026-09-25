@@ -2546,15 +2546,17 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     # is no plasma to carry sound. At extreme supercooling the thermal part of the potential
     # underflows in the broken phase, dV/dT and d2V/dT2 are both zero and the sound speed
     # comes back as 0 rather than as a number; dividing by it raised ZeroDivisionError.
-    # The bag-model strengths below need no sound speed and stay available.
-    usable_sound_speeds = (np.isfinite(csSq_sym) and np.isfinite(csSq_bro)
-                           and csSq_sym > 0.0 and csSq_bro > 0.0)
-    if not usable_sound_speeds:
+    # The bag-model strengths below need no sound speed and stay available. The two sound
+    # speeds are checked separately because they enter in different places: only the broken
+    # one builds the pseudo-trace, while the symmetric one appears solely in the denominator
+    # of alpha_thetabar. A usable broken-phase value therefore still gives alpha_hyd.
+    broken_usable = np.isfinite(csSq_bro) and csSq_bro > 0.0
+    sym_usable = np.isfinite(csSq_sym) and csSq_sym > 0.0
+    if not broken_usable:
         if verbose:
             print(
-                "No usable sound speed for the pseudo-trace "
-                f"(c_s,sym^2 = {csSq_sym}, c_s,bro^2 = {csSq_bro}); "
-                "alpha_thetabar and alpha_hyd are set to nan."
+                "No usable broken-phase sound speed for the pseudo-trace "
+                f"(c_s,bro^2 = {csSq_bro}); alpha_thetabar and alpha_hyd are set to nan."
             )
         theta_sym = theta_bro = np.nan
     else:
@@ -2567,9 +2569,15 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
                                      two_point=True)
     dedT = (pot.energyDensity(high_phi, T + dT_e)
             - pot.energyDensity(high_phi, T - dT_e))/(2*dT_e)
-    if usable_sound_speeds:
+    if broken_usable and sym_usable:
         alpha_thetabar = (theta_sym - theta_bro) / (3* csSq_sym * T * dedT)
     else:
+        if broken_usable and verbose:
+            print(
+                "No usable symmetric-phase sound speed "
+                f"(c_s,sym^2 = {csSq_sym}); alpha_thetabar is set to nan, "
+                "the hydrodynamic strengths are unaffected."
+            )
         alpha_thetabar = np.nan
 
     bosons_low = pot.boson_massSq(low_phi, 0)  # low-T phase masses
