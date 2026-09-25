@@ -67,6 +67,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A broken phase with no thermal pressure**: at percolation temperatures far
+  below the mass scale, the thermal part of the potential underflows in the
+  broken phase, so its enthalpy and its sound speed come back as zero or as not
+  a number. Two places carried that forward. The wall velocity in local thermal
+  equilibrium compared the strength and the enthalpy ratio against bounds, which
+  a not-a-number passes, and then integrated the plasma from a non-finite initial
+  state, raising an error from the integrator; it now returns a wall velocity of
+  one, since a broken phase without a plasma gives the wall nothing to push
+  against. The pseudo-trace strengths `alpha_thetabar` and `alpha_hyd` divided by
+  the broken-phase sound speed and raised a division by zero; they are now not a
+  number where no sound speed exists, with the reason reported in verbose mode.
+  The strengths that need no sound speed, `alpha_p`, `alpha_theta`, `alpha_e`,
+  `alpha_inf` and `alpha_eq`, are unaffected. No result changes where the
+  broken-phase plasma exists.
+
 - **Degrees of freedom of the fields of the potential**: `h_eff_DS` and
   `g_eff_DS`, used for the temperature inside the bubbles, for the integration
   of `Treh` and for the redshift, masked out every field flagged `is_SM`,

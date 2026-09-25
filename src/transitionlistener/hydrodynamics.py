@@ -477,6 +477,20 @@ class Hydrodynamics():
             The wall velocity consistent with matching conditions.
 
         """
+        # At extreme supercooling the broken phase has no thermal pressure left to double
+        # precision: w_b = -T dV/dT underflows, so psiN = w_b/w_s is zero and
+        # cb2 = (dV/dT)/(T d2V/dT2) is 0/0. Every comparison below is False for a NaN, so
+        # without this the solver would reach root_scalar and integrate the plasma from a
+        # non-finite initial state. No plasma in the broken phase means nothing for the wall
+        # to push against, i.e. a runaway.
+        if not all(np.isfinite(x) for x in (alN, cb2, cs2, psiN)) or psiN <= 0.0 or cb2 <= 0.0:
+            if self.verbose:
+                print(
+                    "No usable broken-phase plasma for the wall velocity "
+                    f"(alpha_N = {alN}, c_b^2 = {cb2}, c_s^2 = {cs2}, psi_N = {psiN}); "
+                    "set the wall velocity to 1."
+                )
+            return 1
         nu, mu = 1+1/ cb2 ,1+1/ cs2
         vJ = self.find_vJ(alN, cb2)
         if alN < (1 - psiN) /3 or alN <=(mu - nu) /(3* mu):
