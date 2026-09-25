@@ -254,6 +254,7 @@ def _build_step1_approx_profile(
         pot=pot,
         phase_symmetric=phase_symmetric,
         time_temperature_mode=settings.time_temperature_mode,
+        entropy_definition=getattr(settings, "entropy_definition", None),
         integral_method=settings.integral_method,
     )
     i_approx[:] = i_approx_vals

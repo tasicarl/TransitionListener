@@ -199,7 +199,7 @@ class FullSweepTests(unittest.TestCase):
     def _sweep(self, mode, cs2, a):
         T, S, H, _, _ = _exponential_history(1.1, n=401)
 
-        def factors(pot, phase, temps, m):
+        def factors(pot, phase, temps, m, definition=None):
             return (None, None) if m == "bag" else (cs2, a)
 
         with mock.patch.object(bd, "_time_temperature_factors", side_effect=factors):
@@ -226,7 +226,7 @@ class FullSweepTests(unittest.TestCase):
 class BetaTimeFactorTests(unittest.TestCase):
     """The 3 c_s^2 factor on (beta/H)_S3 must come from the percolation history."""
 
-    def _factor(self, mode, gw_sound_speed):
+    def _factor(self, mode, gw_sound_speed, definition="eff_potential"):
         from transitionlistener.transitionObservables import TransitionObservables
 
         ctx = types.SimpleNamespace(
@@ -234,7 +234,8 @@ class BetaTimeFactorTests(unittest.TestCase):
             verbose=False,
             pot=object(),
             phase_symmetric=FixedPhase([0.0]),
-            PercolationConf=types.SimpleNamespace(time_temperature_mode=mode),
+            PercolationConf=types.SimpleNamespace(time_temperature_mode=mode,
+                                                  entropy_definition=definition),
         )
         obs = TransitionObservables.__new__(TransitionObservables)
         with mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21):
@@ -245,10 +246,20 @@ class BetaTimeFactorTests(unittest.TestCase):
         # here would return 1.0 and silently drop the factor the history applied.
         for gw in ("compute", "1/3"):
             with self.subTest(gw_sound_speed=gw):
-                self.assertAlmostEqual(self._factor("sound_speed", gw), 3.0 * 0.21)
+                self.assertAlmostEqual(
+                    self._factor("sound_speed", gw, definition="eff_potential"), 3.0 * 0.21)
+
+    def test_the_factor_follows_the_entropy_scheme(self):
+        # The beta/H factor is 3 c_s^2 of the percolation history, so it must change with
+        # the scheme: s ~ T^4 gives 3 c_s^2 = 3/4, whatever the potential says.
+        with mock.patch.object(bd, "entropy_density", lambda pot, ph, T, d: float(T) ** 4.0):
+            self.assertAlmostEqual(
+                self._factor("sound_speed", "compute", definition="dof_table"), 0.75, places=5)
 
     def test_bag_mode_gives_one(self):
-        self.assertAlmostEqual(self._factor("bag", "compute"), 1.0)
+        for definition in ("dof_table", "eff_potential"):
+            with self.subTest(entropy_definition=definition):
+                self.assertAlmostEqual(self._factor("bag", "compute", definition), 1.0)
 
 
 class ModelThermodynamicsTests(unittest.TestCase):
@@ -258,11 +269,28 @@ class ModelThermodynamicsTests(unittest.TestCase):
             {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
         phase = FixedPhase([0.0])
         T = np.geomspace(50.0, 15.0, 200)
+        for definition in ("dof_table", "eff_potential"):
+            logEntropyInt, coolingInt = bd.expansion_interpolants(
+                pot, phase, T, entropy_definition=definition)
+            for temp in (T[0], T[57], T[-1]):
+                with self.subTest(entropy_definition=definition, T=temp):
+                    # c_s^2 must be 1/(d ln s/d ln T) of the SAME entropy that fixes a(T):
+                    # the two are one relation, so they may not come from different places.
+                    h = temp * 1e-5
+                    s_lo = bd.entropy_density(pot, phase, temp - h, definition)
+                    s_hi = bd.entropy_density(pot, phase, temp + h, definition)
+                    cs_sq = ((np.log(temp + h) - np.log(temp - h))
+                             / (np.log(s_hi) - np.log(s_lo)))
+                    self.assertTrue(np.isclose(coolingInt(temp), 3.0 * cs_sq, rtol=2e-3, atol=0))
+                    # and a(T) must follow the same entropy: logEntropyInt is ln s up to a
+                    # constant, so its differences reproduce the scheme's entropy ratios.
+                    s_ref = bd.entropy_density(pot, phase, float(T[0]), definition)
+                    s_here = bd.entropy_density(pot, phase, float(temp), definition)
+                    self.assertTrue(np.isclose(
+                        float(logEntropyInt(temp) - logEntropyInt(T[0])),
+                        np.log(s_here / s_ref), rtol=0, atol=2e-3))
+
         logEntropyInt, coolingInt = bd.expansion_interpolants(pot, phase, T)
-        for temp in (T[0], T[57], T[-1]):
-            with self.subTest(T=temp):
-                cs_sq = bd.calcSoundSpeedSq(pot, phase.valAt(temp), temp)
-                self.assertTrue(np.isclose(coolingInt(temp), 3.0 * cs_sq, rtol=1e-10, atol=0))
 
         def entropy_density(temp):
             dT = temp * 1e-4

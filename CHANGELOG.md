@@ -31,7 +31,35 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   Standard Model; TL raises an error when it is set up that way.
 - `constants.h_eff_today`, today's entropy degrees of freedom.
 
+### Added
+
+- Setting `entropy_definition` of the percolation solver, `"dof_table"` (default)
+  or `"eff_potential"`, with the run-time override
+  `percolation_entropy_definition`. It selects the thermodynamics of the
+  expansion history. `"dof_table"` counts the modes of the potential as free
+  particles at their zero-temperature masses and adds the tabulated entropy
+  degrees of freedom of the coupled radiation. `"eff_potential"` takes
+  `-dV/dT` of the effective potential, which carries the thermal masses and the
+  Arnold-Espinosa daisy resummation but none of the perturbative corrections the
+  table contains. Neither is contained in the other, and no published work
+  decides between them, so the difference is a modelling uncertainty that can now
+  be measured by running both.
+
 ### Changed
+
+- **One entropy for the expansion history**: the time-temperature relation took
+  the scale factor from the counted degrees of freedom and the sound speed from
+  the effective potential. These are the same relation, since
+  `1/(3 c_s^2) = 1 + (1/3) d ln g_*s/d ln T`: a constant `g_*s`, `c_s^2 = 1/3`
+  and `a ~ 1/T` are one assumption and not three. Both now come from the entropy
+  selected by `entropy_definition`, so `Tperc`, the mean bubble separation and
+  `(beta/H)_S3` all belong to one equation of state. The default,
+  `"dof_table"`, stays defined below about 2 MeV, where after neutrino
+  decoupling no single pressure with `dp/dT = s` exists and the potential route
+  has nothing to refer to; it also carries the perturbative QCD corrections and
+  the crossover, and it has no negative-sound-speed failure mode, whereas the
+  potential route returns `c_s^2 <= 0` on 8 of the 94 percolation support points
+  of the 2HDM benchmark.
 
 - **Sound speed in the pseudo-trace**: the pseudo-trace strengths now divide
   the pressure of *both* phases by the broken-phase sound speed, as in

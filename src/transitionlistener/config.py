@@ -78,6 +78,9 @@ class PercolationConf:
     algorithm_mode = "adaptive_step_size"       # "adaptive_step_size" (default) or "fixed_step_size".
     integral_method = "ode"               # Percolation integral backend: "ode" or "double_integral".
     time_temperature_mode = "sound_speed" # dT/dt relation: "sound_speed" or "bag".
+    entropy_definition = "dof_table"      # Thermodynamics of the expansion history:
+                                          # "dof_table" (counted degrees of freedom, default)
+                                          # or "eff_potential" (-dV/dT of the potential).
 
     # Percolation targets.  Iperc is computed as -ln(1 - f_perc) at use sites.
     f_perc = 0.28957                      # True-vacuum fraction at percolation.

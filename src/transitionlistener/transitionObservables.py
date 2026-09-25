@@ -621,6 +621,7 @@ class TransitionObservables:
                 ctx.phase_symmetric,
                 TSYM,
                 time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
+                entropy_definition=getattr(ctx.PercolationConf, "entropy_definition", None),
             )
         except Exception as err:
             # Optional: without it the separation falls back to the bag relation, as on
@@ -691,6 +692,7 @@ class TransitionObservables:
             ctx.phase_symmetric,
             percolation.Tperc,
             time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
+            entropy_definition=getattr(ctx.PercolationConf, "entropy_definition", None),
         )
 
         growth = falseVacuumVolumeGrowthRate(
@@ -1107,6 +1109,7 @@ class TransitionObservables:
                 ctx.phase_symmetric,
                 temperature,
                 time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
+                entropy_definition=getattr(ctx.PercolationConf, "entropy_definition", None),
             )
         )
 
