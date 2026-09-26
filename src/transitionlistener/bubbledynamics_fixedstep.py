@@ -1912,8 +1912,12 @@ def calcSoundSpeedSq(pot, X, T) -> float:
     dT = T*1e-3
     dVdT = pot.dVdT(X, T, dT=dT, include_decoupled=False)
     d2VdT2 = pot.d2VdT2(X, T, dT=dT, include_decoupled=False)
-    csSq = dVdT/(T*d2VdT2)
-    return csSq
+    # At extreme supercooling both derivatives underflow to zero in the broken phase, so this
+    # is 0/0: with plain floats that raises, with numpy scalars it warns. Return the
+    # not-a-number and let the callers decide, as the adaptive solver's copy does.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        csSq = np.asarray(dVdT, dtype=float)/(float(T) * np.asarray(d2VdT2, dtype=float))
+    return float(np.squeeze(csSq))
 
 
 def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[float]:

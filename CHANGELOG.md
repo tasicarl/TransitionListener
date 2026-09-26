@@ -91,8 +91,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   own copy of that calculation, where the same division produced an infinity and
   then a not-a-number together with a floating-point warning rather than an
   error, and where the pseudo-trace strength is called `alpha_theta`; it is
-  guarded in the same way. No result changes where the broken-phase plasma
-  exists.
+  guarded in the same way. That solver's own `calcSoundSpeedSq` also divided by
+  `T d2V/dT2` unprotected, so it raised or warned before any caller could check
+  the result; it now returns the not-a-number, as the adaptive solver's copy
+  already did, and leaves the decision to its callers. No result changes where
+  the broken-phase plasma exists.
 
 - **Degrees of freedom of the fields of the potential**: `h_eff_DS` and
   `g_eff_DS`, used for the temperature inside the bubbles, for the integration

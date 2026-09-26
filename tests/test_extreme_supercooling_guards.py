@@ -15,6 +15,7 @@ from unittest import mock
 import numpy as np
 
 from transitionlistener import bubbledynamics as bd
+from transitionlistener import bubbledynamics_fixedstep as bdf
 from transitionlistener.hydrodynamics import Hydrodynamics
 
 
@@ -113,6 +114,34 @@ class WallVelocityEntryPointTests(unittest.TestCase):
                 with warnings.catch_warnings():
                     warnings.simplefilter("error", RuntimeWarning)
                     self.assertEqual(self._wall_velocity(numpy_valued), 1)
+
+
+class _FrozenPlasmaPotential:
+    """Both temperature derivatives vanish, as once every mode has frozen out."""
+
+    T_eps = 1e-3
+    X0 = np.array([1.0])
+
+    def dVdT(self, X, T, dT=None, include_decoupled=True, include_radiation=True):
+        return 0.0
+
+    def d2VdT2(self, X, T, dT=None, include_decoupled=True):
+        return 0.0
+
+
+class SoundSpeedHelperTests(unittest.TestCase):
+    """calcSoundSpeedSq itself divides by T d2V/dT2, before any caller can check it."""
+
+    def test_both_solvers_return_a_number_without_warning(self):
+        for label, fn in (("adaptive", bd.calcSoundSpeedSq),
+                          ("fixed step", bdf.calcSoundSpeedSq)):
+            with self.subTest(label):
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", RuntimeWarning)
+                    value = fn(_FrozenPlasmaPotential(), np.array([1.0]), 100.0)
+                # 0/0 has no value; it must come back as not a number rather than raise,
+                # so that the callers' guards are the ones that decide.
+                self.assertFalse(np.isfinite(value))
 
 
 class PseudoTraceGuardTests(unittest.TestCase):
@@ -229,6 +258,68 @@ class FixedStepPseudoTraceGuardTests(PseudoTraceGuardTests):
         alphas = self._alphas(1.0 / 3.0)
         self.assertTrue(np.isfinite(alphas["alpha_theta"]))
         self.assertTrue(np.isfinite(alphas["alpha_hyd"]))
+
+
+class UnmockedEntryPointTests(unittest.TestCase):
+    """calcAlphas end to end with a real potential whose broken phase has frozen out.
+
+    Nothing here mocks ``calcSoundSpeedSq``: the potential's own temperature derivatives are
+    made to vanish in the broken phase, which is what happens once ``m/T`` is large enough
+    for the Boltzmann factors to underflow, and the sound speed is computed from them.
+    """
+
+    def _run(self, module):
+        from pathlib import Path
+
+        from transitionlistener.helper_functions import load_potential
+
+        repo = Path(__file__).resolve().parents[1]
+        pot = load_potential(
+            str(repo / "models/TL_dark_U1_g_parameterization.py"), "specific_potential"
+        )({"g": 1.0, "v_GeV": 0.1, "lambda": 0.03}, verbose=False)
+
+        class Phase:
+            def __init__(self, x):
+                self.x = np.array([x])
+
+            def valAt(self, T):
+                return self.x
+
+        high, low = Phase(0.0), Phase(1.0)
+        real_dVdT, real_d2VdT2 = pot.dVdT, pot.d2VdT2
+
+        def frozen_dVdT(X, T, dT, include_radiation=True, include_decoupled=True):
+            if np.allclose(np.atleast_1d(X), low.valAt(T)):
+                return 0.0
+            return real_dVdT(X, T, dT, include_radiation, include_decoupled)
+
+        def frozen_d2VdT2(X, T, dT, include_decoupled=True):
+            if np.allclose(np.atleast_1d(X), low.valAt(T)):
+                return 0.0
+            return real_d2VdT2(X, T, dT, include_decoupled)
+
+        pot.dVdT, pot.d2VdT2 = frozen_dVdT, frozen_d2VdT2
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            return module.calcAlphas(3.4e2, pot, high, low, verbose=False)
+
+    def test_the_adaptive_solver_survives_a_frozen_broken_phase(self):
+        values = self._run(bd)
+        names = ("alpha_p", "alpha_theta", "alpha_thetabar", "alpha_e", "alpha_hyd",
+                 "alpha_inf", "alpha_eq")
+        alphas = dict(zip(names, (float(np.squeeze(v)) for v in values)))
+        self.assertTrue(np.isnan(alphas["alpha_thetabar"]))
+        self.assertTrue(np.isnan(alphas["alpha_hyd"]))
+        self.assertTrue(np.isfinite(alphas["alpha_p"]))
+
+    def test_the_fixed_step_solver_survives_a_frozen_broken_phase(self):
+        values = self._run(bdf)
+        names = ("alpha_p", "alpha_theta", "alpha_e", "alpha_hyd", "alpha_inf", "alpha_eq")
+        alphas = dict(zip(names, (float(np.squeeze(v)) for v in values)))
+        # There alpha_theta is the pseudo-trace strength.
+        self.assertTrue(np.isnan(alphas["alpha_theta"]))
+        self.assertTrue(np.isnan(alphas["alpha_hyd"]))
+        self.assertTrue(np.isfinite(alphas["alpha_p"]))
 
 
 if __name__ == "__main__":
