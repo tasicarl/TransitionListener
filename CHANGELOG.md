@@ -67,6 +67,41 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A broken phase with no thermal pressure**: at percolation temperatures far
+  below the mass scale, the thermal part of the potential underflows in the
+  broken phase, so its enthalpy and its sound speed come back as zero or as not
+  a number. Two places carried that forward. The wall velocity in local thermal
+  equilibrium formed the sound speed as `(dV/dT)/(T d2V/dT2)`, i.e. zero over zero,
+  and divided by it while building the transition strength; with the strength then
+  not a number, the bounds it is compared against are passed, and the plasma was
+  integrated from a non-finite initial state, raising an error from the
+  integrator. The wall velocity now returns one as soon as either enthalpy or
+  either second temperature derivative is unusable, since a broken phase without a
+  plasma gives the wall nothing to push against; the same check also guards the
+  matching-condition solver when it is called directly. The pseudo-trace
+  strengths `alpha_thetabar` and `alpha_hyd` divided by the broken-phase sound
+  speed and raised a division by zero; they are now not a number where no sound
+  speed exists, with the reason reported in verbose mode.
+  The two sound speeds are checked separately, because only the broken-phase one
+  builds the pseudo-trace while the symmetric-phase one appears solely in the
+  normalisation of `alpha_thetabar`: a usable broken-phase value still gives the
+  hydrodynamic strengths.
+  The strengths that need no sound speed, `alpha_p`, `alpha_theta`, `alpha_e`,
+  `alpha_inf` and `alpha_eq`, are unaffected. The fixed step size solver has its
+  own copy of that calculation, where the same division produced an infinity and
+  then a not-a-number together with a floating-point warning rather than an
+  error, and where the pseudo-trace strength is called `alpha_theta`; it is
+  guarded in the same way. That solver's own `calcSoundSpeedSq` also divided by
+  `T d2V/dT2` unprotected, so it raised or warned before any caller could check
+  the result; it now returns the not-a-number, as the adaptive solver's copy
+  already did, and leaves the decision to its callers. `Hydrodynamics.calc_cs`,
+  which fills the reported sound-speed columns on the default
+  `gwConf.sound_speed = "compute"` path, took the square root of the same ratio
+  without protection; it now returns not a number both where the ratio is zero
+  over zero and where it is negative, so that an unphysical sound speed appears
+  as such in the output instead of stopping the run. No result changes where the
+  broken-phase plasma exists.
+
 - **Degrees of freedom of the fields of the potential**: `h_eff_DS` and
   `g_eff_DS`, used for the temperature inside the bubbles, for the integration
   of `Treh` and for the redshift, masked out every field flagged `is_SM`,

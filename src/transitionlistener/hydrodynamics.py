@@ -122,8 +122,22 @@ class Hydrodynamics():
         dT = _local_temperature_step(self.pot, T, phi)
         dVdT = self.pot.dVdT(phi, T, dT=dT, include_decoupled=False)
         ddVdT = self.pot.d2VdT2(phi, T, dT=dT, include_decoupled=False)
-        cs = np.sqrt(dVdT/(T*ddVdT))
-        return cs
+        # Once a phase has frozen out both derivatives vanish and this is 0/0, which raises
+        # for plain floats and warns for numpy scalars; and where the ratio is negative the
+        # square root is not a number either. A phase without a plasma has no sound speed, so
+        # say so rather than raise: the callers put it in an output column.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            cs_sq = np.asarray(dVdT, dtype=float) / (float(T) * np.asarray(ddVdT, dtype=float))
+        cs_sq = float(np.squeeze(cs_sq))
+        if not np.isfinite(cs_sq) or cs_sq <= 0.0:
+            if self.verbose:
+                phase_name = "symmetric" if sym else "broken"
+                print(
+                    f"No usable {phase_name}-phase sound speed at T = {T}: "
+                    f"c_s^2 = {cs_sq}; returning nan."
+                )
+            return float("nan")
+        return float(np.sqrt(cs_sq))
 
     def calcWallVelocityLTE(self, Tn: float) -> float:
         """Calculate the wall velocity in local thermal equilibrium (LTE).
@@ -166,6 +180,32 @@ class Hydrodynamics():
 
         w_s = - Tn * dVdT_s
         w_b = - Tn * dVdT_b
+
+        # At extreme supercooling the thermal part of the potential underflows in the broken
+        # phase: with m/T of order 1e6 both dV/dT and d2V/dT2 vanish there to double
+        # precision. The enthalpy w_b is then zero and the sound speed
+        # c_b^2 = (dV/dT)/(T d2V/dT2) is 0/0, and everything below divides by one of them --
+        # the sound speed twice, in DTheta and inside find_vw. A broken phase without a
+        # plasma gives the wall nothing to push against, which in this treatment is the
+        # runaway branch, the same answer find_vw returns for a very strong transition.
+        def _scalar(value):
+            return float(np.squeeze(np.asarray(value, dtype=float)))
+
+        denominator_s, denominator_b = Tn * _scalar(ddVdT_s), Tn * _scalar(ddVdT_b)
+        enthalpy_s, enthalpy_b = _scalar(w_s), _scalar(w_b)
+        if (not np.isfinite(enthalpy_s) or enthalpy_s <= 0.0
+                or not np.isfinite(enthalpy_b) or enthalpy_b <= 0.0
+                or not np.isfinite(denominator_s) or denominator_s == 0.0
+                or not np.isfinite(denominator_b) or denominator_b == 0.0):
+            if self.verbose:
+                print(
+                    "No usable plasma for the wall velocity at T = "
+                    f"{Tn}: enthalpies (symmetric, broken) = "
+                    f"({enthalpy_s}, {enthalpy_b}), T d2V/dT2 = "
+                    f"({denominator_s}, {denominator_b}); set the wall velocity to 1."
+                )
+            return 1
+
         psi_n = w_b/w_s
         cs2 = dVdT_s/(Tn*ddVdT_s)
         cb2 = dVdT_b/(Tn*ddVdT_b)
@@ -477,6 +517,21 @@ class Hydrodynamics():
             The wall velocity consistent with matching conditions.
 
         """
+        # At extreme supercooling the broken phase has no thermal pressure left to double
+        # precision: w_b = -T dV/dT underflows, so psiN = w_b/w_s is zero and
+        # cb2 = (dV/dT)/(T d2V/dT2) is 0/0. Every comparison below is False for a NaN, so
+        # without this the solver would reach root_scalar and integrate the plasma from a
+        # non-finite initial state. No plasma in the broken phase means nothing for the wall
+        # to push against, i.e. a runaway.
+        if (not all(np.isfinite(x) for x in (alN, cb2, cs2, psiN))
+                or psiN <= 0.0 or cb2 <= 0.0 or cs2 <= 0.0):
+            if self.verbose:
+                print(
+                    "No usable broken-phase plasma for the wall velocity "
+                    f"(alpha_N = {alN}, c_b^2 = {cb2}, c_s^2 = {cs2}, psi_N = {psiN}); "
+                    "set the wall velocity to 1."
+                )
+            return 1
         nu, mu = 1+1/ cb2 ,1+1/ cs2
         vJ = self.find_vJ(alN, cb2)
         if alN < (1 - psiN) /3 or alN <=(mu - nu) /(3* mu):
