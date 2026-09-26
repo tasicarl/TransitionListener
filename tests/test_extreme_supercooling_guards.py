@@ -90,6 +90,59 @@ class _EmptyBrokenPhasePotential:
         return self._wrap(-0.25 if self._is_broken(X) else -1.0)
 
 
+class SoundSpeedOutputTests(unittest.TestCase):
+    """calc_cs fills the reported sound-speed columns and divides by T d2V/dT2 as well."""
+
+    def _calc_cs(self, mode, numpy_valued):
+        class Pot:
+            T_eps = 1e-3
+            X0 = np.array([1.0])
+            config = types.SimpleNamespace(
+                gwConf=types.SimpleNamespace(coupled_hydrodynamics=True))
+
+            @staticmethod
+            def _is_broken(X):
+                return bool(np.allclose(np.atleast_1d(X), 1.0))
+
+            def _wrap(self, value):
+                return np.array([value]) if numpy_valued else value
+
+            def dVdT(self, X, T, dT=None, include_decoupled=True, include_radiation=True):
+                if self._is_broken(X):
+                    return self._wrap(0.0 if mode == "frozen" else 1.0)
+                return self._wrap(-1.0)
+
+            def d2VdT2(self, X, T, dT=None, include_decoupled=True):
+                if self._is_broken(X):
+                    # "frozen": both vanish, so the ratio is 0/0. "negative": opposite signs,
+                    # so the ratio is negative and its square root does not exist either.
+                    return self._wrap(0.0 if mode == "frozen" else -3.0 / T)
+                return self._wrap(-3.0 / T)
+
+        class Phase:
+            def __init__(self, x):
+                self.x = np.array([x])
+
+            def valAt(self, T):
+                return self.x
+
+        hydro = Hydrodynamics.__new__(Hydrodynamics)
+        hydro.pot, hydro.high_phase, hydro.low_phase = Pot(), Phase(0.0), Phase(1.0)
+        hydro.verbose = False
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            return hydro.calc_cs(100.0, sym=False), hydro.calc_cs(100.0, sym=True)
+
+    def test_a_phase_without_a_plasma_has_no_sound_speed(self):
+        for mode in ("frozen", "negative"):
+            for numpy_valued in (False, True):
+                with self.subTest(mode=mode, numpy_valued=numpy_valued):
+                    broken, symmetric = self._calc_cs(mode, numpy_valued)
+                    self.assertTrue(np.isnan(broken))
+                    # The healthy phase is untouched: c_s = 1/sqrt(3) for radiation.
+                    self.assertAlmostEqual(symmetric, 1.0 / np.sqrt(3.0), places=12)
+
+
 class WallVelocityEntryPointTests(unittest.TestCase):
     """The production entry point divides by the sound speed before find_vw is reached."""
 

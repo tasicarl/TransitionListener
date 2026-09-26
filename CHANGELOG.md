@@ -94,8 +94,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   guarded in the same way. That solver's own `calcSoundSpeedSq` also divided by
   `T d2V/dT2` unprotected, so it raised or warned before any caller could check
   the result; it now returns the not-a-number, as the adaptive solver's copy
-  already did, and leaves the decision to its callers. No result changes where
-  the broken-phase plasma exists.
+  already did, and leaves the decision to its callers. `Hydrodynamics.calc_cs`,
+  which fills the reported sound-speed columns on the default
+  `gwConf.sound_speed = "compute"` path, took the square root of the same ratio
+  without protection; it now returns not a number both where the ratio is zero
+  over zero and where it is negative, so that an unphysical sound speed appears
+  as such in the output instead of stopping the run. No result changes where the
+  broken-phase plasma exists.
 
 - **Degrees of freedom of the fields of the potential**: `h_eff_DS` and
   `g_eff_DS`, used for the temperature inside the bubbles, for the integration

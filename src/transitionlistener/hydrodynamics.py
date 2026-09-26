@@ -122,8 +122,22 @@ class Hydrodynamics():
         dT = _local_temperature_step(self.pot, T, phi)
         dVdT = self.pot.dVdT(phi, T, dT=dT, include_decoupled=False)
         ddVdT = self.pot.d2VdT2(phi, T, dT=dT, include_decoupled=False)
-        cs = np.sqrt(dVdT/(T*ddVdT))
-        return cs
+        # Once a phase has frozen out both derivatives vanish and this is 0/0, which raises
+        # for plain floats and warns for numpy scalars; and where the ratio is negative the
+        # square root is not a number either. A phase without a plasma has no sound speed, so
+        # say so rather than raise: the callers put it in an output column.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            cs_sq = np.asarray(dVdT, dtype=float) / (float(T) * np.asarray(ddVdT, dtype=float))
+        cs_sq = float(np.squeeze(cs_sq))
+        if not np.isfinite(cs_sq) or cs_sq <= 0.0:
+            if self.verbose:
+                phase_name = "symmetric" if sym else "broken"
+                print(
+                    f"No usable {phase_name}-phase sound speed at T = {T}: "
+                    f"c_s^2 = {cs_sq}; returning nan."
+                )
+            return float("nan")
+        return float(np.sqrt(cs_sq))
 
     def calcWallVelocityLTE(self, Tn: float) -> float:
         """Calculate the wall velocity in local thermal equilibrium (LTE).
