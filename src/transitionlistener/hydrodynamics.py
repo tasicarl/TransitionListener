@@ -166,6 +166,32 @@ class Hydrodynamics():
 
         w_s = - Tn * dVdT_s
         w_b = - Tn * dVdT_b
+
+        # At extreme supercooling the thermal part of the potential underflows in the broken
+        # phase: with m/T of order 1e6 both dV/dT and d2V/dT2 vanish there to double
+        # precision. The enthalpy w_b is then zero and the sound speed
+        # c_b^2 = (dV/dT)/(T d2V/dT2) is 0/0, and everything below divides by one of them --
+        # the sound speed twice, in DTheta and inside find_vw. A broken phase without a
+        # plasma gives the wall nothing to push against, which in this treatment is the
+        # runaway branch, the same answer find_vw returns for a very strong transition.
+        def _scalar(value):
+            return float(np.squeeze(np.asarray(value, dtype=float)))
+
+        denominator_s, denominator_b = Tn * _scalar(ddVdT_s), Tn * _scalar(ddVdT_b)
+        enthalpy_s, enthalpy_b = _scalar(w_s), _scalar(w_b)
+        if (not np.isfinite(enthalpy_s) or enthalpy_s <= 0.0
+                or not np.isfinite(enthalpy_b) or enthalpy_b <= 0.0
+                or not np.isfinite(denominator_s) or denominator_s == 0.0
+                or not np.isfinite(denominator_b) or denominator_b == 0.0):
+            if self.verbose:
+                print(
+                    "No usable plasma for the wall velocity at T = "
+                    f"{Tn}: enthalpies (symmetric, broken) = "
+                    f"({enthalpy_s}, {enthalpy_b}), T d2V/dT2 = "
+                    f"({denominator_s}, {denominator_b}); set the wall velocity to 1."
+                )
+            return 1
+
         psi_n = w_b/w_s
         cs2 = dVdT_s/(Tn*ddVdT_s)
         cb2 = dVdT_b/(Tn*ddVdT_b)

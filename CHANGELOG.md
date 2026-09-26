@@ -71,13 +71,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   below the mass scale, the thermal part of the potential underflows in the
   broken phase, so its enthalpy and its sound speed come back as zero or as not
   a number. Two places carried that forward. The wall velocity in local thermal
-  equilibrium compared the strength and the enthalpy ratio against bounds, which
-  a not-a-number passes, and then integrated the plasma from a non-finite initial
-  state, raising an error from the integrator; it now returns a wall velocity of
-  one, since a broken phase without a plasma gives the wall nothing to push
-  against. The pseudo-trace strengths `alpha_thetabar` and `alpha_hyd` divided by
-  the broken-phase sound speed and raised a division by zero; they are now not a
-  number where no sound speed exists, with the reason reported in verbose mode.
+  equilibrium formed the sound speed as `(dV/dT)/(T d2V/dT2)`, i.e. zero over zero,
+  and divided by it while building the transition strength; with the strength then
+  not a number, the bounds it is compared against are passed, and the plasma was
+  integrated from a non-finite initial state, raising an error from the
+  integrator. The wall velocity now returns one as soon as either enthalpy or
+  either second temperature derivative is unusable, since a broken phase without a
+  plasma gives the wall nothing to push against; the same check also guards the
+  matching-condition solver when it is called directly. The pseudo-trace
+  strengths `alpha_thetabar` and `alpha_hyd` divided by the broken-phase sound
+  speed and raised a division by zero; they are now not a number where no sound
+  speed exists, with the reason reported in verbose mode.
   The two sound speeds are checked separately, because only the broken-phase one
   builds the pseudo-trace while the symmetric-phase one appears solely in the
   normalisation of `alpha_thetabar`: a usable broken-phase value still gives the

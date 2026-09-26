@@ -7,6 +7,7 @@ as NaN, which two places used to carry into an integrator or a division.
 
 from __future__ import annotations
 
+import types
 import unittest
 import warnings
 from unittest import mock
@@ -51,6 +52,67 @@ class WallVelocityGuardTests(unittest.TestCase):
         self.assertTrue(0.0 < vw < 1.0)
         # A very strong transition is still the runaway branch, as before.
         self.assertEqual(self._find_vw(1e17, 1 / 3, 1 / 3, 0.0), 1)
+
+
+class _EmptyBrokenPhasePotential:
+    """Potential whose broken phase has no thermal pressure left.
+
+    ``dV/dT`` and ``d2V/dT2`` both vanish there, as they do once ``m/T`` is large enough for
+    the Boltzmann factors to underflow, so the broken-phase enthalpy is zero and its sound
+    speed is ``0/0``. ``numpy_valued`` switches between plain floats, where that division
+    raises, and numpy scalars, where it gives a not-a-number and a warning.
+    """
+
+    conversionFactor = 1.0
+    T_eps = 1e-3
+    X0 = np.array([1.0])
+
+    def __init__(self, numpy_valued: bool):
+        self.numpy_valued = numpy_valued
+        self.config = types.SimpleNamespace(
+            gwConf=types.SimpleNamespace(coupled_hydrodynamics=True))
+
+    def _wrap(self, value):
+        return np.array([value]) if self.numpy_valued else value
+
+    @staticmethod
+    def _is_broken(X):
+        return bool(np.allclose(np.atleast_1d(X), 1.0))
+
+    def dVdT(self, X, T, dT=None, include_decoupled=True, include_radiation=True):
+        return self._wrap(0.0 if self._is_broken(X) else -1.0)
+
+    def d2VdT2(self, X, T, dT=None, include_decoupled=True):
+        return self._wrap(0.0 if self._is_broken(X) else -3.0 / T)
+
+    def Vtot(self, X, T, include_decoupled=True):
+        return self._wrap(-0.25 if self._is_broken(X) else -1.0)
+
+
+class WallVelocityEntryPointTests(unittest.TestCase):
+    """The production entry point divides by the sound speed before find_vw is reached."""
+
+    def _wall_velocity(self, numpy_valued):
+        class Phase:
+            def __init__(self, x):
+                self.x = np.array([x])
+
+            def valAt(self, T):
+                return self.x
+
+        hydro = Hydrodynamics.__new__(Hydrodynamics)
+        hydro.pot = _EmptyBrokenPhasePotential(numpy_valued)
+        hydro.high_phase, hydro.low_phase, hydro.verbose = Phase(0.0), Phase(1.0), False
+        return hydro.calcWallVelocityLTE(100.0)
+
+    def test_an_empty_broken_phase_gives_a_runaway(self):
+        # c_b^2 = (dV/dT)/(T d2V/dT2) is formed, and DTheta divides by it, before find_vw is
+        # called, so guarding find_vw alone leaves this path broken.
+        for numpy_valued in (False, True):
+            with self.subTest(numpy_valued=numpy_valued):
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", RuntimeWarning)
+                    self.assertEqual(self._wall_velocity(numpy_valued), 1)
 
 
 class PseudoTraceGuardTests(unittest.TestCase):
