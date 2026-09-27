@@ -341,38 +341,51 @@ class UnmockedEntryPointTests(unittest.TestCase):
         high, low = Phase(0.0), Phase(1.0)
         real_dVdT, real_d2VdT2 = pot.dVdT, pot.d2VdT2
 
+        # The signatures mirror generic_potential exactly, including the optional dT of the
+        # second derivative, which one caller omits, and include_radiation, which the callers
+        # here leave at its default. Everything is forwarded by keyword.
         def frozen_dVdT(X, T, dT, include_radiation=True, include_decoupled=True):
             if np.allclose(np.atleast_1d(X), low.valAt(T)):
                 return 0.0
-            return real_dVdT(X, T, dT, include_radiation, include_decoupled)
+            return real_dVdT(X, T, dT, include_radiation=include_radiation,
+                             include_decoupled=include_decoupled)
 
-        def frozen_d2VdT2(X, T, dT, include_decoupled=True):
+        def frozen_d2VdT2(X, T, dT=None, include_radiation=True, include_decoupled=True):
             if np.allclose(np.atleast_1d(X), low.valAt(T)):
                 return 0.0
-            return real_d2VdT2(X, T, dT, include_decoupled)
+            return real_d2VdT2(X, T, dT, include_radiation=include_radiation,
+                               include_decoupled=include_decoupled)
 
         pot.dVdT, pot.d2VdT2 = frozen_dVdT, frozen_d2VdT2
         with warnings.catch_warnings():
             warnings.simplefilter("error", RuntimeWarning)
-            return module.calcAlphas(3.4e2, pot, high, low, verbose=False)
+            return module.calcAlphas(3.4e2, pot, high, low, verbose=False,
+                                     **({"return_wall_strength": True}
+                                        if module is bd else {}))
 
     def test_the_adaptive_solver_survives_a_frozen_broken_phase(self):
         values = self._run(bd)
+        # return_wall_strength=True adds alpha_hyd_wall as an eighth entry; the observables
+        # stage asks for it, and it is built on the same pseudo-trace difference.
         names = ("alpha_p", "alpha_theta", "alpha_thetabar", "alpha_e", "alpha_hyd",
-                 "alpha_inf", "alpha_eq")
+                 "alpha_inf", "alpha_eq", "alpha_hyd_wall")
+        self.assertEqual(len(values), len(names))
         alphas = dict(zip(names, (float(np.squeeze(v)) for v in values)))
-        self.assertTrue(np.isnan(alphas["alpha_thetabar"]))
-        self.assertTrue(np.isnan(alphas["alpha_hyd"]))
-        self.assertTrue(np.isfinite(alphas["alpha_p"]))
+        for name in ("alpha_thetabar", "alpha_hyd", "alpha_hyd_wall"):
+            self.assertTrue(np.isnan(alphas[name]), name)
+        for name in ("alpha_p", "alpha_theta", "alpha_e", "alpha_inf", "alpha_eq"):
+            self.assertTrue(np.isfinite(alphas[name]), name)
 
     def test_the_fixed_step_solver_survives_a_frozen_broken_phase(self):
         values = self._run(bdf)
         names = ("alpha_p", "alpha_theta", "alpha_e", "alpha_hyd", "alpha_inf", "alpha_eq")
+        self.assertEqual(len(values), len(names))
         alphas = dict(zip(names, (float(np.squeeze(v)) for v in values)))
-        # There alpha_theta is the pseudo-trace strength.
-        self.assertTrue(np.isnan(alphas["alpha_theta"]))
-        self.assertTrue(np.isnan(alphas["alpha_hyd"]))
-        self.assertTrue(np.isfinite(alphas["alpha_p"]))
+        # There alpha_theta is the pseudo-trace strength; that solver has no wall strength.
+        for name in ("alpha_theta", "alpha_hyd"):
+            self.assertTrue(np.isnan(alphas[name]), name)
+        for name in ("alpha_p", "alpha_e", "alpha_inf", "alpha_eq"):
+            self.assertTrue(np.isfinite(alphas[name]), name)
 
 
 if __name__ == "__main__":
