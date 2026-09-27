@@ -30,9 +30,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   Standard Model fields in its potential (e.g. the 2HDM) cannot decouple the
   Standard Model; TL raises an error when it is set up that way.
 - `constants.h_eff_today`, today's entropy degrees of freedom.
-
-### Added
-
 - Setting `entropy_definition` of the percolation solver, `"dof_table"` (default)
   or `"eff_potential"`, with the run-time override
   `percolation_entropy_definition`. It selects the thermodynamics of the
