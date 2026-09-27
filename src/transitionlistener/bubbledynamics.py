@@ -2542,8 +2542,26 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     # which normalises alpha_thetabar
     csSq_sym = calcSoundSpeedSq(pot, high_phi, T)
     csSq_bro = calcSoundSpeedSq(pot, low_phi, T)
-    theta_sym = -T*pot.dVdT(high_phi, T, dT=dT_sym, include_decoupled=False) + Veff_sym * (1 + 1/ csSq_bro)
-    theta_bro = -T*pot.dVdT(low_phi, T, dT=dT_bro, include_decoupled=False) + Veff_bro * (1 + 1/ csSq_bro)
+    # The pseudo-trace is defined through the sound speed, so it does not exist where there
+    # is no plasma to carry sound. At extreme supercooling the thermal part of the potential
+    # underflows in the broken phase, dV/dT and d2V/dT2 are both zero and the sound speed
+    # comes back as 0 rather than as a number; dividing by it raised ZeroDivisionError.
+    # The bag-model strengths below need no sound speed and stay available. The two sound
+    # speeds are checked separately because they enter in different places: only the broken
+    # one builds the pseudo-trace, while the symmetric one appears solely in the denominator
+    # of alpha_thetabar. A usable broken-phase value therefore still gives alpha_hyd.
+    broken_usable = np.isfinite(csSq_bro) and csSq_bro > 0.0
+    sym_usable = np.isfinite(csSq_sym) and csSq_sym > 0.0
+    if not broken_usable:
+        if verbose:
+            print(
+                "No usable broken-phase sound speed for the pseudo-trace "
+                f"(c_s,bro^2 = {csSq_bro}); alpha_thetabar and alpha_hyd are set to nan."
+            )
+        theta_sym = theta_bro = np.nan
+    else:
+        theta_sym = -T*pot.dVdT(high_phi, T, dT=dT_sym, include_decoupled=False) + Veff_sym * (1 + 1/ csSq_bro)
+        theta_bro = -T*pot.dVdT(low_phi, T, dT=dT_bro, include_decoupled=False) + Veff_bro * (1 + 1/ csSq_bro)
     # This energy density keeps the decoupled bath, so its step is sized with it too. That
     # the sound speed beside it in the denominator is computed without the bath is the
     # separate question of which plasma 3 w refers to; it is not decided here.
@@ -2551,7 +2569,16 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
                                      two_point=True)
     dedT = (pot.energyDensity(high_phi, T + dT_e)
             - pot.energyDensity(high_phi, T - dT_e))/(2*dT_e)
-    alpha_thetabar = (theta_sym - theta_bro) / (3* csSq_sym * T * dedT)
+    if broken_usable and sym_usable:
+        alpha_thetabar = (theta_sym - theta_bro) / (3* csSq_sym * T * dedT)
+    else:
+        if broken_usable and verbose:
+            print(
+                "No usable symmetric-phase sound speed "
+                f"(c_s,sym^2 = {csSq_sym}); alpha_thetabar is set to nan, "
+                "the hydrodynamic strengths are unaffected."
+            )
+        alpha_thetabar = np.nan
 
     bosons_low = pot.boson_massSq(low_phi, 0)  # low-T phase masses
     bosons_high = pot.boson_massSq(high_phi, 0)  # high-T phase masses 

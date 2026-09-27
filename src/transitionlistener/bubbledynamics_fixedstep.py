@@ -1912,8 +1912,12 @@ def calcSoundSpeedSq(pot, X, T) -> float:
     dT = T*1e-3
     dVdT = pot.dVdT(X, T, dT=dT, include_decoupled=False)
     d2VdT2 = pot.d2VdT2(X, T, dT=dT, include_decoupled=False)
-    csSq = dVdT/(T*d2VdT2)
-    return csSq
+    # At extreme supercooling both derivatives underflow to zero in the broken phase, so this
+    # is 0/0: with plain floats that raises, with numpy scalars it warns. Return the
+    # not-a-number and let the callers decide, as the adaptive solver's copy does.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        csSq = np.asarray(dVdT, dtype=float)/(float(T) * np.asarray(d2VdT2, dtype=float))
+    return float(np.squeeze(csSq))
 
 
 def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[float]:
@@ -1977,12 +1981,27 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     # One sound speed, that of the broken phase, in both phases, as in the adaptive solver
     # (arXiv:2004.06995 eq. 2.13, arXiv:2010.09744, arXiv:2206.01130 sec. 2).
     csSq_bro = calcSoundSpeedSq(pot, low_phi, T)
-    theta_sym = (pot.energyDensity(high_phi, T, include_decoupled=False)
-                 + (pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref)/csSq_bro)
-    theta_bro = (pot.energyDensity(low_phi, T, include_decoupled=False)
-                 + (pot.Vtot(low_phi, T, include_decoupled=False) - V0_ref)/csSq_bro)
-    alpha_theta = (theta_sym - theta_bro)/(3 * (-pot.Vtot(high_phi, T) + V0_ref
-                                                + pot.energyDensity(high_phi, T)))
+    # The pseudo-trace is defined through the sound speed, so it does not exist where there
+    # is no plasma to carry sound. At extreme supercooling the thermal part of the potential
+    # underflows in the broken phase, dV/dT and d2V/dT2 are both zero and the sound speed
+    # comes back as 0 rather than as a number; dividing by it raised ZeroDivisionError.
+    # Here alpha_theta is the pseudo-trace strength, unlike in the adaptive solver, where
+    # that name holds the bag-model one and the pseudo-trace is alpha_thetabar.
+    if not np.isfinite(csSq_bro) or csSq_bro <= 0.0:
+        if verbose:
+            print(
+                "No usable broken-phase sound speed for the pseudo-trace "
+                f"(c_s,bro^2 = {csSq_bro}); alpha_theta and alpha_hyd are set to nan."
+            )
+        theta_sym = theta_bro = np.nan
+        alpha_theta = np.nan
+    else:
+        theta_sym = (pot.energyDensity(high_phi, T, include_decoupled=False)
+                     + (pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref)/csSq_bro)
+        theta_bro = (pot.energyDensity(low_phi, T, include_decoupled=False)
+                     + (pot.Vtot(low_phi, T, include_decoupled=False) - V0_ref)/csSq_bro)
+        alpha_theta = (theta_sym - theta_bro)/(3 * (-pot.Vtot(high_phi, T) + V0_ref
+                                                    + pot.energyDensity(high_phi, T)))
     
 
     alpha_e = DeltaE / rho_rad_tot
