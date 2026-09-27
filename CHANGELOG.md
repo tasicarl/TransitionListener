@@ -77,8 +77,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   integrated from a non-finite initial state, raising an error from the
   integrator. The wall velocity now returns one as soon as either enthalpy or
   either second temperature derivative is unusable, since a broken phase without a
-  plasma gives the wall nothing to push against; the same check also guards the
-  matching-condition solver when it is called directly. The pseudo-trace
+  plasma gives the wall nothing to push against, and again if either sound speed
+  itself is unusable, which a subnormal first derivative against a large second
+  one can cause while both ingredients still look healthy; the same check also
+  guards the matching-condition solver when it is called directly. The pseudo-trace
   strengths `alpha_thetabar` and `alpha_hyd` divided by the broken-phase sound
   speed and raised a division by zero; they are now not a number where no sound
   speed exists, with the reason reported in verbose mode.

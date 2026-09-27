@@ -168,6 +168,42 @@ class WallVelocityEntryPointTests(unittest.TestCase):
                     warnings.simplefilter("error", RuntimeWarning)
                     self.assertEqual(self._wall_velocity(numpy_valued), 1)
 
+    def test_a_sound_speed_that_underflows_is_caught(self):
+        # A subnormal dV/dT against a large second derivative: the enthalpy stays positive and
+        # the denominator is nonzero, so checking only those lets a zero sound speed through.
+        class Pot:
+            T_eps = 1e-3
+            X0 = np.array([1.0])
+            config = types.SimpleNamespace(
+                gwConf=types.SimpleNamespace(coupled_hydrodynamics=True))
+
+            @staticmethod
+            def _is_broken(X):
+                return bool(np.allclose(np.atleast_1d(X), 1.0))
+
+            def dVdT(self, X, T, dT=None, include_radiation=True, include_decoupled=True):
+                return -5e-320 if self._is_broken(X) else -1.0
+
+            def d2VdT2(self, X, T, dT=None, include_radiation=True, include_decoupled=True):
+                return 1.0e10 if self._is_broken(X) else -3.0 / T
+
+            def Vtot(self, X, T, include_decoupled=True):
+                return -0.25 if self._is_broken(X) else -1.0
+
+        class Phase:
+            def __init__(self, x):
+                self.x = np.array([x])
+
+            def valAt(self, T):
+                return self.x
+
+        hydro = Hydrodynamics.__new__(Hydrodynamics)
+        hydro.pot, hydro.high_phase, hydro.low_phase = Pot(), Phase(0.0), Phase(1.0)
+        hydro.verbose = False
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            self.assertEqual(hydro.calcWallVelocityLTE(100.0), 1)
+
 
 class _FrozenPlasmaPotential:
     """Both temperature derivatives vanish, as once every mode has frozen out."""

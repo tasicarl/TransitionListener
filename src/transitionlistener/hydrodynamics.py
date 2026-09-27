@@ -210,6 +210,19 @@ class Hydrodynamics():
         cs2 = dVdT_s/(Tn*ddVdT_s)
         cb2 = dVdT_b/(Tn*ddVdT_b)
 
+        # The checks above reject a vanishing denominator, but not a quotient that underflows:
+        # a subnormal dV/dT against a large T d2V/dT2 leaves the enthalpy positive while the
+        # sound speed itself reaches zero, and DTheta below divides by it. Validate the two
+        # sound speeds themselves, not only their ingredients.
+        sound_speeds = (_scalar(cs2), _scalar(cb2))
+        if not all(np.isfinite(c) and c > 0.0 for c in sound_speeds):
+            if self.verbose:
+                print(
+                    f"No usable sound speed for the wall velocity at T = {Tn}: "
+                    f"(c_s^2, c_b^2) = {sound_speeds}; set the wall velocity to 1."
+                )
+            return 1
+
         # Calculate the alpha definition from the paper
         # eq. (19) in `arxiv:2303.10171`
         p_s = - self.pot.Vtot(phi_s, Tn, include_decoupled=coupled)
