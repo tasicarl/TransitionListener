@@ -103,6 +103,28 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   over zero and where it is negative, so that an unphysical sound speed appears
   as such in the output instead of stopping the run. No result changes where the
   broken-phase plasma exists.
+- **Documentation of `logGamma`**: both copies, in `bubbledynamics` and in
+  `bubbledynamics_fixedstep`, said the function returns a base-ten logarithm. They
+  return the natural one, `4 ln T + (3/2) ln(S/2 pi T) - S/T`, which is what every
+  caller uses. Only the sentence was wrong; no behaviour changes.
+- **Double percolation integral on coarse support grids**
+  (`integral_method = "double_integral"`): `percIntegral` applied the
+  trapezoidal rule in temperature directly to the support points of the
+  adaptive solver, which leave gaps of up to several e-folds of temperature on
+  the hot shoulder of the rate. Across such a gap the rule overestimates an
+  exponentially falling source by about `beta du/2`, and the bubbles nucleated
+  there enter the integral with the cube of their radius. On grids the solver
+  produced for strongly supercooled points, the integral at the percolation
+  temperature came out 40 to 60 % high and `Tperc` 1 to 4 % high, which moved
+  the mean bubble separation and `betaH_RH` by up to 15 %. The integral is now
+  evaluated on a sub-grid that resolves the source to a change of 0.1 in its
+  logarithm, interpolating `S3/T`, `ln H`, `3 c_s^2` and `ln a` between the
+  support points with a cubic spline, and the radius is accumulated from
+  neighbouring scale-factor ratios in linear time. Against the closed form for
+  an exponential rate in de Sitter space and against quadrature for a Gaussian
+  turnover, the double integral now agrees to 0.5 % on grids with a gap of
+  0.7 e-folds, where it was off by 60 to 380 %. The differential equation
+  method was not affected.
 
 - **Degrees of freedom of the fields of the potential**: `h_eff_DS` and
   `g_eff_DS`, used for the temperature inside the bubbles, for the integration

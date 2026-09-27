@@ -565,7 +565,7 @@ def Gamma(T: float | np.ndarray, S: float | np.ndarray) -> np.ndarray:
 
 
 def logGamma(T: float | np.ndarray, S: float | np.ndarray) -> np.ndarray:
-    """Calculate the log10 of the bubble nucleation rate.
+    """Calculate the natural logarithm of the bubble nucleation rate.
 
     Parameters
     ----------
@@ -576,8 +576,9 @@ def logGamma(T: float | np.ndarray, S: float | np.ndarray) -> np.ndarray:
 
     Returns
     ----------
-    Gamma : np.ndarray
-        The bubble nucleation rate."""
+    logGamma : np.ndarray
+        ``ln Gamma``, i.e. ``4 ln T + (3/2) ln(S/2 pi T) - S/T``. It is ``+inf`` where the
+        action vanishes and not a number where the action is infinite."""
     S = np.atleast_1d(S)
     T = np.atleast_1d(T)
     result = np.zeros_like(T, dtype=float)
@@ -808,35 +809,128 @@ def percIntegral(
     T = np.asarray(T, dtype=float)
     H = np.asarray(H, dtype=float)
     S = np.asarray(S, dtype=float)
-    if entropy_density is None and cooling_factor is None and scale_factor is None:
-        # Bag limit, a ~ 1/T and 3 c_s^2 = 1: the scale factor cancels.
-        vol_int = np.array([integrate.trapezoid(1 / H[i:], x=T[i:]) for i in range(len(T))])
-        with np.errstate(invalid="ignore"):
-            integrant = Gamma(T, S) / T**4 / H * vol_int**3
+    if T.size < 2:
+        return 0.0
+    # I = 4 pi/3 v^3 int dt' Gamma a(t')^3 (int_t'^t dt''/a)^3 with dt = -dT/(3 c_s^2 H T).
+    # Only ratios of the scale factor enter; the bag limit is a ~ 1/T and 3 c_s^2 = 1.
+    cooling = (np.ones_like(T) if cooling_factor is None
+               else np.asarray(cooling_factor, dtype=float))
+    if scale_factor is not None:
+        a = np.asarray(scale_factor, dtype=float)
+        scale = a / a[0]
+    elif entropy_density is not None:
+        scale = (np.asarray(entropy_density, dtype=float) / entropy_density[0]) ** (-1.0 / 3.0)
     else:
-        # I = 4 pi/3 v^3 int dt' Gamma a(t')^3 (int_t'^t dt''/a)^3 with
-        # dt = -dT/(3 c_s^2 H T). Only ratios of the scale factor enter.
-        cooling = (np.ones_like(T) if cooling_factor is None
-                   else np.asarray(cooling_factor, dtype=float))
-        if scale_factor is not None:
-            a = np.asarray(scale_factor, dtype=float)
-            scale = a / a[0]
-        else:
-            entropy = T**3 if entropy_density is None else np.asarray(entropy_density, dtype=float)
-            scale = (entropy / entropy[0]) ** (-1.0 / 3.0)
-        # a(T')^3 belongs inside the cube of the comoving integral, not beside it: the two
-        # factors cancel to something of order one, but separately a^3 overflows and the
-        # transport factor underflows once the history spans a few hundred e-folds. The
-        # ratio a(T')/a(T'') never exceeds one here, since a grows as T falls.
-        base = 1.0 / (cooling * H * T)
-        vol_int = np.array([
-            integrate.trapezoid(base[i:] * (scale[i] / scale[i:]), x=T[i:])
-            for i in range(len(T))
-        ])
-        with np.errstate(invalid="ignore"):
-            integrant = Gamma(T, S) * base * vol_int**3
-    y = integrate.trapezoid(np.nan_to_num(integrant), x=T)
+        scale = T[0] / T
+    T, H, S, cooling, scale = _double_integral_subgrid(T, H, S, cooling, scale)
+    base = 1.0 / (cooling * H * T)
+    # a(T') (int_T^T' dT'' base/a), built from the cold end with the ratios of neighbouring
+    # scale factors only: a^3 and the transport factor never appear separately, so a history
+    # of hundreds of e-folds neither overflows nor underflows. The ratio never exceeds one,
+    # since a grows as T falls.
+    ratio = scale[:-1] / scale[1:]
+    dT = T[:-1] - T[1:]
+    step = 0.5 * (base[:-1] + base[1:] * ratio) * dT
+    radius = np.zeros_like(T)
+    for i in range(T.size - 2, -1, -1):
+        radius[i] = ratio[i] * radius[i + 1] + step[i]
+    with np.errstate(invalid="ignore", over="ignore"):
+        integrant = np.nan_to_num(Gamma(T, S) * base * radius**3)
+    y = float(np.sum(0.5 * (integrant[:-1] + integrant[1:]) * dT))
     return 4 * np.pi / 3 * vw**3 * y
+
+
+# The support grid of the adaptive solver resolves the rate where it is large but can leave
+# gaps of up to several e-folds of temperature on the hot shoulder. Across such a gap the
+# trapezoidal rule overestimates an exponentially falling source by about beta du / 2, and the
+# bubbles nucleated there, few but large, enter I with the cube of their radius: on grids the
+# solver produced, I at the percolation point came out 40 to 60 % high and Tperc a few per cent
+# high. The double integral is therefore evaluated on a sub-grid that interpolates the smooth
+# ingredients between the support points.
+_SUBGRID_MAX_LOG_STEP = 0.1       # largest change of ln(source) per sub-step
+_SUBGRID_MAX_STEPS = 2000         # sub-steps per support interval
+_SUBGRID_NEGLIGIBLE = 40.0        # intervals this far below the peak of ln(source) stay whole
+
+
+def _double_integral_subgrid(T, H, S, cooling, scale):
+    """Subdivide the support intervals of the double integral where the source varies.
+
+    The source ``Gamma a^3 / (3 c_s^2 H T)`` is resolved to a change of at most
+    ``_SUBGRID_MAX_LOG_STEP`` in its logarithm per sub-step, wherever it is within
+    ``exp(_SUBGRID_NEGLIGIBLE)`` of its peak. Between the support points ``S/T``, ``ln H``,
+    ``3 c_s^2`` and ``ln a`` are interpolated in ``u = ln T`` by a not-a-knot cubic spline
+    through the support points of that region and one more on each side; the support points
+    themselves keep their values. A rate with a Gaussian turnover, ``ln Gamma`` quadratic in
+    time, is then reproduced to 0.1 % across gaps of 0.7 e-folds, where PCHIP is off by a few
+    per cent. The spline spans the support points from one before the first refined interval to
+    one after the last, so points outside that range, such as a far hot shoulder left whole
+    because the source there is negligible, contribute no nodes. Intervals with a non-finite end,
+    and grids that are fine already, are returned unchanged.
+
+    Parameters
+    ----------
+    T : np.ndarray
+        Descending temperatures of the support grid.
+    H, S, cooling, scale : np.ndarray
+        Hubble rate, action, ``3 c_s^2`` and scale factor on the support grid.
+
+    Returns
+    -------
+    tuple of np.ndarray
+        ``(T, H, S, cooling, scale)`` on the sub-grid, still descending in temperature.
+    """
+    ok = (np.isfinite(S) & (S > 0.0) & np.isfinite(H) & (H > 0.0) & np.isfinite(cooling)
+          & (cooling > 0.0) & np.isfinite(scale) & (scale > 0.0) & (T > 0.0))
+    if np.count_nonzero(ok) < 2:
+        return T, H, S, cooling, scale
+    log_source = np.full_like(T, -np.inf)
+    with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
+        log_source[ok] = (np.asarray(logGamma(T[ok], S[ok]), dtype=float) + 3.0 * np.log(scale[ok])
+                          - np.log(cooling[ok] * H[ok] * T[ok]))
+    finite = np.isfinite(log_source)
+    if np.count_nonzero(finite) < 2:
+        return T, H, S, cooling, scale
+    peak = float(np.max(log_source[finite]))
+    both = finite[:-1] & finite[1:] & (T[:-1] > T[1:])
+    relevant = both & (np.maximum(log_source[:-1], log_source[1:]) > peak - _SUBGRID_NEGLIGIBLE)
+    steps = np.ones(T.size - 1, dtype=int)
+    change = np.abs(np.diff(np.where(finite, log_source, 0.0)))
+    steps[relevant] = np.clip(np.ceil(change[relevant] / _SUBGRID_MAX_LOG_STEP), 1,
+                              _SUBGRID_MAX_STEPS).astype(int)
+    if np.all(steps == 1):
+        return T, H, S, cooling, scale
+
+    # interpolants in ascending u on the finite support points around the refined intervals
+    u_all = np.log(np.where(T > 0.0, T, np.nan))
+    refined = np.flatnonzero(steps > 1)
+    lo, hi = max(int(refined[0]) - 1, 0), min(int(refined[-1]) + 2, T.size - 1)
+    near = np.zeros_like(finite)
+    near[lo:hi + 1] = True
+    u_nodes, first = np.unique(u_all[finite & near], return_index=True)
+    idx = np.flatnonzero(finite & near)[first]
+    spline = (lambda x, y: interpolate.CubicSpline(x, y, bc_type="not-a-knot", extrapolate=True)) \
+        if u_nodes.size >= 4 else (lambda x, y: interpolate.PchipInterpolator(x, y, extrapolate=True))
+    interp = {
+        name: spline(u_nodes, values[idx])
+        for name, values in (("s", S / T), ("lnH", np.log(np.where(ok, H, 1.0))),
+                             ("cool", cooling), ("lna", np.log(np.where(ok, scale, 1.0))))
+    }
+    pieces = {key: [] for key in ("T", "H", "S", "cool", "scale")}
+    for k in range(T.size - 1):
+        pieces["T"].append(T[k:k + 1]); pieces["H"].append(H[k:k + 1]); pieces["S"].append(S[k:k + 1])
+        pieces["cool"].append(cooling[k:k + 1]); pieces["scale"].append(scale[k:k + 1])
+        m = steps[k]
+        if m > 1:
+            u = np.linspace(u_all[k], u_all[k + 1], m + 1)[1:-1]
+            Tk = np.exp(u)
+            pieces["T"].append(Tk)
+            pieces["H"].append(np.exp(interp["lnH"](u)))
+            pieces["S"].append(interp["s"](u) * Tk)
+            pieces["cool"].append(interp["cool"](u))
+            pieces["scale"].append(np.exp(interp["lna"](u)))
+    for key, last in (("T", T), ("H", H), ("S", S), ("cool", cooling), ("scale", scale)):
+        pieces[key].append(last[-1:])
+    return tuple(np.concatenate(pieces[key]) for key in ("T", "H", "S", "cool", "scale"))
 
 
 # ---------------------------------------------------------------------------
