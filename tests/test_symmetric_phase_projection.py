@@ -71,6 +71,30 @@ DRIFTED_T = np.array([1e-10, 0.0167, 0.0667, 0.1167, 0.1667, 0.2223])
 DRIFTED_X = np.array([0.0169, 6.7e-4, 2.5e-4, 1.3e-4, 7.9e-5, 5.1e-5]).reshape(-1, 1)
 
 
+def test_a_phase_on_the_fixed_subspace_gets_no_mirror():
+    """Its image under the symmetry is itself, so a mirror would be a second copy of it."""
+    T = np.linspace(0.1, 1.0, 8)
+    phases = {1: _phase(1, T, np.zeros_like(T))}
+    ph.generateMirrorPhases(phases, 1e-3, Z2)
+    assert sorted(phases, key=str) == [1]
+
+
+def test_a_broken_phase_still_gets_its_mirror():
+    T = np.linspace(0.1, 1.0, 8)
+    phases = {0: _phase(0, T, 1000.0 - 10 * T)}
+    ph.generateMirrorPhases(phases, 1e-3, Z2)
+    assert sorted(phases, key=str) == [0, "0-m1"]
+    assert np.allclose(phases["0-m1"].X, -phases[0].X)
+
+
+def test_mirrors_of_several_phases_are_kept_apart():
+    """Skipping one phase's images must not lose another's."""
+    T = np.linspace(0.1, 1.0, 8)
+    phases = {0: _phase(0, T, 1000.0 - 10 * T), 1: _phase(1, T, np.zeros_like(T))}
+    ph.generateMirrorPhases(phases, 1e-3, Z2)
+    assert sorted(phases, key=str) == [0, "0-m1", 1]
+
+
 @pytest.fixture(scope="module")
 def conformal_potential():
     """The classically conformal dark U(1) at the point where the drift was found.
@@ -134,3 +158,19 @@ def test_the_traced_symmetric_phase_ends_on_the_origin(conformal_potential):
     assert np.all(symmetric.X == 0.0)
     assert np.all(symmetric.dXdT == 0.0)
     assert bd.h_eff_DS(symmetric.Tmin, pot, symmetric) == pytest.approx(7.5, abs=1e-12)
+
+
+def test_the_model_traces_with_mirror_phases_switched_on(conformal_potential):
+    """With `gen_mirror_phases` on, the projected symmetric phase must not be mirrored onto
+    itself: a second phase at the same highest temperature is rejected by the tracer."""
+    pot = conformal_potential
+    pot.config.tracingConf.tracing_field_accuracy = 1e-3
+    pot.config.tracingConf.tracing_temp_accuracy = 5e-4
+    pot.config.tracingConf.gen_mirror_phases = True
+    try:
+        traced = ph.Phases(pot, verbose=False)
+    finally:
+        pot.config.tracingConf.gen_mirror_phases = False
+    keys = sorted(traced.keys(), key=str)
+    # the broken phase keeps its mirror, the symmetric one gets none
+    assert keys == [0, "0-m1", 1], keys

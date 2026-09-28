@@ -625,6 +625,15 @@ def traceMultiMin(
     return phases
 
 
+def _phasesCoincide(one: PhaseInfo, other: PhaseInfo, diftol: float) -> bool:
+    """Whether two phases sit at the same place at both ends of their common trace."""
+    for first, second in ((one.X[0], other.X[0]), (one.X[-1], other.X[-1])):
+        difference = np.asarray(first, dtype=float) - np.asarray(second, dtype=float)
+        if np.sqrt(np.dot(difference, difference)) >= diftol:
+            return False
+    return True
+
+
 def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
                          diftol: float, invGroupElements: list[np.ndarray]):
     """Use the transformations of the potential
@@ -651,10 +660,16 @@ def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
         new_mphases = []
         for i, g in enumerate(invGroupElements):
             if np.sum(g) == len(g):
-                # skip the identity
-                break
+                # skip the identity, which the generator puts last
+                continue
             mkey = str(phase.key) + "-m" + str(i + 1)
             mirrorPhase = PhaseInfo(mkey, phase.X @ g, phase.T, phase.dXdT @ g)
+            # A phase that lies on the fixed subspace of g is its own image, so the "mirror"
+            # would be a second copy of the phase itself rather than a new one. The check
+            # below only compares the mirrors of one phase with each other, so the source has
+            # to be excluded here.
+            if _phasesCoincide(mirrorPhase, phase, diftol):
+                continue
             for lk in phase.low_trans:
                 mirrorPhase.low_trans.add(str(lk) + "-m" + str(i))
             for hk in phase.high_trans:
@@ -663,16 +678,17 @@ def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
             mirrorPhase.mirrorPhase = phase.key
             new_mphases.append(mirrorPhase)
 
+        # every image coincided with the phase itself, so there is nothing to add
+        if not new_mphases:
+            continue
+
         while True:
             redundant = False
             mp = new_mphases.pop()
             # check if we created one phase twice by 2 different
             # transformations
             for op in new_mphases:
-                DXmin = mp.X[0] - op.X[0]
-                DXmax = mp.X[-1] - op.X[-1]
-                if (np.sqrt(np.dot(DXmin, DXmin)) < diftol and 
-                    np.sqrt(np.dot(DXmax, DXmax)) < diftol):
+                if _phasesCoincide(mp, op, diftol):
                     redundant = True
                     break
 

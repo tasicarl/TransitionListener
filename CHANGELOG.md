@@ -91,6 +91,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   moved the percolation temperature by about 4 % and the mean bubble separation by about
   8 % at a percolation temperature of 2.8 keV.
 
+- **Mirror of a phase that is its own image.** `generateMirrorPhases` compared each image
+  it built only with the other images of the same phase, never with the phase it came
+  from, so a phase lying on the fixed subspace of a symmetry received a second copy of
+  itself. With `gen_mirror_phases = True` that second copy carries the same highest
+  temperature as the original and the tracer rejects the pair, which made the classically
+  conformal dark U(1) unusable with that option. Each image is now compared with its source
+  as well, and a phase whose images all coincide with it contributes none. Broken phases
+  keep their mirrors as before.
+
 - **A broken phase with no thermal pressure**: at percolation temperatures far
   below the mass scale, the thermal part of the potential underflows in the
   broken phase, so its enthalpy and its sound speed come back as zero or as not
