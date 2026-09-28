@@ -160,6 +160,50 @@ def test_a_link_to_a_phase_that_is_its_own_image_points_at_that_phase():
     assert _dangling(phases) == set()
 
 
+def _reciprocal(phases):
+    """Whether every link has its other half on the phase it names."""
+    by_key = {str(k): v for k, v in phases.items()}
+    for key, phase in phases.items():
+        for t in phase.low_trans:
+            if str(t) in by_key and str(key) not in {str(x) for x in by_key[str(t)].high_trans}:
+                return False
+        for t in phase.high_trans:
+            if str(t) in by_key and str(key) not in {str(x) for x in by_key[str(t)].low_trans}:
+                return False
+    return True
+
+
+def test_a_link_to_an_image_that_is_dropped_as_a_copy_names_the_one_kept():
+    """Two transformations can carry a phase to the same place; only the first image is kept."""
+    T = np.linspace(0.1, 1.0, 8)
+    phases = {0: _linked(0, np.stack([1000.0 - 10 * T, 5.0 + 0 * T], axis=-1), low=[1]),
+              1: _linked(1, np.stack([500.0 + 0 * T, np.zeros_like(T)], axis=-1), high=[0])}
+    ph.generateMirrorPhases(phases, 1e-3, Z2xZ2)
+    # the images of 1 under the first and third transformation are the same point
+    assert "1-m3" not in phases
+    assert {str(t) for t in phases["0-m3"].low_trans} == {"1-m1"}
+    assert _dangling(phases) == set()
+
+
+def test_the_links_of_the_images_are_reciprocal():
+    T = np.linspace(0.1, 1.0, 8)
+    phases = {0: _linked(0, np.stack([1000.0 - 10 * T, 5.0 + 0 * T], axis=-1), low=[1]),
+              1: _linked(1, np.stack([500.0 + 0 * T, np.zeros_like(T)], axis=-1), high=[0])}
+    ph.generateMirrorPhases(phases, 1e-3, Z2xZ2)
+    assert _reciprocal(phases)
+
+
+def test_a_phase_that_is_its_own_image_is_linked_back_from_the_image_that_names_it():
+    T = np.linspace(0.1, 1.0, 8)
+    phases = {0: _linked(0, 1000.0 - 10 * T, low=[1]),
+              1: _linked(1, np.zeros_like(T), high=[0])}
+    ph.generateMirrorPhases(phases, 1e-3, Z2)
+    assert phases["0-m1"].low_trans == {1}
+    assert "0-m1" in {str(t) for t in phases[1].high_trans}
+    assert _reciprocal(phases)
+    assert _dangling(phases) == set()
+
+
 def test_high_links_come_from_the_high_transitions():
     T = np.linspace(0.1, 1.0, 8)
     phases = {0: _linked(0, 1000.0 - 10 * T, low=["LOW"], high=["HIGH"]),

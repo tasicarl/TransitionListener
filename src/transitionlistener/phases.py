@@ -672,66 +672,64 @@ def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
     if invGroupElements == []:
         return None
 
-    mPhases = []
+    indices = [i for i, g in enumerate(invGroupElements)
+               if np.sum(g) != len(g)]          # every transformation but the identity
 
-    # Which phases are their own image under which transformation, worked out before any mirror
-    # is built: a phase that is its own image contributes none, and a link that pointed at such
-    # an image has to point at the phase itself instead, or it would name a phase that is never
-    # created.
-    own_image = {
-        str(key): {i for i, g in enumerate(invGroupElements)
-                   if np.sum(g) != len(g) and _isOwnImage(ph, g, diftol)}
-        for key, ph in phases.items()
-    }
-
-    def linkTarget(key, i: int):
-        """The image of a linked phase under the transformation at ``i``, or the phase itself.
-
-        The phase itself is returned as the key it has, which for a traced phase is an integer.
-        The links are read with ``in``, against the key of a phase, so a key turned into a
-        string would match nothing.
-        """
-        return key if i in own_image.get(str(key), ()) else _mirrorKey(key, i)
-
+    # First, which image of which phase is kept, and under which key each transformation's image
+    # of a phase is to be found. This has to be settled for every phase before any link is built,
+    # since a link names the image of another phase and that image may be the phase itself, or a
+    # copy of one of its own images that is kept in its place.
+    created = []                                 # (phase, transformation index, image)
+    represents = {}                              # (phase key, index) -> the key that image has
     for phase in phases.values():
-        new_mphases = []
-        for i, g in enumerate(invGroupElements):
-            if np.sum(g) == len(g):
-                # skip the identity, which the generator puts last
+        kept = []                                # (index, image) of this phase, in order
+        for i in indices:
+            g = invGroupElements[i]
+            if _isOwnImage(phase, g, diftol):
+                # its image is the phase itself, so no image is made and links name the phase
+                represents[(str(phase.key), i)] = phase.key
                 continue
-            if i in own_image[str(phase.key)]:
+            image = PhaseInfo(_mirrorKey(phase.key, i), phase.X @ g, phase.T, phase.dXdT @ g)
+            same = next((j for j, other in kept if _phasesCoincide(image, other, diftol)), None)
+            if same is not None:
+                # two transformations carried the phase to the same place; the first is kept
+                represents[(str(phase.key), i)] = _mirrorKey(phase.key, same)
                 continue
-            mirrorPhase = PhaseInfo(_mirrorKey(phase.key, i), phase.X @ g,
-                                    phase.T, phase.dXdT @ g)
-            for lk in phase.low_trans:
-                mirrorPhase.low_trans.add(linkTarget(lk, i))
-            for hk in phase.high_trans:
-                mirrorPhase.high_trans.add(linkTarget(hk, i))
+            image.mirrorPhase = phase.key
+            kept.append((i, image))
+            created.append((phase, i, image))
+            represents[(str(phase.key), i)] = image.key
 
-            mirrorPhase.mirrorPhase = phase.key
-            new_mphases.append(mirrorPhase)
+    def target(key, i: int):
+        """The key naming the image of the phase ``key`` under the transformation at ``i``.
 
-        # every image coincided with the phase itself, so there is nothing to add
-        if not new_mphases:
-            continue
+        A phase that is its own image is named by the key it has, which for a traced phase is an
+        integer; an image is named by the key it was given. The links are read with ``in``
+        against the key of a phase, so neither may be turned into a string of itself.
+        """
+        return represents.get((str(key), i), _mirrorKey(key, i))
 
-        while True:
-            redundant = False
-            mp = new_mphases.pop()
-            # check if we created one phase twice by 2 different
-            # transformations
-            for op in new_mphases:
-                if _phasesCoincide(mp, op, diftol):
-                    redundant = True
-                    break
+    # Then the links, both ways round, as `addLinkFrom` sets them for traced phases. The links a
+    # phase had before any of this are read from a copy, since the other half of each pair is
+    # written onto the phase that is linked to, which may be one whose own image comes later.
+    lookup = dict(phases)
+    lookup.update({image.key: image for _, _, image in created})
+    traced_links = {key: (set(ph.low_trans), set(ph.high_trans)) for key, ph in phases.items()}
+    for phase, i, image in created:
+        low_keys, high_keys = traced_links[phase.key]
+        for low_key in low_keys:
+            linked = target(low_key, i)
+            image.low_trans.add(linked)
+            if linked in lookup:
+                lookup[linked].high_trans.add(image.key)
+        for high_key in high_keys:
+            linked = target(high_key, i)
+            image.high_trans.add(linked)
+            if linked in lookup:
+                lookup[linked].low_trans.add(image.key)
 
-            if not redundant:
-                mPhases.append(mp)
-            if new_mphases == []:
-                break
-
-    for mp in mPhases:
-        phases[mp.key] = mp
+    for _, _, image in created:
+        phases[image.key] = image
 
 
 def symmetrizeInvariantPhases(phases: dict[int | str, PhaseInfo],
