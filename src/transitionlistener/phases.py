@@ -152,6 +152,14 @@ class PhaseInfo:
         y = interpolate.splev(T, self.tck, der=deriv)
         return np.asanyarray(y).T
 
+    def replaceTrace(self, X: np.ndarray, dXdT: np.ndarray) -> None:
+        """Replace the minima and their derivatives at the traced temperatures and
+        rebuild the spline. The temperatures, the key and the links are kept."""
+        self.X = np.asarray(X, dtype=float)
+        self.dXdT = np.asarray(dXdT, dtype=float)
+        k = 3 if len(self.T) > 3 else 1
+        self.tck, _ = interpolate.splprep(self.X.T, u=self.T, s=0, k=k)
+
     def addLinkFrom(self, other_phase) -> None:
         """Add a link from `other_phase` to this phase, checking to see if there
         is a second-order transition.
@@ -617,8 +625,38 @@ def traceMultiMin(
     return phases
 
 
+def _tracesCoincide(one_X: np.ndarray, other_X: np.ndarray, diftol: float) -> bool:
+    """Whether two traces stay within ``diftol`` of each other at every temperature.
+
+    The whole trace is asked for rather than its two ends, because the answer always decides
+    whether a phase exists: a trace that meets another at both ends may still part from it in
+    between, and the two are then different phases. The comparison is point by point, so it is
+    for traces over one temperature array.
+    """
+    one_X = np.atleast_2d(np.asarray(one_X, dtype=float))
+    other_X = np.atleast_2d(np.asarray(other_X, dtype=float))
+    if one_X.shape != other_X.shape:
+        return False
+    return bool(np.all(np.linalg.norm(one_X - other_X, axis=-1) < diftol))
+
+
+def _isOwnImage(phase: PhaseInfo, g: np.ndarray, diftol: float) -> bool:
+    """Whether a phase lies on the fixed subspace of ``g`` at every traced temperature.
+
+    Its image is then the phase itself rather than a new one.
+    """
+    X = np.asarray(phase.X, dtype=float)
+    return _tracesCoincide(X, X @ g, diftol)
+
+
+def _mirrorKey(key, index: int) -> str:
+    """The key given to the image of ``key`` under the transformation at ``index``."""
+    return str(key) + "-m" + str(index + 1)
+
+
 def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
-                         diftol: float, invGroupElements: list[np.ndarray]):
+                         diftol: float, invGroupElements: list[np.ndarray],
+                         fixed_tol: float | None = None):
     """Use the transformations of the potential
     to generate the mirror phases that have not been traced.
 
@@ -630,51 +668,139 @@ def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
         The tolerance in field space for which to consider two phases equal
     invGroupElements : list[np.ndarray]
         Matrix transformations which leave the potential invariant
+    fixed_tol : float, optional
+        How close to the fixed subspace of a transformation a phase has to stay, at every
+        traced temperature, to count as lying on it and so to be its own image. This is the
+        tolerance the symmetric phases were put on that subspace with, which is finer than
+        ``diftol``: a broken phase can sit nearer to the subspace than two phases have to be
+        to merge, and its image is then a phase of its own. Defaults to ``diftol``.
 
     Returns
     -------
     """
     if invGroupElements == []:
         return None
+    if fixed_tol is None:
+        fixed_tol = diftol
 
-    mPhases = []
+    indices = [i for i, g in enumerate(invGroupElements)
+               if np.sum(g) != len(g)]          # every transformation but the identity
 
+    # First, which image of which phase is kept, and under which key each transformation's image
+    # of a phase is to be found. This has to be settled for every phase before any link is built,
+    # since a link names the image of another phase and that image may be the phase itself, or a
+    # copy of one of its own images that is kept in its place.
+    created = []                                 # (phase, transformation index, image)
+    represents = {}                              # (phase key, index) -> the key that image has
     for phase in phases.values():
-        new_mphases = []
-        for i, g in enumerate(invGroupElements):
-            if np.sum(g) == len(g):
-                # skip the identity
-                break
-            mkey = str(phase.key) + "-m" + str(i + 1)
-            mirrorPhase = PhaseInfo(mkey, phase.X @ g, phase.T, phase.dXdT @ g)
-            for lk in phase.low_trans:
-                mirrorPhase.low_trans.add(str(lk) + "-m" + str(i))
-            for hk in phase.high_trans:
-                mirrorPhase.high_trans.add(str(lk) + "-m" + str(i))
+        kept = []                                # (index, image) of this phase, in order
+        for i in indices:
+            g = invGroupElements[i]
+            if _isOwnImage(phase, g, fixed_tol):
+                # its image is the phase itself, so no image is made and links name the phase
+                represents[(str(phase.key), i)] = phase.key
+                continue
+            image = PhaseInfo(_mirrorKey(phase.key, i), phase.X @ g, phase.T, phase.dXdT @ g)
+            same = next((j for j, other in kept
+                         if _tracesCoincide(image.X, other.X, diftol)), None)
+            if same is not None:
+                # two transformations carried the phase to the same place; the first is kept
+                represents[(str(phase.key), i)] = _mirrorKey(phase.key, same)
+                continue
+            image.mirrorPhase = phase.key
+            kept.append((i, image))
+            created.append((phase, i, image))
+            represents[(str(phase.key), i)] = image.key
 
-            mirrorPhase.mirrorPhase = phase.key
-            new_mphases.append(mirrorPhase)
+    def target(key, i: int):
+        """The key naming the image of the phase ``key`` under the transformation at ``i``.
 
-        while True:
-            redundant = False
-            mp = new_mphases.pop()
-            # check if we created one phase twice by 2 different
-            # transformations
-            for op in new_mphases:
-                DXmin = mp.X[0] - op.X[0]
-                DXmax = mp.X[-1] - op.X[-1]
-                if (np.sqrt(np.dot(DXmin, DXmin)) < diftol and 
-                    np.sqrt(np.dot(DXmax, DXmax)) < diftol):
-                    redundant = True
-                    break
+        A phase that is its own image is named by the key it has, which for a traced phase is an
+        integer; an image is named by the key it was given. The links are read with ``in``
+        against the key of a phase, so neither may be turned into a string of itself.
+        """
+        return represents.get((str(key), i), _mirrorKey(key, i))
 
-            if not redundant:
-                mPhases.append(mp)
-            if new_mphases == []:
-                break
+    # Then the links, both ways round, as `addLinkFrom` sets them for traced phases. The links a
+    # phase had before any of this are read from a copy, since the other half of each pair is
+    # written onto the phase that is linked to, which may be one whose own image comes later.
+    lookup = dict(phases)
+    lookup.update({image.key: image for _, _, image in created})
+    traced_links = {key: (set(ph.low_trans), set(ph.high_trans)) for key, ph in phases.items()}
+    for phase, i, image in created:
+        low_keys, high_keys = traced_links[phase.key]
+        for low_key in low_keys:
+            linked = target(low_key, i)
+            image.low_trans.add(linked)
+            if linked in lookup:
+                lookup[linked].high_trans.add(image.key)
+        for high_key in high_keys:
+            linked = target(high_key, i)
+            image.high_trans.add(linked)
+            if linked in lookup:
+                lookup[linked].low_trans.add(image.key)
 
-    for mp in mPhases:
-        phases[mp.key] = mp
+    for _, _, image in created:
+        phases[image.key] = image
+
+
+def symmetrizeInvariantPhases(phases: dict[int | str, PhaseInfo],
+                              invGroupElements: list[np.ndarray], tol: float) -> list:
+    """Put every phase that is its own mirror image onto the fixed subspace of that symmetry.
+
+    Near a minimum that only the thermal masses hold in place, as the symmetric phase of a
+    classically conformal model, the potential is flat to within the tracing tolerance and the
+    trace drifts off the minimum. ``fmin`` (Nelder-Mead, initial simplex 5% of the starting
+    point) leaves every point within about 20 ``xeps`` of the origin where it is, the step
+    predictor evaluated there pushes the trace further out as the temperature falls, and the
+    last node, at the lowest tracing temperature, is an extrapolation that is not a minimum.
+    The spline through it puts the false vacuum at an arbitrary field value over the lowest
+    decades in temperature, where an extremely supercooled transition happens: in the conformal
+    U(1) at T/v ~ 1e-6 the dark photon came out several times heavier than T there, and the
+    counted entropy of the false vacuum (``bubbledynamics.h_eff_DS``) varied with T.
+
+    A phase that coincides with its image under an element ``g`` of the symmetry group of the
+    potential at every traced temperature, within ``tol``, is invariant under ``g``; its
+    minimum lies exactly on the fixed subspace of ``g``, and it is replaced by its projection
+    ``(X + X g)/2``. Phases that differ from their image anywhere, broken phases and phases
+    that leave the fixed subspace at a second-order transition, are left alone.
+
+    Parameters
+    ----------
+    phases : dict
+        The traced phases, modified in place.
+    invGroupElements : list[np.ndarray]
+        Matrix transformations which leave the potential invariant
+        (``generic_potential.invGroupElements``).
+    tol : float
+        Largest field-space distance, at any traced temperature, between a phase and its
+        image for the two to count as the same.
+
+    Returns
+    -------
+    list
+        The keys of the phases that were projected.
+    """
+    projected = []
+    if not invGroupElements:
+        return projected
+    for phase in phases.values():
+        try:
+            X, dXdT = np.asarray(phase.X, dtype=float), np.asarray(phase.dXdT, dtype=float)
+        except (TypeError, ValueError):
+            continue
+        changed = False
+        for g in invGroupElements:
+            g = np.asarray(g, dtype=float)
+            if np.allclose(g, np.identity(len(g))):
+                continue
+            if np.all(np.linalg.norm(X - X @ g, axis=-1) < tol):
+                X, dXdT = 0.5 * (X + X @ g), 0.5 * (dXdT + dXdT @ g)
+                changed = True
+        if changed:
+            phase.replaceTrace(X, dXdT)
+            projected.append(phase.key)
+    return projected
 
 
 def _removeRedundantPhase(phases: dict[int | str, PhaseInfo],
@@ -1168,13 +1294,24 @@ class Phases:
             pot.Vtot, pot.gradV, pot.d2V, phases, self.x_eps * 1e-2, diftol=self.diftol,
             verbose=verbose, conversionFactor=self.conversionFactor
         )
-        
+
+        # A phase and its mirror image count as one where the tracer itself would not tell
+        # them apart: two points closer than 2 deltaX_target are the same point for
+        # traceMultiMin.
+        projected = symmetrizeInvariantPhases(phases, getattr(pot, "invGroupElements", []),
+                                              tol=2 * 100 * self.x_eps)
+        if verbose and projected:
+            console.print(
+                f"Projected {len(projected)} phase(s) onto the fixed subspace of the symmetry: "
+                f"{projected}.", style="bold green")
+
         if verbose:
             console.print("After removing redundant phases, {:} phases remain.".format(len(phases)),
                           style="bold green")
         
         if genMirrorPhases:
-            generateMirrorPhases(phases, self.diftol, pot.invGroupElements)
+            generateMirrorPhases(phases, self.diftol, pot.invGroupElements,
+                                 fixed_tol=2 * 100 * self.x_eps)
         return phases
 
     def buildPhaseGraph(self, in_phases: dict[int | str, PhaseInfo], V: Callable):

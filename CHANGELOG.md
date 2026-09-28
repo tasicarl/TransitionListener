@@ -67,6 +67,60 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Symmetric phase at extreme supercooling.** Where only the thermal masses hold the
+  symmetric minimum in place, as in a classically conformal model, the potential is flat
+  near the origin to within the tracing tolerance: `fmin` returns any starting point within
+  about 20 `xeps` of the origin unchanged, the step predictor evaluated off the minimum
+  pushes the trace further out at each step, and the last node, at the lowest tracing
+  temperature, is an extrapolation that is not a minimum. The spline through those nodes
+  then puts the false vacuum at an arbitrary field value over the lowest decades in
+  temperature, which is where a strongly supercooled transition percolates, and everything
+  read off the false vacuum there inherits the error: the masses of the fields, the counted
+  entropy of the transitioning sector (`bubbledynamics.h_eff_DS`), the scale factor of the
+  percolation integral and the mean bubble separation. A phase that coincides with its image
+  under a symmetry of the potential at every traced temperature, within the tracer's own
+  same-point tolerance, is now projected onto the fixed subspace of that symmetry
+  (`phases.symmetrizeInvariantPhases`). Broken phases, phases that differ from their image
+  anywhere, and field components even under the symmetry are untouched. On a drifted trace
+  the counted entropy of the false vacuum falls from its 7.5 light modes to 2.1 between 30
+  and 0.3 keV, and the sound speed of the symmetric phase comes out `c_s^2 = 0.324` instead
+  of `1/3`. How much that costs grows with the supercooling: in the conformal dark U(1)
+  shipped here nothing that percolates moves by a tenth of a per cent, the largest change
+  being 1.4e-5 at a percolation temperature of 2.7 MeV and 8e-4 at 40 keV. Where the origin
+  is held more weakly, as in a classically conformal U(1) without fermions, the same drift
+  moved the percolation temperature by about 4 % and the mean bubble separation by about
+  8 % at a percolation temperature of 2.8 keV.
+
+- **Mirror of a phase that is its own image.** `generateMirrorPhases` compared each image
+  it built only with the other images of the same phase, never with the phase it came
+  from, so a phase lying on the fixed subspace of a symmetry received a second copy of
+  itself. With `gen_mirror_phases = True` that second copy carries the same highest
+  temperature as the original and the tracer rejects the pair, which made the classically
+  conformal dark U(1) unusable with that option. Each image is now compared with its source
+  as well, and a phase whose images all coincide with it contributes none. That comparison
+  runs over the whole trace rather than its two ends, since dropping an image removes a
+  phase outright and a trace that meets its image at both ends may still leave it in
+  between. Broken phases keep their mirrors as before.
+
+  The transition links these images carry were rebuilt with them. They named the image of
+  the linked phase with the index of the transformation rather than the index plus one,
+  which is the suffix the image itself is given, so every such link pointed at a phase that
+  was never created; the links across the upper boundary were built from the key of a lower
+  one, and raised `UnboundLocalError` for a phase with an upper link and no lower one; and a
+  link to a phase that turns out to be its own image now names that phase, by the key it
+  has rather than a string of it, since the links are read with `in` against the key of a
+  phase and a traced phase has an integer key. Which image of which phase is kept is now
+  settled for every phase before any link is built, so that a link naming an image dropped
+  as a copy of another names the one kept instead, and each link is set both ways round as
+  it is for traced phases. Two images count as the same one where they stay together at
+  every traced temperature rather than only at the two ends of the trace: images of one
+  phase under different transformations can meet at the ends and part in between, and are
+  then different phases. Whether a phase lies on the fixed subspace at all is asked at the
+  tolerance the symmetric phases were put there with, rather than at `diftol`: a broken
+  phase can sit nearer to the subspace than two phases have to be to merge, and its image
+  is then a phase of its own rather than a copy. Nothing of this is reachable with the default
+  `gen_mirror_phases = False`.
+
 - **A broken phase with no thermal pressure**: at percolation temperatures far
   below the mass scale, the thermal part of the potential underflows in the
   broken phase, so its enthalpy and its sound speed come back as zero or as not
