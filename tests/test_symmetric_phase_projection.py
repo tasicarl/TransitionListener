@@ -173,6 +173,21 @@ def _reciprocal(phases):
     return True
 
 
+def test_two_images_that_only_meet_at_the_ends_are_both_kept():
+    """Meeting at both ends is not being the same phase: they part company in between."""
+    T = np.linspace(0.1, 1.0, 9)
+    second = np.zeros_like(T)
+    second[len(T) // 2] = 40.0          # vanishes at both ends, not in the middle
+    X = np.stack([1000.0 - 10 * T, second], axis=-1)
+    phases = {0: _phase(0, T, X)}
+    ph.generateMirrorPhases(phases, 1e-3, Z2xZ2)
+    # one image per sign combination, all four traces distinct
+    assert sorted(phases, key=str) == [0, "0-m1", "0-m2", "0-m3"]
+    middles = {(round(float(np.asarray(p.X)[0, 0])), round(float(np.asarray(p.X)[len(T) // 2, 1])))
+               for p in phases.values()}
+    assert len(middles) == 4, middles
+
+
 def test_a_link_to_an_image_that_is_dropped_as_a_copy_names_the_one_kept():
     """Two transformations can carry a phase to the same place; only the first image is kept."""
     T = np.linspace(0.1, 1.0, 8)

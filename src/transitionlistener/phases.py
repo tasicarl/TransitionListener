@@ -625,26 +625,28 @@ def traceMultiMin(
     return phases
 
 
-def _phasesCoincide(one: PhaseInfo, other: PhaseInfo, diftol: float) -> bool:
-    """Whether two phases sit at the same place at both ends of their common trace."""
-    one_X = np.atleast_2d(np.asarray(one.X, dtype=float))
-    other_X = np.atleast_2d(np.asarray(other.X, dtype=float))
-    for first, second in ((one_X[0], other_X[0]), (one_X[-1], other_X[-1])):
-        difference = first - second
-        if np.sqrt(np.dot(difference, difference)) >= diftol:
-            return False
-    return True
+def _tracesCoincide(one_X: np.ndarray, other_X: np.ndarray, diftol: float) -> bool:
+    """Whether two traces stay within ``diftol`` of each other at every temperature.
+
+    The whole trace is asked for rather than its two ends, because the answer always decides
+    whether a phase exists: a trace that meets another at both ends may still part from it in
+    between, and the two are then different phases. The comparison is point by point, so it is
+    for traces over one temperature array.
+    """
+    one_X = np.atleast_2d(np.asarray(one_X, dtype=float))
+    other_X = np.atleast_2d(np.asarray(other_X, dtype=float))
+    if one_X.shape != other_X.shape:
+        return False
+    return bool(np.all(np.linalg.norm(one_X - other_X, axis=-1) < diftol))
 
 
 def _isOwnImage(phase: PhaseInfo, g: np.ndarray, diftol: float) -> bool:
     """Whether a phase lies on the fixed subspace of ``g`` at every traced temperature.
 
-    Its image is then the phase itself rather than a new one. The whole trace is asked for,
-    not only its two ends, because the answer decides whether a phase exists at all: a trace
-    that returns to its image at both ends may still leave it in between.
+    Its image is then the phase itself rather than a new one.
     """
-    X = np.atleast_2d(np.asarray(phase.X, dtype=float))
-    return bool(np.all(np.linalg.norm(X - X @ g, axis=-1) < diftol))
+    X = np.asarray(phase.X, dtype=float)
+    return _tracesCoincide(X, X @ g, diftol)
 
 
 def _mirrorKey(key, index: int) -> str:
@@ -690,7 +692,8 @@ def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
                 represents[(str(phase.key), i)] = phase.key
                 continue
             image = PhaseInfo(_mirrorKey(phase.key, i), phase.X @ g, phase.T, phase.dXdT @ g)
-            same = next((j for j, other in kept if _phasesCoincide(image, other, diftol)), None)
+            same = next((j for j, other in kept
+                         if _tracesCoincide(image.X, other.X, diftol)), None)
             if same is not None:
                 # two transformations carried the phase to the same place; the first is kept
                 represents[(str(phase.key), i)] = _mirrorKey(phase.key, same)

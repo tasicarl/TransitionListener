@@ -112,7 +112,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   phase and a traced phase has an integer key. Which image of which phase is kept is now
   settled for every phase before any link is built, so that a link naming an image dropped
   as a copy of another names the one kept instead, and each link is set both ways round as
-  it is for traced phases. Nothing of this is reachable with the default
+  it is for traced phases. Two images count as the same one where they stay together at
+  every traced temperature rather than only at the two ends of the trace: images of one
+  phase under different transformations can meet at the ends and part in between, and are
+  then different phases. Nothing of this is reachable with the default
   `gen_mirror_phases = False`.
 
 - **A broken phase with no thermal pressure**: at percolation temperatures far
