@@ -14,6 +14,7 @@ import warnings
 
 import numpy as np
 from scipy import integrate
+from scipy import optimize
 
 from transitionlistener import bubbledynamics as bd
 
@@ -182,6 +183,69 @@ class ResolutionConstantTests(unittest.TestCase):
             achieved = np.max(np.abs(np.diff(log_source))[relevant])
             with self.subTest(gap=gap):
                 self.assertLess(achieved, 1.5 * bd._SUBGRID_MAX_LOG_STEP)
+
+
+class HiddenFeatureTests(unittest.TestCase):
+    """A feature that lives between two support points belongs to the support grid, not the sub-grid.
+
+    The grid here carries a rate with a narrow peak placed between two support points whose
+    ``ln`` source values are equal, so the difference of the end values says nothing about what
+    happens between them. The integral is then far from the truth, and these tests pin where that
+    error comes from: not from how finely the sub-grid resolves the interval, and not from the
+    threshold that lets negligible intervals stay whole, but from the spacing of the support points
+    themselves, which is the adaptive solver's business.
+    """
+
+    beta, amplitude, width, N_peak, N_start = 2.0, 7.0, 0.10, -1.0, -4.0
+
+    def log_rate(self, N):
+        return self.beta * N + self.amplitude * np.exp(-((N - self.N_peak) / self.width) ** 2)
+
+    def truth(self, N_end, N_start):
+        f = lambda Np: math.exp(self.log_rate(Np)) * (1.0 - math.exp(Np - N_end)) ** 3
+        return 4 * np.pi / 3 * integrate.quad(f, N_start, N_end, epsabs=0, epsrel=1e-12, limit=900)[0]
+
+    def setUp(self):
+        self.N_end = optimize.brentq(
+            lambda N: self.truth(N, self.N_start) - 0.34, -0.95, -0.5, xtol=1e-13)
+        # ln of the source, with a ~ 1/T and a constant Hubble rate
+        log_source = lambda N: (self.log_rate(N) + 3 * (N - self.N_start) - math.log(H0) + N)
+        right = self.N_peak + 0.20
+        left = self.N_peak - optimize.brentq(
+            lambda d: log_source(self.N_peak - d) - log_source(right), 0.02, 0.25, xtol=1e-14)
+        self.nodes = np.sort(np.concatenate(
+            (np.linspace(self.N_start, self.N_end, 20), [left, right])))
+        self.assertLess(abs(log_source(left) - log_source(right)), 1e-9)
+        self.assertGreater(log_source(self.N_peak) - log_source(left), 5.0)
+
+    def _integral(self, nodes):
+        T, H = de_sitter_grid(nodes)
+        S = action_for(T, 4 * math.log(H0) + np.array([self.log_rate(n) for n in nodes]))
+        return bd.percIntegral(T, H, S)
+
+    def test_the_sub_grid_controls_do_not_move_the_answer(self):
+        reference = self._integral(self.nodes)
+        for name, value in (("_SUBGRID_NEGLIGIBLE", np.inf), ("_SUBGRID_MAX_LOG_STEP", 0.002)):
+            keep = getattr(bd, name)
+            try:
+                setattr(bd, name, value)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", RuntimeWarning)
+                    moved = self._integral(self.nodes)
+            finally:
+                setattr(bd, name, keep)
+            with self.subTest(control=name):
+                self.assertLess(abs(moved / reference - 1), 1e-3)
+
+    def test_refining_the_support_grid_converges_on_the_truth(self):
+        errors = []
+        for n in (22, 80, 320):
+            nodes = np.linspace(self.N_start, self.N_end, n)
+            errors.append(abs(self._integral(nodes) / self.truth(self.N_end, self.N_start) - 1))
+        # coarser than the feature the integral is far off; resolving it recovers the answer
+        self.assertGreater(errors[0], 0.2)
+        self.assertLess(errors[-1], 5e-3)
+        self.assertLess(errors[-1], errors[0])
 
 
 class ScalarFactorTests(unittest.TestCase):

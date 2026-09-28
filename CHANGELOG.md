@@ -135,7 +135,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   now warns, naming the resolution actually achieved, on the rare grid where it is
   what limits that resolution instead of the requested step. A constant `3 c_s^2`
   may again be passed as a single number rather than an array, which the sub-grid
-  had started to require.
+  had started to require. Where a feature of the rate lives entirely between two
+  support points, the answer is set by the spacing of those points and not by the
+  sub-grid between them; tests pin that, so that the limitation is not mistaken for
+  one of the quadrature.
 
 - **Degrees of freedom of the fields of the potential**: `h_eff_DS` and
   `g_eff_DS`, used for the temperature inside the bubbles, for the integration
