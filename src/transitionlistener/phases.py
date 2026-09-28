@@ -625,10 +625,23 @@ def traceMultiMin(
     return phases
 
 
-def _phasesCoincide(one: PhaseInfo, other: PhaseInfo, diftol: float) -> bool:
-    """Whether two phases sit at the same place at both ends of their common trace."""
-    for first, second in ((one.X[0], other.X[0]), (one.X[-1], other.X[-1])):
-        difference = np.asarray(first, dtype=float) - np.asarray(second, dtype=float)
+def _phasesCoincide(one: PhaseInfo, other: PhaseInfo, diftol: float,
+                    everywhere: bool = False) -> bool:
+    """Whether two phases sit at the same place, at both ends of the trace or along all of it.
+
+    ``everywhere`` is for the case where the answer decides whether a phase exists at all: two
+    traces that meet at their ends may still part company in between, and a phase may only be
+    dropped as a copy of another if they agree at every traced temperature. The two traces are
+    compared point by point, so this is for phases sharing one temperature array.
+    """
+    one_X = np.atleast_2d(np.asarray(one.X, dtype=float))
+    other_X = np.atleast_2d(np.asarray(other.X, dtype=float))
+    if everywhere:
+        if one_X.shape != other_X.shape:
+            return False
+        return bool(np.all(np.linalg.norm(one_X - other_X, axis=-1) < diftol))
+    for first, second in ((one_X[0], other_X[0]), (one_X[-1], other_X[-1])):
+        difference = first - second
         if np.sqrt(np.dot(difference, difference)) >= diftol:
             return False
     return True
@@ -667,8 +680,10 @@ def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
             # A phase that lies on the fixed subspace of g is its own image, so the "mirror"
             # would be a second copy of the phase itself rather than a new one. The check
             # below only compares the mirrors of one phase with each other, so the source has
-            # to be excluded here.
-            if _phasesCoincide(mirrorPhase, phase, diftol):
+            # to be excluded here. This one drops a phase rather than choosing between two
+            # copies of it, so it asks for agreement at every traced temperature: a trace that
+            # returns to its image at both ends may still leave it in between.
+            if _phasesCoincide(mirrorPhase, phase, diftol, everywhere=True):
                 continue
             for lk in phase.low_trans:
                 mirrorPhase.low_trans.add(str(lk) + "-m" + str(i))

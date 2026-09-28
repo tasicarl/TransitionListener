@@ -97,8 +97,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   itself. With `gen_mirror_phases = True` that second copy carries the same highest
   temperature as the original and the tracer rejects the pair, which made the classically
   conformal dark U(1) unusable with that option. Each image is now compared with its source
-  as well, and a phase whose images all coincide with it contributes none. Broken phases
-  keep their mirrors as before.
+  as well, and a phase whose images all coincide with it contributes none. That comparison
+  runs over the whole trace rather than its two ends, since dropping an image removes a
+  phase outright and a trace that meets its image at both ends may still leave it in
+  between. Broken phases keep their mirrors as before.
 
 - **A broken phase with no thermal pressure**: at percolation temperatures far
   below the mass scale, the thermal part of the potential underflows in the

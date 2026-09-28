@@ -122,6 +122,17 @@ def test_a_phase_on_the_fixed_subspace_gets_no_mirror():
     assert sorted(phases, key=str) == [1]
 
 
+def test_a_phase_that_leaves_its_image_in_between_keeps_its_mirror():
+    """Meeting its image at both ends is not enough: the trace must stay there throughout."""
+    T = np.linspace(0.1, 1.0, 9)
+    X = np.zeros_like(T)
+    X[len(T) // 2] = 5.0                      # the two ends coincide, the middle does not
+    phases = {1: _phase(1, T, X)}
+    ph.generateMirrorPhases(phases, 1e-3, Z2)
+    assert sorted(phases, key=str) == [1, "1-m1"]
+    assert np.allclose(phases["1-m1"].X.ravel(), -X)
+
+
 def test_a_broken_phase_still_gets_its_mirror():
     T = np.linspace(0.1, 1.0, 8)
     phases = {0: _phase(0, T, 1000.0 - 10 * T)}
@@ -217,3 +228,6 @@ def test_the_model_traces_with_mirror_phases_switched_on(conformal_potential):
     keys = sorted(traced.keys(), key=str)
     # the broken phase keeps its mirror, the symmetric one gets none
     assert keys == [0, "0-m1", 1], keys
+    # and the symmetric phase got there by being projected, not by having been traced there
+    assert np.all(traced[1].X == 0.0)
+    assert np.all(traced[1].dXdT == 0.0)
