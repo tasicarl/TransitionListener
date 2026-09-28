@@ -814,13 +814,15 @@ def percIntegral(
         return 0.0
     # I = 4 pi/3 v^3 int dt' Gamma a(t')^3 (int_t'^t dt''/a)^3 with dt = -dT/(3 c_s^2 H T).
     # Only ratios of the scale factor enter; the bag limit is a ~ 1/T and 3 c_s^2 = 1.
+    # A constant 3 c_s^2 may be given as a scalar; the sub-grid reads it per support point.
     cooling = (np.ones_like(T) if cooling_factor is None
-               else np.asarray(cooling_factor, dtype=float))
+               else np.asarray(cooling_factor, dtype=float) * np.ones_like(T))
     if scale_factor is not None:
         a = np.asarray(scale_factor, dtype=float)
         scale = a / a[0]
     elif entropy_density is not None:
-        scale = (np.asarray(entropy_density, dtype=float) / entropy_density[0]) ** (-1.0 / 3.0)
+        entropy = np.asarray(entropy_density, dtype=float)
+        scale = (entropy / entropy[0]) ** (-1.0 / 3.0)
     else:
         scale = T[0] / T
     T, H, S, cooling, scale = _double_integral_subgrid(T, H, S, cooling, scale)

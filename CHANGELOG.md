@@ -133,7 +133,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   of a conformal dark U(1) point moves by four parts in ten million. The cap
   on sub-steps per support interval bounds the memory one interval can ask for, and
   now warns, naming the resolution actually achieved, on the rare grid where it is
-  what limits that resolution instead of the requested step.
+  what limits that resolution instead of the requested step. A constant `3 c_s^2`
+  may again be passed as a single number rather than an array, which the sub-grid
+  had started to require.
 
 - **Degrees of freedom of the fields of the potential**: `h_eff_DS` and
   `g_eff_DS`, used for the temperature inside the bubbles, for the integration

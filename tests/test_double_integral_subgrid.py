@@ -184,6 +184,22 @@ class ResolutionConstantTests(unittest.TestCase):
                 self.assertLess(achieved, 1.5 * bd._SUBGRID_MAX_LOG_STEP)
 
 
+class ScalarFactorTests(unittest.TestCase):
+    """A constant sound speed may be handed over as a single number, as it could before."""
+
+    def test_a_scalar_cooling_factor_matches_the_array_form(self):
+        beta = 13.0
+        N_end = math.log(0.34 * beta**4 / (8 * np.pi)) / beta
+        nodes = np.linspace(N_end - 3.0, N_end, 60)
+        T, H = de_sitter_grid(nodes)
+        S = action_for(T, 4 * math.log(H0) + beta * nodes)
+        for value in (1.0, 0.94):
+            with self.subTest(value=value):
+                scalar = bd.percIntegral(T, H, S, cooling_factor=value)
+                array = bd.percIntegral(T, H, S, cooling_factor=np.full_like(T, value))
+                self.assertTrue(np.isclose(scalar, array, rtol=1e-12, atol=0))
+
+
 class CapWarningTests(unittest.TestCase):
     """The cap on sub-steps per interval bounds memory, and may not degrade the resolution silently."""
 
