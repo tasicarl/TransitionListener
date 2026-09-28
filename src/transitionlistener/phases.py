@@ -625,26 +625,31 @@ def traceMultiMin(
     return phases
 
 
-def _phasesCoincide(one: PhaseInfo, other: PhaseInfo, diftol: float,
-                    everywhere: bool = False) -> bool:
-    """Whether two phases sit at the same place, at both ends of the trace or along all of it.
-
-    ``everywhere`` is for the case where the answer decides whether a phase exists at all: two
-    traces that meet at their ends may still part company in between, and a phase may only be
-    dropped as a copy of another if they agree at every traced temperature. The two traces are
-    compared point by point, so this is for phases sharing one temperature array.
-    """
+def _phasesCoincide(one: PhaseInfo, other: PhaseInfo, diftol: float) -> bool:
+    """Whether two phases sit at the same place at both ends of their common trace."""
     one_X = np.atleast_2d(np.asarray(one.X, dtype=float))
     other_X = np.atleast_2d(np.asarray(other.X, dtype=float))
-    if everywhere:
-        if one_X.shape != other_X.shape:
-            return False
-        return bool(np.all(np.linalg.norm(one_X - other_X, axis=-1) < diftol))
     for first, second in ((one_X[0], other_X[0]), (one_X[-1], other_X[-1])):
         difference = first - second
         if np.sqrt(np.dot(difference, difference)) >= diftol:
             return False
     return True
+
+
+def _isOwnImage(phase: PhaseInfo, g: np.ndarray, diftol: float) -> bool:
+    """Whether a phase lies on the fixed subspace of ``g`` at every traced temperature.
+
+    Its image is then the phase itself rather than a new one. The whole trace is asked for,
+    not only its two ends, because the answer decides whether a phase exists at all: a trace
+    that returns to its image at both ends may still leave it in between.
+    """
+    X = np.atleast_2d(np.asarray(phase.X, dtype=float))
+    return bool(np.all(np.linalg.norm(X - X @ g, axis=-1) < diftol))
+
+
+def _mirrorKey(key, index: int) -> str:
+    """The key given to the image of ``key`` under the transformation at ``index``."""
+    return str(key) + "-m" + str(index + 1)
 
 
 def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
@@ -669,26 +674,34 @@ def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
 
     mPhases = []
 
+    # Which phases are their own image under which transformation, worked out before any mirror
+    # is built: a phase that is its own image contributes none, and a link that pointed at such
+    # an image has to point at the phase itself instead, or it would name a phase that is never
+    # created.
+    own_image = {
+        str(key): {i for i, g in enumerate(invGroupElements)
+                   if np.sum(g) != len(g) and _isOwnImage(ph, g, diftol)}
+        for key, ph in phases.items()
+    }
+
+    def linkTarget(key, i: int) -> str:
+        """The image of a linked phase under the transformation at ``i``, or the phase itself."""
+        return str(key) if i in own_image.get(str(key), ()) else _mirrorKey(key, i)
+
     for phase in phases.values():
         new_mphases = []
         for i, g in enumerate(invGroupElements):
             if np.sum(g) == len(g):
                 # skip the identity, which the generator puts last
                 continue
-            mkey = str(phase.key) + "-m" + str(i + 1)
-            mirrorPhase = PhaseInfo(mkey, phase.X @ g, phase.T, phase.dXdT @ g)
-            # A phase that lies on the fixed subspace of g is its own image, so the "mirror"
-            # would be a second copy of the phase itself rather than a new one. The check
-            # below only compares the mirrors of one phase with each other, so the source has
-            # to be excluded here. This one drops a phase rather than choosing between two
-            # copies of it, so it asks for agreement at every traced temperature: a trace that
-            # returns to its image at both ends may still leave it in between.
-            if _phasesCoincide(mirrorPhase, phase, diftol, everywhere=True):
+            if i in own_image[str(phase.key)]:
                 continue
+            mirrorPhase = PhaseInfo(_mirrorKey(phase.key, i), phase.X @ g,
+                                    phase.T, phase.dXdT @ g)
             for lk in phase.low_trans:
-                mirrorPhase.low_trans.add(str(lk) + "-m" + str(i))
+                mirrorPhase.low_trans.add(linkTarget(lk, i))
             for hk in phase.high_trans:
-                mirrorPhase.high_trans.add(str(lk) + "-m" + str(i))
+                mirrorPhase.high_trans.add(linkTarget(hk, i))
 
             mirrorPhase.mirrorPhase = phase.key
             new_mphases.append(mirrorPhase)

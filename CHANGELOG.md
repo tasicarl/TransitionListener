@@ -102,6 +102,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   phase outright and a trace that meets its image at both ends may still leave it in
   between. Broken phases keep their mirrors as before.
 
+  The transition links these images carry were rebuilt with them. They named the image of
+  the linked phase with the index of the transformation rather than the index plus one,
+  which is the suffix the image itself is given, so every such link pointed at a phase that
+  was never created; the links across the upper boundary were built from the key of a lower
+  one, and raised `UnboundLocalError` for a phase with an upper link and no lower one; and a
+  link to a phase that turns out to be its own image now names that phase, whose image is
+  not created. Nothing of this is reachable with the default `gen_mirror_phases = False`.
+
 - **A broken phase with no thermal pressure**: at percolation temperatures far
   below the mass scale, the thermal part of the potential underflows in the
   broken phase, so its enthalpy and its sound speed come back as zero or as not

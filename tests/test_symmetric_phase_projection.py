@@ -122,6 +122,58 @@ def test_a_phase_on_the_fixed_subspace_gets_no_mirror():
     assert sorted(phases, key=str) == [1]
 
 
+def _linked(key, X, low=(), high=()):
+    phase = _phase(key, np.linspace(0.1, 1.0, 8), X)
+    phase.low_trans.update(low)
+    phase.high_trans.update(high)
+    return phase
+
+
+def _dangling(phases):
+    keys = {str(k) for k in phases}
+    return {str(t) for p in phases.values()
+            for t in list(p.low_trans) + list(p.high_trans)} - keys
+
+
+def test_links_of_a_mirror_name_phases_that_exist():
+    T = np.linspace(0.1, 1.0, 8)
+    phases = {0: _linked(0, 1000.0 - 10 * T, low=[1], high=[1]),
+              1: _linked(1, 500.0 + 0 * T)}
+    ph.generateMirrorPhases(phases, 1e-3, Z2)
+    assert sorted(phases, key=str) == [0, "0-m1", 1, "1-m1"]
+    assert {str(t) for t in phases["0-m1"].low_trans} == {"1-m1"}
+    assert {str(t) for t in phases["0-m1"].high_trans} == {"1-m1"}
+    assert _dangling(phases) == set()
+
+
+def test_a_link_to_a_phase_that_is_its_own_image_points_at_that_phase():
+    """Its image is never created, so the link has to name the phase itself."""
+    T = np.linspace(0.1, 1.0, 8)
+    phases = {0: _linked(0, 1000.0 - 10 * T, low=[1]),
+              1: _linked(1, np.zeros_like(T))}          # on the fixed subspace
+    ph.generateMirrorPhases(phases, 1e-3, Z2)
+    assert sorted(phases, key=str) == [0, "0-m1", 1]
+    assert {str(t) for t in phases["0-m1"].low_trans} == {"1"}
+    assert _dangling(phases) == set()
+
+
+def test_high_links_come_from_the_high_transitions():
+    T = np.linspace(0.1, 1.0, 8)
+    phases = {0: _linked(0, 1000.0 - 10 * T, low=["LOW"], high=["HIGH"]),
+              "LOW": _linked("LOW", 400.0 + 0 * T), "HIGH": _linked("HIGH", 600.0 + 0 * T)}
+    ph.generateMirrorPhases(phases, 1e-3, Z2)
+    assert {str(t) for t in phases["0-m1"].low_trans} == {"LOW-m1"}
+    assert {str(t) for t in phases["0-m1"].high_trans} == {"HIGH-m1"}
+
+
+def test_a_phase_with_only_high_transitions_is_mirrored():
+    T = np.linspace(0.1, 1.0, 8)
+    phases = {0: _linked(0, 1000.0 - 10 * T, high=[1]), 1: _linked(1, 500.0 + 0 * T)}
+    ph.generateMirrorPhases(phases, 1e-3, Z2)          # must not raise
+    assert list(phases["0-m1"].low_trans) == []
+    assert {str(t) for t in phases["0-m1"].high_trans} == {"1-m1"}
+
+
 def test_a_phase_that_leaves_its_image_in_between_keeps_its_mirror():
     """Meeting its image at both ends is not enough: the trace must stay there throughout."""
     T = np.linspace(0.1, 1.0, 9)
