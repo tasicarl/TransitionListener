@@ -165,7 +165,7 @@ def Gamma(T: float | np.ndarray, S: float | np.ndarray) -> np.ndarray:
 
 
 def logGamma(T: float | np.ndarray, S: float | np.ndarray) -> np.ndarray:
-    """Calculate the log10 of the bubble nucleation rate.
+    """Calculate the natural logarithm of the bubble nucleation rate.
 
     Parameters
     ----------
@@ -176,8 +176,9 @@ def logGamma(T: float | np.ndarray, S: float | np.ndarray) -> np.ndarray:
 
     Returns
     ----------
-    Gamma : np.ndarray
-        The bubble nucleation rate."""
+    logGamma : np.ndarray
+        ``ln Gamma``, i.e. ``4 ln T + (3/2) ln(S/2 pi T) - S/T``. It is ``+inf`` where the
+        action vanishes and not a number where the action is infinite."""
     S = np.atleast_1d(S)
     T = np.atleast_1d(T)
     result = np.zeros_like(T, dtype=float)
