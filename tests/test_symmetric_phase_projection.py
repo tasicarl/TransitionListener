@@ -1,14 +1,17 @@
 """The symmetric phase stays on the fixed subspace of the symmetry down to the lowest temperature.
 
-In the classically conformal U(1) the origin is held in place only by the thermal masses, so the
-potential is flat there to within the tracing tolerance and the trace drifts off it at low
-temperature; its last node, at today's CMB temperature, was an extrapolation to a field value of
-about 0.017 (internal units, v = 1000), where the potential is not even at a minimum. At the
-line point g = 0.45, v = 2.62525 GeV, the transition percolates at T_p = 2.8 keV (T_p/v ~ 1e-6),
-where the spline through that node put the dark photon at m = 6 T. The counted entropy of the
-false vacuum, the "dof_table" scheme of the time-temperature relation, then counted 3.0 of the 4
-dark degrees of freedom at 3 T_p, 0.86 at T_p and none at T_p/3, and d ln s/d ln T came out 3.25
-instead of 3, which moved T_p by +4% and (beta/H)_RH by -8%.
+Where only the thermal masses hold the symmetric minimum in place, as in a classically conformal
+model, the potential is flat there to within the tracing tolerance and the trace drifts off it as
+the temperature falls; its last node, at the lowest tracing temperature, is an extrapolation to a
+field value of about 0.017 in internal units where the scale is 1000, at which the potential is not
+even at a minimum.
+
+Everything read off the false vacuum below that point inherits the error. On a trace drifted that
+way, the counted entropy of the false vacuum of the conformal dark U(1) falls from its 7.5 light
+modes to 2.1 between 30 and 0.3 keV instead of holding at 7.5, so it no longer scales as T^3, and
+the sound speed of the symmetric phase comes out c_s^2 = 0.324 rather than 1/3. Those two are what
+the tests below measure, on a drifted trace put in by hand so that they do not depend on the tracer
+reproducing the drift.
 """
 from __future__ import annotations
 
