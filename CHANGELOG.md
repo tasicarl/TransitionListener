@@ -115,7 +115,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   it is for traced phases. Two images count as the same one where they stay together at
   every traced temperature rather than only at the two ends of the trace: images of one
   phase under different transformations can meet at the ends and part in between, and are
-  then different phases. Nothing of this is reachable with the default
+  then different phases. Whether a phase lies on the fixed subspace at all is asked at the
+  tolerance the symmetric phases were put there with, rather than at `diftol`: a broken
+  phase can sit nearer to the subspace than two phases have to be to merge, and its image
+  is then a phase of its own rather than a copy. Nothing of this is reachable with the default
   `gen_mirror_phases = False`.
 
 - **A broken phase with no thermal pressure**: at percolation temperatures far

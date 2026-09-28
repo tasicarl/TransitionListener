@@ -655,7 +655,8 @@ def _mirrorKey(key, index: int) -> str:
 
 
 def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
-                         diftol: float, invGroupElements: list[np.ndarray]):
+                         diftol: float, invGroupElements: list[np.ndarray],
+                         fixed_tol: float | None = None):
     """Use the transformations of the potential
     to generate the mirror phases that have not been traced.
 
@@ -667,12 +668,20 @@ def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
         The tolerance in field space for which to consider two phases equal
     invGroupElements : list[np.ndarray]
         Matrix transformations which leave the potential invariant
+    fixed_tol : float, optional
+        How close to the fixed subspace of a transformation a phase has to stay, at every
+        traced temperature, to count as lying on it and so to be its own image. This is the
+        tolerance the symmetric phases were put on that subspace with, which is finer than
+        ``diftol``: a broken phase can sit nearer to the subspace than two phases have to be
+        to merge, and its image is then a phase of its own. Defaults to ``diftol``.
 
     Returns
     -------
     """
     if invGroupElements == []:
         return None
+    if fixed_tol is None:
+        fixed_tol = diftol
 
     indices = [i for i, g in enumerate(invGroupElements)
                if np.sum(g) != len(g)]          # every transformation but the identity
@@ -687,7 +696,7 @@ def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
         kept = []                                # (index, image) of this phase, in order
         for i in indices:
             g = invGroupElements[i]
-            if _isOwnImage(phase, g, diftol):
+            if _isOwnImage(phase, g, fixed_tol):
                 # its image is the phase itself, so no image is made and links name the phase
                 represents[(str(phase.key), i)] = phase.key
                 continue
@@ -1301,7 +1310,8 @@ class Phases:
                           style="bold green")
         
         if genMirrorPhases:
-            generateMirrorPhases(phases, self.diftol, pot.invGroupElements)
+            generateMirrorPhases(phases, self.diftol, pot.invGroupElements,
+                                 fixed_tol=2 * 100 * self.x_eps)
         return phases
 
     def buildPhaseGraph(self, in_phases: dict[int | str, PhaseInfo], V: Callable):

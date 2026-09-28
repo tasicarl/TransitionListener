@@ -247,6 +247,30 @@ def test_a_phase_that_leaves_its_image_in_between_keeps_its_mirror():
     assert np.allclose(phases["1-m1"].X.ravel(), -X)
 
 
+def test_a_broken_phase_nearer_the_subspace_than_diftol_keeps_its_mirror():
+    """Sitting closer to the fixed subspace than two phases must be to merge is not being on it.
+
+    Between the two tolerances is a phase that the projection leaves where it is, because it is
+    not on the subspace at the tracer's resolution, and whose image is a phase of its own.
+    """
+    T = np.linspace(0.1, 1.0, 8)
+    fixed_tol = 0.2
+    for value in (0.3, 0.45):
+        assert 2 * value > fixed_tol          # not on the subspace
+        assert 2 * value < 1.0                # yet nearer to it than diftol
+        phases = {0: _phase(0, T, value + 0 * T)}
+        ph.generateMirrorPhases(phases, 1.0, Z2, fixed_tol=fixed_tol)
+        assert sorted(phases, key=str) == [0, "0-m1"], value
+        assert np.allclose(phases["0-m1"].X.ravel(), -value)
+
+
+def test_a_phase_on_the_subspace_gets_no_mirror_at_the_same_tolerance():
+    T = np.linspace(0.1, 1.0, 8)
+    phases = {0: _phase(0, T, np.zeros_like(T))}
+    ph.generateMirrorPhases(phases, 1.0, Z2, fixed_tol=0.2)
+    assert sorted(phases, key=str) == [0]
+
+
 def test_a_broken_phase_still_gets_its_mirror():
     T = np.linspace(0.1, 1.0, 8)
     phases = {0: _phase(0, T, 1000.0 - 10 * T)}
