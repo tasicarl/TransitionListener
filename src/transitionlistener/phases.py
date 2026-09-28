@@ -152,6 +152,14 @@ class PhaseInfo:
         y = interpolate.splev(T, self.tck, der=deriv)
         return np.asanyarray(y).T
 
+    def replaceTrace(self, X: np.ndarray, dXdT: np.ndarray) -> None:
+        """Replace the minima and their derivatives at the traced temperatures and
+        rebuild the spline. The temperatures, the key and the links are kept."""
+        self.X = np.asarray(X, dtype=float)
+        self.dXdT = np.asarray(dXdT, dtype=float)
+        k = 3 if len(self.T) > 3 else 1
+        self.tck, _ = interpolate.splprep(self.X.T, u=self.T, s=0, k=k)
+
     def addLinkFrom(self, other_phase) -> None:
         """Add a link from `other_phase` to this phase, checking to see if there
         is a second-order transition.
@@ -677,6 +685,65 @@ def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
         phases[mp.key] = mp
 
 
+def symmetrizeInvariantPhases(phases: dict[int | str, PhaseInfo],
+                              invGroupElements: list[np.ndarray], tol: float) -> list:
+    """Put every phase that is its own mirror image onto the fixed subspace of that symmetry.
+
+    Near a minimum that only the thermal masses hold in place, as the symmetric phase of a
+    classically conformal model, the potential is flat to within the tracing tolerance and the
+    trace drifts off the minimum. ``fmin`` (Nelder-Mead, initial simplex 5% of the starting
+    point) leaves every point within about 20 ``xeps`` of the origin where it is, the step
+    predictor evaluated there pushes the trace further out as the temperature falls, and the
+    last node, at the lowest tracing temperature, is an extrapolation that is not a minimum.
+    The spline through it puts the false vacuum at an arbitrary field value over the lowest
+    decades in temperature, where an extremely supercooled transition happens: in the conformal
+    U(1) at T/v ~ 1e-6 the dark photon came out several times heavier than T there, and the
+    counted entropy of the false vacuum (``bubbledynamics.h_eff_DS``) varied with T.
+
+    A phase that coincides with its image under an element ``g`` of the symmetry group of the
+    potential at every traced temperature, within ``tol``, is invariant under ``g``; its
+    minimum lies exactly on the fixed subspace of ``g``, and it is replaced by its projection
+    ``(X + X g)/2``. Phases that differ from their image anywhere, broken phases and phases
+    that leave the fixed subspace at a second-order transition, are left alone.
+
+    Parameters
+    ----------
+    phases : dict
+        The traced phases, modified in place.
+    invGroupElements : list[np.ndarray]
+        Matrix transformations which leave the potential invariant
+        (``generic_potential.invGroupElements``).
+    tol : float
+        Largest field-space distance, at any traced temperature, between a phase and its
+        image for the two to count as the same.
+
+    Returns
+    -------
+    list
+        The keys of the phases that were projected.
+    """
+    projected = []
+    if not invGroupElements:
+        return projected
+    for phase in phases.values():
+        try:
+            X, dXdT = np.asarray(phase.X, dtype=float), np.asarray(phase.dXdT, dtype=float)
+        except (TypeError, ValueError):
+            continue
+        changed = False
+        for g in invGroupElements:
+            g = np.asarray(g, dtype=float)
+            if np.allclose(g, np.identity(len(g))):
+                continue
+            if np.all(np.linalg.norm(X - X @ g, axis=-1) < tol):
+                X, dXdT = 0.5 * (X + X @ g), 0.5 * (dXdT + dXdT @ g)
+                changed = True
+        if changed:
+            phase.replaceTrace(X, dXdT)
+            projected.append(phase.key)
+    return projected
+
+
 def _removeRedundantPhase(phases: dict[int | str, PhaseInfo],
                           removed_phase: PhaseInfo,
                           redundant_with_phase: PhaseInfo):
@@ -1168,7 +1235,17 @@ class Phases:
             pot.Vtot, pot.gradV, pot.d2V, phases, self.x_eps * 1e-2, diftol=self.diftol,
             verbose=verbose, conversionFactor=self.conversionFactor
         )
-        
+
+        # A phase and its mirror image count as one where the tracer itself would not tell
+        # them apart: two points closer than 2 deltaX_target are the same point for
+        # traceMultiMin.
+        projected = symmetrizeInvariantPhases(phases, getattr(pot, "invGroupElements", []),
+                                              tol=2 * 100 * self.x_eps)
+        if verbose and projected:
+            console.print(
+                f"Projected {len(projected)} phase(s) onto the fixed subspace of the symmetry: "
+                f"{projected}.", style="bold green")
+
         if verbose:
             console.print("After removing redundant phases, {:} phases remain.".format(len(phases)),
                           style="bold green")
