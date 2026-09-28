@@ -53,10 +53,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `(beta/H)_S3` all belong to one equation of state. The default,
   `"dof_table"`, stays defined below about 2 MeV, where after neutrino
   decoupling no single pressure with `dp/dT = s` exists and the potential route
-  has nothing to refer to; it also carries the perturbative QCD corrections and
-  the crossover, and it has no negative-sound-speed failure mode, whereas the
-  potential route returns `c_s^2 <= 0` on 8 of the 94 percolation support points
-  of the 2HDM benchmark.
+  has nothing to refer to, and it carries the perturbative QCD corrections and the
+  crossover, which the daisy-resummed potential does not. On a 2HDM benchmark the
+  counted route gives `3 c_s^2` between 0.981 and 1.004 across the transition,
+  against 0.769 to 1.032 from the potential, whose sound speed follows the thermal
+  masses of the modes that are becoming heavy.
 
 - **Sound speed in the pseudo-trace**: the pseudo-trace strengths now divide
   the pressure of *both* phases by the broken-phase sound speed, as in

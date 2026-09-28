@@ -703,7 +703,7 @@ def _time_temperature_factors(
     for i, temp in enumerate(temperatures):
         t = float(temp)
         try:
-            phase.valAt(t)
+            phase.valAt(t)        # outside the traced range this raises; such a point is skipped
         except Exception:
             continue
         try:
