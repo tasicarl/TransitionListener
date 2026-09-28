@@ -107,8 +107,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   which is the suffix the image itself is given, so every such link pointed at a phase that
   was never created; the links across the upper boundary were built from the key of a lower
   one, and raised `UnboundLocalError` for a phase with an upper link and no lower one; and a
-  link to a phase that turns out to be its own image now names that phase, whose image is
-  not created. Nothing of this is reachable with the default `gen_mirror_phases = False`.
+  link to a phase that turns out to be its own image now names that phase, by the key it
+  has rather than a string of it, since the links are read with `in` against the key of a
+  phase and a traced phase has an integer key. Nothing of this is reachable with the default `gen_mirror_phases = False`.
 
 - **A broken phase with no thermal pressure**: at percolation temperatures far
   below the mass scale, the thermal part of the potential underflows in the

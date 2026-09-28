@@ -684,9 +684,14 @@ def generateMirrorPhases(phases: dict[int | str, PhaseInfo],
         for key, ph in phases.items()
     }
 
-    def linkTarget(key, i: int) -> str:
-        """The image of a linked phase under the transformation at ``i``, or the phase itself."""
-        return str(key) if i in own_image.get(str(key), ()) else _mirrorKey(key, i)
+    def linkTarget(key, i: int):
+        """The image of a linked phase under the transformation at ``i``, or the phase itself.
+
+        The phase itself is returned as the key it has, which for a traced phase is an integer.
+        The links are read with ``in``, against the key of a phase, so a key turned into a
+        string would match nothing.
+        """
+        return key if i in own_image.get(str(key), ()) else _mirrorKey(key, i)
 
     for phase in phases.values():
         new_mphases = []

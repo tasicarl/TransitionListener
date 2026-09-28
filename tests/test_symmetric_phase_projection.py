@@ -153,7 +153,10 @@ def test_a_link_to_a_phase_that_is_its_own_image_points_at_that_phase():
               1: _linked(1, np.zeros_like(T))}          # on the fixed subspace
     ph.generateMirrorPhases(phases, 1e-3, Z2)
     assert sorted(phases, key=str) == [0, "0-m1", 1]
-    assert {str(t) for t in phases["0-m1"].low_trans} == {"1"}
+    # the key itself, not a string of it: the links are read with `in` against a phase key
+    assert phases["0-m1"].low_trans == {1}
+    assert all(not isinstance(t, str) for t in phases["0-m1"].low_trans)
+    assert phases[1].key in phases["0-m1"].low_trans
     assert _dangling(phases) == set()
 
 
