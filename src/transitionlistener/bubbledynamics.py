@@ -15,6 +15,7 @@ Authors:
 import copy
 from dataclasses import dataclass
 import math
+import warnings
 import numpy as np
 from scipy import optimize
 from scipy import interpolate
@@ -852,6 +853,11 @@ _SUBGRID_MAX_STEPS = 2000         # sub-steps per support interval
 _SUBGRID_NEGLIGIBLE = 40.0        # intervals this far below the peak of ln(source) stay whole
 
 
+def _clamp_between(values, first, second):
+    """Hold ``values`` between ``first`` and ``second``, in either order."""
+    return np.clip(values, min(first, second), max(first, second))
+
+
 def _double_integral_subgrid(T, H, S, cooling, scale):
     """Subdivide the support intervals of the double integral where the source varies.
 
@@ -897,6 +903,22 @@ def _double_integral_subgrid(T, H, S, cooling, scale):
     change = np.abs(np.diff(np.where(finite, log_source, 0.0)))
     steps[relevant] = np.clip(np.ceil(change[relevant] / _SUBGRID_MAX_LOG_STEP), 1,
                               _SUBGRID_MAX_STEPS).astype(int)
+    # The cap bounds the memory one support interval can ask for, but it must not degrade the
+    # resolution without saying so. It binds only where a single interval spans more than
+    # _SUBGRID_MAX_STEPS * _SUBGRID_MAX_LOG_STEP in the logarithm of the source; the step then
+    # achieved is change / _SUBGRID_MAX_STEPS, and the trapezoidal error on that interval grows
+    # as its square over twelve.
+    capped = relevant & (np.ceil(change / _SUBGRID_MAX_LOG_STEP) > _SUBGRID_MAX_STEPS)
+    if np.any(capped):
+        achieved = float(np.max(change[capped]) / _SUBGRID_MAX_STEPS)
+        warnings.warn(
+            f"percolation sub-grid limited by _SUBGRID_MAX_STEPS on "
+            f"{int(np.count_nonzero(capped))} support interval(s): the logarithm of the source "
+            f"changes by up to {float(np.max(change[capped])):.3g} across one of them, so it is "
+            f"resolved to {achieved:.3g} instead of the requested {_SUBGRID_MAX_LOG_STEP:.3g}.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
     if np.all(steps == 1):
         return T, H, S, cooling, scale
 
@@ -925,8 +947,16 @@ def _double_integral_subgrid(T, H, S, cooling, scale):
             Tk = np.exp(u)
             pieces["T"].append(Tk)
             pieces["H"].append(np.exp(interp["lnH"](u)))
-            pieces["S"].append(interp["s"](u) * Tk)
-            pieces["cool"].append(interp["cool"](u))
+            # S/T and 3 c_s^2 are interpolated in linear space, where a cubic spline can
+            # overshoot: across an unresolved feature it can leave the range of the two support
+            # values it sits between, and for S/T or 3 c_s^2 that means crossing zero, which would
+            # flip the sign of the nucleation rate or of the comoving step. A positive quantity
+            # between two positive support values stays between them, so it is held there. On a
+            # resolved interval the quantity is monotone, so the bound has almost nothing to do:
+            # it moves the mean bubble separation of a conformal dark U(1) point by four parts in
+            # ten million.
+            pieces["S"].append(_clamp_between(interp["s"](u), S[k] / T[k], S[k + 1] / T[k + 1]) * Tk)
+            pieces["cool"].append(_clamp_between(interp["cool"](u), cooling[k], cooling[k + 1]))
             pieces["scale"].append(np.exp(interp["lna"](u)))
     for key, last in (("T", T), ("H", H), ("S", S), ("cool", cooling), ("scale", scale)):
         pieces[key].append(last[-1:])

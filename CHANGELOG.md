@@ -124,7 +124,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   an exponential rate in de Sitter space and against quadrature for a Gaussian
   turnover, the double integral now agrees to 0.5 % on grids with a gap of
   0.7 e-folds, where it was off by 60 to 380 %. The differential equation
-  method was not affected.
+  method was not affected. Two quantities are interpolated in linear space rather
+  than logarithmically, `S3/T` and `3 c_s^2`, and a cubic spline through them can
+  leave the range of the two support values it sits between where a feature is
+  unresolved, which for a positive quantity would mean crossing zero; both are now
+  held between those two values, which on a resolved interval barely binds: the
+  benchmarks above are unchanged to the digits quoted and the mean bubble separation
+  of a conformal dark U(1) point moves by four parts in ten million. The cap
+  on sub-steps per support interval bounds the memory one interval can ask for, and
+  now warns, naming the resolution actually achieved, on the rare grid where it is
+  what limits that resolution instead of the requested step.
 
 - **Degrees of freedom of the fields of the potential**: `h_eff_DS` and
   `g_eff_DS`, used for the temperature inside the bubbles, for the integration

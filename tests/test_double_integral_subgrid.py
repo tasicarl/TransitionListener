@@ -10,6 +10,7 @@ by adaptive quadrature.
 """
 import math
 import unittest
+import warnings
 
 import numpy as np
 from scipy import integrate
@@ -142,7 +143,13 @@ class ResolutionConstantTests(unittest.TestCase):
             step = bd._SUBGRID_MAX_LOG_STEP
             try:
                 bd._SUBGRID_MAX_LOG_STEP = step / 10.0
-                fine = bd.percIntegral(T, H, S, **kw)
+                # At a tenth of the production step the cap on sub-steps per interval starts to
+                # bind and warns about it, delivering about 0.02 rather than 0.01 on the widest
+                # interval. That is still five times finer than production, and the point of the
+                # test is that the integral does not move even so.
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", RuntimeWarning)
+                    fine = bd.percIntegral(T, H, S, **kw)
             finally:
                 bd._SUBGRID_MAX_LOG_STEP = step
             with self.subTest(gap=gap):
@@ -175,6 +182,39 @@ class ResolutionConstantTests(unittest.TestCase):
             achieved = np.max(np.abs(np.diff(log_source))[relevant])
             with self.subTest(gap=gap):
                 self.assertLess(achieved, 1.5 * bd._SUBGRID_MAX_LOG_STEP)
+
+
+class CapWarningTests(unittest.TestCase):
+    """The cap on sub-steps per interval bounds memory, and may not degrade the resolution silently."""
+
+    def test_no_warning_on_the_grids_the_solver_produces(self):
+        beta = 13.0
+        N_end = math.log(0.34 * beta**4 / (8 * np.pi)) / beta
+        for gap in (0.3, 0.7, 1.5, 2.5):
+            nodes = gappy_nodes(N_end, beta, gap_efolds=gap)
+            T, H = de_sitter_grid(nodes)
+            S = action_for(T, 4 * math.log(H0) + beta * np.asarray(nodes))
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                bd.percIntegral(T, H, S)
+            capped = [w for w in caught if "_SUBGRID_MAX_STEPS" in str(w.message)]
+            with self.subTest(gap=gap):
+                self.assertEqual(capped, [])
+
+    def test_a_warning_names_the_resolution_actually_achieved(self):
+        # one support interval wide enough that the requested step cannot be reached
+        beta = 13.0
+        N_end = math.log(0.34 * beta**4 / (8 * np.pi)) / beta
+        span = 1.2 * bd._SUBGRID_MAX_STEPS * bd._SUBGRID_MAX_LOG_STEP / beta
+        nodes = np.concatenate(([N_end - span], np.linspace(N_end - 3.0 / beta, N_end, 25)))
+        T, H = de_sitter_grid(nodes)
+        S = action_for(T, 4 * math.log(H0) + beta * np.asarray(nodes))
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            bd.percIntegral(T, H, S)
+        messages = [str(w.message) for w in caught if "_SUBGRID_MAX_STEPS" in str(w.message)]
+        self.assertEqual(len(messages), 1, messages)
+        self.assertIn("instead of the requested", messages[0])
 
 
 class DeepHistoryTests(unittest.TestCase):
