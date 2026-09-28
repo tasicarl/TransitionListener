@@ -71,6 +71,49 @@ DRIFTED_T = np.array([1e-10, 0.0167, 0.0667, 0.1167, 0.1667, 0.2223])
 DRIFTED_X = np.array([0.0169, 6.7e-4, 2.5e-4, 1.3e-4, 7.9e-5, 5.1e-5]).reshape(-1, 1)
 
 
+# a two-field model whose potential is invariant under each flip separately, so the group has
+# three non-identity elements rather than one
+Z2xZ2 = [np.diag([-1.0, 1.0]), np.diag([1.0, -1.0]), np.diag([-1.0, -1.0]), np.identity(2)]
+
+
+def test_a_phase_invariant_under_one_element_of_several_is_projected_onto_that_subspace():
+    """With more than one symmetry, only the components the matching elements are odd in go."""
+    T = np.linspace(0.1, 1.0, 8)
+    # large first component, second below the tolerance: invariant under the flip of the second
+    X = np.stack([500.0 + 0.0 * T, 1e-3 * np.sin(7 * T)], axis=-1)
+    phases = {0: _phase(0, T, X)}
+    assert ph.symmetrizeInvariantPhases(phases, Z2xZ2, tol=0.2) == [0]
+    assert np.allclose(phases[0].X[:, 0], 500.0)
+    assert np.all(phases[0].X[:, 1] == 0.0)
+
+
+def test_a_phase_at_the_origin_is_projected_by_every_element():
+    T = np.linspace(0.1, 1.0, 8)
+    X = np.stack([1e-3 * np.sin(7 * T), 1e-3 * np.cos(5 * T)], axis=-1)
+    phases = {0: _phase(0, T, X)}
+    assert ph.symmetrizeInvariantPhases(phases, Z2xZ2, tol=0.2) == [0]
+    assert np.all(phases[0].X == 0.0)
+
+
+def test_mirrors_with_several_symmetries_keep_one_copy_of_each_distinct_image():
+    """The image under the flip of an even component duplicates one of the others."""
+    T = np.linspace(0.1, 1.0, 8)
+    # on the fixed subspace of the second flip, so that element gives back the phase itself
+    phases = {0: _phase(0, T, np.stack([500.0 + 0.0 * T, np.zeros_like(T)], axis=-1))}
+    ph.generateMirrorPhases(phases, 1e-3, Z2xZ2)
+    keys = sorted(phases, key=str)
+    assert keys == [0, "0-m1"], keys
+    assert np.allclose(phases["0-m1"].X[:, 0], -500.0)
+    assert np.all(phases["0-m1"].X[:, 1] == 0.0)
+
+
+def test_a_phase_on_every_fixed_subspace_gets_no_mirror_at_all():
+    T = np.linspace(0.1, 1.0, 8)
+    phases = {1: _phase(1, T, np.zeros((len(T), 2)))}
+    ph.generateMirrorPhases(phases, 1e-3, Z2xZ2)
+    assert sorted(phases, key=str) == [1]
+
+
 def test_a_phase_on_the_fixed_subspace_gets_no_mirror():
     """Its image under the symmetry is itself, so a mirror would be a second copy of it."""
     T = np.linspace(0.1, 1.0, 8)
