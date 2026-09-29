@@ -2476,11 +2476,14 @@ def _tight_tunneling_params(pot):
     return tight
 
 
-def _recompute_actions_tight(pot, temperatures, phase_sym, phase_bro, outdict, dropped):
+def _recompute_actions_tight(pot, temperatures, phase_sym, phase_bro, outdict, progress):
     """Recompute the actions at ``temperatures`` with the path deformation tightened.
 
-    The entries removed to obtain them are appended to ``dropped``, which the caller owns, so that
-    the caller can put the cache back as it was even where this raises part of the way through.
+    ``progress`` is the caller's record of what happened: the cache entries removed, under
+    ``dropped``, so that the caller can put the cache back as it was, and the temperatures actually
+    recomputed, under ``done``. Both matter where this raises part of the way through, when the
+    caller has to restore what was taken and report what was really attempted rather than what was
+    planned.
 
     ``calcAction`` hands back whatever is already in ``outdict`` for a temperature, so an action
     computed at the loose deformation would be returned unchanged and the recomputation would be
@@ -2498,12 +2501,13 @@ def _recompute_actions_tight(pot, temperatures, phase_sym, phase_bro, outdict, d
             if stale_key is not None:
                 stale = outdict.pop(stale_key, None)
                 if isinstance(stale, dict):
-                    dropped.append((stale_key, stale))
+                    progress["dropped"].append((stale_key, stale))
                     replaced = outdict.setdefault("_unstable_action_entries", [])
                     if isinstance(replaced, list):
                         replaced.append({"T": temperature, "action": stale.get("action"),
                                          "reason": "betaH_S3_fit_rescue"})
             actions.append(calcAction(pot, temperature, phase_sym, phase_bro, outdict))
+            progress["done"].append(temperature)
         return np.array(actions, dtype=float)
     finally:
         pot.config.tracingConf.tunneling_params = original
@@ -2666,27 +2670,29 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
     step = fallback_step * T
     step = min(step, 0.8 * (T - tmin) / half, 0.8 * (tmax - T) / half)
     T_stencil = T + step * np.arange(-half, half + 1, dtype=float)
-    diag.update(fit_rescue_attempts=int(T_stencil.size),
-                fit_rescue_rel_span=float(np.max(np.abs(T_stencil / T - 1.0))))
-    # the list is ours, so a failure part of the way through still says what to put back
-    dropped: list = []
+    diag.update(fit_rescue_rel_span=float(np.max(np.abs(T_stencil / T - 1.0))))
+    # the record is ours, so a failure part of the way through still says what was taken from the
+    # cache and how many actions were really recomputed, rather than how many were planned
+    progress: dict = {"dropped": [], "done": []}
     try:
-        tight_S = _recompute_actions_tight(pot, T_stencil, phase_sym, phase_bro, outdict, dropped)
+        tight_S = _recompute_actions_tight(pot, T_stencil, phase_sym, phase_bro, outdict, progress)
     except Exception as exc:                                   # pragma: no cover - solver failure
-        diag.update(fit_rescue_error=f"{type(exc).__name__}: {exc}", fit_rescue_success=False)
-        _restore_dropped_actions(outdict, dropped)
+        diag.update(fit_rescue_attempts=len(progress["done"]),
+                    fit_rescue_error=f"{type(exc).__name__}: {exc}", fit_rescue_success=False)
+        _restore_dropped_actions(outdict, progress["dropped"])
         return betaH
+    diag.update(fit_rescue_attempts=len(progress["done"]))
     finite = np.isfinite(tight_S)
     if int(np.count_nonzero(finite)) < max(n_check, 3):
         diag.update(fit_rescue_success=False)
-        _restore_dropped_actions(outdict, dropped)
+        _restore_dropped_actions(outdict, progress["dropped"])
         return betaH
     T_tight, S_tight = T_stencil[finite], tight_S[finite]
     n_fit_tight = min(n_fit, int(T_tight.size))
     betaH_tight, check_tight, rel_tight = fit_and_check(T_tight, S_tight)
     if rel_tight is None:
         diag.update(fit_rescue_success=False)
-        _restore_dropped_actions(outdict, dropped)
+        _restore_dropped_actions(outdict, progress["dropped"])
         return betaH
     diag.update(betaH_fit=betaH_tight, betaH_check=check_tight, check_rel_diff=rel_tight,
                 fit_unstable=bool(rel_tight > rel_tol),

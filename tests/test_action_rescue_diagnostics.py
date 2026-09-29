@@ -340,6 +340,8 @@ def test_the_cache_is_restored_when_the_solver_fails_part_way_through(monkeypatc
     assert diagnostics["fit_rescue_success"] is False
     assert calls["n"] > 7, "the solver did not fail part of the way through"
     assert diagnostics.get("fit_rescue_error"), "the retry did not go through the failure path"
+    # what was really recomputed, not the size of the stencil that was planned
+    assert diagnostics["fit_rescue_attempts"] == 7, diagnostics["fit_rescue_attempts"]
     for key, payload in original.items():
         assert outdict.get(key) == payload, f"{key} was not put back"
     assert outdict.get("_unstable_action_entries", []) == []
@@ -396,3 +398,14 @@ def test_the_percolation_failure_path_records_the_outcome_before_re_raising():
     tail = block[-500:]
     assert "_record_rescue_outcome(derived, getattr(err," in tail, \
         "the outcome is not recorded before the error is re-raised"
+
+
+def test_the_empty_result_carries_every_flag_and_diagnostic():
+    """A failed random-scan point is written from this dictionary and a successful one from the
+    registry; a key in one and not the other shifts the columns of every mixed output."""
+    from transitionlistener.interface.samplers import get_empty_result
+
+    empty = set(get_empty_result())
+    missing = sorted(name for name in tl_config.all_observables
+                     if name.startswith(("WARNING", "DIAG")) and name not in empty)
+    assert missing == [], missing
