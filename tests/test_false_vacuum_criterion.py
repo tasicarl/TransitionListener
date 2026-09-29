@@ -126,11 +126,16 @@ class PercolationSoundSpeedTests(unittest.TestCase):
         self.assertEqual(value, 1.0 / 3.0)
 
     def test_unusable_counted_entropy_falls_back_to_one_third(self):
-        # The counterpart on the "dof_table" route: a sound speed is available from the
-        # potential, but it may not be used when the counted entropy itself is unusable.
+        # The counterpart on the "dof_table" route. The entropy has to fail only at T
+        # itself: if it failed at the stencil points too, the sound speed would be nan and
+        # the other half of the guard would already return 1/3, so the test would pass
+        # without exercising the entropy half at all.
         phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
-        with mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21), \
-             mock.patch.object(bd, "entropy_density", lambda pot, ph, T, d: np.nan):
+
+        def entropy(pot, ph, T, d, centre=0.5):
+            return np.nan if float(T) == centre else float(T) ** 4
+
+        with mock.patch.object(bd, "entropy_density", entropy):
             value = bd.percolation_sound_speed_sq(
                 object(), phase, 0.5, time_temperature_mode="sound_speed",
                 entropy_definition="dof_table",

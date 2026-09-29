@@ -623,6 +623,11 @@ class TransitionObservables:
                 time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
                 entropy_definition=getattr(ctx.PercolationConf, "entropy_definition", None),
             )
+        except errors.Timeout:
+            # The entropy evaluations inside can time out, and this handler is the last one
+            # between them and the caller. Absorbing a timeout here would turn a timed-out run
+            # into a finite bag-relation `R_*` that looks like a result.
+            raise
         except Exception as err:
             # Optional: without it the separation falls back to the bag relation, as on
             # every release so far. It must not invalidate the percolation splines.

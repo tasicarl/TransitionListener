@@ -17,6 +17,7 @@ from collections.abc import Mapping
 
 from transitionlistener.config import TracingConf
 from transitionlistener import errors
+from transitionlistener import constants as cn
 
 
 ALGORITHM_MODES = ("adaptive_step_size", "fixed_step_size")
@@ -194,9 +195,10 @@ def apply_percolation_overrides(percolation_conf, overrides: dict[str, object]) 
         percolation_conf.time_temperature_mode = mode
     if overrides["percolation_entropy_definition"] is not None:
         definition = str(overrides["percolation_entropy_definition"])
-        if definition not in {"dof_table", "eff_potential"}:
+        if definition not in cn.ENTROPY_DEFINITIONS:
             raise ValueError(
-                "percolation_entropy_definition must be 'dof_table' or 'eff_potential'."
+                "percolation_entropy_definition must be one of "
+                + ", ".join(repr(d) for d in cn.ENTROPY_DEFINITIONS) + "."
             )
         percolation_conf.entropy_definition = definition
 

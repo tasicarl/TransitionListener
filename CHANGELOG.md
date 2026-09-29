@@ -60,18 +60,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   is a question for the first two of those: `(beta/H)_S3` is the slope of the
   action, and at the default path deformation that slope is limited by the scatter
   of `S3/T` rather than by the thermodynamics, on the 2HDM line in particular. The
-  default, 
-  `"dof_table"`, stays defined below about 2 MeV, where after neutrino
-  decoupling no single pressure with `dp/dT = s` exists and the potential route
-  has nothing to refer to, and it carries the perturbative QCD corrections and the
-  crossover, which the daisy-resummed potential does not. Measured at the 2HDM
-  point of `tests/test_potential_broadcasting.py` (lambda1 = 0.006, lambda2 = 0.25,
+  default, `"dof_table"`, stays defined below about 2 MeV, where after neutrino
+  decoupling no single pressure with `dp/dT = s` exists and the potential route has
+  nothing to refer to. How far apart the two are is a property of the model. As a
+  fixed-field probe of the symmetric-phase thermodynamics at the 2HDM point of
+  `tests/test_potential_broadcasting.py` (lambda1 = 0.006, lambda2 = 0.25,
   lambda3 = 8.27, lambda4 = -2.55, lambda5 = 0.76, m12^2 = 14186.7 GeV^2,
-  tan_beta = 17.7, v = 246.22 GeV) in the symmetric phase over T = 160 to 20 GeV,
-  the counted route gives `3 c_s^2` between 0.977 and 1.004, against 0.765 to 1.037
-  from the potential, whose sound speed follows the thermal masses of the modes that
-  are becoming heavy: a 24% separation at the cold end. The spread depends on how
-  far the window reaches, so the window is part of the statement.
+  tan_beta = 17.7, v = 246.22 GeV), with the fields held at the origin: over
+  T = 160 to 31.2 GeV, which is the range in which that phase is traced, the counted
+  route gives `3 c_s^2` between 0.977 and 0.997 against 0.955 to 1.037 from the
+  potential, whose sound speed follows the thermal masses of the modes that are
+  becoming heavy, a separation of 5.5%. Continued to 20 GeV, below the traced range,
+  the potential route falls to 0.765 and the separation reaches 24%, but that is
+  extrapolation: the phase is traced only down to 31.11 GeV and this point does not
+  percolate at all. The window is part of the statement.
 
   **This moves existing results.** The default sound speed previously came from the
   potential while the scale factor came from the counted degrees of freedom, so
@@ -83,7 +85,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   | observable | before | after | change |
   | --- | --- | --- | --- |
   | `Tperc_SM_GeV` | 0.0022119 | 0.0022120 | +0.005% |
-  | `alpha` | 387.10 | 387.04 | -0.015% |
+  | `alpha` | 387.10 | 387.04 | -0.017% |
   | `RH` | 0.070683 | 0.070726 | +0.061% |
   | `betaH_RH` | 62.640 | 62.601 | -0.062% |
   | `betaH_S3` | 63.232 | 63.190 | -0.066% |

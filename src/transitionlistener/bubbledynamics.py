@@ -658,10 +658,12 @@ ENTROPY_DEFINITIONS = cn.ENTROPY_DEFINITIONS
 
 # Relative step of the logarithmic entropy derivative of the "dof_table" scheme. The counted
 # entropy is a smooth function of the temperature (the Standard Model part is a spline through a
-# Savitzky-Golay-filtered table), so the choice is not delicate. Measured on the conformal dark
-# U(1) at g = 0.692, v = 6 GeV, where internal temperatures 16 to 30 sit on the QCD crossover:
-# relative to the 1e-4 value, every step between 1e-3 and 1e-6 agrees to better than 1.2e-5,
-# and 1e-5 and below to better than 1.2e-7. A 1e-2 step is too coarse there, reaching 2.3e-4.
+# Savitzky-Golay-filtered table), so the choice is not delicate over several decades. Measured on
+# the conformal dark U(1) at g = 0.692, v = 6 GeV, on 60 points over internal temperatures 16 to
+# 30, which sit on the QCD crossover: the largest relative deviation of c_s^2 from its value at
+# this step is 1.5e-4 for a 1e-3 step and 1.5e-6 for 1e-5 and 1e-6, so the residual is dominated
+# by the table's own structure rather than by the step. A 1e-2 step is too coarse there, reaching
+# 4.5e-3 at the worst point.
 _ENTROPY_REL_STEP = 1.0e-4
 
 
@@ -727,8 +729,11 @@ def _time_temperature_factors(
     entropy = np.full_like(temperatures, np.nan, dtype=float)
     for i, temp in enumerate(temperatures):
         t = float(temp)
+        # `valAt` extrapolates its spline rather than raising, so this is not a range check; it
+        # only skips a temperature at which the traced phase cannot be evaluated at all. The
+        # range itself is the caller's: the grid comes from `_phase_overlap_interval`.
         try:
-            phase.valAt(t)        # outside the traced range this raises; such a point is skipped
+            phase.valAt(t)
         except errors.Timeout:
             raise
         except Exception:
@@ -741,8 +746,10 @@ def _time_temperature_factors(
             entropy_here = np.nan
         try:
             if definition == "eff_potential":
-                # s/(T ds/dT) with s = -dV/dT is exactly (dV/dT)/(T d2V/dT2); the dedicated
-                # routine keeps the step rule that was tuned for the second derivative.
+                # At a fixed field value, s/(T ds/dT) with s = -dV/dT is (dV/dT)/(T d2V/dT2),
+                # and the dedicated routine keeps the step rule that was tuned for the second
+                # derivative. It differentiates at fixed X while the counted branch below follows
+                # the phase; on the 2HDM symmetric phase the two agree to about 1e-6.
                 cs_sq = calcSoundSpeedSq(pot, phase.valAt(t), t)
             else:
                 h = t * _ENTROPY_REL_STEP

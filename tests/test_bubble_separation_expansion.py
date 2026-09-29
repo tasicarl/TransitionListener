@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import io
 import unittest
@@ -14,6 +15,9 @@ from scipy import integrate
 
 from transitionlistener import bubbledynamics as bd
 from transitionlistener import errors
+from transitionlistener import runtime_options
+from transitionlistener.config import PercolationConf
+from transitionlistener import constants as cn
 from transitionlistener.helper_functions import load_potential
 
 REPO = Path(__file__).resolve().parents[1]
@@ -287,25 +291,64 @@ class SchemeSeparationTests(unittest.TestCase):
                 m12_sq_GeV2=14186.7, tan_beta=17.7, yukawa_type=1,
                 v_GeV=246.21965079413735), verbose=False)
         phase = FixedPhase([0.0] * pot.Ndim)
-        T = np.geomspace(160.0, 20.0, 80)
+        # 31.2 GeV is where that phase stops being traced, so the comparison stays inside
+        # the range the solver can reach. Continuing to 20 GeV would widen the separation
+        # to 24%, but by extrapolating the phase.
+        T = np.geomspace(160.0, 31.2, 80)
 
-        cooling = {}
+        cooling, log_entropy = {}, {}
         for definition in ("dof_table", "eff_potential"):
-            _, cooling[definition] = bd.expansion_interpolants(
+            log_entropy[definition], cooling[definition] = bd.expansion_interpolants(
                 pot, phase, T, entropy_definition=definition)
 
         counted = np.array([float(cooling["dof_table"](t)) for t in T])
         potential = np.array([float(cooling["eff_potential"](t)) for t in T])
 
-        # Measured on this point over 160 -> 20 GeV: 3 c_s^2 stays within 0.977 to 1.004
-        # for the counted route and falls to 0.765 for the potential, a 24% separation at
-        # the cold end. Requiring 10% leaves room for solver tuning while still failing
-        # outright if the two schemes ever coincide.
+        # Measured in this window: 3 c_s^2 stays within 0.977 to 0.997 for the counted
+        # route against 0.955 to 1.037 from the potential, a 5.5% separation. Requiring 3%
+        # leaves room for solver tuning while still failing outright if the two schemes
+        # ever coincide.
         separation = np.abs(potential / counted - 1.0).max()
-        self.assertGreater(separation, 0.10)
-        self.assertLess(counted.min(), 1.01)
-        self.assertGreater(counted.min(), 0.90)
-        self.assertLess(potential.min(), 0.85)
+        self.assertGreater(separation, 0.03)
+
+        # The scale factor must separate too, not only the sound speed. On the eff_potential
+        # route the sound speed comes from `calcSoundSpeedSq` and never from
+        # `entropy_density`, so without this the scheme could be ignored for a(T) alone.
+        ratio_counted = float(log_entropy["dof_table"](T[0]) - log_entropy["dof_table"](T[-1]))
+        ratio_potential = float(
+            log_entropy["eff_potential"](T[0]) - log_entropy["eff_potential"](T[-1]))
+        self.assertGreater(abs(ratio_potential - ratio_counted), 0.01)
+
+    def test_the_potential_scale_factor_follows_the_potential(self):
+        """The a(T) of "eff_potential" must be -dV/dT, on a point where that is visible.
+
+        ``ModelThermodynamicsTests`` makes the same check on the conformal dark U(1), where
+        the two schemes' entropy ratios differ by only 1.1e-3 and its tolerance cannot tell
+        them apart. Here they differ by more than a percent.
+        """
+        with contextlib.redirect_stdout(io.StringIO()):
+            pot = load_potential(str(REPO / "models/TL_2HDM.py"), "R2HDM")(dict(
+                lambda1=0.006, lambda2=0.25, lambda3=8.27, lambda4=-2.55, lambda5=0.76,
+                m12_sq_GeV2=14186.7, tan_beta=17.7, yukawa_type=1,
+                v_GeV=246.21965079413735), verbose=False)
+        phase = FixedPhase([0.0] * pot.Ndim)
+        T = np.geomspace(160.0, 31.2, 80)
+
+        logEntropyInt, _ = bd.expansion_interpolants(
+            pot, phase, T, entropy_definition="eff_potential")
+
+        def minus_dVdT(temp):
+            dT = temp * 1e-4
+            return -float(np.squeeze(
+                pot.dVdT(phase.valAt(temp), temp, dT=dT, include_decoupled=False)))
+
+        ratio = float(np.exp(logEntropyInt(T[0]) - logEntropyInt(T[-1])))
+        self.assertTrue(np.isclose(ratio, minus_dVdT(T[0]) / minus_dVdT(T[-1]),
+                                   rtol=2e-3, atol=0))
+        # and it must NOT be the counted entropy, which is what makes this test bite.
+        counted_ratio = (bd.entropy_density(pot, phase, float(T[0]), "dof_table")
+                         / bd.entropy_density(pot, phase, float(T[-1]), "dof_table"))
+        self.assertGreater(abs(ratio / counted_ratio - 1.0), 0.01)
 
 
 class ModelThermodynamicsTests(unittest.TestCase):
@@ -431,6 +474,166 @@ class EntropyDefinitionConsistencyTests(unittest.TestCase):
         self.assertAlmostEqual(cs_sq[2], 0.25, places=6)
         # where it does not, the temperature contributes neither and keeps the bag fallback
         self.assertAlmostEqual(cs_sq[1], 1.0 / 3.0, places=12)
+
+class TimeoutPropagationTests(unittest.TestCase):
+    """A run's own timeout may not be absorbed by the entropy evaluations.
+
+    ``errors.Timeout`` subclasses ``Exception`` and is raised from a signal handler, so it
+    can fire inside any of the three guarded potential evaluations. Swallowing it turns a
+    timed-out run into a silent bag fallback that looks like a result.
+    """
+
+    def _potential(self):
+        return load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+                              "specific_potential")(
+            {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
+
+    def test_a_timeout_in_the_phase_evaluation_propagates(self):
+        phase = FixedPhase([0.0])
+        def boom(T, deriv=0):
+            raise errors.Timeout()
+        phase.valAt = boom
+        with self.assertRaises(errors.Timeout):
+            bd._time_temperature_factors(self._potential(), phase, np.array([20.0]),
+                                         mode="sound_speed", definition="dof_table")
+
+    def test_a_timeout_in_the_entropy_propagates(self):
+        calls = {"n": 0}
+        def boom(pot, phase, T, definition):
+            calls["n"] += 1
+            raise errors.Timeout()
+        with mock.patch.object(bd, "entropy_density", boom):
+            with self.assertRaises(errors.Timeout):
+                bd._time_temperature_factors(self._potential(), FixedPhase([0.0]),
+                                             np.array([20.0]), mode="sound_speed",
+                                             definition="dof_table")
+        self.assertGreater(calls["n"], 0)
+
+    def test_a_timeout_in_the_sound_speed_propagates(self):
+        # The potential route reaches calcSoundSpeedSq inside the third handler.
+        with mock.patch.object(bd, "entropy_density", lambda pot, ph, T, d: float(T) ** 4), \
+             mock.patch.object(bd, "calcSoundSpeedSq",
+                               mock.Mock(side_effect=errors.Timeout())):
+            with self.assertRaises(errors.Timeout):
+                bd._time_temperature_factors(self._potential(), FixedPhase([0.0]),
+                                             np.array([20.0]), mode="sound_speed",
+                                             definition="eff_potential")
+
+
+class EntropyStencilClampTests(unittest.TestCase):
+    """The entropy derivative may not step outside the range the phase was traced in."""
+
+    class BoundedPhase(FixedPhase):
+        Tmin = 40.0
+        Tmax = 60.0
+
+    def _cs_sq(self, phase, T):
+        # s ~ T^4 gives c_s^2 = 1/4 exactly, whichever side the stencil falls on.
+        with mock.patch.object(bd, "entropy_density", lambda pot, ph, t, d: float(t) ** 4):
+            sound_speed_sq, _ = bd._time_temperature_factors(
+                object(), phase, np.array([T]), mode="sound_speed", definition="dof_table")
+        return float(sound_speed_sq[0])
+
+    def test_the_stencil_is_one_sided_at_both_edges(self):
+        phase = self.BoundedPhase([0.0])
+        for T in (phase.Tmin, 50.0, phase.Tmax):
+            with self.subTest(T=T):
+                self.assertAlmostEqual(self._cs_sq(phase, T), 0.25, places=6)
+
+    def test_a_phase_without_bounds_still_works(self):
+        # Test doubles and older phase objects carry no Tmin/Tmax.
+        self.assertAlmostEqual(self._cs_sq(FixedPhase([0.0]), 50.0), 0.25, places=6)
+
+    def test_a_degenerate_range_falls_back_instead_of_dividing_by_zero(self):
+        class Pinned(FixedPhase):
+            Tmin = 50.0
+            Tmax = 50.0
+        self.assertAlmostEqual(self._cs_sq(Pinned([0.0]), 50.0), 1.0 / 3.0, places=12)
+
+
+class EntropyDefinitionOverrideTests(unittest.TestCase):
+    """The scheme is selectable per run, like the other percolation controls."""
+
+    @staticmethod
+    def percolation_conf(**overrides):
+        # A real conf, because apply_percolation_overrides also touches the grid controls.
+        conf = PercolationConf()
+        runtime_options.apply_percolation_overrides(conf, overrides)
+        return conf
+
+    def test_the_definition_is_a_percolation_override(self):
+        self.assertIn("percolation_entropy_definition",
+                      runtime_options.PERCOLATION_OVERRIDE_KEYS)
+        self.assertEqual(
+            self.percolation_conf(
+                percolation_entropy_definition="eff_potential").entropy_definition,
+            "eff_potential")
+
+    def test_the_default_is_left_alone_when_the_override_is_absent(self):
+        self.assertEqual(self.percolation_conf().entropy_definition, "dof_table")
+
+    def test_an_unknown_definition_is_refused_by_the_override(self):
+        with self.assertRaises(ValueError):
+            self.percolation_conf(percolation_entropy_definition="dof_tabel")
+
+    def test_the_override_offers_exactly_the_documented_definitions(self):
+        # One list, so the override cannot drift from what the solvers accept.
+        for definition in cn.ENTROPY_DEFINITIONS:
+            with self.subTest(definition=definition):
+                self.assertEqual(
+                    self.percolation_conf(
+                        percolation_entropy_definition=definition).entropy_definition,
+                    definition)
+
+
+class SchemeForwardingTests(unittest.TestCase):
+    """Every call that computes a time-temperature factor must be told the scheme.
+
+    Deleting the forwarding leaves the suite green otherwise: `Tperc` would be computed
+    with the default entropy while the mean bubble separation used the chosen one, which is
+    the mixing this setting exists to end. This is a wiring invariant, so it is checked on
+    the call graph rather than by running a scan.
+    """
+
+    CONSUMERS = ("percIntegralODE_full_sweep", "expansion_interpolants",
+                 "_time_temperature_factors", "percolation_sound_speed_sq")
+
+    MODULES = ("bubbledynamics.py", "percolation_adaptivestepsize.py",
+               "percolation_adaptive_gridbuilders.py", "transitionObservables.py")
+
+    @staticmethod
+    def _called_name(node):
+        func = node.func
+        if isinstance(func, ast.Name):
+            return func.id
+        if isinstance(func, ast.Attribute):
+            return func.attr
+        return None
+
+    def test_every_consumer_call_forwards_the_entropy_definition(self):
+        root = Path(bd.__file__).parent
+        seen = 0
+        for name in self.MODULES:
+            tree = ast.parse((root / name).read_text())
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                called = self._called_name(node)
+                if called not in self.CONSUMERS:
+                    continue
+                keywords = {kw.arg for kw in node.keywords}
+                seen += 1
+                if called == "_time_temperature_factors":
+                    # The private helper spells it `definition` and is called positionally,
+                    # (pot, phase, T, mode, definition), so five positional arguments or the
+                    # keyword both count as forwarding it.
+                    if "definition" in keywords or len(node.args) >= 5:
+                        continue
+                with self.subTest(module=name, call=called, line=node.lineno):
+                    self.assertIn("entropy_definition", keywords)
+        # If the consumers are ever renamed this test would silently check nothing.
+        self.assertGreater(seen, 5)
+
 
 
 if __name__ == "__main__":
