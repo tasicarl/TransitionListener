@@ -84,8 +84,13 @@ class PercolationSoundSpeedTests(unittest.TestCase):
         self.assertEqual(value, 1.0 / 3.0)
 
     def test_eff_potential_scheme_uses_the_potential(self):
+        # A temperature contributes its sound speed and its scale factor together or not at all,
+        # so the entropy has to be available for the sound speed to be read; the bare object
+        # standing in for the potential cannot provide one.
         phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
-        with mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21):
+        with mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21), \
+                mock.patch.object(bd, "entropy_density",
+                                  lambda pot, ph, T, d: float(T) ** 3.0):
             value = bd.percolation_sound_speed_sq(
                 object(), phase, 0.5, time_temperature_mode="sound_speed",
                 entropy_definition="eff_potential",

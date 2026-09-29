@@ -226,7 +226,13 @@ class FullSweepTests(unittest.TestCase):
 class BetaTimeFactorTests(unittest.TestCase):
     """The 3 c_s^2 factor on (beta/H)_S3 must come from the percolation history."""
 
-    def _factor(self, mode, gw_sound_speed, definition="eff_potential"):
+    def _factor(self, mode, gw_sound_speed, definition="eff_potential", entropy=None):
+        """The factor at one temperature, with a usable entropy unless one is given.
+
+        A temperature contributes its sound speed and its scale factor together or not at all,
+        so the entropy has to work for the sound speed to be read at all; the bare object below
+        stands in for a potential and cannot provide one.
+        """
         from transitionlistener.transitionObservables import TransitionObservables
 
         ctx = types.SimpleNamespace(
@@ -238,7 +244,9 @@ class BetaTimeFactorTests(unittest.TestCase):
                                                   entropy_definition=definition),
         )
         obs = TransitionObservables.__new__(TransitionObservables)
-        with mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21):
+        entropy = entropy if entropy is not None else (lambda pot, ph, T, d: float(T) ** 3.0)
+        with mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21), \
+                mock.patch.object(bd, "entropy_density", entropy):
             return TransitionObservables._beta_time_temperature_factor(obs, ctx, 0.5)
 
     def test_gw_sound_speed_setting_does_not_enter(self):
@@ -252,9 +260,9 @@ class BetaTimeFactorTests(unittest.TestCase):
     def test_the_factor_follows_the_entropy_scheme(self):
         # The beta/H factor is 3 c_s^2 of the percolation history, so it must change with
         # the scheme: s ~ T^4 gives 3 c_s^2 = 3/4, whatever the potential says.
-        with mock.patch.object(bd, "entropy_density", lambda pot, ph, T, d: float(T) ** 4.0):
-            self.assertAlmostEqual(
-                self._factor("sound_speed", "compute", definition="dof_table"), 0.75, places=5)
+        self.assertAlmostEqual(
+            self._factor("sound_speed", "compute", definition="dof_table",
+                         entropy=lambda pot, ph, T, d: float(T) ** 4.0), 0.75, places=5)
 
     def test_bag_mode_gives_one(self):
         for definition in ("dof_table", "eff_potential"):
@@ -305,3 +313,63 @@ class ModelThermodynamicsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EntropyDefinitionConsistencyTests(unittest.TestCase):
+    """The two readings of one entropy, and the solver that does not implement the choice."""
+
+    @staticmethod
+    def _potential_with(mode, definition):
+        """A stand-in whose settings are the real defaults with these two changed."""
+        from transitionlistener.config import PercolationConf
+
+        conf = PercolationConf()
+        conf.algorithm_mode, conf.entropy_definition = mode, definition
+        return types.SimpleNamespace(config=types.SimpleNamespace(percolationConf=conf))
+
+    def test_the_fixed_step_solver_refuses_a_definition_it_does_not_implement(self):
+        """It keeps its own time-temperature relation; ignoring the setting would be silent."""
+        with self.assertRaises(errors.PercolationError) as caught:
+            bd._build_percolation_settings(
+                self._potential_with("fixed_step_size", "eff_potential"), 20)
+        self.assertIn("fixed_step_size", str(caught.exception))
+        self.assertIn("eff_potential", str(caught.exception))
+
+    def test_the_default_definition_passes_on_either_solver(self):
+        for mode in ("adaptive_step_size", "fixed_step_size"):
+            with self.subTest(mode=mode):
+                bd._build_percolation_settings(self._potential_with(mode, "dof_table"), 20)
+
+    def test_an_unknown_definition_is_refused(self):
+        with self.assertRaises(errors.PercolationError):
+            bd._build_percolation_settings(
+                self._potential_with("adaptive_step_size", "something_else"), 20)
+
+    def test_a_temperature_contributes_both_factors_or_neither(self):
+        """Keeping one where the other is unusable mixes the schemes this setting exists to end."""
+
+        class Phase:
+            Tmin, Tmax = 1.0, 100.0
+            def valAt(self, T):
+                return np.array([1.0])
+
+        temperatures = np.array([40.0, 50.0, 60.0])
+
+        # Narrower than the derivative step of 1e-4 T, so the sound speed at the middle point is
+        # perfectly well determined from its two neighbours while the entropy there is not. That
+        # is the only configuration that tells the two behaviours apart: a window wide enough to
+        # swallow the derivative steps leaves the sound speed undefined either way.
+        def entropy_that_fails_at_one_point(pot, phase, T, definition="dof_table"):
+            if abs(float(T) - 50.0) < 1.0e-3:
+                raise RuntimeError("no entropy here")
+            return float(T) ** 4               # 1/4, so a measured value differs from the fallback
+
+        with mock.patch.object(bd, "entropy_density", entropy_that_fails_at_one_point):
+            cs_sq, scale = bd._time_temperature_factors(object(), Phase(), temperatures,
+                                                        definition="dof_table")
+        cs_sq = np.asarray(cs_sq, dtype=float)
+        # where the entropy works, the sound speed is measured from it
+        self.assertAlmostEqual(cs_sq[0], 0.25, places=6)
+        self.assertAlmostEqual(cs_sq[2], 0.25, places=6)
+        # where it does not, the temperature contributes neither and keeps the bag fallback
+        self.assertAlmostEqual(cs_sq[1], 1.0 / 3.0, places=12)

@@ -345,6 +345,22 @@ def _build_percolation_settings(pot, nAction: int):
             "percolation_time_temperature_mode must be 'sound_speed' or "
             f"'bag', got {time_temperature_mode!r}."
         )
+    entropy_definition = str(getattr(conf, "entropy_definition", ENTROPY_DEFINITIONS[0]))
+    if entropy_definition not in ENTROPY_DEFINITIONS:
+        raise errors.PercolationError(
+            f"percolation_entropy_definition must be {ENTROPY_DEFINITIONS[0]!r} or "
+            f"{ENTROPY_DEFINITIONS[1]!r}, got {entropy_definition!r}."
+        )
+    if algorithm_mode == "fixed_step_size" and entropy_definition != ENTROPY_DEFINITIONS[0]:
+        # That solver keeps its own time-temperature relation, which takes the scale factor from
+        # the counted degrees of freedom and the sound speed from the potential. It does not read
+        # this setting, and silently ignoring a thermodynamic choice is worse than refusing it.
+        raise errors.PercolationError(
+            f"percolation_entropy_definition={entropy_definition!r} is not implemented for "
+            "percolation_algorithm_mode='fixed_step_size', whose time-temperature relation is "
+            "its own. Use the adaptive step size solver, or leave the definition at "
+            f"{ENTROPY_DEFINITIONS[0]!r}."
+        )
 
     n_action_min = max(int(getattr(conf, "n_action_min", 20)), 2)
     n_action_increment = max(int(getattr(conf, "n_action_increment", 5)), 1)
@@ -354,6 +370,7 @@ def _build_percolation_settings(pot, nAction: int):
     conf.algorithm_mode = algorithm_mode
     conf.integral_method = integral_method
     conf.time_temperature_mode = time_temperature_mode
+    conf.entropy_definition = entropy_definition
     conf.n_action_min = n_action_min
     conf.n_action_increment = n_action_increment
     conf.n_action_max = n_action_max
@@ -650,12 +667,15 @@ def entropy_density(pot, phase, T: float, definition: str = "dof_table") -> floa
     ``2 pi^2/45`` is dropped from the counted form and the two schemes are not on a common
     absolute normalisation.
 
-    ``"dof_table"`` counts the modes of the potential as free particles at their
-    zero-temperature masses and adds the tabulated entropy degrees of freedom of the coupled
-    radiation. ``"eff_potential"`` takes ``-dV/dT`` of the effective potential, which carries
-    the thermal masses and the Arnold-Espinosa daisy resummation but none of the perturbative
-    corrections in the table. Neither contains the other; see the ``entropy_definition``
-    setting.
+    Both describe the same plasma: the fields of the potential and the coupled radiation bath,
+    without the decoupled one. They differ in how they treat the fields. ``"dof_table"`` counts
+    them as free particles at their zero-temperature masses and adds the tabulated entropy
+    degrees of freedom of the coupled bath. ``"eff_potential"`` takes ``-dV/dT``, which gives
+    the fields their thermal masses and the Arnold-Espinosa daisy term, and which carries the
+    tabulated bath with its perturbative corrections as well, since the field-independent part
+    of the potential is built from the same tables. What it does not have is those corrections
+    for the fields of the potential themselves. Neither route contains the other; see the
+    ``entropy_definition`` setting.
     """
     t = float(T)
     if definition == "eff_potential":
@@ -729,9 +749,14 @@ def _time_temperature_factors(
         # A sound speed outside (0, 1] means the traced phase has stopped being a sensible
         # equilibrium, which happens far below completion, where the grid still reaches but
         # the false vacuum no longer describes a plasma. The bag value is the fallback there.
-        if np.isfinite(cs_sq) and 0.0 < cs_sq <= 1.0:
+        # The two are one entropy read twice, so a temperature contributes both or neither:
+        # keeping a sound speed where the entropy is unusable, or the other way round, would
+        # build the scale factor and the time-temperature relation from different amounts of
+        # information, which is the mixing this setting exists to end.
+        usable = (np.isfinite(cs_sq) and 0.0 < cs_sq <= 1.0
+                  and np.isfinite(entropy_here) and entropy_here > 0.0)
+        if usable:
             sound_speed_sq[i] = float(cs_sq)
-        if np.isfinite(entropy_here) and entropy_here > 0.0:
             entropy[i] = entropy_here
 
     # The scale factor follows from entropy conservation, a^3 s = const, which is the integral
