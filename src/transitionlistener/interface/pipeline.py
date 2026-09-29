@@ -267,7 +267,9 @@ def record_runtime(result, elapsed: float) -> None:
     """
     if not isinstance(result, dict):
         return
-    observables = result.get("strongestTransitionObservables")
+    # setdefault, not get: a point that failed took time too, and that is the case where knowing
+    # it matters most.
+    observables = result.setdefault("strongestTransitionObservables", {})
     if isinstance(observables, dict):
         observables["DIAG:runtime_s"] = float(elapsed)
 

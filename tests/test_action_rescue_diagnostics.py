@@ -269,3 +269,46 @@ def test_both_retries_tighten_through_the_same_helper():
     assert "_tight_tunneling_params(pot)" in source
     assert 'deform["converge_0"] = 1.0' not in source
     assert 'deform["fRatioConv"] = 5.0e-3' not in source
+
+
+def test_a_retry_whose_answer_is_not_used_puts_the_cache_back(monkeypatch):
+    """The value reported then came from the samples as they were, and the cache must agree."""
+    def raising(pot, T, phase_sym, phase_bro, outdict):
+        raise RuntimeError("the solver gave up")
+
+    monkeypatch.setattr(bd, "calcAction", raising)
+    original = {T_EVAL: {"action": 1234.0}}
+    outdict = dict(original)
+    betaH = bd.calc_betaH_S3(T_EVAL, _Interp(T_SAMPLES, _spoiled()), outdict, _Pot(),
+                             _Phase(), _Phase(), False, diagnostics={})
+    assert outdict[T_EVAL] == original[T_EVAL], "the cache still misses what the retry removed"
+    assert outdict.get("_unstable_action_entries", []) == []
+    assert np.isfinite(betaH)
+
+
+def test_the_stencil_stays_inside_the_traced_range():
+    """The outermost sample sits at `half` steps from T, so the cap has to scale with it."""
+    seen = []
+
+    def record(pot, T, phase_sym, phase_bro, outdict):
+        seen.append(float(T))
+        return float(np.interp(T, T_SAMPLES, SMOOTH))
+
+    # Thirteen fit points put the outermost sample six steps out, where a cap that does not
+    # know how many there are lets it past the edge. The support has to be at least that large,
+    # or the sparse-support fallback runs instead and no retry happens at all.
+    tmin, tmax = 49.0, 51.0
+    pot = _Pot()
+    pot.config.percolationConf.betaH_S3_fit_points = 13
+    pot.config.percolationConf.betaH_S3_fallback_rel_step = 0.05
+    diagnostics: dict = {}
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(bd, "calcAction", record)
+    try:
+        bd.calc_betaH_S3(T_EVAL, _Interp(T_SAMPLES, _spoiled()), {}, pot,
+                         _Phase(tmin, tmax), _Phase(tmin, tmax), False, diagnostics=diagnostics)
+    finally:
+        monkey.undo()
+    assert diagnostics.get("fit_rescue_attempts"), "the retry did not run, so nothing was tested"
+    assert min(seen) > tmin, f"{min(seen)} is below the traced range"
+    assert max(seen) < tmax, f"{max(seen)} is above the traced range"

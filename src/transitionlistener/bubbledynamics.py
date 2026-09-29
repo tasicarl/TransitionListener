@@ -2479,6 +2479,9 @@ def _tight_tunneling_params(pot):
 def _recompute_actions_tight(pot, temperatures, phase_sym, phase_bro, outdict):
     """Recompute the actions at ``temperatures`` with the path deformation tightened.
 
+    Returns the actions and the cache entries that were removed to obtain them, so that a caller
+    that ends up not using them can put the cache back as it was.
+
     ``calcAction`` hands back whatever is already in ``outdict`` for a temperature, so an action
     computed at the loose deformation would be returned unchanged and the recomputation would be
     silent about it. The percolation temperature is always in there. Every entry the stencil
@@ -2486,6 +2489,7 @@ def _recompute_actions_tight(pot, temperatures, phase_sym, phase_bro, outdict):
     and kept for the record.
     """
     original = pot.config.tracingConf.tunneling_params
+    dropped: list[tuple[object, dict]] = []
     try:
         pot.config.tracingConf.tunneling_params = _tight_tunneling_params(pot)
         actions = []
@@ -2494,14 +2498,32 @@ def _recompute_actions_tight(pot, temperatures, phase_sym, phase_bro, outdict):
             stale_key = _matching_outdict_key(outdict, temperature)
             if stale_key is not None:
                 stale = outdict.pop(stale_key, None)
-                replaced = outdict.setdefault("_unstable_action_entries", [])
-                if isinstance(replaced, list) and isinstance(stale, dict):
-                    replaced.append({"T": temperature, "action": stale.get("action"),
-                                     "reason": "betaH_S3_fit_rescue"})
+                if isinstance(stale, dict):
+                    dropped.append((stale_key, stale))
+                    replaced = outdict.setdefault("_unstable_action_entries", [])
+                    if isinstance(replaced, list):
+                        replaced.append({"T": temperature, "action": stale.get("action"),
+                                         "reason": "betaH_S3_fit_rescue"})
             actions.append(calcAction(pot, temperature, phase_sym, phase_bro, outdict))
-        return np.array(actions, dtype=float)
+        return np.array(actions, dtype=float), dropped
     finally:
         pot.config.tracingConf.tunneling_params = original
+
+
+def _restore_dropped_actions(outdict, dropped) -> None:
+    """Put back the actions a retry removed, for a retry whose answer is not used.
+
+    The value that is reported then came from the samples as they were, and the cache has to
+    say the same thing. Entries recomputed successfully are left in place: they are the better
+    number for whatever asks next.
+    """
+    for key, payload in dropped or ():
+        outdict[key] = payload
+    replaced = outdict.get("_unstable_action_entries")
+    if isinstance(replaced, list):
+        outdict["_unstable_action_entries"] = [
+            entry for entry in replaced if entry.get("reason") != "betaH_S3_fit_rescue"
+        ]
 
 
 def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phase_sym, phase_bro, verbose=False,
@@ -2638,26 +2660,33 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
     # undetermined. Recomputing the support samples would only cure the first, so the fit is
     # repeated on a stencil of its own, spaced as the sparse-support fallback spaces one, with
     # the deformation tightened as the rate-jitter rescue tightens it.
-    step = fallback_step * T
-    step = min(step, 0.2 * (T - tmin), 0.2 * (tmax - T))
     half = max(int(n_fit) // 2, max(n_check, 3) // 2 + 1)
+    # The outermost sample sits at half steps from T, so the cap on the step has to know how
+    # many there are: the sparse-support fallback takes two and can afford a fifth of the
+    # distance to the edge of the overlap each way.
+    step = fallback_step * T
+    step = min(step, 0.8 * (T - tmin) / half, 0.8 * (tmax - T) / half)
     T_stencil = T + step * np.arange(-half, half + 1, dtype=float)
     diag.update(fit_rescue_attempts=int(T_stencil.size),
                 fit_rescue_rel_span=float(np.max(np.abs(T_stencil / T - 1.0))))
+    dropped: list = []
     try:
-        tight_S = _recompute_actions_tight(pot, T_stencil, phase_sym, phase_bro, outdict)
+        tight_S, dropped = _recompute_actions_tight(pot, T_stencil, phase_sym, phase_bro, outdict)
     except Exception as exc:                                   # pragma: no cover - solver failure
         diag.update(fit_rescue_error=f"{type(exc).__name__}: {exc}", fit_rescue_success=False)
+        _restore_dropped_actions(outdict, dropped)
         return betaH
     finite = np.isfinite(tight_S)
     if int(np.count_nonzero(finite)) < max(n_check, 3):
         diag.update(fit_rescue_success=False)
+        _restore_dropped_actions(outdict, dropped)
         return betaH
     T_tight, S_tight = T_stencil[finite], tight_S[finite]
     n_fit_tight = min(n_fit, int(T_tight.size))
     betaH_tight, check_tight, rel_tight = fit_and_check(T_tight, S_tight)
     if rel_tight is None:
         diag.update(fit_rescue_success=False)
+        _restore_dropped_actions(outdict, dropped)
         return betaH
     diag.update(betaH_fit=betaH_tight, betaH_check=check_tight, check_rel_diff=rel_tight,
                 fit_unstable=bool(rel_tight > rel_tol),
