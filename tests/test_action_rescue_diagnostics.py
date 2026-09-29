@@ -312,3 +312,46 @@ def test_the_stencil_stays_inside_the_traced_range():
     assert diagnostics.get("fit_rescue_attempts"), "the retry did not run, so nothing was tested"
     assert min(seen) > tmin, f"{min(seen)} is below the traced range"
     assert max(seen) < tmax, f"{max(seen)} is above the traced range"
+
+
+def test_the_cache_is_restored_when_the_solver_fails_part_way_through(monkeypatch):
+    """The failure comes after some entries have already been removed, which is the case the
+    caller has to be able to undo: the helper never returns, so it cannot hand the list back."""
+    # The stencil runs from its lowest temperature upward, so the failure has to come after the
+    # entries below have been taken; failing earlier removes nothing and tests nothing.
+    calls = {"n": 0}
+
+    def fail_after_seven(pot, T, phase_sym, phase_bro, outdict):
+        calls["n"] += 1
+        if calls["n"] > 7:
+            raise RuntimeError("the solver gave up")
+        value = float(np.interp(T, T_SAMPLES, SMOOTH))
+        outdict[float(T)] = {"action": value}
+        return value
+
+    monkeypatch.setattr(bd, "calcAction", fail_after_seven)
+    # three entries the retry reaches within its first seven steps
+    step = _Conf.betaH_S3_fallback_rel_step * T_EVAL
+    original = {T_EVAL + k * step: {"action": 1000.0 + k} for k in (-1, 0, 1)}
+    outdict = {k: dict(v) for k, v in original.items()}
+    diagnostics: dict = {}
+    betaH = bd.calc_betaH_S3(T_EVAL, _Interp(T_SAMPLES, _spoiled()), outdict, _Pot(),
+                             _Phase(), _Phase(), False, diagnostics=diagnostics)
+    assert diagnostics["fit_rescue_success"] is False
+    assert calls["n"] > 7, "the solver did not fail part of the way through"
+    assert diagnostics.get("fit_rescue_error"), "the retry did not go through the failure path"
+    for key, payload in original.items():
+        assert outdict.get(key) == payload, f"{key} was not put back"
+    assert outdict.get("_unstable_action_entries", []) == []
+    assert np.isfinite(betaH)
+
+
+def test_a_failed_run_reports_its_runtime():
+    """Most points that fail go through the error branch, which returned before recording it."""
+    import inspect
+    from transitionlistener.interface import pipeline
+
+    source = inspect.getsource(pipeline.run_TL)
+    before, _, after = source.partition("if error is not None:")
+    assert "record_runtime" in after.split("return result")[0], \
+        "the error branch returns before the runtime is recorded"

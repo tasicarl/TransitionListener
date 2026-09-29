@@ -2476,11 +2476,11 @@ def _tight_tunneling_params(pot):
     return tight
 
 
-def _recompute_actions_tight(pot, temperatures, phase_sym, phase_bro, outdict):
+def _recompute_actions_tight(pot, temperatures, phase_sym, phase_bro, outdict, dropped):
     """Recompute the actions at ``temperatures`` with the path deformation tightened.
 
-    Returns the actions and the cache entries that were removed to obtain them, so that a caller
-    that ends up not using them can put the cache back as it was.
+    The entries removed to obtain them are appended to ``dropped``, which the caller owns, so that
+    the caller can put the cache back as it was even where this raises part of the way through.
 
     ``calcAction`` hands back whatever is already in ``outdict`` for a temperature, so an action
     computed at the loose deformation would be returned unchanged and the recomputation would be
@@ -2489,7 +2489,6 @@ def _recompute_actions_tight(pot, temperatures, phase_sym, phase_bro, outdict):
     and kept for the record.
     """
     original = pot.config.tracingConf.tunneling_params
-    dropped: list[tuple[object, dict]] = []
     try:
         pot.config.tracingConf.tunneling_params = _tight_tunneling_params(pot)
         actions = []
@@ -2505,7 +2504,7 @@ def _recompute_actions_tight(pot, temperatures, phase_sym, phase_bro, outdict):
                         replaced.append({"T": temperature, "action": stale.get("action"),
                                          "reason": "betaH_S3_fit_rescue"})
             actions.append(calcAction(pot, temperature, phase_sym, phase_bro, outdict))
-        return np.array(actions, dtype=float), dropped
+        return np.array(actions, dtype=float)
     finally:
         pot.config.tracingConf.tunneling_params = original
 
@@ -2669,9 +2668,10 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
     T_stencil = T + step * np.arange(-half, half + 1, dtype=float)
     diag.update(fit_rescue_attempts=int(T_stencil.size),
                 fit_rescue_rel_span=float(np.max(np.abs(T_stencil / T - 1.0))))
+    # the list is ours, so a failure part of the way through still says what to put back
     dropped: list = []
     try:
-        tight_S, dropped = _recompute_actions_tight(pot, T_stencil, phase_sym, phase_bro, outdict)
+        tight_S = _recompute_actions_tight(pot, T_stencil, phase_sym, phase_bro, outdict, dropped)
     except Exception as exc:                                   # pragma: no cover - solver failure
         diag.update(fit_rescue_error=f"{type(exc).__name__}: {exc}", fit_rescue_success=False)
         _restore_dropped_actions(outdict, dropped)

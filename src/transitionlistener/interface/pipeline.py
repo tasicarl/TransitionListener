@@ -309,6 +309,8 @@ def run_TL(
             raise error
         result = _handle_single_point_error(error, inputparams_dict,
                                             errorlogger, context)
+        # a point that failed took time too, and this is the path most of them take
+        record_runtime(result, elapsed)
         if return_context:
             return result, context
         return result
