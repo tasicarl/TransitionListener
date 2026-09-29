@@ -2323,9 +2323,12 @@ def _try_action_jitter_tunneltight_rescue(
         try:
             pot.config.tracingConf.tunneling_params = tight_tunneling
             state.Sr[idx] = calcAction(pot, temperature, phase_symmetric, phase_broken, outdict)
-        except Exception:
+        except Exception as exc:
             if old_key is not None and old_payload is not None:
                 outdict[old_key] = old_payload
+            if isinstance(exc, errors.Timeout):
+                pot.config.tracingConf.tunneling_params = original_tunneling
+                raise
             break
         finally:
             pot.config.tracingConf.tunneling_params = original_tunneling
@@ -2680,6 +2683,12 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
         diag.update(fit_rescue_attempts=len(progress["done"]),
                     fit_rescue_error=f"{type(exc).__name__}: {exc}", fit_rescue_success=False)
         _restore_dropped_actions(outdict, progress["dropped"])
+        if isinstance(exc, errors.Timeout):
+            # The alarm that raises this is for the run as a whole and can go off anywhere,
+            # here included. Carrying on with the slope the retry was called to replace would
+            # let a point run past the time it was given and report a number as if nothing had
+            # happened.
+            raise
         return betaH
     diag.update(fit_rescue_attempts=len(progress["done"]))
     finite = np.isfinite(tight_S)

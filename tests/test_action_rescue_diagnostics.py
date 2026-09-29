@@ -409,3 +409,31 @@ def test_the_empty_result_carries_every_flag_and_diagnostic():
     missing = sorted(name for name in tl_config.all_observables
                      if name.startswith(("WARNING", "DIAG")) and name not in empty)
     assert missing == [], missing
+
+
+def test_a_timeout_during_the_retry_is_not_swallowed(monkeypatch):
+    """The alarm is for the run as a whole and can go off inside the retry. Carrying on would let
+    a point run past the time it was given and report a slope as if nothing had happened."""
+    from transitionlistener import errors
+
+    def time_out(pot, T, phase_sym, phase_bro, outdict):
+        raise errors.Timeout("the calculation timed out")
+
+    monkeypatch.setattr(bd, "calcAction", time_out)
+    outdict = {T_EVAL: {"action": 1234.0}}
+    with pytest.raises(errors.Timeout):
+        bd.calc_betaH_S3(T_EVAL, _Interp(T_SAMPLES, _spoiled()), outdict, _Pot(),
+                         _Phase(), _Phase(), False, diagnostics={})
+    # and it still leaves the cache as it found it
+    assert outdict[T_EVAL]["action"] == 1234.0
+
+
+def test_a_solver_failure_during_the_retry_is_still_absorbed(monkeypatch):
+    """Everything other than the alarm is a failure to fall back from, not to propagate."""
+    monkeypatch.setattr(bd, "calcAction",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("the solver gave up")))
+    diagnostics: dict = {}
+    betaH = bd.calc_betaH_S3(T_EVAL, _Interp(T_SAMPLES, _spoiled()), {}, _Pot(),
+                             _Phase(), _Phase(), False, diagnostics=diagnostics)
+    assert np.isfinite(betaH)
+    assert diagnostics["fit_rescue_success"] is False
