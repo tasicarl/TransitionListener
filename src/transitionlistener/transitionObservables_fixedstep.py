@@ -239,6 +239,9 @@ class TransitionObservables:
             # This backend keeps the spline-slope estimate of betaH_S3 on its
             # regular temperature grid, so the fit stability check does not apply.
             "WARNING:betaH_S3_fit_unstable": False,
+            "WARNING:action_rescue_attempted": False,
+            "WARNING:action_rescue_failed": False,
+            "DIAG:action_rescue_attempts": 0,
         }
         return TransitionContext(
             tr=tr,
@@ -729,6 +732,10 @@ class TransitionObservables:
                     verbose=verbose,
                 )
             else:
+                # This backend has its own copy of calc_betaH_S3, in bubbledynamics_fixedstep,
+                # which neither takes diagnostics nor retries an unstable fit. The two solvers
+                # are to be brought onto one implementation in a change of its own; until then
+                # the flags below stay false here, which is what this backend does.
                 derived["betaH_S3"] = calc_betaH_S3(
                     percolation.Tperc,
                     percolation.Sint,

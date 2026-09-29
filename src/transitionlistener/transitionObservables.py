@@ -293,6 +293,24 @@ class PercolationResult:
     successful: bool
 
 
+def _record_rescue_outcome(derived: dict, diagnostic) -> None:
+    """Turn the outcome of a rescue into the two flags and the count.
+
+    ``diagnostic`` is either the dict a rate-jitter rescue produces, which a failed one carries on
+    the exception it raises, or ``None`` where no rescue ran.
+    """
+    if not isinstance(diagnostic, dict):
+        return
+    attempts = int(diagnostic.get("rescue_attempts", 0) or 0)
+    if attempts <= 0:
+        return
+    derived["WARNING:action_rescue_attempted"] = True
+    if not bool(diagnostic.get("rescue_success", False)):
+        derived["WARNING:action_rescue_failed"] = True
+    derived["DIAG:action_rescue_attempts"] = (
+        derived.get("DIAG:action_rescue_attempts", 0) + attempts)
+
+
 class TransitionObservables:
     """Evaluate derived observables for every transition of a potential."""
 
@@ -412,6 +430,9 @@ class TransitionObservables:
             "WARNING:betaH_mismatch": False,
             "WARNING:betaH_nonfinite": False,
             "WARNING:betaH_S3_fit_unstable": False,
+            "WARNING:action_rescue_attempted": False,
+            "WARNING:action_rescue_failed": False,
+            "DIAG:action_rescue_attempts": 0,
             "WARNING:nucleationRate_nonexponential": False,
             "WARNING:spline_tnuc_unavailable": False,
             "WARNING:spline_tnuc_not_reached": False,
@@ -525,6 +546,10 @@ class TransitionObservables:
                 return_metadata=True,
             )
         except Exception as err:
+            # A rate-jitter retry that fails raises from in here, and its outcome is carried on
+            # the error. Recording it before re-raising is the whole point of the two flags: a
+            # point that died having tried, and failed, to save itself must say so.
+            _record_rescue_outcome(derived, getattr(err, "action_rate_jitter_diagnostic", None))
             if verbose:
                 print("Fatal error in calcPercAndEvolve: ", err)
             raise
@@ -730,6 +755,13 @@ class TransitionObservables:
                 print("Calculating nucleation temperature...")
             metadata_tnuc = None
             if percolation.metadata is not None:
+                # the rate-jitter rescue, the other place an action is recomputed tight
+                _record_rescue_outcome(derived, {
+                    "rescue_attempts": getattr(
+                        percolation.metadata, "action_jitter_rescue_attempts", 0),
+                    "rescue_success": getattr(
+                        percolation.metadata, "action_jitter_rescue_success", False),
+                })
                 metadata_tnuc = getattr(percolation.metadata, "spline_tnuc", None)
                 warning = getattr(percolation.metadata, "spline_tnuc_warning", None)
                 if warning is not None:
@@ -976,6 +1008,14 @@ class TransitionObservables:
                     verbose,
                     diagnostics=betaH_diag,
                 )
+                if betaH_diag.get("fit_rescue_attempts"):
+                    # attempted says a rescue ran at all; failed says it ran and did not help
+                    derived["WARNING:action_rescue_attempted"] = True
+                    if not betaH_diag.get("fit_rescue_success", False):
+                        derived["WARNING:action_rescue_failed"] = True
+                    derived["DIAG:action_rescue_attempts"] = (
+                        derived.get("DIAG:action_rescue_attempts", 0)
+                        + int(betaH_diag["fit_rescue_attempts"]))
                 if betaH_diag.get("fit_unstable", False):
                     derived["WARNING:betaH_S3_fit_unstable"] = True
                     if verbose:

@@ -10,6 +10,8 @@ Authors:
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +26,7 @@ from .pipeline import (
     _compute_single_point,
     _build_result_from_context,
     _handle_single_point_error,
+    record_runtime,
 )
 
 
@@ -294,9 +297,17 @@ def _write_transition_outputs(outpath: str, conf, result: dict) -> float:
         (k for k in entries if k.upper().startswith("WARNING")),
         key=lambda k: (k.lower(), k),
     )
+    # Diagnostics say how the answer was reached, not what it is. They are kept out of the
+    # block above so that two runs of the same point still compare byte for byte there: the
+    # wall clock differs every time, and a rescue count says nothing about the physics.
+    diagnostic_keys = sorted(
+        (k for k in entries if k.upper().startswith("DIAG") and k not in warning_keys),
+        key=lambda k: (k.lower(), k),
+    )
     error_value = entries.get("error", np.nan)
     numerical_keys = sorted(
-        (k for k in entries if k not in warning_keys and k != "error"),
+        (k for k in entries
+         if k not in warning_keys and k not in diagnostic_keys and k != "error"),
         key=lambda k: (k.lower(), k),
     )
 
@@ -304,8 +315,17 @@ def _write_transition_outputs(outpath: str, conf, result: dict) -> float:
         for key in numerical_keys:
             file.write("{:<22} {}\n".format(key, _format_numeric_value(key, entries[key])))
 
-        if numerical_keys and (warning_keys or "error" in entries):
+        if numerical_keys and (warning_keys or diagnostic_keys or "error" in entries):
             file.write("\n")
+
+        if diagnostic_keys:
+            file.write("Diagnostics:\n")
+            labels = [k.split("DIAG:", 1)[1] if ":" in k else k for k in diagnostic_keys]
+            width = max(len(label) for label in labels)
+            for key, label in zip(diagnostic_keys, labels):
+                file.write(f"    {label:<{width}} {_format_numeric_value(key, entries[key])}\n")
+            if warning_keys or "error" in entries:
+                file.write("\n")
 
         if warning_keys:
             file.write("Warnings:\n")
@@ -556,6 +576,7 @@ def single(conf, verbose: bool = False):
         else None
     )
 
+    started = time.perf_counter()
     context, error = _compute_single_point(
         input_params,
         potential,
@@ -565,6 +586,7 @@ def single(conf, verbose: bool = False):
         max_stage=4,
         stage_callback=stage_callback,
     )
+    elapsed = time.perf_counter() - started
 
     if error is not None:
         result = _handle_single_point_error(error, input_params, errorlogger, context)
@@ -576,6 +598,8 @@ def single(conf, verbose: bool = False):
         observability = result.get("observability", {})
         line = str(input_params) + ":" + str(observability)
         resultlogger.log(line + "\n")
+
+    record_runtime(result, elapsed)
 
     console.print("[bold green]Phase transition analysis done. Saving the results...[/bold green]")
     _write_input_parameters(outpath, input_params)

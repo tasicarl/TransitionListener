@@ -2286,11 +2286,9 @@ def _try_action_jitter_tunneltight_rescue(
     attempted_temperatures: list[float] = []
     attempted_keys: set[float] = set()
     original_tunneling = copy.deepcopy(pot.config.tracingConf.tunneling_params)
-    tight_tunneling = copy.deepcopy(original_tunneling)
-    deform = dict(tight_tunneling.get("deformation_deform_params", {}))
-    deform["converge_0"] = 1.0
-    deform["fRatioConv"] = 5.0e-3
-    tight_tunneling["deformation_deform_params"] = deform
+    # the same tightening as the betaH_S3 fit rescue, which keeps a stricter setting if the run
+    # already asked for one
+    tight_tunneling = _tight_tunneling_params(pot)
 
     for _attempt in range(max_attempts):
         residual = diagnostic.get("max_residual_oom")
@@ -2325,9 +2323,12 @@ def _try_action_jitter_tunneltight_rescue(
         try:
             pot.config.tracingConf.tunneling_params = tight_tunneling
             state.Sr[idx] = calcAction(pot, temperature, phase_symmetric, phase_broken, outdict)
-        except Exception:
+        except Exception as exc:
             if old_key is not None and old_payload is not None:
                 outdict[old_key] = old_payload
+            if isinstance(exc, errors.Timeout):
+                pot.config.tracingConf.tunneling_params = original_tunneling
+                raise
             break
         finally:
             pot.config.tracingConf.tunneling_params = original_tunneling
@@ -2458,6 +2459,79 @@ def _fit_action_slope(T_samples, S_samples, T: float, n_points: int) -> float:
     return float(T * coeffs[1])
 
 
+def _tight_tunneling_params(pot):
+    """A copy of the tunneling parameters with the path deformation tightened.
+
+    The same two settings the ``tunneltight`` precision mode applies, and the same ones the
+    rate-jitter rescue uses.
+    """
+    tight = copy.deepcopy(pot.config.tracingConf.tunneling_params)
+    deform = dict(tight.get("deformation_deform_params", {}))
+    # Smaller is stricter for both, so a configuration already stricter than this is kept:
+    # the point is to tighten the deformation, never to loosen what the run was asked for.
+    for name, value in (("converge_0", 1.0), ("fRatioConv", 5.0e-3)):
+        current = deform.get(name)
+        try:
+            deform[name] = min(float(current), value)
+        except (TypeError, ValueError):
+            deform[name] = value
+    tight["deformation_deform_params"] = deform
+    return tight
+
+
+def _recompute_actions_tight(pot, temperatures, phase_sym, phase_bro, outdict, progress):
+    """Recompute the actions at ``temperatures`` with the path deformation tightened.
+
+    ``progress`` is the caller's record of what happened: the cache entries removed, under
+    ``dropped``, so that the caller can put the cache back as it was, and the temperatures actually
+    recomputed, under ``done``. Both matter where this raises part of the way through, when the
+    caller has to restore what was taken and report what was really attempted rather than what was
+    planned.
+
+    ``calcAction`` hands back whatever is already in ``outdict`` for a temperature, so an action
+    computed at the loose deformation would be returned unchanged and the recomputation would be
+    silent about it. The percolation temperature is always in there. Every entry the stencil
+    lands on is therefore dropped first, as the rate-jitter rescue drops the one it replaces,
+    and kept for the record.
+    """
+    original = pot.config.tracingConf.tunneling_params
+    try:
+        pot.config.tracingConf.tunneling_params = _tight_tunneling_params(pot)
+        actions = []
+        for temperature in temperatures:
+            temperature = float(temperature)
+            stale_key = _matching_outdict_key(outdict, temperature)
+            if stale_key is not None:
+                stale = outdict.pop(stale_key, None)
+                if isinstance(stale, dict):
+                    progress["dropped"].append((stale_key, stale))
+                    replaced = outdict.setdefault("_unstable_action_entries", [])
+                    if isinstance(replaced, list):
+                        replaced.append({"T": temperature, "action": stale.get("action"),
+                                         "reason": "betaH_S3_fit_rescue"})
+            actions.append(calcAction(pot, temperature, phase_sym, phase_bro, outdict))
+            progress["done"].append(temperature)
+        return np.array(actions, dtype=float)
+    finally:
+        pot.config.tracingConf.tunneling_params = original
+
+
+def _restore_dropped_actions(outdict, dropped) -> None:
+    """Put back the actions a retry removed, for a retry whose answer is not used.
+
+    The value that is reported then came from the samples as they were, and the cache has to
+    say the same thing. Entries recomputed successfully are left in place: they are the better
+    number for whatever asks next.
+    """
+    for key, payload in dropped or ():
+        outdict[key] = payload
+    replaced = outdict.get("_unstable_action_entries")
+    if isinstance(replaced, list):
+        outdict["_unstable_action_entries"] = [
+            entry for entry in replaced if entry.get("reason") != "betaH_S3_fit_rescue"
+        ]
+
+
 def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phase_sym, phase_bro, verbose=False,
                   diagnostics: dict | None = None) -> float:
     """Calculate the phase transition speed from the action derivative.
@@ -2565,17 +2639,80 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
     else:
         diag.update(fallback=False)
 
-    betaH = _fit_action_slope(T_samples, S_samples, T, n_fit)
+    def fit_and_check(T_values, S_values):
+        """The slope over the nearest samples, and how far the smaller fit disagrees."""
+        slope = _fit_action_slope(T_values, S_values, T, n_fit)
+        if n_check < n_fit and T_values.size >= max(n_check, 3):
+            other = _fit_action_slope(T_values, S_values, T, n_check)
+            # Symmetric scale: near a zero of beta/H the two fits must not look
+            # inconsistent only because the larger one is in the denominator.
+            return slope, other, abs(other - slope) / max(abs(slope), abs(other), 1e-300)
+        return slope, None, None
+
+    betaH, check, rel = fit_and_check(T_samples, S_samples)
     diag.update(betaH_fit=betaH, n_fit=int(min(n_fit, T_samples.size)))
-    if n_check < n_fit and T_samples.size >= max(n_check, 3):
-        check = _fit_action_slope(T_samples, S_samples, T, n_check)
-        # Symmetric scale: near a zero of beta/H the two fits must not look
-        # inconsistent only because the larger one is in the denominator.
-        rel = abs(check - betaH) / max(abs(betaH), abs(check), 1e-300)
-        diag.update(betaH_check=check, check_rel_diff=rel, fit_unstable=bool(rel > rel_tol))
-    else:
+    if rel is None:
         diag.update(fit_unstable=False)
-    return betaH
+        return betaH
+    diag.update(betaH_check=check, check_rel_diff=rel, fit_unstable=bool(rel > rel_tol))
+    if rel <= rel_tol or not bool(getattr(conf, "betaH_S3_fit_rescue", False)):
+        return betaH
+
+    # The two fits disagree. Two things can do that, and they need different answers. The
+    # actions can be noisy: at the default path-deformation tolerance the scatter of S3/T
+    # reaches a few tenths, against a physical variation across the window of the same size.
+    # Or the samples can sit too close together: the adaptive support places them as little as
+    # 1e-6 T apart, and over a baseline that short even an exact action leaves the slope
+    # undetermined. Recomputing the support samples would only cure the first, so the fit is
+    # repeated on a stencil of its own, spaced as the sparse-support fallback spaces one, with
+    # the deformation tightened as the rate-jitter rescue tightens it.
+    half = max(int(n_fit) // 2, max(n_check, 3) // 2 + 1)
+    # The outermost sample sits at half steps from T, so the cap on the step has to know how
+    # many there are: the sparse-support fallback takes two and can afford a fifth of the
+    # distance to the edge of the overlap each way.
+    step = fallback_step * T
+    step = min(step, 0.8 * (T - tmin) / half, 0.8 * (tmax - T) / half)
+    T_stencil = T + step * np.arange(-half, half + 1, dtype=float)
+    diag.update(fit_rescue_rel_span=float(np.max(np.abs(T_stencil / T - 1.0))))
+    # the record is ours, so a failure part of the way through still says what was taken from the
+    # cache and how many actions were really recomputed, rather than how many were planned
+    progress: dict = {"dropped": [], "done": []}
+    try:
+        tight_S = _recompute_actions_tight(pot, T_stencil, phase_sym, phase_bro, outdict, progress)
+    except Exception as exc:                                   # pragma: no cover - solver failure
+        diag.update(fit_rescue_attempts=len(progress["done"]),
+                    fit_rescue_error=f"{type(exc).__name__}: {exc}", fit_rescue_success=False)
+        _restore_dropped_actions(outdict, progress["dropped"])
+        if isinstance(exc, errors.Timeout):
+            # The alarm that raises this is for the run as a whole and can go off anywhere,
+            # here included. Carrying on with the slope the retry was called to replace would
+            # let a point run past the time it was given and report a number as if nothing had
+            # happened.
+            raise
+        return betaH
+    diag.update(fit_rescue_attempts=len(progress["done"]))
+    finite = np.isfinite(tight_S)
+    if int(np.count_nonzero(finite)) < max(n_check, 3):
+        diag.update(fit_rescue_success=False)
+        _restore_dropped_actions(outdict, progress["dropped"])
+        return betaH
+    T_tight, S_tight = T_stencil[finite], tight_S[finite]
+    n_fit_tight = min(n_fit, int(T_tight.size))
+    betaH_tight, check_tight, rel_tight = fit_and_check(T_tight, S_tight)
+    if rel_tight is None:
+        diag.update(fit_rescue_success=False)
+        _restore_dropped_actions(outdict, progress["dropped"])
+        return betaH
+    diag.update(betaH_fit=betaH_tight, betaH_check=check_tight, check_rel_diff=rel_tight,
+                fit_unstable=bool(rel_tight > rel_tol),
+                fit_rescue_success=bool(rel_tight <= rel_tol),
+                betaH_before_rescue=betaH, n_fit=n_fit_tight)
+    if verbose:
+        print(f"betaH_S3: the two fits differed by {100 * rel:.2f} %; refitted on "
+              f"{int(T_stencil.size)} fresh actions spanning {100 * diag['fit_rescue_rel_span']:.2f} % "
+              f"in T with the deformation tightened, {100 * rel_tight:.2f} % after, "
+              f"beta/H {betaH:.6g} -> {betaH_tight:.6g}.")
+    return betaH_tight
 
 
 def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,

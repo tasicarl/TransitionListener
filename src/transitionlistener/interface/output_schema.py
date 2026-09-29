@@ -70,6 +70,12 @@ WARNING_COLUMN_ORDER = [
     "WARNING:nucleationRate_nonexponential",
     "WARNING:not_T0_global_min",
     "WARNING:false_vacuum_not_shrinking",
+    "WARNING:action_rescue_attempted",
+    "WARNING:action_rescue_failed",
+]
+DIAGNOSTIC_COLUMN_ORDER = [
+    "DIAG:action_rescue_attempts",
+    "DIAG:runtime_s",
 ]
 SNR_COLUMN_ORDER = [
     "B-DECIGO_SNR",
@@ -95,6 +101,7 @@ PEAK_COLUMN_PRIORITY = [
     "DNeff_GW",
 ]
 STATIC_ORDER_GROUPS = (
+    DIAGNOSTIC_COLUMN_ORDER,
     WARNING_COLUMN_ORDER,
     PTA_COLUMNS_ORDER,
     SNR_COLUMN_ORDER,

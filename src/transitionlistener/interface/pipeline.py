@@ -11,6 +11,7 @@ Authors:
 from __future__ import annotations
 
 import signal
+import time
 from typing import Callable, Dict, Optional
 
 import numpy as np
@@ -257,6 +258,22 @@ def _handle_single_point_error(
     return result
 
 
+def record_runtime(result, elapsed: float) -> None:
+    """Record how long a point took, beside the observables of its strongest transition.
+
+    That is where the single-point writer and the grid scans both read from; a key at the top
+    level of the result reaches the writer but not a scan, whose columns come from
+    ``strongestTransitionObservables`` alone.
+    """
+    if not isinstance(result, dict):
+        return
+    # setdefault, not get: a point that failed took time too, and that is the case where knowing
+    # it matters most.
+    observables = result.setdefault("strongestTransitionObservables", {})
+    if isinstance(observables, dict):
+        observables["DIAG:runtime_s"] = float(elapsed)
+
+
 def run_TL(
     inputparams_dict: dict,
     potential: object,
@@ -276,6 +293,7 @@ def run_TL(
         line = str(inputparams_dict) + ":" + str(observability)
         resultlogger.log(line + "\n")
 
+    started = time.perf_counter()
     context, error = _compute_single_point(
         inputparams_dict,
         potential,
@@ -284,17 +302,21 @@ def run_TL(
         include_smbhb,
         max_stage=4,
     )
+    elapsed = time.perf_counter() - started
 
     if error is not None:
         if call_from_sampler:
             raise error
         result = _handle_single_point_error(error, inputparams_dict,
                                             errorlogger, context)
+        # a point that failed took time too, and this is the path most of them take
+        record_runtime(result, elapsed)
         if return_context:
             return result, context
         return result
 
     all_params_dict = _build_result_from_context(context)
+    record_runtime(all_params_dict, elapsed)
     if resultlogger is not None:
         return_result(all_params_dict)
     if return_context:
