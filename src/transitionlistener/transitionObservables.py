@@ -414,6 +414,7 @@ class TransitionObservables:
             "WARNING:betaH_S3_fit_unstable": False,
             "WARNING:action_rescue_attempted": False,
             "WARNING:action_rescue_failed": False,
+            "DIAG:action_rescue_attempts": 0,
             "WARNING:nucleationRate_nonexponential": False,
             "WARNING:spline_tnuc_unavailable": False,
             "WARNING:spline_tnuc_not_reached": False,

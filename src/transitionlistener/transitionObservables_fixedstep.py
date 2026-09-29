@@ -241,6 +241,7 @@ class TransitionObservables:
             "WARNING:betaH_S3_fit_unstable": False,
             "WARNING:action_rescue_attempted": False,
             "WARNING:action_rescue_failed": False,
+            "DIAG:action_rescue_attempts": 0,
         }
         return TransitionContext(
             tr=tr,
@@ -731,10 +732,10 @@ class TransitionObservables:
                     verbose=verbose,
                 )
             else:
-                # The same diagnostics the adaptive backend collects: this call can recompute
-                # actions with the deformation tightened, which costs time and moves the
-                # answer, and neither may happen without saying so.
-                betaH_diag: dict = {}
+                # This backend has its own copy of calc_betaH_S3, in bubbledynamics_fixedstep,
+                # which neither takes diagnostics nor retries an unstable fit. The two solvers
+                # are to be brought onto one implementation in a change of its own; until then
+                # the flags below stay false here, which is what this backend does.
                 derived["betaH_S3"] = calc_betaH_S3(
                     percolation.Tperc,
                     percolation.Sint,
@@ -743,17 +744,7 @@ class TransitionObservables:
                     ctx.phase_symmetric,
                     ctx.phase_broken,
                     verbose,
-                    diagnostics=betaH_diag,
                 )
-                if betaH_diag.get("fit_rescue_attempts"):
-                    derived["WARNING:action_rescue_attempted"] = True
-                    if not betaH_diag.get("fit_rescue_success", False):
-                        derived["WARNING:action_rescue_failed"] = True
-                    derived["DIAG:action_rescue_attempts"] = (
-                        derived.get("DIAG:action_rescue_attempts", 0)
-                        + int(betaH_diag["fit_rescue_attempts"]))
-                if betaH_diag.get("fit_unstable", False):
-                    derived["WARNING:betaH_S3_fit_unstable"] = True
 
         if "betaH_RH" in ctx.derived_param_names:
             if derived.get("WARNING:no_perc_splines", False):

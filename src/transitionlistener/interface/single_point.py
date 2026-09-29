@@ -26,6 +26,7 @@ from .pipeline import (
     _compute_single_point,
     _build_result_from_context,
     _handle_single_point_error,
+    record_runtime,
 )
 
 
@@ -291,9 +292,6 @@ def _write_transition_outputs(outpath: str, conf, result: dict) -> float:
     all_names = transition_names + ["error"]
     all_values = transition_values + [error_scalar]
     entries = {name: value for name, value in zip(all_names, all_values)}
-    runtime = result.get("DIAG:runtime_s") if isinstance(result, dict) else None
-    if runtime is not None:
-        entries["DIAG:runtime_s"] = runtime
 
     warning_keys = sorted(
         (k for k in entries if k.upper().startswith("WARNING")),
@@ -601,9 +599,7 @@ def single(conf, verbose: bool = False):
         line = str(input_params) + ":" + str(observability)
         resultlogger.log(line + "\n")
 
-    if isinstance(result, dict):
-        # a diagnostic, written apart from the observables: see _write_transition_outputs
-        result["DIAG:runtime_s"] = float(elapsed)
+    record_runtime(result, elapsed)
 
     console.print("[bold green]Phase transition analysis done. Saving the results...[/bold green]")
     _write_input_parameters(outpath, input_params)

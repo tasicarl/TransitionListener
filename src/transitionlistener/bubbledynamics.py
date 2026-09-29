@@ -2466,8 +2466,14 @@ def _tight_tunneling_params(pot):
     """
     tight = copy.deepcopy(pot.config.tracingConf.tunneling_params)
     deform = dict(tight.get("deformation_deform_params", {}))
-    deform["converge_0"] = 1.0
-    deform["fRatioConv"] = 5.0e-3
+    # Smaller is stricter for both, so a configuration already stricter than this is kept:
+    # the point is to tighten the deformation, never to loosen what the run was asked for.
+    for name, value in (("converge_0", 1.0), ("fRatioConv", 5.0e-3)):
+        current = deform.get(name)
+        try:
+            deform[name] = min(float(current), value)
+        except (TypeError, ValueError):
+            deform[name] = value
     tight["deformation_deform_params"] = deform
     return tight
 

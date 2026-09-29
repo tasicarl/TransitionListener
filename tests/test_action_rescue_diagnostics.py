@@ -151,7 +151,8 @@ def test_the_rescue_can_be_switched_off(monkeypatch):
 class _WriterConf:
     derived_params = {name: name for name in
                       ("betaH_S3", "WARNING:action_rescue_attempted",
-                       "WARNING:action_rescue_failed", "DIAG:action_rescue_attempts")}
+                       "WARNING:action_rescue_failed", "DIAG:action_rescue_attempts",
+                       "DIAG:runtime_s")}
 
 
 def _write(attempted, failed, attempts, runtime=12.5):
@@ -162,9 +163,9 @@ def _write(attempted, failed, attempts, runtime=12.5):
             "WARNING:action_rescue_attempted": attempted,
             "WARNING:action_rescue_failed": failed,
             "DIAG:action_rescue_attempts": attempts,
+            "DIAG:runtime_s": runtime,
         },
         "error": np.nan,
-        "DIAG:runtime_s": runtime,
     })
     return open(out + "1_All_params.txt", encoding="utf-8").read()
 
@@ -197,3 +198,40 @@ def test_the_new_keys_are_registered_as_observables():
     for name in ("WARNING:action_rescue_attempted", "WARNING:action_rescue_failed",
                  "DIAG:action_rescue_attempts", "DIAG:runtime_s"):
         assert name in tl_config.all_observables, name
+
+
+def test_the_runtime_is_recorded_where_a_scan_reads_it():
+    """A grid scan takes its columns from the observables of the strongest transition alone,
+    so a key at the top level of the result reaches the single-point writer and nothing else."""
+    from transitionlistener.interface.pipeline import record_runtime
+
+    result = {"strongestTransitionObservables": {"betaH_S3": 1.0}}
+    record_runtime(result, 12.5)
+    assert result["strongestTransitionObservables"]["DIAG:runtime_s"] == 12.5
+    record_runtime({"error": 1.0}, 12.5)          # a result without observables must not raise
+    record_runtime(None, 12.5)
+
+
+def test_the_retry_never_loosens_a_stricter_setting():
+    """Tightening is the point; a run already asked for something stricter keeps it."""
+    pot = _Pot()
+    deform = pot.config.tracingConf.tunneling_params["deformation_deform_params"]
+    deform["converge_0"], deform["fRatioConv"] = 0.5, 1e-3
+    tightened = bd._tight_tunneling_params(pot)["deformation_deform_params"]
+    assert tightened["converge_0"] == 0.5
+    assert tightened["fRatioConv"] == 1e-3
+
+    deform["converge_0"], deform["fRatioConv"] = 5.0, 2e-2
+    tightened = bd._tight_tunneling_params(pot)["deformation_deform_params"]
+    assert tightened["converge_0"] == 1.0
+    assert tightened["fRatioConv"] == 5e-3
+
+
+def test_the_rescue_counter_starts_at_zero():
+    """An absent key and a zero are different things to whatever reads the column."""
+    from transitionlistener import transitionObservables as adaptive
+    from transitionlistener import transitionObservables_fixedstep as fixed
+
+    for module in (adaptive, fixed):
+        source = open(module.__file__, encoding="utf-8").read()
+        assert '"DIAG:action_rescue_attempts": 0,' in source, module.__name__

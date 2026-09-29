@@ -258,6 +258,20 @@ def _handle_single_point_error(
     return result
 
 
+def record_runtime(result, elapsed: float) -> None:
+    """Record how long a point took, beside the observables of its strongest transition.
+
+    That is where the single-point writer and the grid scans both read from; a key at the top
+    level of the result reaches the writer but not a scan, whose columns come from
+    ``strongestTransitionObservables`` alone.
+    """
+    if not isinstance(result, dict):
+        return
+    observables = result.get("strongestTransitionObservables")
+    if isinstance(observables, dict):
+        observables["DIAG:runtime_s"] = float(elapsed)
+
+
 def run_TL(
     inputparams_dict: dict,
     potential: object,
@@ -298,10 +312,7 @@ def run_TL(
         return result
 
     all_params_dict = _build_result_from_context(context)
-    # How long the point took, which is what makes a rescue visible in cost as well as in the
-    # flags. It is a diagnostic, so it is written apart from the observables.
-    if isinstance(all_params_dict, dict):
-        all_params_dict["DIAG:runtime_s"] = float(elapsed)
+    record_runtime(all_params_dict, elapsed)
     if resultlogger is not None:
         return_result(all_params_dict)
     if return_context:
