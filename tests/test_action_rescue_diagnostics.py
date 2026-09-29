@@ -355,3 +355,44 @@ def test_a_failed_run_reports_its_runtime():
     before, _, after = source.partition("if error is not None:")
     assert "record_runtime" in after.split("return result")[0], \
         "the error branch returns before the runtime is recorded"
+
+
+def test_a_failed_rate_jitter_retry_still_sets_the_flags():
+    """It raises from inside the percolation call, carrying its outcome on the exception."""
+    from transitionlistener import transitionObservables as obs
+
+    derived: dict = {}
+    obs._record_rescue_outcome(derived, {"rescue_attempts": 3, "rescue_success": False})
+    assert derived["WARNING:action_rescue_attempted"] is True
+    assert derived["WARNING:action_rescue_failed"] is True
+    assert derived["DIAG:action_rescue_attempts"] == 3
+
+
+def test_a_rate_jitter_retry_that_worked_is_not_reported_as_failed():
+    from transitionlistener import transitionObservables as obs
+
+    derived: dict = {}
+    obs._record_rescue_outcome(derived, {"rescue_attempts": 2, "rescue_success": True})
+    assert derived["WARNING:action_rescue_attempted"] is True
+    assert "WARNING:action_rescue_failed" not in derived
+    assert derived["DIAG:action_rescue_attempts"] == 2
+
+
+def test_no_retry_leaves_the_flags_alone():
+    from transitionlistener import transitionObservables as obs
+
+    for diagnostic in (None, {}, {"rescue_attempts": 0}, "not a dict"):
+        derived: dict = {}
+        obs._record_rescue_outcome(derived, diagnostic)
+        assert derived == {}, diagnostic
+
+
+def test_the_percolation_failure_path_records_the_outcome_before_re_raising():
+    import inspect
+    from transitionlistener import transitionObservables as obs
+
+    source = inspect.getsource(obs)
+    block = source.split("Fatal error in calcPercAndEvolve")[0]
+    tail = block[-500:]
+    assert "_record_rescue_outcome(derived, getattr(err," in tail, \
+        "the outcome is not recorded before the error is re-raised"

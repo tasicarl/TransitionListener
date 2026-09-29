@@ -293,6 +293,24 @@ class PercolationResult:
     successful: bool
 
 
+def _record_rescue_outcome(derived: dict, diagnostic) -> None:
+    """Turn the outcome of a rescue into the two flags and the count.
+
+    ``diagnostic`` is either the dict a rate-jitter rescue produces, which a failed one carries on
+    the exception it raises, or ``None`` where no rescue ran.
+    """
+    if not isinstance(diagnostic, dict):
+        return
+    attempts = int(diagnostic.get("rescue_attempts", 0) or 0)
+    if attempts <= 0:
+        return
+    derived["WARNING:action_rescue_attempted"] = True
+    if not bool(diagnostic.get("rescue_success", False)):
+        derived["WARNING:action_rescue_failed"] = True
+    derived["DIAG:action_rescue_attempts"] = (
+        derived.get("DIAG:action_rescue_attempts", 0) + attempts)
+
+
 class TransitionObservables:
     """Evaluate derived observables for every transition of a potential."""
 
@@ -528,6 +546,10 @@ class TransitionObservables:
                 return_metadata=True,
             )
         except Exception as err:
+            # A rate-jitter retry that fails raises from in here, and its outcome is carried on
+            # the error. Recording it before re-raising is the whole point of the two flags: a
+            # point that died having tried, and failed, to save itself must say so.
+            _record_rescue_outcome(derived, getattr(err, "action_rate_jitter_diagnostic", None))
             if verbose:
                 print("Fatal error in calcPercAndEvolve: ", err)
             raise
@@ -733,14 +755,13 @@ class TransitionObservables:
                 print("Calculating nucleation temperature...")
             metadata_tnuc = None
             if percolation.metadata is not None:
-                attempts = int(getattr(percolation.metadata, "action_jitter_rescue_attempts", 0) or 0)
-                if attempts:
-                    # the rate-jitter rescue, the other place an action is recomputed tight
-                    derived["WARNING:action_rescue_attempted"] = True
-                    if not bool(getattr(percolation.metadata, "action_jitter_rescue_success", False)):
-                        derived["WARNING:action_rescue_failed"] = True
-                    derived["DIAG:action_rescue_attempts"] = (
-                        derived.get("DIAG:action_rescue_attempts", 0) + attempts)
+                # the rate-jitter rescue, the other place an action is recomputed tight
+                _record_rescue_outcome(derived, {
+                    "rescue_attempts": getattr(
+                        percolation.metadata, "action_jitter_rescue_attempts", 0),
+                    "rescue_success": getattr(
+                        percolation.metadata, "action_jitter_rescue_success", False),
+                })
                 metadata_tnuc = getattr(percolation.metadata, "spline_tnuc", None)
                 warning = getattr(percolation.metadata, "spline_tnuc_warning", None)
                 if warning is not None:
