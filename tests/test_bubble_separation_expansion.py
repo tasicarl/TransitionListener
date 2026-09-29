@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import unittest
 from pathlib import Path
 import types
@@ -270,6 +272,42 @@ class BetaTimeFactorTests(unittest.TestCase):
                 self.assertAlmostEqual(self._factor("bag", "compute", definition), 1.0)
 
 
+class SchemeSeparationTests(unittest.TestCase):
+    def test_the_two_schemes_disagree_where_the_choice_matters(self):
+        """Guard against a vacuous parametrisation.
+
+        The consistency tests above compare each scheme against its own entropy, so they
+        would still pass if the setting were ignored and both branches returned the same
+        thing. This fixes a point where the schemes are far apart, so that a change which
+        stops reading ``entropy_definition`` fails somewhere.
+        """
+        with contextlib.redirect_stdout(io.StringIO()):  # the 2HDM prints its inputs
+            pot = load_potential(str(REPO / "models/TL_2HDM.py"), "R2HDM")(dict(
+                lambda1=0.006, lambda2=0.25, lambda3=8.27, lambda4=-2.55, lambda5=0.76,
+                m12_sq_GeV2=14186.7, tan_beta=17.7, yukawa_type=1,
+                v_GeV=246.21965079413735), verbose=False)
+        phase = FixedPhase([0.0] * pot.Ndim)
+        T = np.geomspace(160.0, 20.0, 80)
+
+        cooling = {}
+        for definition in ("dof_table", "eff_potential"):
+            _, cooling[definition] = bd.expansion_interpolants(
+                pot, phase, T, entropy_definition=definition)
+
+        counted = np.array([float(cooling["dof_table"](t)) for t in T])
+        potential = np.array([float(cooling["eff_potential"](t)) for t in T])
+
+        # Measured on this point over 160 -> 20 GeV: 3 c_s^2 stays within 0.977 to 1.004
+        # for the counted route and falls to 0.765 for the potential, a 24% separation at
+        # the cold end. Requiring 10% leaves room for solver tuning while still failing
+        # outright if the two schemes ever coincide.
+        separation = np.abs(potential / counted - 1.0).max()
+        self.assertGreater(separation, 0.10)
+        self.assertLess(counted.min(), 1.01)
+        self.assertGreater(counted.min(), 0.90)
+        self.assertLess(potential.min(), 0.85)
+
+
 class ModelThermodynamicsTests(unittest.TestCase):
     def test_interpolants_follow_the_model_across_the_qcd_crossover(self):
         # Conformal dark U(1) with v = 6 GeV: internal temperatures 15 to 50 span 90 to 300 MeV.
@@ -298,7 +336,11 @@ class ModelThermodynamicsTests(unittest.TestCase):
                         float(logEntropyInt(temp) - logEntropyInt(T[0])),
                         np.log(s_here / s_ref), rtol=0, atol=2e-3))
 
-        logEntropyInt, coolingInt = bd.expansion_interpolants(pot, phase, T)
+        # This block checks the potential's own entropy, so it must ask for that scheme
+        # explicitly: under the default "dof_table" it would assert that the counted
+        # degrees of freedom reproduce -dV/dT, which is the mixing this setting ends.
+        logEntropyInt, coolingInt = bd.expansion_interpolants(
+            pot, phase, T, entropy_definition="eff_potential")
 
         def entropy_density(temp):
             dT = temp * 1e-4
@@ -310,9 +352,6 @@ class ModelThermodynamicsTests(unittest.TestCase):
         # Across the crossover the entropy density is far from T^3.
         self.assertGreater(abs(model_ratio / (T[0] / T[-1]) ** 3 - 1), 0.2)
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class EntropyDefinitionConsistencyTests(unittest.TestCase):
@@ -328,17 +367,36 @@ class EntropyDefinitionConsistencyTests(unittest.TestCase):
         return types.SimpleNamespace(config=types.SimpleNamespace(percolationConf=conf))
 
     def test_the_fixed_step_solver_refuses_a_definition_it_does_not_implement(self):
-        """It keeps its own time-temperature relation; ignoring the setting would be silent."""
-        with self.assertRaises(errors.PercolationError) as caught:
-            bd._build_percolation_settings(
-                self._potential_with("fixed_step_size", "eff_potential"), 20)
-        self.assertIn("fixed_step_size", str(caught.exception))
-        self.assertIn("eff_potential", str(caught.exception))
+        """It keeps its own time-temperature relation; ignoring the setting would be silent.
+
+        The two solvers read their settings through separate functions of the same name, and the
+        fixed step size path never reaches the adaptive one, so the refusal has to live in both.
+        """
+        from transitionlistener import bubbledynamics_fixedstep as bdf
+
+        for module in (bd, bdf):
+            with self.subTest(module=module.__name__):
+                with self.assertRaises(errors.PercolationError) as caught:
+                    module._build_percolation_settings(
+                        self._potential_with("fixed_step_size", "eff_potential"), 20)
+                self.assertIn("fixed_step_size", str(caught.exception))
+                self.assertIn("eff_potential", str(caught.exception))
+
+    def test_the_solver_that_runs_is_the_one_that_validates(self):
+        """The fixed step size percolation reads its settings through its own module."""
+        import inspect
+        from transitionlistener import bubbledynamics_fixedstep as bdf
+
+        source = inspect.getsource(bdf.calcPercAndEvolve)
+        self.assertIn("_build_percolation_settings", source)
 
     def test_the_default_definition_passes_on_either_solver(self):
         for mode in ("adaptive_step_size", "fixed_step_size"):
+            from transitionlistener import bubbledynamics_fixedstep as bdf
+
             with self.subTest(mode=mode):
                 bd._build_percolation_settings(self._potential_with(mode, "dof_table"), 20)
+                bdf._build_percolation_settings(self._potential_with(mode, "dof_table"), 20)
 
     def test_an_unknown_definition_is_refused(self):
         with self.assertRaises(errors.PercolationError):
@@ -373,3 +431,7 @@ class EntropyDefinitionConsistencyTests(unittest.TestCase):
         self.assertAlmostEqual(cs_sq[2], 0.25, places=6)
         # where it does not, the temperature contributes neither and keeps the bag fallback
         self.assertAlmostEqual(cs_sq[1], 1.0 / 3.0, places=12)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -113,10 +113,27 @@ class PercolationSoundSpeedTests(unittest.TestCase):
                 self.assertAlmostEqual(value, 1.0 / k, places=6)
 
     def test_unusable_sound_speed_falls_back_to_one_third(self):
+        # The potential route is the one that reads calcSoundSpeedSq, so the scheme has to
+        # be named: under the default "dof_table" this would reach the bag fallback because
+        # the stand-in potential makes the counted entropy raise, not because of the nan.
         phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
-        with mock.patch.object(bd, "calcSoundSpeedSq", return_value=np.nan):
+        with mock.patch.object(bd, "calcSoundSpeedSq", return_value=np.nan), \
+             mock.patch.object(bd, "entropy_density", lambda pot, ph, T, d: float(T) ** 4):
             value = bd.percolation_sound_speed_sq(
-                object(), phase, 0.5, time_temperature_mode="sound_speed"
+                object(), phase, 0.5, time_temperature_mode="sound_speed",
+                entropy_definition="eff_potential",
+            )
+        self.assertEqual(value, 1.0 / 3.0)
+
+    def test_unusable_counted_entropy_falls_back_to_one_third(self):
+        # The counterpart on the "dof_table" route: a sound speed is available from the
+        # potential, but it may not be used when the counted entropy itself is unusable.
+        phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
+        with mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21), \
+             mock.patch.object(bd, "entropy_density", lambda pot, ph, T, d: np.nan):
+            value = bd.percolation_sound_speed_sq(
+                object(), phase, 0.5, time_temperature_mode="sound_speed",
+                entropy_definition="dof_table",
             )
         self.assertEqual(value, 1.0 / 3.0)
 

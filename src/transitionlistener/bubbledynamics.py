@@ -352,9 +352,12 @@ def _build_percolation_settings(pot, nAction: int):
             f"{ENTROPY_DEFINITIONS[1]!r}, got {entropy_definition!r}."
         )
     if algorithm_mode == "fixed_step_size" and entropy_definition != ENTROPY_DEFINITIONS[0]:
-        # That solver keeps its own time-temperature relation, which takes the scale factor from
-        # the counted degrees of freedom and the sound speed from the potential. It does not read
-        # this setting, and silently ignoring a thermodynamic choice is worse than refusing it.
+        # That solver keeps its own time-temperature relation, which takes both factors from the
+        # potential: `scalefactorRatio` integrates d2V/dT2 / (3 dV/dT), i.e. s = -dV/dT, and the
+        # sound speed comes from `calcSoundSpeedSq` on the same entropy. It never reads this
+        # setting, so the combination it is given is whatever it hard-codes; silently ignoring a
+        # thermodynamic choice is worse than refusing it. The default `dof_table` is accepted
+        # there only for backwards compatibility, and is the combination that is mislabelled.
         raise errors.PercolationError(
             f"percolation_entropy_definition={entropy_definition!r} is not implemented for "
             "percolation_algorithm_mode='fixed_step_size', whose time-temperature relation is "
@@ -651,12 +654,14 @@ def calcSoundSpeedSq(pot, X, T) -> float:
     return float(np.squeeze(cs_sq))
 
 
-ENTROPY_DEFINITIONS = ("dof_table", "eff_potential")
+ENTROPY_DEFINITIONS = cn.ENTROPY_DEFINITIONS
 
 # Relative step of the logarithmic entropy derivative of the "dof_table" scheme. The counted
 # entropy is a smooth function of the temperature (the Standard Model part is a spline through a
-# Savitzky-Golay-filtered table), and the derivative is stable to better than 1e-5 relative for
-# every step between 1e-2 and 1e-6 in all models tested, so the choice is not delicate.
+# Savitzky-Golay-filtered table), so the choice is not delicate. Measured on the conformal dark
+# U(1) at g = 0.692, v = 6 GeV, where internal temperatures 16 to 30 sit on the QCD crossover:
+# relative to the 1e-4 value, every step between 1e-3 and 1e-6 agrees to better than 1.2e-5,
+# and 1e-5 and below to better than 1.2e-7. A 1e-2 step is too coarse there, reaching 2.3e-4.
 _ENTROPY_REL_STEP = 1.0e-4
 
 
@@ -724,10 +729,14 @@ def _time_temperature_factors(
         t = float(temp)
         try:
             phase.valAt(t)        # outside the traced range this raises; such a point is skipped
+        except errors.Timeout:
+            raise
         except Exception:
             continue
         try:
             entropy_here = entropy_density(pot, phase, t, definition)
+        except errors.Timeout:
+            raise
         except Exception:
             entropy_here = np.nan
         try:
@@ -737,13 +746,25 @@ def _time_temperature_factors(
                 cs_sq = calcSoundSpeedSq(pot, phase.valAt(t), t)
             else:
                 h = t * _ENTROPY_REL_STEP
-                s_lo = entropy_density(pot, phase, t - h, definition)
-                s_hi = entropy_density(pot, phase, t + h, definition)
-                if s_lo > 0.0 and s_hi > 0.0:
+                # Keep the stencil inside the traced range. `valAt` interpolates a spline and
+                # happily extrapolates instead of raising, and where it does raise, `h_eff_DS`
+                # falls back to the zero-temperature vev; either way the derivative would be
+                # taken on a field configuration that is not the traced phase. Clamping turns
+                # the edges into a one-sided difference.
+                t_lo = max(t - h, float(getattr(phase, "Tmin", t - h)))
+                t_hi = min(t + h, float(getattr(phase, "Tmax", t + h)))
+                s_lo = entropy_density(pot, phase, t_lo, definition)
+                s_hi = entropy_density(pot, phase, t_hi, definition)
+                if s_lo > 0.0 and s_hi > 0.0 and t_hi > t_lo:
                     # c_s^2 = 1 / (d ln s / d ln T).
-                    cs_sq = (np.log(t + h) - np.log(t - h)) / (np.log(s_hi) - np.log(s_lo))
+                    cs_sq = (np.log(t_hi) - np.log(t_lo)) / (np.log(s_hi) - np.log(s_lo))
                 else:
                     cs_sq = np.nan
+        except errors.Timeout:
+            # Subclasses Exception and is raised from a signal handler, so it can fire inside any
+            # of these potential evaluations. Swallowing it would turn a timed-out run into a
+            # silent bag fallback.
+            raise
         except Exception:
             cs_sq = np.nan
         # A sound speed outside (0, 1] means the traced phase has stopped being a sensible

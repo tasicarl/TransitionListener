@@ -63,3 +63,9 @@ CW_CONSTANTS = {
     "gauge": 5.0 / 6.0,
 }
 """Coleman–Weinberg subtraction constants for scalars, fermions, and vectors."""
+
+# Entropy routes for the percolation time-temperature relation. The first entry is the default.
+# "dof_table" counts free particles at the zero-temperature masses and adds the tabulated coupled
+# bath; "eff_potential" takes s = -dV/dT from the effective potential, with thermal masses and the
+# Arnold-Espinosa daisy. Defined here because both percolation solvers validate against it.
+ENTROPY_DEFINITIONS = ("dof_table", "eff_potential")

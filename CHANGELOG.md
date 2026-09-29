@@ -33,14 +33,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - Setting `entropy_definition` of the percolation solver, `"dof_table"` (default)
   or `"eff_potential"`, with the run-time override
   `percolation_entropy_definition`. It selects the thermodynamics of the
-  expansion history. `"dof_table"` counts the modes of the potential as free
-  particles at their zero-temperature masses and adds the tabulated entropy
-  degrees of freedom of the coupled radiation. `"eff_potential"` takes
-  `-dV/dT` of the effective potential, which carries the thermal masses and the
-  Arnold-Espinosa daisy resummation but none of the perturbative corrections the
-  table contains. Neither is contained in the other, and no published work
-  decides between them, so the difference is a modelling uncertainty that can now
-  be measured by running both.
+  expansion history. Both describe the same plasma, the fields of the potential
+  and the coupled radiation bath without the decoupled one, and differ in how they
+  treat the fields. `"dof_table"` counts them as free particles at their
+  zero-temperature masses and adds the tabulated entropy degrees of freedom of the
+  coupled bath. `"eff_potential"` takes `-dV/dT` of the effective potential, which
+  gives the fields their thermal masses and the Arnold-Espinosa daisy term; it
+  carries the tabulated bath with its perturbative corrections too, since the
+  field-independent part of the potential is built from the same tables, and what
+  it lacks is those corrections for the fields of the potential themselves.
+  Neither scheme contains the other: the counted one has the perturbative
+  corrections everywhere and no thermal masses, the potential one has the thermal
+  masses and the daisy term but free-particle counting for the fields. No
+  published work decides between them, so the difference is a modelling
+  uncertainty that can now be measured by running both.
 
 ### Changed
 
@@ -58,10 +64,38 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `"dof_table"`, stays defined below about 2 MeV, where after neutrino
   decoupling no single pressure with `dp/dT = s` exists and the potential route
   has nothing to refer to, and it carries the perturbative QCD corrections and the
-  crossover, which the daisy-resummed potential does not. On a 2HDM benchmark the
-  counted route gives `3 c_s^2` between 0.981 and 1.004 across the transition,
-  against 0.769 to 1.032 from the potential, whose sound speed follows the thermal
-  masses of the modes that are becoming heavy.
+  crossover, which the daisy-resummed potential does not. Measured at the 2HDM
+  point of `tests/test_potential_broadcasting.py` (lambda1 = 0.006, lambda2 = 0.25,
+  lambda3 = 8.27, lambda4 = -2.55, lambda5 = 0.76, m12^2 = 14186.7 GeV^2,
+  tan_beta = 17.7, v = 246.22 GeV) in the symmetric phase over T = 160 to 20 GeV,
+  the counted route gives `3 c_s^2` between 0.977 and 1.004, against 0.765 to 1.037
+  from the potential, whose sound speed follows the thermal masses of the modes that
+  are becoming heavy: a 24% separation at the cold end. The spread depends on how
+  far the window reaches, so the window is part of the statement.
+
+  **This moves existing results.** The default sound speed previously came from the
+  potential while the scale factor came from the counted degrees of freedom, so
+  every adaptive run with the default `time_temperature_mode = "sound_speed"`
+  changes. On the released example point of `examples/example_point.yaml`
+  (conformal dark U(1), g = 0.7, v = 0.1 GeV, y = 0.01) the shifts are small,
+  because that model is close to conformal and the two entropies nearly agree:
+
+  | observable | before | after | change |
+  | --- | --- | --- | --- |
+  | `Tperc_SM_GeV` | 0.0022119 | 0.0022120 | +0.005% |
+  | `alpha` | 387.10 | 387.04 | -0.015% |
+  | `RH` | 0.070683 | 0.070726 | +0.061% |
+  | `betaH_RH` | 62.640 | 62.601 | -0.062% |
+  | `betaH_S3` | 63.232 | 63.190 | -0.066% |
+
+  Models whose `g_*s` varies strongly across the transition move much more. Over 95
+  points on four lines (a 2HDM `lambda_3` scan, an abelian dark Higgs `lambda` scan, a
+  conformal dark U(1) `g` scan and nine single benchmarks), the median shift against
+  the previous mixed default is 0.09% in `Tperc` and 2.4% in `R_*` on the 2HDM line,
+  reaching 3.9%, while the abelian line moves by 0.14% in `R_*`. `Tperc` is barely
+  affected throughout; what moves is the mean bubble separation and with it
+  `(beta/H)_RH`. Anyone reproducing a published number should say which entropy
+  definition produced it.
 
 - **Sound speed in the pseudo-trace**: the pseudo-trace strengths now divide
   the pressure of *both* phases by the broken-phase sound speed, as in

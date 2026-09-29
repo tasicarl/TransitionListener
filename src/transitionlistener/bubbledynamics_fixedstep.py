@@ -965,6 +965,27 @@ class PercolationState:
 def _build_percolation_settings(pot, nAction: int) -> PercolationSettings:
     """Read commonly used configuration parameters once."""
     conf = pot.config.percolationConf
+    # This solver has a time-temperature relation of its own, which takes both factors from the
+    # potential: `scalefactorRatio` integrates d2V/dT2 / (3 dV/dT), i.e. s = -dV/dT, and the sound
+    # speed comes from `calcSoundSpeedSq` on the same entropy. It never reads
+    # `entropy_definition`, so the default `dof_table` is accepted here only for backwards
+    # compatibility and is itself the mislabelled combination. The check is repeated in both
+    # copies of this function on purpose: `bubbledynamics.calcPercAndEvolve` also serves
+    # `algorithm_mode="fixed_step_size"` through `percolation_fixedstepsize`, while a real
+    # fixed-step scan reaches this copy instead, and neither path may silently ignore the choice.
+    definition = str(getattr(conf, "entropy_definition", cn.ENTROPY_DEFINITIONS[0]))
+    if definition not in cn.ENTROPY_DEFINITIONS:
+        raise errors.PercolationError(
+            f"percolation_entropy_definition must be {cn.ENTROPY_DEFINITIONS[0]!r} or "
+            f"{cn.ENTROPY_DEFINITIONS[1]!r}, got {definition!r}."
+        )
+    if definition != cn.ENTROPY_DEFINITIONS[0]:
+        raise errors.PercolationError(
+            f"percolation_entropy_definition={definition!r} is not implemented for "
+            "percolation_algorithm_mode='fixed_step_size', whose time-temperature relation is "
+            "its own. Use the adaptive step size solver, or leave the definition at "
+            f"{cn.ENTROPY_DEFINITIONS[0]!r}."
+        )
     max_boundary_n = int(conf.max_boundary_ratio * nAction)
     return PercolationSettings(
         f_perc=conf.f_perc,
