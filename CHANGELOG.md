@@ -50,7 +50,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `1/(3 c_s^2) = 1 + (1/3) d ln g_*s/d ln T`: a constant `g_*s`, `c_s^2 = 1/3`
   and `a ~ 1/T` are one assumption and not three. Both now come from the entropy
   selected by `entropy_definition`, so `Tperc`, the mean bubble separation and
-  `(beta/H)_S3` all belong to one equation of state. The default,
+  `(beta/H)_S3` all belong to one equation of state. How much the choice is worth
+  is a question for the first two of those: `(beta/H)_S3` is the slope of the
+  action, and at the default path deformation that slope is limited by the scatter
+  of `S3/T` rather than by the thermodynamics, on the 2HDM line in particular. The
+  default, 
   `"dof_table"`, stays defined below about 2 MeV, where after neutrino
   decoupling no single pressure with `dp/dT = s` exists and the potential route
   has nothing to refer to, and it carries the perturbative QCD corrections and the
