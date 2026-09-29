@@ -2286,11 +2286,9 @@ def _try_action_jitter_tunneltight_rescue(
     attempted_temperatures: list[float] = []
     attempted_keys: set[float] = set()
     original_tunneling = copy.deepcopy(pot.config.tracingConf.tunneling_params)
-    tight_tunneling = copy.deepcopy(original_tunneling)
-    deform = dict(tight_tunneling.get("deformation_deform_params", {}))
-    deform["converge_0"] = 1.0
-    deform["fRatioConv"] = 5.0e-3
-    tight_tunneling["deformation_deform_params"] = deform
+    # the same tightening as the betaH_S3 fit rescue, which keeps a stricter setting if the run
+    # already asked for one
+    tight_tunneling = _tight_tunneling_params(pot)
 
     for _attempt in range(max_attempts):
         residual = diagnostic.get("max_residual_oom")
@@ -2479,12 +2477,29 @@ def _tight_tunneling_params(pot):
 
 
 def _recompute_actions_tight(pot, temperatures, phase_sym, phase_bro, outdict):
-    """Recompute the actions at ``temperatures`` with the path deformation tightened."""
+    """Recompute the actions at ``temperatures`` with the path deformation tightened.
+
+    ``calcAction`` hands back whatever is already in ``outdict`` for a temperature, so an action
+    computed at the loose deformation would be returned unchanged and the recomputation would be
+    silent about it. The percolation temperature is always in there. Every entry the stencil
+    lands on is therefore dropped first, as the rate-jitter rescue drops the one it replaces,
+    and kept for the record.
+    """
     original = pot.config.tracingConf.tunneling_params
     try:
         pot.config.tracingConf.tunneling_params = _tight_tunneling_params(pot)
-        return np.array([calcAction(pot, float(t), phase_sym, phase_bro, outdict)
-                         for t in temperatures], dtype=float)
+        actions = []
+        for temperature in temperatures:
+            temperature = float(temperature)
+            stale_key = _matching_outdict_key(outdict, temperature)
+            if stale_key is not None:
+                stale = outdict.pop(stale_key, None)
+                replaced = outdict.setdefault("_unstable_action_entries", [])
+                if isinstance(replaced, list) and isinstance(stale, dict):
+                    replaced.append({"T": temperature, "action": stale.get("action"),
+                                     "reason": "betaH_S3_fit_rescue"})
+            actions.append(calcAction(pot, temperature, phase_sym, phase_bro, outdict))
+        return np.array(actions, dtype=float)
     finally:
         pot.config.tracingConf.tunneling_params = original
 

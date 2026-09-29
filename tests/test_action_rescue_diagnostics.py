@@ -235,3 +235,37 @@ def test_the_rescue_counter_starts_at_zero():
     for module in (adaptive, fixed):
         source = open(module.__file__, encoding="utf-8").read()
         assert '"DIAG:action_rescue_attempts": 0,' in source, module.__name__
+
+
+def test_a_cached_loose_action_is_not_reused_by_the_retry(monkeypatch):
+    """`calcAction` hands back whatever is in the cache, and the percolation temperature is
+    always in it, so a retry that did not clear it would refit on the value it is replacing."""
+    seen = []
+
+    def fake_action(pot, T, phase_sym, phase_bro, outdict):
+        seen.append(float(T))
+        value = float(np.interp(T, T_SAMPLES, SMOOTH))
+        outdict[float(T)] = {"action": value}
+        return value
+
+    monkeypatch.setattr(bd, "calcAction", fake_action)
+    # a stale entry at the evaluation point, as percolation leaves behind
+    outdict = {T_EVAL: {"action": 1.0e9}}
+    diagnostics: dict = {}
+    bd.calc_betaH_S3(T_EVAL, _Interp(T_SAMPLES, _spoiled()), outdict, _Pot(),
+                     _Phase(), _Phase(), False, diagnostics=diagnostics)
+    assert diagnostics["fit_rescue_attempts"] > 0
+    assert any(abs(t - T_EVAL) < 1e-9 for t in seen), "the stale entry was reused"
+    assert outdict[T_EVAL]["action"] != 1.0e9
+    replaced = outdict.get("_unstable_action_entries", [])
+    assert any(entry.get("reason") == "betaH_S3_fit_rescue" for entry in replaced)
+
+
+def test_both_retries_tighten_through_the_same_helper():
+    """The rate-jitter retry set the two values outright, so it could loosen a stricter run."""
+    import inspect
+
+    source = inspect.getsource(bd._try_action_jitter_tunneltight_rescue)
+    assert "_tight_tunneling_params(pot)" in source
+    assert 'deform["converge_0"] = 1.0' not in source
+    assert 'deform["fRatioConv"] = 5.0e-3' not in source
