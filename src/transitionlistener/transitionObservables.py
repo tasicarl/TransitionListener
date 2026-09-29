@@ -412,6 +412,8 @@ class TransitionObservables:
             "WARNING:betaH_mismatch": False,
             "WARNING:betaH_nonfinite": False,
             "WARNING:betaH_S3_fit_unstable": False,
+            "WARNING:action_rescue_attempted": False,
+            "WARNING:action_rescue_failed": False,
             "WARNING:nucleationRate_nonexponential": False,
             "WARNING:spline_tnuc_unavailable": False,
             "WARNING:spline_tnuc_not_reached": False,
@@ -730,6 +732,14 @@ class TransitionObservables:
                 print("Calculating nucleation temperature...")
             metadata_tnuc = None
             if percolation.metadata is not None:
+                attempts = int(getattr(percolation.metadata, "action_jitter_rescue_attempts", 0) or 0)
+                if attempts:
+                    # the rate-jitter rescue, the other place an action is recomputed tight
+                    derived["WARNING:action_rescue_attempted"] = True
+                    if not bool(getattr(percolation.metadata, "action_jitter_rescue_success", False)):
+                        derived["WARNING:action_rescue_failed"] = True
+                    derived["DIAG:action_rescue_attempts"] = (
+                        derived.get("DIAG:action_rescue_attempts", 0) + attempts)
                 metadata_tnuc = getattr(percolation.metadata, "spline_tnuc", None)
                 warning = getattr(percolation.metadata, "spline_tnuc_warning", None)
                 if warning is not None:
@@ -976,6 +986,14 @@ class TransitionObservables:
                     verbose,
                     diagnostics=betaH_diag,
                 )
+                if betaH_diag.get("fit_rescue_attempts"):
+                    # attempted says a rescue ran at all; failed says it ran and did not help
+                    derived["WARNING:action_rescue_attempted"] = True
+                    if not betaH_diag.get("fit_rescue_success", False):
+                        derived["WARNING:action_rescue_failed"] = True
+                    derived["DIAG:action_rescue_attempts"] = (
+                        derived.get("DIAG:action_rescue_attempts", 0)
+                        + int(betaH_diag["fit_rescue_attempts"]))
                 if betaH_diag.get("fit_unstable", False):
                     derived["WARNING:betaH_S3_fit_unstable"] = True
                     if verbose:

@@ -9,6 +9,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Four diagnostics of how a point was reached, rather than of what it is.
+  `WARNING:action_rescue_attempted` says that actions were recomputed with the path
+  deformation tightened, by either the rate-jitter rescue or the fit rescue above;
+  `WARNING:action_rescue_failed` says that this did not settle the quantity that
+  prompted it. `DIAG:action_rescue_attempts` counts the actions recomputed and
+  `DIAG:runtime_s` gives the wall clock of the point, which is what makes the cost of a
+  rescue visible: a rescued 2HDM point took 1887 s against about 775 s without one.
+  The rate-jitter rescue already recorded its outcome internally and nothing read it.
+  These are written to `1_All_params.txt` under their own `Diagnostics:` heading, apart
+  from the observables, so that two runs of one point still agree there byte for byte.
+
+
 - Output column `Treh_DS_GeV`: the reheating temperature of the
   transitioning sector, i.e. the fields of the potential and the coupled
   radiation bath.
@@ -66,6 +78,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   its default. All amplitudes rise by 0.7 %.
 
 ### Fixed
+
+- **An unstable action slope is now retried at a tighter path deformation.**
+  `calc_betaH_S3` fits the slope of `S3/T` over the support samples nearest the
+  percolation temperature and repeats the fit over a smaller subset; where the two
+  disagree by more than `betaH_S3_fit_rel_tol` the result was reported through
+  `WARNING:betaH_S3_fit_unstable` and otherwise left alone. At the default path
+  deformation the actions themselves are the reason: on a 2HDM benchmark `S3/T`
+  scatters by 0.5 about a straight line across the fitting window, against a physical
+  variation of 0.2 over the same window, so the slope and even its sign are not
+  determined. Tightening the deformation to `converge_0 = 1` and `fRatioConv = 5e-3`,
+  the two settings the `tunneltight` precision mode and the rate-jitter rescue already
+  use, leaves a scatter of 0.003 and a smooth, monotonic `S3/T`. Where the two fits
+  disagree the slope is therefore fitted again on a stencil of its own, spaced as the
+  sparse-support fallback spaces one and computed with the deformation tightened. The
+  support samples themselves are not reused: they can sit as little as `1e-6 T` apart,
+  and over a baseline that short even an exact action leaves the slope undetermined, so
+  recomputing them would cure noisy actions but not a stencil too short to differentiate
+  over. On the benchmark above this turns `-27.3` into `+66.5`, against `+67.0` to
+  `+67.3` from fitting resolved actions over the windows the solver allows. The original
+  value is kept if the recomputation fails. The new setting
+  `betaH_S3_fit_rescue`, with the run-time override `percolation_betaH_S3_fit_rescue`,
+  switches it off.
+
 
 - **Symmetric phase at extreme supercooling.** Where only the thermal masses hold the
   symmetric minimum in place, as in a classically conformal model, the potential is flat

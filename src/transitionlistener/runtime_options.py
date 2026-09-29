@@ -54,6 +54,7 @@ PERCOLATION_OVERRIDE_KEYS = (
     "percolation_betaH_S3_fit_points",
     "percolation_betaH_S3_fit_check_points",
     "percolation_betaH_S3_fit_rel_tol",
+    "percolation_betaH_S3_fit_rescue",
     "percolation_betaH_S3_fit_min_per_side",
     "percolation_betaH_S3_fit_max_rel_span",
     "percolation_betaH_S3_fallback_rel_step",
@@ -224,6 +225,7 @@ def apply_percolation_overrides(percolation_conf, overrides: dict[str, object]) 
 
     bool_overrides = {
         "percolation_action_jitter_tunneltight_rescue": "action_jitter_tunneltight_rescue",
+        "percolation_betaH_S3_fit_rescue": "betaH_S3_fit_rescue",
     }
     for key, attr in bool_overrides.items():
         if overrides[key] is not None:

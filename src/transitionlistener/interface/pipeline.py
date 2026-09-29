@@ -11,6 +11,7 @@ Authors:
 from __future__ import annotations
 
 import signal
+import time
 from typing import Callable, Dict, Optional
 
 import numpy as np
@@ -276,6 +277,7 @@ def run_TL(
         line = str(inputparams_dict) + ":" + str(observability)
         resultlogger.log(line + "\n")
 
+    started = time.perf_counter()
     context, error = _compute_single_point(
         inputparams_dict,
         potential,
@@ -284,6 +286,7 @@ def run_TL(
         include_smbhb,
         max_stage=4,
     )
+    elapsed = time.perf_counter() - started
 
     if error is not None:
         if call_from_sampler:
@@ -295,6 +298,10 @@ def run_TL(
         return result
 
     all_params_dict = _build_result_from_context(context)
+    # How long the point took, which is what makes a rescue visible in cost as well as in the
+    # flags. It is a diagnostic, so it is written apart from the observables.
+    if isinstance(all_params_dict, dict):
+        all_params_dict["DIAG:runtime_s"] = float(elapsed)
     if resultlogger is not None:
         return_result(all_params_dict)
     if return_context:

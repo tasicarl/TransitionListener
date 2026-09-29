@@ -1,0 +1,199 @@
+"""The action rescue, and saying so.
+
+Where the two fits of the action slope disagree, the samples that enter them are recomputed with
+the path deformation tightened and the fit is repeated. That costs time and moves the answer, so
+the run reports that it happened, whether it helped, how many actions were recomputed, and how
+long the point took.
+"""
+from __future__ import annotations
+
+import os
+import sys
+import tempfile
+
+import numpy as np
+import pytest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "models"))
+
+from transitionlistener import bubbledynamics as bd  # noqa: E402
+from transitionlistener import config as tl_config  # noqa: E402
+from transitionlistener.interface import single_point as sp  # noqa: E402
+
+
+class _Phase:
+    """A phase that exists over a temperature range and nothing else."""
+
+    def __init__(self, tmin=1.0, tmax=100.0):
+        self.Tmin, self.Tmax = tmin, tmax
+
+
+class _Interp:
+    """Stands in for the action spline over the support bank."""
+
+    def __init__(self, x, y):
+        self.x = np.asarray(x, dtype=float)
+        self._y = np.asarray(y, dtype=float)
+
+    def __call__(self, t):
+        return np.interp(np.asarray(t, dtype=float), self.x, self._y)
+
+
+class _Conf:
+    betaH_S3_fit_points = 11
+    betaH_S3_fit_check_points = 7
+    betaH_S3_fit_rel_tol = 0.03
+    betaH_S3_fit_min_per_side = 2
+    betaH_S3_fit_max_rel_span = 0.2
+    betaH_S3_fallback_rel_step = 2e-3
+    betaH_S3_fit_rescue = True
+
+
+class _Pot:
+    """Just enough potential for calc_betaH_S3: a config and a tunneling-parameter dict."""
+
+    def __init__(self):
+        class Tracing:
+            tunneling_params = {"deformation_deform_params": {"converge_0": 5.0,
+                                                              "fRatioConv": 2e-2}}
+
+        class Config:
+            percolationConf = _Conf()
+            tracingConf = Tracing()
+
+        self.config = Config()
+
+
+T_EVAL = 50.0
+# a smooth action, and the same one with one sample displaced enough to split the two fits
+T_SAMPLES = T_EVAL * (1.0 + np.linspace(-0.05, 0.05, 15))
+SMOOTH = (120.0 + 1.6 * (T_SAMPLES - T_EVAL)) * T_SAMPLES
+
+
+def _spoiled():
+    """One sample displaced by 0.8 %, which splits the eleven- and seven-point fits by 4 %."""
+    values = SMOOTH.copy()
+    values[len(values) // 2 + 1] *= 1.008
+    return values
+
+
+def _call(pot, samples, monkeypatched_actions=None, **diag_out):
+    diagnostics: dict = {}
+    betaH = bd.calc_betaH_S3(T_EVAL, _Interp(T_SAMPLES, samples), {}, pot,
+                             _Phase(), _Phase(), False, diagnostics=diagnostics)
+    diag_out.update(diagnostics)
+    return betaH, diagnostics
+
+
+def test_a_smooth_action_needs_no_rescue():
+    betaH, diag = _call(_Pot(), SMOOTH)
+    assert diag.get("fit_unstable") is False
+    assert "fit_rescue_attempts" not in diag
+    assert np.isfinite(betaH)
+
+
+def test_a_split_fit_triggers_the_rescue(monkeypatch):
+    """The recomputed actions come back smooth, so the refit agrees and the value moves."""
+    calls = {"n": 0, "tight": 0}
+
+    def fake_action(pot, T, phase_sym, phase_bro, outdict):
+        calls["n"] += 1
+        deform = pot.config.tracingConf.tunneling_params["deformation_deform_params"]
+        if deform["converge_0"] == 1.0 and deform["fRatioConv"] == 5e-3:
+            calls["tight"] += 1
+        return float(np.interp(T, T_SAMPLES, SMOOTH))
+
+    monkeypatch.setattr(bd, "calcAction", fake_action)
+    pot = _Pot()
+    betaH, diag = _call(pot, _spoiled())
+    assert diag["fit_rescue_attempts"] == 11
+    assert diag["fit_rescue_success"] is True
+    assert diag["fit_unstable"] is False
+    assert calls["tight"] == 11, calls
+    # every recomputation was made with the deformation tightened, and the setting is restored
+    assert pot.config.tracingConf.tunneling_params["deformation_deform_params"]["converge_0"] == 5.0
+    assert diag["betaH_before_rescue"] != pytest.approx(betaH)
+
+
+def test_a_rescue_that_does_not_help_keeps_the_flag(monkeypatch):
+    """Recomputing returns the same split samples, so the refit still disagrees."""
+    spoiled = _spoiled()
+    monkeypatch.setattr(bd, "calcAction",
+                        lambda pot, T, a, b, o: float(np.interp(T, T_SAMPLES, spoiled)))
+    betaH, diag = _call(_Pot(), spoiled)
+    assert diag["fit_rescue_attempts"] == 11
+    assert diag["fit_rescue_success"] is False
+    assert diag["fit_unstable"] is True
+    assert np.isfinite(betaH)
+
+
+def test_a_failing_recomputation_keeps_the_original_value(monkeypatch):
+    def raising(*args, **kwargs):
+        raise RuntimeError("the solver gave up")
+
+    monkeypatch.setattr(bd, "calcAction", raising)
+    betaH, diag = _call(_Pot(), _spoiled())
+    assert diag["fit_rescue_success"] is False
+    assert "fit_rescue_error" in diag
+    assert betaH == pytest.approx(diag["betaH_fit"])
+
+
+def test_the_rescue_can_be_switched_off(monkeypatch):
+    monkeypatch.setattr(bd, "calcAction",
+                        lambda *a, **k: pytest.fail("no action may be recomputed"))
+    pot = _Pot()
+    pot.config.percolationConf.betaH_S3_fit_rescue = False
+    betaH, diag = _call(pot, _spoiled())
+    assert diag["fit_unstable"] is True
+    assert "fit_rescue_attempts" not in diag
+
+
+class _WriterConf:
+    derived_params = {name: name for name in
+                      ("betaH_S3", "WARNING:action_rescue_attempted",
+                       "WARNING:action_rescue_failed", "DIAG:action_rescue_attempts")}
+
+
+def _write(attempted, failed, attempts, runtime=12.5):
+    out = tempfile.mkdtemp() + "/"
+    sp._write_transition_outputs(out, _WriterConf(), {
+        "strongestTransitionObservables": {
+            "betaH_S3": 43.3,
+            "WARNING:action_rescue_attempted": attempted,
+            "WARNING:action_rescue_failed": failed,
+            "DIAG:action_rescue_attempts": attempts,
+        },
+        "error": np.nan,
+        "DIAG:runtime_s": runtime,
+    })
+    return open(out + "1_All_params.txt", encoding="utf-8").read()
+
+
+@pytest.mark.parametrize("attempted,failed,attempts", [(False, False, 0), (True, False, 11),
+                                                       (True, True, 11)])
+def test_the_two_flags_cannot_contradict_each_other(attempted, failed, attempts):
+    """`failed` may only be true where a rescue was attempted."""
+    text = _write(attempted, failed, attempts)
+    def flag(name):
+        line = next(l for l in text.splitlines() if name in l)
+        return line.split()[-1] == "True"
+    assert flag("action_rescue_attempted") is attempted
+    assert flag("action_rescue_failed") is failed
+    assert not (flag("action_rescue_failed") and not flag("action_rescue_attempted"))
+
+
+def test_the_diagnostics_are_written_apart_from_the_observables():
+    """Two runs of a point differ in the wall clock, and that may not disturb the physics block."""
+    text = _write(True, False, 11)
+    body, _, rest = text.partition("Diagnostics:")
+    assert "runtime_s" not in body and "action_rescue_attempts" not in body
+    assert "betaH_S3" in body
+    assert "runtime_s" in rest and "action_rescue_attempts" in rest
+    assert rest.index("runtime_s") < rest.index("Warnings:")
+
+
+def test_the_new_keys_are_registered_as_observables():
+    """A key the writer never hears about is silently dropped."""
+    for name in ("WARNING:action_rescue_attempted", "WARNING:action_rescue_failed",
+                 "DIAG:action_rescue_attempts", "DIAG:runtime_s"):
+        assert name in tl_config.all_observables, name
