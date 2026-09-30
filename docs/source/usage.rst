@@ -127,6 +127,14 @@ The most important controls are:
   daisy. Only the adaptive step size solver reads this setting; the fixed
   step size solver refuses anything but the default, because its
   time-temperature relation is its own.
+- ``percolation_entropy_scheme_diagnostic`` and
+  ``percolation_entropy_scheme_warn_threshold``: each run compares the two entropy
+  definitions on the percolation support and reports how far apart they are, in
+  ``DIAG:entropy_scheme_cs2_spread`` and ``DIAG:entropy_scheme_lna_gap``.
+  ``WARNING:entropy_scheme_sensitive`` is raised when the first exceeds the
+  threshold, 2% by default, which means the mean bubble separation of that point
+  depends appreciably on which definition produced it. The threshold is a
+  screening criterion, not an estimate of the shift in any observable.
 - ``percolationConf.n_action``: fixed ``TSYM`` support count for
   ``fixed_step_size`` runs.
 - ``percolation_n_action_min``, ``percolation_n_action_increment``,

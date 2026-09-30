@@ -3262,6 +3262,87 @@ def expansion_interpolants(pot, phase_symmetric, T, *, time_temperature_mode: st
     return logEntropyInt, coolingInt
 
 
+def entropy_scheme_sensitivity(
+    pot,
+    phase_symmetric,
+    T: np.ndarray,
+    *,
+    time_temperature_mode: str | None = None,
+    entropy_definition: str | None = None,
+):
+    """How much the choice of entropy scheme matters on this percolation support.
+
+    The two schemes of ``ENTROPY_DEFINITIONS`` are two approximations to one entropy
+    density, and neither contains the other, so the difference between them is a modelling
+    uncertainty of the expansion history rather than a numerical error. It is reported
+    rather than corrected, because nothing in the literature chooses between them.
+
+    Two numbers, both on the support that fixed the percolation temperature:
+
+    ``cs_sq_spread``
+        the largest relative difference between the two schemes' ``3 c_s^2``.
+    ``scale_factor_shift``
+        ``|delta ln a|`` across the support. Since ``d ln a/d ln T = -1/(3 c_s^2)`` and
+        ``ln a = -(1/3) ln s`` up to a constant, this is the difference of the two schemes'
+        logarithmic entropy ratios over three, and it is the first-order estimate of the
+        relative shift it would produce in the mean bubble separation.
+
+    Returns
+    -------
+    tuple
+        ``(cs_sq_spread, scale_factor_shift)``, or ``(nan, nan)`` where the comparison
+        cannot be made: in bag mode, on a support of fewer than two temperatures, or where
+        one of the schemes has no usable history.
+    """
+    if not percolation_uses_sound_speed(time_temperature_mode):
+        # In bag mode the history is 3 c_s^2 = 1 by construction and reads no entropy.
+        return float("nan"), float("nan")
+
+    temperatures = np.asarray(T, dtype=float)
+    if temperatures.size < 2:
+        return float("nan"), float("nan")
+
+    configured = str(entropy_definition or ENTROPY_DEFINITIONS[0])
+    if configured not in ENTROPY_DEFINITIONS:
+        raise errors.PercolationError(
+            f"Unknown percolation entropy definition {configured!r}. "
+            f"Supported definitions are {ENTROPY_DEFINITIONS[0]!r} and {ENTROPY_DEFINITIONS[1]!r}."
+        )
+    other = [d for d in ENTROPY_DEFINITIONS if d != configured][0]
+
+    histories = {}
+    for definition in (configured, other):
+        log_entropy, cooling = expansion_interpolants(
+            pot,
+            phase_symmetric,
+            temperatures,
+            time_temperature_mode=time_temperature_mode,
+            entropy_definition=definition,
+        )
+        if log_entropy is None or cooling is None:
+            return float("nan"), float("nan")
+        histories[definition] = (log_entropy, cooling)
+
+    hot, cold = float(temperatures[0]), float(temperatures[-1])
+    ratios, coolings = {}, {}
+    for definition, (log_entropy, cooling) in histories.items():
+        ratios[definition] = float(log_entropy(hot) - log_entropy(cold))
+        coolings[definition] = np.array(
+            [float(cooling(float(t))) for t in temperatures], dtype=float)
+
+    a = coolings[configured]
+    b = coolings[other]
+    usable = np.isfinite(a) & np.isfinite(b) & (a != 0.0)
+    if not np.any(usable):
+        return float("nan"), float("nan")
+
+    cs_sq_spread = float(np.max(np.abs(b[usable] / a[usable] - 1.0)))
+    scale_factor_shift = abs(ratios[configured] - ratios[other]) / 3.0
+    if not np.isfinite(scale_factor_shift):
+        return cs_sq_spread, float("nan")
+    return cs_sq_spread, float(scale_factor_shift)
+
+
 def calcMeanBubbleSeparation(
     T,
     Tmax,

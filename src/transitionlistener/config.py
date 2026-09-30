@@ -78,6 +78,13 @@ class PercolationConf:
     algorithm_mode = "adaptive_step_size"       # "adaptive_step_size" (default) or "fixed_step_size".
     integral_method = "ode"               # Percolation integral backend: "ode" or "double_integral".
     time_temperature_mode = "sound_speed" # dT/dt relation: "sound_speed" or "bag".
+    entropy_scheme_diagnostic = True  # Compare both entropy schemes on the percolation support.
+    # Flag the point when the two entropy schemes' 3 c_s^2 differ by more than this fraction
+    # anywhere on the percolation support. This is a screening criterion, not an estimate of
+    # the shift in any observable: 2% was chosen on 91 points of four scan lines, where it
+    # catches 23 of the 24 points whose mean bubble separation actually moves by more than 1%
+    # between the schemes, at the cost of 9 points flagged whose separation moves less.
+    entropy_scheme_warn_threshold = 0.02
     entropy_definition = "dof_table"      # Thermodynamics of the expansion history:
                                           # "dof_table" (counted degrees of freedom, default)
                                           # or "eff_potential" (-dV/dT of the potential).
@@ -216,6 +223,10 @@ all_observables = {
     "WARNING:action_rescue_failed": R"$\mathrm{WARNING:} \mathrm{action\ rescue\ failed}$",
     "DIAG:action_rescue_attempts": R"$\mathrm{DIAG:} \mathrm{actions\ recomputed}$",
     "DIAG:runtime_s": R"$\mathrm{DIAG:} \mathrm{runtime\ [s]}$",
+    "WARNING:entropy_scheme_sensitive":
+        R"$\mathrm{WARNING:} \mathrm{entropy\ scheme\ matters}$",
+    "DIAG:entropy_scheme_cs2_spread": R"$\mathrm{DIAG:} \Delta(3c_s^2)/3c_s^2$",
+    "DIAG:entropy_scheme_lna_gap": R"$\mathrm{DIAG:} |\Delta \ln a|$",
     "WARNING:nucleationRate_nonexponential": R"$\mathrm{WARNING:} \mathrm{nucleation\ rate\ nonexponential}$",
     "WARNING:spline_tnuc_unavailable": R"$\mathrm{WARNING:} T_\mathrm{nuc} \mathrm{\ spline\ unavailable}$",
     "WARNING:spline_tnuc_not_reached": R"$\mathrm{WARNING:} T_\mathrm{nuc} \mathrm{\ criterion\ not\ reached}$",

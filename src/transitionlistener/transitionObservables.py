@@ -26,6 +26,7 @@ from transitionlistener.bubbledynamics import (
     calc_betaH_S3,
     calc_betaH_S3_approx,
     calcMeanBubbleSeparation,
+    entropy_scheme_sensitivity,
     falseVacuumVolumeGrowthRate,
     percolation_sound_speed_sq,
     expansion_interpolants,
@@ -634,6 +635,50 @@ class TransitionObservables:
             logEntropyInt = coolingInt = None
             if verbose:
                 print("Error in computing the expansion history, using a ~ 1/T: ", err)
+
+        # How much the entropy scheme choice is worth at this point. The two schemes are two
+        # approximations to one entropy density and neither contains the other, so their
+        # difference is a modelling uncertainty of the expansion history. Reported, not
+        # corrected: it tells the user whether the number they are about to quote depends on a
+        # choice nothing in the literature settles.
+        if (logEntropyInt is not None
+                and getattr(ctx.PercolationConf, "entropy_scheme_diagnostic", True)):
+            try:
+                spread, shift = entropy_scheme_sensitivity(
+                    pot,
+                    ctx.phase_symmetric,
+                    TSYM,
+                    time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
+                    entropy_definition=getattr(
+                        ctx.PercolationConf, "entropy_definition", None),
+                )
+            except errors.Timeout:
+                raise
+            except Exception as err:
+                spread = shift = float("nan")
+                if verbose:
+                    print("Error in comparing the entropy schemes: ", err)
+            derived["DIAG:entropy_scheme_cs2_spread"] = float(spread)
+            derived["DIAG:entropy_scheme_lna_gap"] = float(shift)
+            threshold = float(getattr(
+                ctx.PercolationConf, "entropy_scheme_warn_threshold", 0.02))
+            # The flag is raised on the spread of 3 c_s^2, which is a property of this support
+            # and needs no interpretation. The gap in ln a is recorded beside it but is not
+            # used as a criterion: measured against the mean bubble separation it actually
+            # produces, it is biased by a factor that depends on the model, from 0.08 on an
+            # abelian dark Higgs line to 5.2 on a 2HDM line, so it is a diagnostic and not a
+            # prediction. A spread that cannot be computed leaves the flag unset and the nan
+            # visible beside it.
+            derived["WARNING:entropy_scheme_sensitive"] = bool(
+                np.isfinite(spread) and spread > threshold)
+            if derived["WARNING:entropy_scheme_sensitive"] and verbose:
+                console.print(
+                    "[bold yellow]WARNING:[/bold yellow] the two entropy schemes differ by "
+                    f"{spread * 100.0:.2f} % in 3 c_s^2 on this support, above the "
+                    f"{threshold * 100.0:.2f} % screening threshold. The mean bubble "
+                    "separation of this point depends appreciably on "
+                    "percolation_entropy_definition; say which one produced it."
+                )
 
         if core_spline_error is not None:
             derived["WARNING:no_perc_splines"] = True

@@ -8,6 +8,40 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **A flag for points where the entropy scheme matters.** `entropy_definition` chooses
+  between two approximations to one entropy density, and neither contains the other, so
+  the choice is a modelling uncertainty of the expansion history rather than a numerical
+  one. Each run now evaluates the other scheme on the support that fixed the percolation
+  temperature and reports two diagnostics beside the observables:
+  `DIAG:entropy_scheme_cs2_spread`, the largest relative difference between the two
+  schemes' `3 c_s^2` on that support, and `DIAG:entropy_scheme_lna_gap`, the difference of
+  their logarithmic entropy ratios over three, which is the gap in `ln a` across the
+  support. `WARNING:entropy_scheme_sensitive` is raised when the spread exceeds
+  `percolation_entropy_scheme_warn_threshold`, 2% by default, and the comparison can be
+  switched off with `percolation_entropy_scheme_diagnostic`. It costs one further entropy
+  evaluation per support point and no further bounce actions: on the example point the
+  runtime was 121.3 s against 121.6 s without it, and `Tperc` and `R_*` are unchanged.
+
+  The threshold is a screening criterion chosen from measurement, not from a round number.
+  On 91 points of four scan lines, run in both schemes so that the shift in the mean bubble
+  separation is known for each, a 2% spread catches 23 of the 24 points whose separation
+  moves by more than 1% between the schemes, misses one at a spread of 1.5% whose separation
+  moves by 1.0%, and flags 9 further points whose separation moves less.
+
+  `DIAG:entropy_scheme_lna_gap` is reported but deliberately not used as the criterion. It is
+  the linearised estimate of the shift, and measured against the shift it actually produces it
+  is biased by a model-dependent factor: its median ratio to the observed spread is 0.08 on an
+  abelian dark Higgs line, 1.0 on a conformal dark U(1) line and 5.2 on a 2HDM line, reaching
+  109% predicted against 3.8% observed at one 2HDM point. Read it as a diagnostic of the
+  expansion history, never as a prediction for an observable. The spread ranks the points
+  better, with a Spearman correlation of 0.84 against the measured separation spread, against
+  0.73 for the gap.
+
+  A spread near 100% means one temperature of the support has lost a usable sound speed in one
+  of the schemes rather than that the whole history differs; the statistic is a pointwise
+  maximum, so a single degenerate support point dominates it. Two of the 91 points are of that
+  kind, and both are correctly flagged for other reasons.
+
 
 - Four diagnostics of how a point was reached, rather than of what it is.
   `WARNING:action_rescue_attempted` says that actions were recomputed with the path
