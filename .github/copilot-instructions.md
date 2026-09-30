@@ -44,10 +44,15 @@ In rough order of how often it has been the actual defect here:
 
 1. **A change to one of a pair of twin functions**, with no statement about the other, or a guard
    placed in the copy the executing path does not call.
-2. **A new output key that is not registered everywhere.** A key must appear in
-   `config.all_observables`, in `interface/samplers.py: get_empty_result()` and in the column
-   order in `interface/output_schema.py`. Missing from the first it is silently dropped; missing
-   from the second, failed scan points produce rows of a different length from successful ones.
+2. **A new output key that is not registered where registration is required.** Two places are
+   mandatory: `config.all_observables`, or the writer never sees the key, and
+   `interface/samplers.py: get_empty_result()`, or failed scan points produce rows that do not
+   line up with successful ones. `interface/output_schema.py` is **not** mandatory:
+   `_build_column_order()` appends every configured derived key absent from
+   `DERIVED_PREFERRED_ORDER`, and then any remaining row key, so a key without an entry there is
+   still written, just at the end. Add one only to place a column deliberately. Seventeen of the
+   forty-six observables have no entry, including every `WARNING:` and `DIAG:` key, so do not
+   report a missing one as a defect.
 3. **Error and exit paths that skip bookkeeping the success path does**: a cache entry removed and
    not restored, a diagnostic carried on an exception and never recorded, a runtime recorded on
    one branch only.
