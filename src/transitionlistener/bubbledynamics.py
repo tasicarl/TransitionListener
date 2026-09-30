@@ -1444,6 +1444,12 @@ def percolation_temperature_from_ode(
             scale_factor=scale_factor,
             i_target=target,
         )
+    except errors.Timeout:
+        # Returning None here would let the adaptive refinement keep the interpolated Tperc
+        # and finish a run that timed out. The entropy evaluations inside deliberately let the
+        # timeout through, so this fallback, which exists for ordinary solver failures, must
+        # not be the place that absorbs it.
+        raise
     except Exception:
         return None
     if crossing is None or not np.isfinite(crossing) or crossing <= 0.0:

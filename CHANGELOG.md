@@ -155,7 +155,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   vev, which absorbed the run's own `Timeout` and turned a timed-out point into a
   finite entropy. They are the innermost evaluations on the counted route, below the
   handlers in the percolation history, so the timeout is now re-raised in both copies
-  of both functions, and the fallback for ordinary failures is unchanged.
+  of both functions, and the fallback for ordinary failures is unchanged. The same held
+  one level up, where `percolation_temperature_from_ode` answered every exception with
+  `None`: the adaptive refinement then kept the interpolated percolation temperature and
+  finished a run that had timed out. Every consumer of the time-temperature factors now
+  has a test that a timeout in the innermost entropy evaluation reaches the caller.
 
 - **An unstable action slope is now retried at a tighter path deformation.**
   `calc_betaH_S3` fits the slope of `S3/T` over the support samples nearest the

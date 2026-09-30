@@ -684,6 +684,79 @@ class CountedEntropyTimeoutTests(unittest.TestCase):
                 self.assertTrue(np.isfinite(value))
 
 
+class TimeoutReachesTheCallerTests(unittest.TestCase):
+    """A timeout in the innermost entropy evaluation must surface from every consumer.
+
+    The re-raises are only worth having if no intermediate layer absorbs them. Each of the
+    four consumers of the time-temperature factors is exercised here with the entropy timing
+    out, rather than auditing the handlers in between by eye: two review rounds each missed a
+    swallower one level away from the one they fixed.
+    """
+
+    def _potential(self):
+        return load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+                              "specific_potential")(
+            {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
+
+    @staticmethod
+    def _timing_out(pot, phase, T, definition):
+        raise errors.Timeout()
+
+    def test_the_percolation_temperature_solver_propagates_it(self):
+        # Its broad fallback returns None for ordinary solver failures, which would let the
+        # refinement keep the interpolated Tperc and finish a run that timed out.
+        pot = self._potential()
+        T = np.geomspace(50.0, 15.0, 8)
+        with mock.patch.object(bd, "entropy_density", self._timing_out):
+            with self.assertRaises(errors.Timeout):
+                bd.percolation_temperature_from_ode(
+                    T, np.full_like(T, 1e-18), np.full_like(T, 150.0),
+                    vw=1.0, pot=pot, phase_symmetric=FixedPhase([0.0]),
+                    time_temperature_mode="sound_speed", f_perc=0.29,
+                    entropy_definition="dof_table")
+
+    def test_the_full_sweep_propagates_it(self):
+        pot = self._potential()
+        T = np.geomspace(50.0, 15.0, 8)
+        with mock.patch.object(bd, "entropy_density", self._timing_out):
+            with self.assertRaises(errors.Timeout):
+                bd.percIntegralODE_full_sweep(
+                    T, np.full_like(T, 1e-18), np.full_like(T, 150.0), vw=1.0,
+                    pot=pot, phase_symmetric=FixedPhase([0.0]),
+                    time_temperature_mode="sound_speed", entropy_definition="dof_table")
+
+    def test_the_expansion_interpolants_propagate_it(self):
+        pot = self._potential()
+        with mock.patch.object(bd, "entropy_density", self._timing_out):
+            with self.assertRaises(errors.Timeout):
+                bd.expansion_interpolants(
+                    pot, FixedPhase([0.0]), np.geomspace(50.0, 15.0, 8),
+                    entropy_definition="dof_table")
+
+    def test_the_single_point_sound_speed_propagates_it(self):
+        pot = self._potential()
+        with mock.patch.object(bd, "entropy_density", self._timing_out):
+            with self.assertRaises(errors.Timeout):
+                bd.percolation_sound_speed_sq(
+                    pot, FixedPhase([0.0]), 20.0, time_temperature_mode="sound_speed",
+                    entropy_definition="dof_table")
+
+    def test_an_ordinary_failure_is_still_absorbed(self):
+        # The fallbacks must keep working: only the timeout is singled out.
+        pot = self._potential()
+        T = np.geomspace(50.0, 15.0, 8)
+
+        def broken(pot, phase, T, definition):
+            raise ValueError("solver failure")
+
+        with mock.patch.object(bd, "entropy_density", broken):
+            self.assertEqual(
+                bd.percolation_sound_speed_sq(
+                    pot, FixedPhase([0.0]), 20.0, time_temperature_mode="sound_speed",
+                    entropy_definition="dof_table"),
+                1.0 / 3.0)
+
+
 class UnknownEntropyDefinitionTests(unittest.TestCase):
     def test_entropy_density_refuses_an_unknown_definition(self):
         # It is a public function and the tests call it directly, so it may not answer a
