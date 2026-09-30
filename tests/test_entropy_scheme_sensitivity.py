@@ -382,15 +382,37 @@ class SymmetryTests(unittest.TestCase):
         self.assertAlmostEqual(a[1], b[1], places=15)
 
     def test_the_flag_cannot_depend_on_the_configured_scheme(self):
-        # The case from the review, at the threshold where it decides the outcome.
-        a, b = 1.0, 1.041
-        symmetric = 2.0 * abs(b - a) / abs(a + b)
+        """Run the real comparison both ways on a case that straddles the threshold.
+
+        Cooling factors 1 and 1.041 give 4.10% dividing by one scheme and 3.94% by the
+        other, on either side of the 4% default. Comparing the predicate against itself
+        would prove nothing, so the two runs differ in which scheme is configured.
+        """
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 12)
+
+        # s ~ T^3 gives 3 c_s^2 = 1 exactly; s ~ T^(3/1.041) gives 1.041 times that.
+        def entropy(pot_, phase, t, definition):
+            power = 3.0 if definition == "dof_table" else 3.0 / 1.041
+            return float(t) ** power
+
         threshold = PercolationConf().entropy_scheme_warn_threshold
-        self.assertEqual(bd.entropy_scheme_is_sensitive(symmetric, threshold),
-                         bd.entropy_scheme_is_sensitive(symmetric, threshold))
-        # and the directional forms it replaced straddle the threshold, which is the point
+        flags, spreads = [], []
+        for configured in cn.ENTROPY_DEFINITIONS:
+            with mock.patch.object(bd, "entropy_density", entropy):
+                spread, _ = bd.entropy_scheme_sensitivity(
+                    pot, FixedPhase([0.0]), T, time_temperature_mode="sound_speed",
+                    entropy_definition=configured)
+            spreads.append(spread)
+            flags.append(bd.entropy_scheme_is_sensitive(spread, threshold))
+
+        self.assertAlmostEqual(spreads[0], spreads[1], places=12)
+        self.assertEqual(flags[0], flags[1])
+        # The case is only meaningful if it sits where the directional forms disagree.
+        a, b = 1.0, 1.041
         self.assertGreater(abs(b / a - 1.0), threshold)
         self.assertLess(abs(a / b - 1.0), threshold)
+        self.assertAlmostEqual(spreads[0], 2.0 * abs(b - a) / (a + b), places=3)
 
 
 class NonApplicableDefaultsTests(unittest.TestCase):
@@ -471,6 +493,16 @@ class RuntimeOverrideTests(unittest.TestCase):
             with self.subTest(threshold=bad):
                 with self.assertRaises(ValueError):
                     self.conf(percolation_entropy_scheme_warn_threshold=bad)
+
+    def test_a_non_positive_threshold_set_directly_is_refused_too(self):
+        # Models commonly assign `config.percolationConf` attributes directly, which never
+        # passes through the override validation, so the value is checked where it is read.
+        import types
+        for bad in (0.0, -0.01):
+            with self.subTest(threshold=bad):
+                with self.assertRaises(errors.PercolationError):
+                    bd.entropy_scheme_threshold(
+                        types.SimpleNamespace(entropy_scheme_warn_threshold=bad))
 
     def test_the_default_threshold_is_the_measured_one(self):
         # The criterion is "R_* uncertain at about the five per cent level", set a little

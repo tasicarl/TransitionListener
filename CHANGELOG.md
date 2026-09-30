@@ -51,13 +51,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - **A flag for points where the entropy scheme matters.** `entropy_definition` chooses
   between two approximations to one entropy density, and neither contains the other, so the
   choice is a modelling uncertainty of the expansion history rather than a numerical one.
-  Each run now evaluates the other scheme on the support that fixed the percolation
-  temperature and reports `DIAG:entropy_scheme_cs2_spread`, the median relative difference
+  Every adaptive step size run now evaluates the other scheme on the support that fixed the
+  percolation temperature and reports `DIAG:entropy_scheme_cs2_spread`, the median relative
+  difference
   between the two schemes' `3 c_s^2` over that support, and `DIAG:entropy_scheme_lna_gap`,
   the difference of their logarithmic entropy ratios over three.
   `WARNING:entropy_scheme_sensitive` is raised when the spread exceeds
   `percolation_entropy_scheme_warn_threshold`, 4% by default, and the comparison can be
-  switched off with `percolation_entropy_scheme_diagnostic`. It costs one further entropy
+  switched off with `percolation_entropy_scheme_diagnostic`. The fixed step size solver does
+  not read `entropy_definition` and refuses anything but the default, so it has no second
+  scheme to compare against: it writes the flag as false and both diagnostics as `nan`. It costs one further entropy
   evaluation per support point and no further bounce actions: on the example point the
   runtime was 121.3 s against 121.6 s without it, and `Tperc` and `R_*` are unchanged.
 

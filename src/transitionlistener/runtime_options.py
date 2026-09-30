@@ -209,6 +209,8 @@ def apply_percolation_overrides(percolation_conf, overrides: dict[str, object]) 
     if overrides["percolation_entropy_scheme_warn_threshold"] is not None:
         threshold = float(overrides["percolation_entropy_scheme_warn_threshold"])
         if not threshold > 0.0:
+            # Refused here as a ValueError, as the other overrides are, and refused again
+            # where it is read, for a model that sets the attribute directly.
             raise ValueError(
                 "percolation_entropy_scheme_warn_threshold must be positive; a run that "
                 "should not flag anything switches the comparison off with "

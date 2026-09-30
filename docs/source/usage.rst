@@ -128,9 +128,12 @@ The most important controls are:
   step size solver refuses anything but the default, because its
   time-temperature relation is its own.
 - ``percolation_entropy_scheme_diagnostic`` and
-  ``percolation_entropy_scheme_warn_threshold``: each run compares the two entropy
-  definitions on the percolation support and reports how far apart they are, in
-  ``DIAG:entropy_scheme_cs2_spread`` and ``DIAG:entropy_scheme_lna_gap``.
+  ``percolation_entropy_scheme_warn_threshold``: every adaptive step size run
+  compares the two entropy definitions on the percolation support and reports how
+  far apart they are, in ``DIAG:entropy_scheme_cs2_spread`` and
+  ``DIAG:entropy_scheme_lna_gap``. The fixed step size solver implements only the
+  default definition, so it has nothing to compare and writes the flag as false
+  and both diagnostics as ``nan``.
   The first is the median relative difference between the two definitions'
   :math:`3 c_s^2` over the percolation support, and estimates to about 30% how far
   the mean bubble separation of that point moves between them.

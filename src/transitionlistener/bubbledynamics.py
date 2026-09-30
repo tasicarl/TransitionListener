@@ -3291,9 +3291,22 @@ def entropy_scheme_threshold(conf) -> float:
 
     A configuration built before the setting existed does not carry it, and must then get
     the documented default rather than a second number written out at the call site.
+
+    The value is validated here and not only in the run-time overrides, because a model is
+    free to assign `config.percolationConf` attributes directly and most of them do. A
+    threshold of zero or below would flag every point that has any spread at all, which is
+    not "flag nothing"; a run that should flag nothing switches the comparison off with
+    `entropy_scheme_diagnostic`.
     """
-    return float(getattr(conf, "entropy_scheme_warn_threshold",
-                         ENTROPY_SCHEME_DEFAULT_THRESHOLD))
+    threshold = float(getattr(conf, "entropy_scheme_warn_threshold",
+                              ENTROPY_SCHEME_DEFAULT_THRESHOLD))
+    if not threshold > 0.0:
+        raise errors.PercolationError(
+            f"percolation_entropy_scheme_warn_threshold={threshold!r} must be positive. A run "
+            "that should not flag anything switches the comparison off with "
+            "percolation_entropy_scheme_diagnostic instead."
+        )
+    return threshold
 
 
 def entropy_scheme_is_sensitive(cs_sq_spread, threshold) -> bool:
