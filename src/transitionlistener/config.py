@@ -79,12 +79,13 @@ class PercolationConf:
     integral_method = "ode"               # Percolation integral backend: "ode" or "double_integral".
     time_temperature_mode = "sound_speed" # dT/dt relation: "sound_speed" or "bag".
     entropy_scheme_diagnostic = True  # Compare both entropy schemes on the percolation support.
-    # Flag the point when the two entropy schemes' 3 c_s^2 differ by more than this fraction
-    # anywhere on the percolation support. This is a screening criterion, not an estimate of
-    # the shift in any observable: 2% was chosen on 91 points of four scan lines, where it
-    # catches 23 of the 24 points whose mean bubble separation actually moves by more than 1%
-    # between the schemes, at the cost of 9 points flagged whose separation moves less.
-    entropy_scheme_warn_threshold = 0.02
+    # Flag the point when the two entropy schemes' 3 c_s^2 differ, in the median over the
+    # percolation support, by more than this fraction. That median estimates the relative
+    # shift the mean bubble separation takes between the schemes, so the criterion reads as
+    # "flag a point whose R_* depends on the entropy definition at the few per cent level".
+    # On 91 points of four scan lines, 3.5% flags 7, every one of which moves by more than
+    # 2.9%, with no point flagged that moves by less than 2%.
+    entropy_scheme_warn_threshold = 0.035
     entropy_definition = "dof_table"      # Thermodynamics of the expansion history:
                                           # "dof_table" (counted degrees of freedom, default)
                                           # or "eff_potential" (-dV/dT of the potential).

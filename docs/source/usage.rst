@@ -131,10 +131,12 @@ The most important controls are:
   ``percolation_entropy_scheme_warn_threshold``: each run compares the two entropy
   definitions on the percolation support and reports how far apart they are, in
   ``DIAG:entropy_scheme_cs2_spread`` and ``DIAG:entropy_scheme_lna_gap``.
-  ``WARNING:entropy_scheme_sensitive`` is raised when the first exceeds the
-  threshold, 2% by default, which means the mean bubble separation of that point
-  depends appreciably on which definition produced it. The threshold is a
-  screening criterion, not an estimate of the shift in any observable.
+  The first is the median relative difference between the two definitions'
+  :math:`3 c_s^2` over the percolation support, and estimates to about 30% how far
+  the mean bubble separation of that point moves between them.
+  ``WARNING:entropy_scheme_sensitive`` is raised when it exceeds the threshold,
+  3.5% by default, so a flagged point is one whose :math:`R_*` depends on the
+  entropy definition at the few per cent level.
 - ``percolationConf.n_action``: fixed ``TSYM`` support count for
   ``fixed_step_size`` runs.
 - ``percolation_n_action_min``, ``percolation_n_action_increment``,

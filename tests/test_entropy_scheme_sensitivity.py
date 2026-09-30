@@ -133,6 +133,56 @@ class SensitivityTests(unittest.TestCase):
         self.assertGreater(expected, 0.0)   # or the comparison would be vacuous
 
 
+class SpreadStatisticTests(unittest.TestCase):
+    """The spread is the median over the support, not the largest value.
+
+    The distinction is the whole calibration: measured against the shift the mean bubble
+    separation actually takes, the median is unbiased to 6% while the maximum overstates it
+    by a factor 1.8, and one support temperature that has lost a usable sound speed in one
+    scheme drives the maximum to 100% where the separation moves by a few per cent.
+    """
+
+    def _spread_with(self, factors):
+        """Two schemes whose 3 c_s^2 differ by the given factors, one per temperature."""
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, len(factors))
+        calls = {"n": 0}
+        base = bd.entropy_density
+
+        def entropy(pot_, phase, t, definition):
+            # dof_table: s ~ T^4 everywhere. eff_potential: s ~ T^(4/f) at each temperature,
+            # so that 3 c_s^2 differs from the counted one by the intended factor there.
+            if definition == "dof_table":
+                return float(t) ** 4
+            i = int(np.argmin(np.abs(T - float(t))))
+            return float(t) ** (4.0 / factors[i])
+
+        with mock.patch.object(bd, "entropy_density", entropy):
+            spread, _ = bd.entropy_scheme_sensitivity(
+                pot, FixedPhase([0.0]), T, time_temperature_mode="sound_speed",
+                entropy_definition="dof_table")
+        return spread
+
+    def test_one_outlying_temperature_does_not_set_the_spread(self):
+        # Nine temperatures differing by 1%, one by a factor 50. The maximum would report
+        # something enormous; the median must stay near the 1% the history mostly has.
+        factors = [1.01] * 9 + [50.0]
+        spread = self._spread_with(factors)
+        self.assertLess(spread, 0.10)
+
+    def test_a_uniform_difference_is_reported_as_it_is(self):
+        factors = [1.10] * 10
+        spread = self._spread_with(factors)
+        self.assertGreater(spread, 0.05)
+
+    def test_the_source_takes_the_median(self):
+        import inspect
+        src = inspect.getsource(bd.entropy_scheme_sensitivity)
+        i = src.index("cs_sq_spread = ")
+        self.assertIn("np.median", src[i:i + 120])
+        self.assertNotIn("np.max", src[i:i + 120])
+
+
 class FlagWiringTests(unittest.TestCase):
     """The flag is raised on the spread, and the threshold is the one the user set."""
 
@@ -239,8 +289,9 @@ class RuntimeOverrideTests(unittest.TestCase):
                     self.conf(percolation_entropy_scheme_warn_threshold=bad)
 
     def test_the_default_threshold_is_the_measured_one(self):
-        # Two per cent was chosen on 91 points; a change to it should be deliberate.
-        self.assertAlmostEqual(self.conf().entropy_scheme_warn_threshold, 0.02)
+        # 3.5% was chosen on 91 points run in both schemes, where it flags 7, every one of
+        # which moves by more than 2.9%. A change to it should be deliberate.
+        self.assertAlmostEqual(self.conf().entropy_scheme_warn_threshold, 0.035)
 
 
 if __name__ == "__main__":

@@ -3280,7 +3280,12 @@ def entropy_scheme_sensitivity(
     Two numbers, both on the support that fixed the percolation temperature:
 
     ``cs_sq_spread``
-        the largest relative difference between the two schemes' ``3 c_s^2``.
+        the median relative difference between the two schemes' ``3 c_s^2`` over the
+        support. Measured over 91 points of four scan lines against the shift each point's
+        mean bubble separation actually takes between the schemes, this is an estimate of
+        that shift: the ratio of the two has median 1.06 and lies between 0.88 and 1.29 for
+        eight points in ten, and 93% of points agree within a factor of two. The bias is the
+        same on every line tested, between 1.01 and 1.17.
     ``scale_factor_shift``
         ``|delta ln a|`` across the support. Since ``d ln a/d ln T = -1/(3 c_s^2)`` and
         ``ln a = -(1/3) ln s`` up to a constant, this is the difference of the two schemes'
@@ -3336,7 +3341,13 @@ def entropy_scheme_sensitivity(
     if not np.any(usable):
         return float("nan"), float("nan")
 
-    cs_sq_spread = float(np.max(np.abs(b[usable] / a[usable] - 1.0)))
+    # The median over the support, not the largest value. The shift in the mean bubble
+    # separation integrates the difference over the whole history, so a typical value
+    # predicts it and an extreme one does not: measured against the shift it produces, the
+    # median is unbiased to 6% while the maximum overstates it by a factor 1.8, and a single
+    # support temperature that has lost a usable sound speed in one scheme can drive the
+    # maximum to 100% where the separation moves by a few per cent.
+    cs_sq_spread = float(np.median(np.abs(b[usable] / a[usable] - 1.0)))
     scale_factor_shift = abs(ratios[configured] - ratios[other]) / 3.0
     if not np.isfinite(scale_factor_shift):
         return cs_sq_spread, float("nan")

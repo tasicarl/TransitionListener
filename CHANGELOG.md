@@ -9,78 +9,36 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 - **A flag for points where the entropy scheme matters.** `entropy_definition` chooses
-  between two approximations to one entropy density, and neither contains the other, so
-  the choice is a modelling uncertainty of the expansion history rather than a numerical
-  one. Each run now evaluates the other scheme on the support that fixed the percolation
-  temperature and reports two diagnostics beside the observables:
-  `DIAG:entropy_scheme_cs2_spread`, the largest relative difference between the two
-  schemes' `3 c_s^2` on that support, and `DIAG:entropy_scheme_lna_gap`, the difference of
-  their logarithmic entropy ratios over three, which is the gap in `ln a` across the
-  support. `WARNING:entropy_scheme_sensitive` is raised when the spread exceeds
-  `percolation_entropy_scheme_warn_threshold`, 2% by default, and the comparison can be
+  between two approximations to one entropy density, and neither contains the other, so the
+  choice is a modelling uncertainty of the expansion history rather than a numerical one.
+  Each run now evaluates the other scheme on the support that fixed the percolation
+  temperature and reports `DIAG:entropy_scheme_cs2_spread`, the median relative difference
+  between the two schemes' `3 c_s^2` over that support, and `DIAG:entropy_scheme_lna_gap`,
+  the difference of their logarithmic entropy ratios over three.
+  `WARNING:entropy_scheme_sensitive` is raised when the spread exceeds
+  `percolation_entropy_scheme_warn_threshold`, 3.5% by default, and the comparison can be
   switched off with `percolation_entropy_scheme_diagnostic`. It costs one further entropy
   evaluation per support point and no further bounce actions: on the example point the
   runtime was 121.3 s against 121.6 s without it, and `Tperc` and `R_*` are unchanged.
 
-  The threshold is a screening criterion chosen from measurement, not from a round number.
-  On 91 points of four scan lines, run in both schemes so that the shift in the mean bubble
-  separation is known for each, a 2% spread catches 23 of the 24 points whose separation
-  moves by more than 1% between the schemes, misses one at a spread of 1.5% whose separation
-  moves by 1.0%, and flags 9 further points whose separation moves less.
+  The median spread is an estimate of how far the mean bubble separation of that point moves
+  between the two schemes. Over 91 points of four scan lines, each run in both schemes so
+  that the shift is known, the ratio of the estimate to the measured shift has median 1.06
+  and lies between 0.88 and 1.29 for eight points in ten, with 93% of points inside a factor
+  of two; the bias is between 1.01 and 1.17 on every line separately. At the default
+  threshold 7 of those 91 points are flagged, every one of which moves by more than 2.9%,
+  and no point is flagged that moves by less than 2%. That sample is a scan built to cross
+  interesting regions, so a general scan should flag fewer.
 
-  `DIAG:entropy_scheme_lna_gap` is reported but deliberately not used as the criterion. It is
-  the linearised estimate of the shift, and measured against the shift it actually produces it
-  is biased by a model-dependent factor: its median ratio to the observed spread is 0.08 on an
-  abelian dark Higgs line, 1.0 on a conformal dark U(1) line and 5.2 on a 2HDM line, reaching
-  109% predicted against 3.8% observed at one 2HDM point. Read it as a diagnostic of the
-  expansion history, never as a prediction for an observable. The spread ranks the points
-  better, with a Spearman correlation of 0.84 against the measured separation spread, against
-  0.73 for the gap.
-
-  A spread near 100% means one temperature of the support has lost a usable sound speed in one
-  of the schemes rather than that the whole history differs; the statistic is a pointwise
-  maximum, so a single degenerate support point dominates it. Two of the 91 points are of that
-  kind, and both are correctly flagged for other reasons.
-
-
-- Four diagnostics of how a point was reached, rather than of what it is.
-  `WARNING:action_rescue_attempted` says that actions were recomputed with the path
-  deformation tightened, by either the rate-jitter rescue or the fit rescue above;
-  `WARNING:action_rescue_failed` says that this did not settle the quantity that
-  prompted it. `DIAG:action_rescue_attempts` counts the actions recomputed and
-  `DIAG:runtime_s` gives the wall clock of the point, which is what makes the cost of a
-  rescue visible: a rescued 2HDM point took 1887 s against about 775 s without one.
-  The rate-jitter rescue already recorded its outcome internally and nothing read it.
-  These are written to `1_All_params.txt` under their own `Diagnostics:` heading, apart
-  from the observables, so that two runs of one point still agree there byte for byte.
-
-
-- Output column `Treh_DS_GeV`: the reheating temperature of the
-  transitioning sector, i.e. the fields of the potential and the coupled
-  radiation bath.
-- Model attribute `SM_bath` (`"coupled"` or `"decoupled"`) that names the
-  radiation bath holding the Standard Model. If it is not set, TL takes the
-  bath whose tables are `e_geffSM`, and warns if both are. A model with
-  Standard Model fields in its potential (e.g. the 2HDM) cannot decouple the
-  Standard Model; TL raises an error when it is set up that way.
-- `constants.h_eff_today`, today's entropy degrees of freedom.
-- Setting `entropy_definition` of the percolation solver, `"dof_table"` (default)
-  or `"eff_potential"`, with the run-time override
-  `percolation_entropy_definition`. It selects the thermodynamics of the
-  expansion history. Both describe the same plasma, the fields of the potential
-  and the coupled radiation bath without the decoupled one, and differ in how they
-  treat the fields. `"dof_table"` counts them as free particles at their
-  zero-temperature masses and adds the tabulated entropy degrees of freedom of the
-  coupled bath. `"eff_potential"` takes `-dV/dT` of the effective potential, which
-  gives the fields their thermal masses and the Arnold-Espinosa daisy term; it
-  carries the tabulated bath with its perturbative corrections too, since the
-  field-independent part of the potential is built from the same tables, and what
-  it lacks is those corrections for the fields of the potential themselves.
-  Neither scheme contains the other: the counted one has the perturbative
-  corrections everywhere and no thermal masses, the potential one has the thermal
-  masses and the daisy term but free-particle counting for the fields. No
-  published work decides between them, so the difference is a modelling
-  uncertainty that can now be measured by running both.
+  Two choices behind those numbers are worth recording. The statistic is the median over the
+  support and not the largest value, because the shift integrates the difference over the
+  whole history: the maximum overstates it by a factor 1.8 and a single support temperature
+  that has lost a usable sound speed in one scheme drives it to 100% where the separation
+  moves by a few per cent. And `DIAG:entropy_scheme_lna_gap` is reported but is not the
+  criterion: it is the linearised estimate of the same shift, and its ratio to the measured
+  shift has median 0.08 on an abelian dark Higgs line, 1.0 on a conformal dark U(1) line and
+  5.2 on a 2HDM line, reaching 109% estimated against 3.8% measured at one 2HDM point. Read
+  it as a diagnostic of the expansion history, not as a prediction for an observable.
 
 ### Changed
 

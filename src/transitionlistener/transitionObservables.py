@@ -662,22 +662,22 @@ class TransitionObservables:
             derived["DIAG:entropy_scheme_lna_gap"] = float(shift)
             threshold = float(getattr(
                 ctx.PercolationConf, "entropy_scheme_warn_threshold", 0.02))
-            # The flag is raised on the spread of 3 c_s^2, which is a property of this support
-            # and needs no interpretation. The gap in ln a is recorded beside it but is not
-            # used as a criterion: measured against the mean bubble separation it actually
-            # produces, it is biased by a factor that depends on the model, from 0.08 on an
-            # abelian dark Higgs line to 5.2 on a 2HDM line, so it is a diagnostic and not a
-            # prediction. A spread that cannot be computed leaves the flag unset and the nan
+            # The flag is raised on the median spread of 3 c_s^2 over the support, which
+            # estimates the relative shift the mean bubble separation takes between the
+            # schemes to about 30%. The gap in ln a is recorded beside it but is not the
+            # criterion: it is the linearised estimate of the same shift and is biased by a
+            # model-dependent factor, from 0.08 on an abelian dark Higgs line to 5.2 on a
+            # 2HDM line. A spread that cannot be computed leaves the flag unset and the nan
             # visible beside it.
             derived["WARNING:entropy_scheme_sensitive"] = bool(
                 np.isfinite(spread) and spread > threshold)
             if derived["WARNING:entropy_scheme_sensitive"] and verbose:
                 console.print(
                     "[bold yellow]WARNING:[/bold yellow] the two entropy schemes differ by "
-                    f"{spread * 100.0:.2f} % in 3 c_s^2 on this support, above the "
-                    f"{threshold * 100.0:.2f} % screening threshold. The mean bubble "
-                    "separation of this point depends appreciably on "
-                    "percolation_entropy_definition; say which one produced it."
+                    f"{spread * 100.0:.2f} % in 3 c_s^2 in the median over this support, "
+                    f"above the {threshold * 100.0:.2f} % threshold, so the mean bubble "
+                    f"separation of this point moves by roughly that much between them. "
+                    "Say which percolation_entropy_definition produced it."
                 )
 
         if core_spline_error is not None:
