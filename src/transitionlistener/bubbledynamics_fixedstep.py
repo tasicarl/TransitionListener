@@ -50,6 +50,12 @@ def g_eff_DS(T_DS: float, pot, phase) -> float:
         Effective degrees of freedom in the dark sector."""
     try:
         vevT = phase.valAt(T_DS)
+    except errors.Timeout:
+        # `except BaseException` below would otherwise absorb the run's own timeout and hand
+        # back the T = 0 vev, so a timed-out point would come out as a finite number. This is
+        # the innermost potential evaluation on the counted entropy route, below the handlers
+        # in `_time_temperature_factors`, so it has to let the timeout through as well.
+        raise
     except BaseException:
         print("Warning: TBRO is too low for interpolation of vev, using T = 0 value")
         # Temperature is to low for interpolation of vev, use T = 0 value
@@ -83,6 +89,12 @@ def h_eff_DS(T_DS: float, pot, phase) -> float:
         Effective degrees of freedom in the dark sector."""
     try:
         vevT = phase.valAt(T_DS)
+    except errors.Timeout:
+        # `except BaseException` below would otherwise absorb the run's own timeout and hand
+        # back the T = 0 vev, so a timed-out point would come out as a finite number. This is
+        # the innermost potential evaluation on the counted entropy route, below the handlers
+        # in `_time_temperature_factors`, so it has to let the timeout through as well.
+        raise
     except BaseException:
         print("Warning: TBRO is too low for interpolation of vev, using T = 0 value")
         # Temperature is to low for interpolation of vev, use T = 0 value

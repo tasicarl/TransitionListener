@@ -467,6 +467,12 @@ def g_eff_DS(T_DS: float, pot, phase) -> float:
         Effective degrees of freedom in the dark sector."""
     try:
         vevT = phase.valAt(T_DS)
+    except errors.Timeout:
+        # `except BaseException` below would otherwise absorb the run's own timeout and hand
+        # back the T = 0 vev, so a timed-out point would come out as a finite number. This is
+        # the innermost potential evaluation on the counted entropy route, below the handlers
+        # in `_time_temperature_factors`, so it has to let the timeout through as well.
+        raise
     except BaseException:
         print("Warning: TBRO is too low for interpolation of vev, using T = 0 value")
         # Temperature is to low for interpolation of vev, use T = 0 value
@@ -502,6 +508,12 @@ def h_eff_DS(T_DS: float, pot, phase) -> float:
         Effective degrees of freedom in the dark sector."""
     try:
         vevT = phase.valAt(T_DS)
+    except errors.Timeout:
+        # `except BaseException` below would otherwise absorb the run's own timeout and hand
+        # back the T = 0 vev, so a timed-out point would come out as a finite number. This is
+        # the innermost potential evaluation on the counted entropy route, below the handlers
+        # in `_time_temperature_factors`, so it has to let the timeout through as well.
+        raise
     except BaseException:
         print("Warning: TBRO is too low for interpolation of vev, using T = 0 value")
         # Temperature is to low for interpolation of vev, use T = 0 value
@@ -689,7 +701,15 @@ def entropy_density(pot, phase, T: float, definition: str = "dof_table") -> floa
         X = phase.valAt(t)
         dT = temperatureDerivativeStep(pot, t, X)
         return -float(np.squeeze(pot.dVdT(X, t, dT=dT, include_decoupled=False)))
-    return float(h_eff_DS(t, pot, phase) + h_eff_coupled_radiation(t, pot)) * t**3
+    if definition == ENTROPY_DEFINITIONS[0]:
+        return float(h_eff_DS(t, pot, phase) + h_eff_coupled_radiation(t, pot)) * t**3
+    # Both branches are named explicitly. Falling through to the counted route would answer a
+    # misspelled scheme with a number instead of an error; callers inside the package validate
+    # first, but this is a public function and the tests call it directly.
+    raise errors.PercolationError(
+        f"Unknown percolation entropy definition {definition!r}. "
+        f"Supported definitions are {ENTROPY_DEFINITIONS[0]!r} and {ENTROPY_DEFINITIONS[1]!r}."
+    )
 
 
 def _time_temperature_factors(
@@ -745,28 +765,29 @@ def _time_temperature_factors(
         except Exception:
             entropy_here = np.nan
         try:
-            if definition == "eff_potential":
-                # At a fixed field value, s/(T ds/dT) with s = -dV/dT is (dV/dT)/(T d2V/dT2),
-                # and the dedicated routine keeps the step rule that was tuned for the second
-                # derivative. It differentiates at fixed X while the counted branch below follows
-                # the phase; on the 2HDM symmetric phase the two agree to about 1e-6.
-                cs_sq = calcSoundSpeedSq(pot, phase.valAt(t), t)
+            # One stencil for both schemes, differentiating along the phase the same entropy
+            # that fixes a(T). A fixed-field derivative drops the term the phase contributes,
+            # d2V/dXdT * dX/dT: along a phase dV/dX = 0, so dX/dT = -(d2V/dX2)^-1 d2V/dXdT,
+            # and that term vanishes only where the phase does not move. It is exactly zero
+            # for a symmetric phase pinned at the origin, which is why the fixed-field route
+            # agreed to 1e-6 there, and reaches 0.09% at a drift of dX/dT = 0.5 on the 2HDM.
+            h = t * _ENTROPY_REL_STEP
+            # Keep the stencil inside the traced range. `valAt` interpolates a spline and
+            # happily extrapolates instead of raising, and where it does raise, `h_eff_DS`
+            # falls back to the zero-temperature vev; either way the derivative would be
+            # taken on a field configuration that is not the traced phase. Clamping turns
+            # the edges into a one-sided difference.
+            t_lo = max(t - h, float(getattr(phase, "Tmin", t - h)))
+            t_hi = min(t + h, float(getattr(phase, "Tmax", t + h)))
+            s_lo = entropy_density(pot, phase, t_lo, definition)
+            s_hi = entropy_density(pot, phase, t_hi, definition)
+            if s_lo > 0.0 and s_hi > 0.0 and t_hi > t_lo:
+                # c_s^2 = 1 / (d ln s / d ln T).
+                cs_sq = (np.log(t_hi) - np.log(t_lo)) / (np.log(s_hi) - np.log(s_lo))
             else:
-                h = t * _ENTROPY_REL_STEP
-                # Keep the stencil inside the traced range. `valAt` interpolates a spline and
-                # happily extrapolates instead of raising, and where it does raise, `h_eff_DS`
-                # falls back to the zero-temperature vev; either way the derivative would be
-                # taken on a field configuration that is not the traced phase. Clamping turns
-                # the edges into a one-sided difference.
-                t_lo = max(t - h, float(getattr(phase, "Tmin", t - h)))
-                t_hi = min(t + h, float(getattr(phase, "Tmax", t + h)))
-                s_lo = entropy_density(pot, phase, t_lo, definition)
-                s_hi = entropy_density(pot, phase, t_hi, definition)
-                if s_lo > 0.0 and s_hi > 0.0 and t_hi > t_lo:
-                    # c_s^2 = 1 / (d ln s / d ln T).
-                    cs_sq = (np.log(t_hi) - np.log(t_lo)) / (np.log(s_hi) - np.log(s_lo))
-                else:
-                    cs_sq = np.nan
+                # A non-positive entropy has no logarithm and no sound speed. The potential
+                # route can reach that where dV/dT changes sign; the bag fallback applies.
+                cs_sq = np.nan
         except errors.Timeout:
             # Subclasses Exception and is raised from a signal handler, so it can fire inside any
             # of these potential evaluations. Swallowing it would turn a timed-out run into a

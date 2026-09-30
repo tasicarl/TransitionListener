@@ -84,18 +84,25 @@ class PercolationSoundSpeedTests(unittest.TestCase):
         self.assertEqual(value, 1.0 / 3.0)
 
     def test_eff_potential_scheme_uses_the_potential(self):
-        # A temperature contributes its sound speed and its scale factor together or not at all,
-        # so the entropy has to be available for the sound speed to be read; the bare object
-        # standing in for the potential cannot provide one.
+        # The sound speed is the logarithmic derivative of the entropy that fixes a(T), taken
+        # along the phase, for both schemes alike. So the potential route is identified by the
+        # definition its entropy is asked for, not by a separate fixed-field routine:
+        # s ~ T^4 must give c_s^2 = 1/4 whatever `calcSoundSpeedSq` would have said.
         phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
+        seen = []
+
+        def entropy(pot, ph, T, definition):
+            seen.append(definition)
+            return float(T) ** 4.0
+
         with mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21), \
-                mock.patch.object(bd, "entropy_density",
-                                  lambda pot, ph, T, d: float(T) ** 3.0):
+                mock.patch.object(bd, "entropy_density", entropy):
             value = bd.percolation_sound_speed_sq(
                 object(), phase, 0.5, time_temperature_mode="sound_speed",
                 entropy_definition="eff_potential",
             )
-        self.assertAlmostEqual(value, 0.21)
+        self.assertAlmostEqual(value, 0.25)
+        self.assertEqual(set(seen), {"eff_potential"})
 
     def test_dof_table_scheme_uses_the_counted_entropy(self):
         # s ~ T^k gives c_s^2 = 1/k exactly. The potential's sound speed must not enter,
@@ -116,9 +123,10 @@ class PercolationSoundSpeedTests(unittest.TestCase):
         # The potential route is the one that reads calcSoundSpeedSq, so the scheme has to
         # be named: under the default "dof_table" this would reach the bag fallback because
         # the stand-in potential makes the counted entropy raise, not because of the nan.
+        # A non-positive entropy has no logarithm, so the stencil yields no sound speed. The
+        # potential route reaches this where dV/dT changes sign.
         phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
-        with mock.patch.object(bd, "calcSoundSpeedSq", return_value=np.nan), \
-             mock.patch.object(bd, "entropy_density", lambda pot, ph, T, d: float(T) ** 4):
+        with mock.patch.object(bd, "entropy_density", lambda pot, ph, T, d: -1.0):
             value = bd.percolation_sound_speed_sq(
                 object(), phase, 0.5, time_temperature_mode="sound_speed",
                 entropy_definition="eff_potential",

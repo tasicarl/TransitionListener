@@ -55,7 +55,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   the effective potential. These are the same relation, since
   `1/(3 c_s^2) = 1 + (1/3) d ln g_*s/d ln T`: a constant `g_*s`, `c_s^2 = 1/3`
   and `a ~ 1/T` are one assumption and not three. Both now come from the entropy
-  selected by `entropy_definition`, so `Tperc`, the mean bubble separation and
+  selected by `entropy_definition`, and both are taken along the traced phase: the
+  sound speed is the logarithmic derivative of that same entropy, so it carries the
+  `d2V/dXdT * dX/dT` term that a derivative at fixed field value drops. That term is
+  exactly zero for a phase pinned at the origin and reaches 0.09% of `3 c_s^2` at a
+  drift of `dX/dT = 0.5` on the 2HDM, so it matters only where the symmetric phase
+  moves with temperature. `Tperc`, the mean bubble separation and
   `(beta/H)_S3` all belong to one equation of state. How much the choice is worth
   is a question for the first two of those: `(beta/H)_S3` is the slope of the
   action, and at the default path deformation that slope is limited by the scatter
@@ -144,6 +149,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   its default. All amplitudes rise by 0.7 %.
 
 ### Fixed
+
+- **A timed-out point no longer comes back as a number**: `g_eff_DS` and `h_eff_DS`
+  caught `BaseException` around the phase evaluation and substituted the `T = 0`
+  vev, which absorbed the run's own `Timeout` and turned a timed-out point into a
+  finite entropy. They are the innermost evaluations on the counted route, below the
+  handlers in the percolation history, so the timeout is now re-raised in both copies
+  of both functions, and the fallback for ordinary failures is unchanged.
 
 - **An unstable action slope is now retried at a tighter path deformation.**
   `calc_betaH_S3` fits the slope of `S3/T` over the support samples nearest the

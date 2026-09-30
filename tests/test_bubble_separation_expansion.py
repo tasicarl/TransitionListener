@@ -14,6 +14,7 @@ import numpy as np
 from scipy import integrate
 
 from transitionlistener import bubbledynamics as bd
+from transitionlistener import bubbledynamics_fixedstep as bdf
 from transitionlistener import errors
 from transitionlistener import runtime_options
 from transitionlistener.config import PercolationConf
@@ -258,10 +259,14 @@ class BetaTimeFactorTests(unittest.TestCase):
     def test_gw_sound_speed_setting_does_not_enter(self):
         # GWconfig.sound_speed = "1/3" puts 1/sqrt(3) into derived["c_s_sym"]. Reading it
         # here would return 1.0 and silently drop the factor the history applied.
+        # s ~ T^4 gives 3 c_s^2 = 3/4. A T^3 entropy would give exactly 1.0, which is also
+        # what the bag fallback gives, so it could not tell the two apart.
         for gw in ("compute", "1/3"):
             with self.subTest(gw_sound_speed=gw):
                 self.assertAlmostEqual(
-                    self._factor("sound_speed", gw, definition="eff_potential"), 3.0 * 0.21)
+                    self._factor("sound_speed", gw, definition="eff_potential",
+                                 entropy=lambda pot, ph, T, d: float(T) ** 4.0),
+                    0.75, places=5)
 
     def test_the_factor_follows_the_entropy_scheme(self):
         # The beta/H factor is 3 c_s^2 of the percolation history, so it must change with
@@ -509,14 +514,20 @@ class TimeoutPropagationTests(unittest.TestCase):
                                              definition="dof_table")
         self.assertGreater(calls["n"], 0)
 
-    def test_a_timeout_in_the_sound_speed_propagates(self):
-        # The potential route reaches calcSoundSpeedSq inside the third handler.
-        with mock.patch.object(bd, "entropy_density", lambda pot, ph, T, d: float(T) ** 4), \
-             mock.patch.object(bd, "calcSoundSpeedSq",
-                               mock.Mock(side_effect=errors.Timeout())):
+    def test_a_timeout_in_the_stencil_propagates(self):
+        # The entropy at T itself succeeds and only the derivative stencil times out, which is
+        # the third handler rather than the second.
+        centre = 20.0
+
+        def entropy(pot, ph, T, definition):
+            if float(T) == centre:
+                return float(T) ** 4
+            raise errors.Timeout()
+
+        with mock.patch.object(bd, "entropy_density", entropy):
             with self.assertRaises(errors.Timeout):
                 bd._time_temperature_factors(self._potential(), FixedPhase([0.0]),
-                                             np.array([20.0]), mode="sound_speed",
+                                             np.array([centre]), mode="sound_speed",
                                              definition="eff_potential")
 
 
@@ -633,6 +644,111 @@ class SchemeForwardingTests(unittest.TestCase):
                     self.assertIn("entropy_definition", keywords)
         # If the consumers are ever renamed this test would silently check nothing.
         self.assertGreater(seen, 5)
+
+
+class CountedEntropyTimeoutTests(unittest.TestCase):
+    """`g_eff_DS` and `h_eff_DS` catch BaseException, which includes the run's own timeout.
+
+    They are the innermost potential evaluations on the counted route, below the handlers in
+    `_time_temperature_factors`, so absorbing a timeout there would hand back the T = 0 vev
+    and turn a timed-out point into a finite entropy. Both modules carry both functions.
+    """
+
+    def test_both_counters_let_the_timeout_through_in_both_modules(self):
+        class TimingOutPhase:
+            def valAt(self, T, deriv=0):
+                raise errors.Timeout()
+
+        pot = load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+                             "specific_potential")(
+            {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
+        for module in (bd, bdf):
+            for name in ("g_eff_DS", "h_eff_DS"):
+                with self.subTest(module=module.__name__, function=name):
+                    with self.assertRaises(errors.Timeout):
+                        getattr(module, name)(20.0, pot, TimingOutPhase())
+
+    def test_an_ordinary_failure_still_falls_back(self):
+        # The BaseException fallback must survive: only the timeout is singled out.
+        class BrokenPhase:
+            def valAt(self, T, deriv=0):
+                raise ValueError("outside the traced range")
+
+        pot = load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+                             "specific_potential")(
+            {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
+        for module in (bd, bdf):
+            with self.subTest(module=module.__name__):
+                with contextlib.redirect_stdout(io.StringIO()):   # it prints a warning
+                    value = module.h_eff_DS(20.0, pot, BrokenPhase())
+                self.assertTrue(np.isfinite(value))
+
+
+class UnknownEntropyDefinitionTests(unittest.TestCase):
+    def test_entropy_density_refuses_an_unknown_definition(self):
+        # It is a public function and the tests call it directly, so it may not answer a
+        # misspelled scheme with the counted entropy.
+        pot = load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+                             "specific_potential")(
+            {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
+        for definition in ("dof_tabel", "", "DOF_TABLE", "potential"):
+            with self.subTest(definition=definition):
+                with self.assertRaises(errors.PercolationError):
+                    bd.entropy_density(pot, FixedPhase([0.0]), 20.0, definition)
+
+    def test_both_documented_definitions_are_accepted(self):
+        pot = load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+                             "specific_potential")(
+            {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
+        for definition in cn.ENTROPY_DEFINITIONS:
+            with self.subTest(definition=definition):
+                self.assertTrue(np.isfinite(
+                    bd.entropy_density(pot, FixedPhase([0.0]), 20.0, definition)))
+
+
+class PhaseFollowingSoundSpeedTests(unittest.TestCase):
+    """The sound speed must differentiate the entropy ALONG the phase, in both schemes.
+
+    A fixed-field derivative drops d2V/dXdT * dX/dT. That term is exactly zero for a phase
+    pinned at the origin, so a test on the symmetric phase cannot see it; it needs a phase
+    that moves with temperature, as a projected false vacuum does.
+    """
+
+    class DriftPhase:
+        Tmin, Tmax = 30.0, 200.0
+        def __init__(self, slope, ndim):
+            self.slope, self.ndim = slope, ndim
+        def valAt(self, T, deriv=0):
+            T = np.asarray(T, float)
+            x = self.slope * (T - 100.0)
+            cols = [x] + [np.zeros_like(x)] * (self.ndim - 1)
+            return np.stack(np.broadcast_arrays(*cols), axis=-1)
+
+    def _potential(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            return load_potential(str(REPO / "models/TL_2HDM.py"), "R2HDM")(dict(
+                lambda1=0.006, lambda2=0.25, lambda3=8.27, lambda4=-2.55, lambda5=0.76,
+                m12_sq_GeV2=14186.7, tan_beta=17.7, yukawa_type=1,
+                v_GeV=246.21965079413735), verbose=False)
+
+    def _cs_sq(self, pot, phase, T):
+        sound_speed_sq, _ = bd._time_temperature_factors(
+            pot, phase, np.array([T]), mode="sound_speed", definition="eff_potential")
+        return float(sound_speed_sq[0])
+
+    def test_a_pinned_phase_agrees_with_the_fixed_field_derivative(self):
+        pot = self._potential()
+        phase = self.DriftPhase(0.0, pot.Ndim)
+        fixed = bd.calcSoundSpeedSq(pot, phase.valAt(80.0), 80.0)
+        self.assertAlmostEqual(self._cs_sq(pot, phase, 80.0) / fixed, 1.0, places=4)
+
+    def test_a_drifting_phase_does_not(self):
+        # Measured on this point: 0.086% at a drift of 0.5, and zero without drift. The
+        # threshold is well above the 1e-6 agreement of the pinned case.
+        pot = self._potential()
+        phase = self.DriftPhase(0.5, pot.Ndim)
+        fixed = bd.calcSoundSpeedSq(pot, phase.valAt(80.0), 80.0)
+        self.assertGreater(abs(self._cs_sq(pot, phase, 80.0) / fixed - 1.0), 1e-4)
 
 
 
