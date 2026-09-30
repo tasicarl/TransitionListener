@@ -289,9 +289,11 @@ class RuntimeOverrideTests(unittest.TestCase):
                     self.conf(percolation_entropy_scheme_warn_threshold=bad)
 
     def test_the_default_threshold_is_the_measured_one(self):
-        # 3.5% was chosen on 91 points run in both schemes, where it flags 7, every one of
-        # which moves by more than 2.9%. A change to it should be deliberate.
-        self.assertAlmostEqual(self.conf().entropy_scheme_warn_threshold, 0.035)
+        # The criterion is "R_* uncertain at the 5% level". The threshold is 4.4% and not
+        # 5% because the estimate lies between 0.88 and 1.29 times the true shift for eight
+        # points in ten, so 0.05 * 0.88 catches about nine in ten of the 5% cases. A change
+        # to it should be deliberate.
+        self.assertAlmostEqual(self.conf().entropy_scheme_warn_threshold, 0.044)
 
 
 if __name__ == "__main__":

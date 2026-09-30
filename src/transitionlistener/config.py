@@ -81,11 +81,15 @@ class PercolationConf:
     entropy_scheme_diagnostic = True  # Compare both entropy schemes on the percolation support.
     # Flag the point when the two entropy schemes' 3 c_s^2 differ, in the median over the
     # percolation support, by more than this fraction. That median estimates the relative
-    # shift the mean bubble separation takes between the schemes, so the criterion reads as
-    # "flag a point whose R_* depends on the entropy definition at the few per cent level".
-    # On 91 points of four scan lines, 3.5% flags 7, every one of which moves by more than
-    # 2.9%, with no point flagged that moves by less than 2%.
-    entropy_scheme_warn_threshold = 0.035
+    # shift the mean bubble separation takes between the schemes, so the criterion is
+    # "flag a point whose R_* is uncertain at the 5% level from this modelling choice".
+    # The threshold sits below 5% on purpose. Calibrated over 91 points run in both schemes,
+    # the estimate lies between 0.88 and 1.29 times the shift it predicts for eight points in
+    # ten, so a point whose R_* really moves by 5% can be estimated as low as 4.4%; a
+    # threshold at 5% would miss about one such point in ten. 0.05 * 0.88 = 0.044 catches
+    # about nine in ten of them. No point of that calibration sample reaches 5%, its largest
+    # measured shift being 3.8%, so the flag is rare by construction.
+    entropy_scheme_warn_threshold = 0.044
     entropy_definition = "dof_table"      # Thermodynamics of the expansion history:
                                           # "dof_table" (counted degrees of freedom, default)
                                           # or "eff_potential" (-dV/dT of the potential).

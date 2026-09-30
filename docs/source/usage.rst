@@ -135,8 +135,10 @@ The most important controls are:
   :math:`3 c_s^2` over the percolation support, and estimates to about 30% how far
   the mean bubble separation of that point moves between them.
   ``WARNING:entropy_scheme_sensitive`` is raised when it exceeds the threshold,
-  3.5% by default, so a flagged point is one whose :math:`R_*` depends on the
-  entropy definition at the few per cent level.
+  4.4% by default, so a flagged point is one whose :math:`R_*` is uncertain at
+  about the 5% level from this modelling choice alone. The threshold sits below
+  5% to allow for the scatter of the estimate itself. Lower it to see weaker
+  cases.
 - ``percolationConf.n_action``: fixed ``TSYM`` support count for
   ``fixed_step_size`` runs.
 - ``percolation_n_action_min``, ``percolation_n_action_increment``,
