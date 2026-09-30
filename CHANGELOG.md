@@ -60,9 +60,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `percolation_entropy_scheme_warn_threshold`, 4% by default, and the comparison can be
   switched off with `percolation_entropy_scheme_diagnostic`. The fixed step size solver does
   not read `entropy_definition` and refuses anything but the default, so it has no second
-  scheme to compare against: it writes the flag as false and both diagnostics as `nan`. It costs one further entropy
-  evaluation per support point and no further bounce actions: on the example point the
-  runtime was 121.3 s against 121.6 s without it, and `Tperc` and `R_*` are unchanged.
+  scheme to compare against: it writes the flag as false and both diagnostics as `nan`. It costs one further pass over the
+  percolation support to build the other scheme's history, which is three entropy
+  evaluations per support point, at the temperature and at both endpoints of the derivative
+  stencil, and no further bounce actions. Measured on the example point, the runtime was
+  121.3 s against 121.6 s without the comparison, and `Tperc` and `R_*` are unchanged.
 
   The median spread is an estimate of how far the mean bubble separation of that point moves
   between the two schemes. Over 91 points of four scan lines, each run in both schemes so

@@ -3322,6 +3322,74 @@ def entropy_scheme_is_sensitive(cs_sq_spread, threshold) -> bool:
     return bool(np.isfinite(spread) and spread > float(threshold))
 
 
+def record_entropy_scheme_diagnostics(
+    derived: dict,
+    pot,
+    phase_symmetric,
+    T,
+    conf,
+    configured_history=None,
+    verbose: bool = False,
+    console=None,
+) -> None:
+    """Write the entropy-scheme diagnostics and flag into ``derived``.
+
+    All three keys are set on every path. Where the comparison does not apply, because it is
+    switched off, because the time-temperature relation reads no entropy, or because the
+    configured history could not be built, the flag is ``False`` and both numbers are
+    ``nan``: the keys are registered for every run, so leaving them unset would have the
+    writer report them as unimplemented and fill all three with ``nan``, the boolean
+    included.
+
+    A timeout reaches the caller. Any other failure of the comparison leaves the ``nan``
+    and must not invalidate the point, which was computed before the comparison was asked
+    for.
+    """
+    derived.setdefault("WARNING:entropy_scheme_sensitive", False)
+    derived.setdefault("DIAG:entropy_scheme_cs2_spread", float("nan"))
+    derived.setdefault("DIAG:entropy_scheme_lna_gap", float("nan"))
+
+    history_available = not (configured_history is None
+                             or configured_history[0] is None)
+    if not (history_available and getattr(conf, "entropy_scheme_diagnostic", True)):
+        return
+
+    try:
+        spread, shift = entropy_scheme_sensitivity(
+            pot,
+            phase_symmetric,
+            T,
+            time_temperature_mode=getattr(conf, "time_temperature_mode", None),
+            entropy_definition=getattr(conf, "entropy_definition", None),
+            configured_history=configured_history,
+        )
+    except errors.Timeout:
+        raise
+    except Exception as err:
+        spread = shift = float("nan")
+        if verbose:
+            print("Error in comparing the entropy schemes: ", err)
+
+    derived["DIAG:entropy_scheme_cs2_spread"] = float(spread)
+    derived["DIAG:entropy_scheme_lna_gap"] = float(shift)
+    threshold = entropy_scheme_threshold(conf)
+    # The flag is raised on the median spread of 3 c_s^2 over the support, which estimates
+    # the relative shift the mean bubble separation takes between the schemes to about 30%.
+    # The gap in ln a is recorded beside it but is not the criterion: it is the linearised
+    # estimate of the same shift and is biased by a model-dependent factor, from 0.08 on an
+    # abelian dark Higgs line to 5.2 on a 2HDM line.
+    derived["WARNING:entropy_scheme_sensitive"] = entropy_scheme_is_sensitive(
+        spread, threshold)
+    if derived["WARNING:entropy_scheme_sensitive"] and verbose and console is not None:
+        console.print(
+            "[bold yellow]WARNING:[/bold yellow] the two entropy schemes differ by "
+            f"{spread * 100.0:.2f} % in 3 c_s^2 in the median over this support, above the "
+            f"{threshold * 100.0:.2f} % threshold, so the mean bubble separation of this "
+            "point moves by roughly that much between them. Say which "
+            "percolation_entropy_definition produced it."
+        )
+
+
 def entropy_scheme_sensitivity(
     pot,
     phase_symmetric,
@@ -3354,9 +3422,11 @@ def entropy_scheme_sensitivity(
         relative shift it would produce in the mean bubble separation.
 
     Pass ``configured_history`` as the ``(logEntropyInt, coolingInt)`` pair already built for
-    the configured scheme, and only the other scheme is evaluated: one further entropy
-    evaluation per support point rather than two, and the comparison is then made against
-    the very history the observables came from.
+    the configured scheme, and only the other scheme is evaluated: one further history
+    rather than two, and the comparison is then made against the very history the
+    observables came from. One history is three `entropy_density` evaluations per support
+    point, at the temperature and at both endpoints of the derivative stencil, so handing
+    the configured one over halves the cost of the comparison.
 
     Returns
     -------

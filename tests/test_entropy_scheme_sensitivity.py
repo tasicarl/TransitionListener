@@ -254,21 +254,6 @@ class FlagPredicateTests(unittest.TestCase):
             bd.entropy_scheme_threshold(
                 types.SimpleNamespace(entropy_scheme_warn_threshold=0.11)), 0.11)
 
-    def test_the_observables_use_this_predicate_and_the_shared_default(self):
-        # The flag must come from the predicate above, and the fallback used when a
-        # PercolationConf predates the setting must be the documented default, not a
-        # second copy of the number.
-        import inspect
-        from transitionlistener import transitionObservables as to
-        src = inspect.getsource(to)
-        i = src.index('derived["WARNING:entropy_scheme_sensitive"]')
-        stanza = src[i:i + 200]
-        self.assertIn("entropy_scheme_is_sensitive", stanza)
-        self.assertNotIn("shift", stanza)
-        self.assertIn("entropy_scheme_threshold(", src)
-        self.assertEqual(bd.ENTROPY_SCHEME_DEFAULT_THRESHOLD,
-                         PercolationConf().entropy_scheme_warn_threshold)
-
     def test_the_keys_are_registered_where_registration_is_required(self):
         from transitionlistener import config
         from transitionlistener.interface.samplers import get_empty_result
@@ -446,29 +431,114 @@ class SymmetryTests(unittest.TestCase):
         self.assertAlmostEqual(spreads[0], 2.0 * abs(b - a) / (a + b), places=3)
 
 
-class NonApplicableDefaultsTests(unittest.TestCase):
-    """Where the comparison does not apply, the keys still have to be written."""
+class RecordedDiagnosticsTests(unittest.TestCase):
+    """The function the observables call, exercised rather than read.
+
+    `_compute_percolation` delegates the whole block to
+    `bd.record_entropy_scheme_diagnostics`, so these run the production path: a source-text
+    assertion would pass even if the caller stopped using it.
+    """
+
+    class Conf:
+        time_temperature_mode = "sound_speed"
+        entropy_definition = "dof_table"
+        entropy_scheme_diagnostic = True
+        entropy_scheme_warn_threshold = 0.04
+
+    KEYS = ("WARNING:entropy_scheme_sensitive", "DIAG:entropy_scheme_cs2_spread",
+            "DIAG:entropy_scheme_lna_gap")
+
+    def _run(self, conf=None, history="real", T=None, patch=None):
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 12) if T is None else T
+        phase = FixedPhase([0.0])
+        if history == "real":
+            history = bd.expansion_interpolants(pot, phase, T, entropy_definition="dof_table")
+        derived = {}
+        ctx = self.Conf() if conf is None else conf
+        with (mock.patch.object(bd, "entropy_density", patch) if patch
+              else contextlib.nullcontext()):
+            bd.record_entropy_scheme_diagnostics(
+                derived, pot, phase, T, ctx, configured_history=history)
+        return derived
+
+    def test_enabled_it_fills_all_three_keys(self):
+        d = self._run()
+        for k in self.KEYS:
+            self.assertIn(k, d)
+        self.assertTrue(np.isfinite(d["DIAG:entropy_scheme_cs2_spread"]))
+        self.assertTrue(np.isfinite(d["DIAG:entropy_scheme_lna_gap"]))
+        self.assertIsInstance(d["WARNING:entropy_scheme_sensitive"], bool)
+
+    def test_disabled_it_still_fills_them_as_not_applicable(self):
+        conf = self.Conf()
+        conf.entropy_scheme_diagnostic = False
+        d = self._run(conf=conf)
+        self.assertFalse(d["WARNING:entropy_scheme_sensitive"])
+        self.assertTrue(np.isnan(d["DIAG:entropy_scheme_cs2_spread"]))
+        self.assertTrue(np.isnan(d["DIAG:entropy_scheme_lna_gap"]))
+
+    def test_without_a_configured_history_it_does_not_compare(self):
+        for history in ((None, None), None):
+            with self.subTest(history=history):
+                d = self._run(history=history)
+                self.assertFalse(d["WARNING:entropy_scheme_sensitive"])
+                self.assertTrue(np.isnan(d["DIAG:entropy_scheme_cs2_spread"]))
+
+    def test_an_ordinary_failure_leaves_nan_and_does_not_raise(self):
+        def broken(pot_, phase, t, definition):
+            raise ValueError("solver failure")
+        d = self._run(patch=broken)
+        self.assertFalse(d["WARNING:entropy_scheme_sensitive"])
+        self.assertTrue(np.isnan(d["DIAG:entropy_scheme_cs2_spread"]))
+        self.assertTrue(np.isnan(d["DIAG:entropy_scheme_lna_gap"]))
+
+    def test_a_timeout_reaches_the_caller(self):
+        def timing_out(pot_, phase, t, definition):
+            raise errors.Timeout()
+        with self.assertRaises(errors.Timeout):
+            self._run(patch=timing_out)
+
+    def test_the_flag_follows_the_threshold_of_the_configuration(self):
+        # Same point, two thresholds: one below the spread it measures and one above.
+        d = self._run()
+        spread = d["DIAG:entropy_scheme_cs2_spread"]
+        low, high = self.Conf(), self.Conf()
+        low.entropy_scheme_warn_threshold = spread / 2.0
+        high.entropy_scheme_warn_threshold = spread * 2.0
+        self.assertTrue(self._run(conf=low)["WARNING:entropy_scheme_sensitive"])
+        self.assertFalse(self._run(conf=high)["WARNING:entropy_scheme_sensitive"])
+
+    def test_a_non_positive_threshold_is_refused_here_too(self):
+        conf = self.Conf()
+        conf.entropy_scheme_warn_threshold = 0.0
+        with self.assertRaises(errors.PercolationError):
+            self._run(conf=conf)
+
+    def test_values_already_present_are_not_overwritten_by_the_defaults(self):
+        # `setdefault` is deliberate: a caller that has already decided, such as the fixed
+        # step size solver, keeps its answer.
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 12)
+        conf = self.Conf()
+        conf.entropy_scheme_diagnostic = False
+        derived = {"WARNING:entropy_scheme_sensitive": True,
+                   "DIAG:entropy_scheme_cs2_spread": 0.123,
+                   "DIAG:entropy_scheme_lna_gap": 0.456}
+        bd.record_entropy_scheme_diagnostics(
+            derived, pot, FixedPhase([0.0]), T, conf, configured_history=None)
+        self.assertTrue(derived["WARNING:entropy_scheme_sensitive"])
+        self.assertAlmostEqual(derived["DIAG:entropy_scheme_cs2_spread"], 0.123)
 
     def test_the_fixed_step_context_sets_them(self):
         # The keys are registered for every run, so the solver that cannot compare must
-        # still say "does not apply" rather than leave the writer to fill the boolean
-        # with nan.
+        # still say "does not apply".
         import inspect
         from transitionlistener import transitionObservables_fixedstep as tof
         src = inspect.getsource(tof)
-        for key in ("WARNING:entropy_scheme_sensitive", "DIAG:entropy_scheme_cs2_spread",
-                    "DIAG:entropy_scheme_lna_gap"):
+        for key in self.KEYS:
             with self.subTest(key=key):
                 self.assertIn(key, src)
-
-    def test_the_adaptive_solver_sets_them_before_the_condition(self):
-        import inspect
-        from transitionlistener import transitionObservables as to
-        src = inspect.getsource(to)
-        default = src.index('derived.setdefault("WARNING:entropy_scheme_sensitive"')
-        guarded = src.index('entropy_scheme_diagnostic', default)
-        self.assertLess(default, guarded,
-                        "the defaults must be set before the diagnostic is attempted")
 
 
 class EmptyDefinitionTests(unittest.TestCase):

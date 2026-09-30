@@ -26,9 +26,7 @@ from transitionlistener.bubbledynamics import (
     calc_betaH_S3,
     calc_betaH_S3_approx,
     calcMeanBubbleSeparation,
-    entropy_scheme_sensitivity,
-    entropy_scheme_is_sensitive,
-    entropy_scheme_threshold,
+    record_entropy_scheme_diagnostics,
     falseVacuumVolumeGrowthRate,
     percolation_sound_speed_sq,
     expansion_interpolants,
@@ -643,56 +641,19 @@ class TransitionObservables:
         # difference is a modelling uncertainty of the expansion history. Reported, not
         # corrected: it tells the user whether the number they are about to quote depends on a
         # choice nothing in the literature settles.
-        # Assigned on every path. Where the comparison does not apply, because it is switched
-        # off, because bag mode reads no entropy, or because the configured history could not
-        # be built, the flag is False and the two numbers are nan. Leaving them unset would
-        # have the writer report them as unimplemented and fill all three with nan, the
-        # boolean included.
-        derived.setdefault("WARNING:entropy_scheme_sensitive", False)
-        derived.setdefault("DIAG:entropy_scheme_cs2_spread", float("nan"))
-        derived.setdefault("DIAG:entropy_scheme_lna_gap", float("nan"))
-
-        if (logEntropyInt is not None
-                and getattr(ctx.PercolationConf, "entropy_scheme_diagnostic", True)):
-            try:
-                spread, shift = entropy_scheme_sensitivity(
-                    pot,
-                    ctx.phase_symmetric,
-                    TSYM,
-                    time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
-                    entropy_definition=getattr(
-                        ctx.PercolationConf, "entropy_definition", None),
-                    # The configured history is already built above; handing it over keeps
-                    # the comparison to one further entropy evaluation per support point,
-                    # and makes it a comparison against the history `Tperc` came from.
-                    configured_history=(logEntropyInt, coolingInt),
-                )
-            except errors.Timeout:
-                raise
-            except Exception as err:
-                spread = shift = float("nan")
-                if verbose:
-                    print("Error in comparing the entropy schemes: ", err)
-            derived["DIAG:entropy_scheme_cs2_spread"] = float(spread)
-            derived["DIAG:entropy_scheme_lna_gap"] = float(shift)
-            threshold = entropy_scheme_threshold(ctx.PercolationConf)
-            # The flag is raised on the median spread of 3 c_s^2 over the support, which
-            # estimates the relative shift the mean bubble separation takes between the
-            # schemes to about 30%. The gap in ln a is recorded beside it but is not the
-            # criterion: it is the linearised estimate of the same shift and is biased by a
-            # model-dependent factor, from 0.08 on an abelian dark Higgs line to 5.2 on a
-            # 2HDM line. A spread that cannot be computed leaves the flag unset and the nan
-            # visible beside it.
-            derived["WARNING:entropy_scheme_sensitive"] = entropy_scheme_is_sensitive(
-                spread, threshold)
-            if derived["WARNING:entropy_scheme_sensitive"] and verbose:
-                console.print(
-                    "[bold yellow]WARNING:[/bold yellow] the two entropy schemes differ by "
-                    f"{spread * 100.0:.2f} % in 3 c_s^2 in the median over this support, "
-                    f"above the {threshold * 100.0:.2f} % threshold, so the mean bubble "
-                    f"separation of this point moves by roughly that much between them. "
-                    "Say which percolation_entropy_definition produced it."
-                )
+        record_entropy_scheme_diagnostics(
+            derived,
+            pot,
+            ctx.phase_symmetric,
+            TSYM,
+            ctx.PercolationConf,
+            # The configured history is already built above; handing it over keeps the
+            # comparison to one further history rather than two, and makes it a comparison
+            # against the history `Tperc` came from.
+            configured_history=(logEntropyInt, coolingInt),
+            verbose=verbose,
+            console=console,
+        )
 
         if core_spline_error is not None:
             derived["WARNING:no_perc_splines"] = True
