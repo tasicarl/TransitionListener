@@ -65,7 +65,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   between the two schemes. Over 91 points of four scan lines, each run in both schemes so
   that the shift is known, the ratio of the estimate to the measured shift has median 1.06
   and lies between 0.88 and 1.29 for eight points in ten, with 93% of points inside a factor
-  of two; the bias is between 1.01 and 1.17 on every line separately.
+  of two; the bias is between 1.00 and 1.17 on every line separately.
 
   The default threshold says "flag a point whose `R_*` is uncertain at about the five per
   cent level from this choice". It sits a little below five so that the scatter of the
@@ -73,7 +73,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   calibration sample four per cent flags one of the ninety-one, whose separation moves by
   3.7%; the largest measured shift in that sample is 3.8%, so the sample constrains the
   estimate rather than the threshold. A run that wants the weaker cases can lower it: at 3.5%
-  the sample flags 7 points, every one of which moves by more than 2.9%, and none that moves
+  the sample flags 6 points, every one of which moves by more than 2.9%, and none that moves
   by less than 2%.
 
   Two choices behind those numbers are worth recording. The statistic is the median over the
