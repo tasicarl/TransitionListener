@@ -26,6 +26,7 @@ from transitionlistener.bubbledynamics import (
     calc_betaH_S3,
     calc_betaH_S3_approx,
     calcMeanBubbleSeparation,
+    record_entropy_scheme_diagnostics,
     falseVacuumVolumeGrowthRate,
     percolation_sound_speed_sq,
     expansion_interpolants,
@@ -634,6 +635,25 @@ class TransitionObservables:
             logEntropyInt = coolingInt = None
             if verbose:
                 print("Error in computing the expansion history, using a ~ 1/T: ", err)
+
+        # How much the entropy scheme choice is worth at this point. The two schemes are two
+        # approximations to one entropy density and neither contains the other, so their
+        # difference is a modelling uncertainty of the expansion history. Reported, not
+        # corrected: it tells the user whether the number they are about to quote depends on a
+        # choice nothing in the literature settles.
+        record_entropy_scheme_diagnostics(
+            derived,
+            pot,
+            ctx.phase_symmetric,
+            TSYM,
+            ctx.PercolationConf,
+            # The configured history is already built above; handing it over keeps the
+            # comparison to one further history rather than two, and makes it a comparison
+            # against the history `Tperc` came from.
+            configured_history=(logEntropyInt, coolingInt),
+            verbose=verbose,
+            console=console,
+        )
 
         if core_spline_error is not None:
             derived["WARNING:no_perc_splines"] = True

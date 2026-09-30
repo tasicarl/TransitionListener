@@ -148,6 +148,52 @@ def test_smoke_value_in_band(smoke_run: Path, key: str, bounds: tuple[float, flo
     assert lo <= val <= hi, f"{key} = {val:.3e} outside band [{lo}, {hi}]"
 
 
+def test_smoke_entropy_scheme_diagnostics_are_populated(smoke_run: Path) -> None:
+    """The caller boundary, exercised by a real run rather than read from the source.
+
+    `_compute_percolation` delegates the entropy-scheme comparison to
+    `bubbledynamics.record_entropy_scheme_diagnostics`. Unit tests of that function cannot
+    tell whether the observables still call it, and a source-text assertion would pass if
+    they stopped. Here the example point has actually run, so the three keys can only carry
+    numbers if the whole chain is connected.
+    """
+    text = smoke_run.read_text()
+    values = _parse_all_params(smoke_run)
+
+    # The diagnostics live under the `Diagnostics:` heading, so they are not in EXPECTED.
+    assert "DIAG:entropy_scheme_cs2_spread" in values or "entropy_scheme_cs2_spread" in text, (
+        "the entropy-scheme spread is missing: the observables are not calling "
+        "record_entropy_scheme_diagnostics"
+    )
+    for key in ("entropy_scheme_cs2_spread", "entropy_scheme_lna_gap",
+                "entropy_scheme_sensitive"):
+        assert key in text, f"{key} missing from {smoke_run}"
+
+    spread_re = re.compile(r"entropy_scheme_cs2_spread\s+(\S+)")
+    match = spread_re.search(text)
+    assert match, "could not read the spread back"
+    raw = match.group(1)
+    try:
+        spread = float(raw)
+    except ValueError:
+        pytest.fail(
+            f"the spread was written as {raw!r} rather than a number, so the observables "
+            "did not populate it: check that record_entropy_scheme_diagnostics is still called"
+        )
+    # The example point is nearly conformal, so the two schemes almost agree there; what
+    # matters is that a number was computed at all rather than left as the nan default.
+    assert math.isfinite(spread), (
+        f"the spread came back as {spread}, so the comparison did not run"
+    )
+    assert 0.0 <= spread < 0.01, f"unexpected spread on the example point: {spread}"
+
+    flag_re = re.compile(r"entropy_scheme_sensitive\s+(\S+)")
+    flag = flag_re.search(text)
+    assert flag and flag.group(1) in ("True", "False"), (
+        f"the flag is not a boolean: {flag.group(1) if flag else None}"
+    )
+
+
 def test_smoke_alpha_consistency(smoke_run: Path) -> None:
     values = _parse_all_params(smoke_run)
     assert "alpha" in values and "alpha_thetabar" in values

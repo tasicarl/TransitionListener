@@ -48,6 +48,49 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   published work decides between them, so the difference is a modelling
   uncertainty that can now be measured by running both.
 
+- **A flag for points where the entropy scheme matters.** `entropy_definition` chooses
+  between two approximations to one entropy density, and neither contains the other, so the
+  choice is a modelling uncertainty of the expansion history rather than a numerical one.
+  Every adaptive step size run in `sound_speed` mode now evaluates the other scheme on the
+  support that fixed the percolation temperature and reports `DIAG:entropy_scheme_cs2_spread`, the median relative
+  difference
+  between the two schemes' `3 c_s^2` over that support, and `DIAG:entropy_scheme_lna_gap`,
+  the difference of their logarithmic entropy ratios over three.
+  `WARNING:entropy_scheme_sensitive` is raised when the spread exceeds
+  `percolation_entropy_scheme_warn_threshold`, 4% by default, and the comparison can be
+  switched off with `percolation_entropy_scheme_diagnostic`. The fixed step size solver does
+  not read `entropy_definition` and refuses anything but the default, so it has no second
+  scheme to compare against: it writes the flag as false and both diagnostics as `nan`. It costs one further pass over the
+  percolation support to build the other scheme's history, which is three entropy
+  evaluations per support point, at the temperature and at both endpoints of the derivative
+  stencil, and no further bounce actions. Measured on the example point, the runtime was
+  121.3 s against 121.6 s without the comparison, and `Tperc` and `R_*` are unchanged.
+
+  The median spread is an estimate of how far the mean bubble separation of that point moves
+  between the two schemes. Over 91 points of four scan lines, each run in both schemes so
+  that the shift is known, the ratio of the estimate to the measured shift has median 1.06
+  and lies between 0.88 and 1.29 for eight points in ten, with 93% of points inside a factor
+  of two; the bias is between 1.00 and 1.17 on every line separately.
+
+  The default threshold says "flag a point whose `R_*` is uncertain at about the five per
+  cent level from this choice". It sits a little below five so that the scatter of the
+  estimate does not hide such a point, and the precise value is not critical. On the
+  calibration sample four per cent flags one of the ninety-one, whose separation moves by
+  3.7%; the largest measured shift in that sample is 3.8%, so the sample constrains the
+  estimate rather than the threshold. A run that wants the weaker cases can lower it: at 3.5%
+  the sample flags 6 points, every one of which moves by more than 2.9%, and none that moves
+  by less than 2%.
+
+  Two choices behind those numbers are worth recording. The statistic is the median over the
+  support and not the largest value, because the shift integrates the difference over the
+  whole history: the maximum overstates it by a factor 1.8 and a single support temperature
+  that has lost a usable sound speed in one scheme drives it to 100% where the separation
+  moves by a few per cent. And `DIAG:entropy_scheme_lna_gap` is reported but is not the
+  criterion: it is the linearised estimate of the same shift, and its ratio to the measured
+  shift has median 0.08 on an abelian dark Higgs line, 1.0 on a conformal dark U(1) line and
+  5.2 on a 2HDM line, reaching 109% estimated against 3.8% measured at one 2HDM point. Read
+  it as a diagnostic of the expansion history, not as a prediction for an observable.
+
 ### Changed
 
 - **One entropy for the expansion history**: the time-temperature relation took

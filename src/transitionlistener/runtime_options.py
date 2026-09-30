@@ -39,6 +39,8 @@ PERCOLATION_OVERRIDE_KEYS = (
     "percolation_integral_method",
     "percolation_time_temperature_mode",
     "percolation_entropy_definition",
+    "percolation_entropy_scheme_diagnostic",
+    "percolation_entropy_scheme_warn_threshold",
     "percolation_n_action",
     "percolation_n_action_min",
     "percolation_n_action_increment",
@@ -201,6 +203,17 @@ def apply_percolation_overrides(percolation_conf, overrides: dict[str, object]) 
                 + ", ".join(repr(d) for d in cn.ENTROPY_DEFINITIONS) + "."
             )
         percolation_conf.entropy_definition = definition
+    if overrides["percolation_entropy_scheme_warn_threshold"] is not None:
+        threshold = float(overrides["percolation_entropy_scheme_warn_threshold"])
+        if not threshold > 0.0:
+            # Refused here as a ValueError, as the other overrides are, and refused again
+            # where it is read, for a model that sets the attribute directly.
+            raise ValueError(
+                "percolation_entropy_scheme_warn_threshold must be positive; a run that "
+                "should not flag anything switches the comparison off with "
+                "percolation_entropy_scheme_diagnostic instead."
+            )
+        percolation_conf.entropy_scheme_warn_threshold = threshold
 
     int_minimums = {
         "percolation_n_action": ("n_action", 2),
@@ -236,6 +249,7 @@ def apply_percolation_overrides(percolation_conf, overrides: dict[str, object]) 
     bool_overrides = {
         "percolation_action_jitter_tunneltight_rescue": "action_jitter_tunneltight_rescue",
         "percolation_betaH_S3_fit_rescue": "betaH_S3_fit_rescue",
+        "percolation_entropy_scheme_diagnostic": "entropy_scheme_diagnostic",
     }
     for key, attr in bool_overrides.items():
         if overrides[key] is not None:

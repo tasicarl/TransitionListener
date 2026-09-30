@@ -127,6 +127,24 @@ The most important controls are:
   daisy. Only the adaptive step size solver reads this setting; the fixed
   step size solver refuses anything but the default, because its
   time-temperature relation is its own.
+- ``percolation_entropy_scheme_diagnostic`` and
+  ``percolation_entropy_scheme_warn_threshold``: every adaptive step size run in
+  ``sound_speed`` mode compares the two entropy definitions on the percolation
+  support and reports how
+  far apart they are, in ``DIAG:entropy_scheme_cs2_spread`` and
+  ``DIAG:entropy_scheme_lna_gap``. The fixed step size solver does not read this
+  setting at all and refuses anything but the default, so it has nothing to
+  compare: it writes the flag as false and both diagnostics as ``nan``. The same
+  combination, a false flag beside two ``nan``, means "not compared" and not
+  "compared and found to agree"; it also arises in ``bag`` mode, with the
+  comparison switched off, and where the expansion history could not be built.
+  The first is the median relative difference between the two definitions'
+  :math:`3 c_s^2` over the percolation support, and estimates to about 30% how far
+  the mean bubble separation of that point moves between them.
+  ``WARNING:entropy_scheme_sensitive`` is raised when it exceeds the threshold,
+  4% by default, so a flagged point is one whose :math:`R_*` is uncertain at
+  about the five per cent level from this modelling choice alone. Lower the
+  threshold to see weaker cases.
 - ``percolationConf.n_action``: fixed ``TSYM`` support count for
   ``fixed_step_size`` runs.
 - ``percolation_n_action_min``, ``percolation_n_action_increment``,

@@ -718,6 +718,7 @@ def _time_temperature_factors(
     T: np.ndarray,
     mode: str | None = None,
     definition: str | None = None,
+    usable_out: list | None = None,
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
     """Return ``(c_s^2, a/a_hot)`` arrays for the generalized integral.
 
@@ -747,6 +748,7 @@ def _time_temperature_factors(
     temperatures = np.asarray(T, dtype=float)
     sound_speed_sq = np.full_like(temperatures, 1.0 / 3.0, dtype=float)
     entropy = np.full_like(temperatures, np.nan, dtype=float)
+    usable_points = 0
     for i, temp in enumerate(temperatures):
         t = float(temp)
         # `valAt` extrapolates its spline rather than raising, so this is not a range check; it
@@ -807,6 +809,7 @@ def _time_temperature_factors(
         if usable:
             sound_speed_sq[i] = float(cs_sq)
             entropy[i] = entropy_here
+            usable_points += 1
 
     # The scale factor follows from entropy conservation, a^3 s = const, which is the integral
     # form of d ln a / dT = -1 / (3 c_s^2 T). Taking the ratio of entropies instead of
@@ -834,6 +837,12 @@ def _time_temperature_factors(
         ln_a[i] = ln_a[i - 1] + step
     ln_a = np.clip(ln_a, -700.0, 700.0)
     scale_factor = np.exp(ln_a)
+    if usable_out is not None:
+        # The arrays hold the bag values where a temperature fell back, so a caller cannot
+        # tell a history that was computed from one that was not. Ask for the count to find
+        # out; it is a parameter rather than module state so that concurrent calls cannot
+        # read each other's answer.
+        usable_out.append(usable_points)
     return sound_speed_sq, scale_factor
 
 
@@ -3244,10 +3253,20 @@ def expansion_interpolants(pot, phase_symmetric, T, *, time_temperature_mode: st
     temperatures = temperatures[np.isfinite(temperatures) & (temperatures > 0.0)][::-1]
     if temperatures.size < 2:
         return None, None
+    usable_points: list[int] = []
     sound_speed_sq, scale_factor = _time_temperature_factors(
-        pot, phase_symmetric, temperatures, time_temperature_mode, entropy_definition
+        pot, phase_symmetric, temperatures, time_temperature_mode, entropy_definition,
+        usable_out=usable_points,
     )
     if sound_speed_sq is None:
+        return None, None
+    if usable_points and usable_points[0] == 0:
+        # Every temperature fell back, so these arrays hold the bag relation throughout and
+        # describe no plasma. Interpolating them would give a history indistinguishable from
+        # one that was computed, and a caller comparing two schemes would read agreement
+        # where nothing was compared. The callers of this function treat `None` as "no
+        # history" and fall back to a ~ 1/T, which is what these arrays already say. The
+        # percolation integral reads `_time_temperature_factors` directly and is unaffected.
         return None, None
     ascending = temperatures[::-1]
     cs_sq_int = interpolate.PchipInterpolator(ascending, sound_speed_sq[::-1], extrapolate=True)
@@ -3260,6 +3279,256 @@ def expansion_interpolants(pot, phase_symmetric, T, *, time_temperature_mode: st
         return 3.0 * cs_sq_int(np.asarray(x, dtype=float))
 
     return logEntropyInt, coolingInt
+
+
+ENTROPY_SCHEME_DEFAULT_THRESHOLD = 0.04
+"""Default for ``percolation_entropy_scheme_warn_threshold``; see ``config.PercolationConf``."""
+
+
+def validate_entropy_definition(entropy_definition) -> str:
+    """Return the entropy definition to use, refusing anything unknown.
+
+    Only ``None`` means "not given": an empty string is a value, and a wrong one.
+    """
+    configured = (ENTROPY_DEFINITIONS[0] if entropy_definition is None
+                  else str(entropy_definition))
+    if configured not in ENTROPY_DEFINITIONS:
+        raise errors.PercolationError(
+            f"Unknown percolation entropy definition {configured!r}. "
+            f"Supported definitions are {ENTROPY_DEFINITIONS[0]!r} and "
+            f"{ENTROPY_DEFINITIONS[1]!r}."
+        )
+    return configured
+
+
+def entropy_scheme_threshold(conf) -> float:
+    """The spread above which a point is flagged, for a percolation configuration.
+
+    A configuration built before the setting existed does not carry it, and must then get
+    the documented default rather than a second number written out at the call site.
+
+    The value is validated here and not only in the run-time overrides, because a model is
+    free to assign `config.percolationConf` attributes directly and most of them do. A
+    threshold of zero or below would flag every point that has any spread at all, which is
+    not "flag nothing"; a run that should flag nothing switches the comparison off with
+    `entropy_scheme_diagnostic`.
+    """
+    threshold = float(getattr(conf, "entropy_scheme_warn_threshold",
+                              ENTROPY_SCHEME_DEFAULT_THRESHOLD))
+    if not threshold > 0.0:
+        raise errors.PercolationError(
+            f"percolation_entropy_scheme_warn_threshold={threshold!r} must be positive. A run "
+            "that should not flag anything switches the comparison off with "
+            "percolation_entropy_scheme_diagnostic instead."
+        )
+    return threshold
+
+
+def entropy_scheme_is_sensitive(cs_sq_spread, threshold) -> bool:
+    """Whether a point's expansion history depends appreciably on the entropy scheme.
+
+    The criterion is the spread of ``3 c_s^2`` between the two schemes and never the gap in
+    ``ln a``: the spread estimates the relative shift the mean bubble separation takes
+    between them to about thirty per cent, while the gap is biased by a factor that depends
+    on the model. A spread that could not be computed is not a clean point, so it leaves the
+    flag unset and the ``nan`` visible beside it rather than raising anything.
+    """
+    spread = float(cs_sq_spread)
+    return bool(np.isfinite(spread) and spread > float(threshold))
+
+
+def record_entropy_scheme_diagnostics(
+    derived: dict,
+    pot,
+    phase_symmetric,
+    T,
+    conf,
+    configured_history=None,
+    verbose: bool = False,
+    console=None,
+) -> None:
+    """Write the entropy-scheme diagnostics and flag into ``derived``.
+
+    All three keys are set on every path. Where the comparison does not apply, because it is
+    switched off, because the time-temperature relation reads no entropy, or because the
+    configured history could not be built, the flag is ``False`` and both numbers are
+    ``nan``: the keys are registered for every run, so leaving them unset would have the
+    writer report them as unimplemented and fill all three with ``nan``, the boolean
+    included.
+
+    A timeout reaches the caller. Any other failure of the comparison leaves the ``nan``
+    and must not invalidate the point, which was computed before the comparison was asked
+    for.
+    """
+    derived.setdefault("WARNING:entropy_scheme_sensitive", False)
+    derived.setdefault("DIAG:entropy_scheme_cs2_spread", float("nan"))
+    derived.setdefault("DIAG:entropy_scheme_lna_gap", float("nan"))
+
+    # Both settings are validated before anything can return early, for the same reason the
+    # definition is validated before the exits inside `entropy_scheme_sensitivity`: a bad
+    # value is a configuration error whether or not this point would have been compared, and
+    # these exits are not the place to discover that it was ignored.
+    threshold = entropy_scheme_threshold(conf)
+    validate_entropy_definition(getattr(conf, "entropy_definition", None))
+
+    history_available = not (configured_history is None
+                             or configured_history[0] is None)
+    if not (history_available and getattr(conf, "entropy_scheme_diagnostic", True)):
+        return
+
+    try:
+        spread, shift = entropy_scheme_sensitivity(
+            pot,
+            phase_symmetric,
+            T,
+            time_temperature_mode=getattr(conf, "time_temperature_mode", None),
+            entropy_definition=getattr(conf, "entropy_definition", None),
+            configured_history=configured_history,
+        )
+    except errors.Timeout:
+        raise
+    except errors.PercolationError:
+        # A configuration error, not a solver failure: absorbing it would answer a bad
+        # setting with "the two agree here". The validation above already refuses the cases
+        # that arise today, so this guards a configuration error raised deeper in the
+        # comparison, which the ordinary-failure handler below would otherwise hide.
+        raise
+    except Exception as err:
+        spread = shift = float("nan")
+        if verbose:
+            print("Error in comparing the entropy schemes: ", err)
+
+    derived["DIAG:entropy_scheme_cs2_spread"] = float(spread)
+    derived["DIAG:entropy_scheme_lna_gap"] = float(shift)
+    # The flag is raised on the median spread of 3 c_s^2 over the support, which estimates
+    # the relative shift the mean bubble separation takes between the schemes to about 30%.
+    # The gap in ln a is recorded beside it but is not the criterion: it is the linearised
+    # estimate of the same shift and is biased by a model-dependent factor, from 0.08 on an
+    # abelian dark Higgs line to 5.2 on a 2HDM line.
+    derived["WARNING:entropy_scheme_sensitive"] = entropy_scheme_is_sensitive(
+        spread, threshold)
+    if derived["WARNING:entropy_scheme_sensitive"] and verbose and console is not None:
+        console.print(
+            "[bold yellow]WARNING:[/bold yellow] the two entropy schemes differ by "
+            f"{spread * 100.0:.2f} % in 3 c_s^2 in the median over this support, above the "
+            f"{threshold * 100.0:.2f} % threshold, so the mean bubble separation of this "
+            "point moves by roughly that much between them. Say which "
+            "percolation_entropy_definition produced it."
+        )
+
+
+def entropy_scheme_sensitivity(
+    pot,
+    phase_symmetric,
+    T: np.ndarray,
+    *,
+    time_temperature_mode: str | None = None,
+    entropy_definition: str | None = None,
+    configured_history=None,
+):
+    """How much the choice of entropy scheme matters on this percolation support.
+
+    The two schemes of ``ENTROPY_DEFINITIONS`` are two approximations to one entropy
+    density, and neither contains the other, so the difference between them is a modelling
+    uncertainty of the expansion history rather than a numerical error. It is reported
+    rather than corrected, because nothing in the literature chooses between them.
+
+    Two numbers, both on the support that fixed the percolation temperature:
+
+    ``cs_sq_spread``
+        the median relative difference between the two schemes' ``3 c_s^2`` over the
+        support. Measured over 91 points of four scan lines against the shift each point's
+        mean bubble separation actually takes between the schemes, this is an estimate of
+        that shift: the ratio of the two has median 1.06 and lies between 0.88 and 1.29 for
+        eight points in ten, and 93% of points agree within a factor of two. The bias is the
+        same on every line tested, between 1.00 and 1.17.
+    ``scale_factor_shift``
+        the gap between the two schemes in ``|delta ln a|`` across the support, not the
+        expansion itself. Since ``d ln a/d ln T = -1/(3 c_s^2)`` and
+        ``ln a = -(1/3) ln s`` up to a constant, this is the difference of the two schemes'
+        logarithmic entropy ratios over three, and it is the first-order estimate of the
+        relative shift it would produce in the mean bubble separation.
+
+    Pass ``configured_history`` as the ``(logEntropyInt, coolingInt)`` pair already built for
+    the configured scheme, and only the other scheme is evaluated: one further history
+    rather than two, and the comparison is then made against the very history the
+    observables came from. One history is three `entropy_density` evaluations per support
+    point, at the temperature and at both endpoints of the derivative stencil, so handing
+    the configured one over halves the cost of the comparison.
+
+    Returns
+    -------
+    tuple
+        ``(cs_sq_spread, scale_factor_shift)``, or ``(nan, nan)`` where the comparison
+        cannot be made: in bag mode, on a support of fewer than two temperatures, or where
+        one of the schemes has no usable history.
+    """
+    # Validated before anything can return early: a misspelling is a configuration error
+    # whether or not this support would have been compared.
+    configured = validate_entropy_definition(entropy_definition)
+    other = [d for d in ENTROPY_DEFINITIONS if d != configured][0]
+
+    if not percolation_uses_sound_speed(time_temperature_mode):
+        # In bag mode the history is 3 c_s^2 = 1 by construction and reads no entropy.
+        return float("nan"), float("nan")
+
+    temperatures = np.asarray(T, dtype=float)
+    if temperatures.size < 2:
+        return float("nan"), float("nan")
+
+    histories = {}
+    if configured_history is not None:
+        # The caller has the configured history already: it is the one the observables were
+        # computed from, and rebuilding it would double the cost of the comparison and risk
+        # comparing against a history that is not the one that produced `Tperc`.
+        log_entropy, cooling = configured_history
+        if log_entropy is None or cooling is None:
+            return float("nan"), float("nan")
+        histories[configured] = (log_entropy, cooling)
+    needed = [d for d in (configured, other) if d not in histories]
+    for definition in needed:
+        log_entropy, cooling = expansion_interpolants(
+            pot,
+            phase_symmetric,
+            temperatures,
+            time_temperature_mode=time_temperature_mode,
+            entropy_definition=definition,
+        )
+        if log_entropy is None or cooling is None:
+            return float("nan"), float("nan")
+        histories[definition] = (log_entropy, cooling)
+
+    hot, cold = float(temperatures[0]), float(temperatures[-1])
+    ratios, coolings = {}, {}
+    for definition, (log_entropy, cooling) in histories.items():
+        ratios[definition] = float(log_entropy(hot) - log_entropy(cold))
+        coolings[definition] = np.array(
+            [float(cooling(float(t))) for t in temperatures], dtype=float)
+
+    a = coolings[configured]
+    b = coolings[other]
+    usable = np.isfinite(a) & np.isfinite(b) & ((a + b) != 0.0)
+    if not np.any(usable):
+        return float("nan"), float("nan")
+
+    # The median over the support, not the largest value. The shift in the mean bubble
+    # separation integrates the difference over the whole history, so a typical value
+    # predicts it and an extreme one does not: measured against the shift it produces, the
+    # median is unbiased to 6% while the maximum overstates it by a factor 1.8, and a single
+    # support temperature that has lost a usable sound speed in one scheme can drive the
+    # maximum to 100% where the separation moves by a few per cent.
+    # Symmetric in the two schemes: the difference is taken relative to their mean, not to
+    # the configured one. Dividing by the configured scheme would make the number, and with
+    # it the flag, depend on which scheme the run happened to use: for factors 1 and 1.041
+    # that is 4.10% one way and 3.94% the other, which straddles the default threshold.
+    # For a difference d the two agree to O(d^2), so the calibration is unaffected at the
+    # per cent level where it was measured.
+    cs_sq_spread = float(np.median(
+        2.0 * np.abs(b[usable] - a[usable]) / np.abs(a[usable] + b[usable])))
+    scale_factor_shift = abs(ratios[configured] - ratios[other]) / 3.0
+    if not np.isfinite(scale_factor_shift):
+        return cs_sq_spread, float("nan")
+    return cs_sq_spread, float(scale_factor_shift)
 
 
 def calcMeanBubbleSeparation(

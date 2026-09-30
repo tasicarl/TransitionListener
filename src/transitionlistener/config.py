@@ -78,6 +78,18 @@ class PercolationConf:
     algorithm_mode = "adaptive_step_size"       # "adaptive_step_size" (default) or "fixed_step_size".
     integral_method = "ode"               # Percolation integral backend: "ode" or "double_integral".
     time_temperature_mode = "sound_speed" # dT/dt relation: "sound_speed" or "bag".
+    entropy_scheme_diagnostic = True  # Compare both entropy schemes on the percolation support.
+    # Flag the point when the two entropy schemes' 3 c_s^2 differ, in the median over the
+    # percolation support, by more than this fraction. That median estimates the relative
+    # shift the mean bubble separation takes between the schemes, so the criterion is
+    # "flag a point whose R_* is uncertain at about the five per cent level from this
+    # modelling choice". It sits a little below five so that the scatter of the estimate does
+    # not hide such a point: calibrated over 91 points run in both schemes, the estimate lies
+    # between 0.88 and 1.29 times the shift it predicts for eight points in ten. The precise
+    # value is not critical and four per cent is the round one; on that calibration sample it
+    # flags one point of the ninety-one, whose separation moves by 3.7%. Lower it to see the
+    # weaker cases: 3.5% flags six, all of which move by more than 2.9%.
+    entropy_scheme_warn_threshold = 0.04  # bubbledynamics.ENTROPY_SCHEME_DEFAULT_THRESHOLD
     entropy_definition = "dof_table"      # Thermodynamics of the expansion history:
                                           # "dof_table" (counted degrees of freedom, default)
                                           # or "eff_potential" (-dV/dT of the potential).
@@ -216,6 +228,10 @@ all_observables = {
     "WARNING:action_rescue_failed": R"$\mathrm{WARNING:} \mathrm{action\ rescue\ failed}$",
     "DIAG:action_rescue_attempts": R"$\mathrm{DIAG:} \mathrm{actions\ recomputed}$",
     "DIAG:runtime_s": R"$\mathrm{DIAG:} \mathrm{runtime\ [s]}$",
+    "WARNING:entropy_scheme_sensitive":
+        R"$\mathrm{WARNING:} \mathrm{entropy\ scheme\ matters}$",
+    "DIAG:entropy_scheme_cs2_spread": R"$\mathrm{DIAG:} \Delta(3c_s^2)/3c_s^2$",
+    "DIAG:entropy_scheme_lna_gap": R"$\mathrm{DIAG:} |\Delta \ln a|$",
     "WARNING:nucleationRate_nonexponential": R"$\mathrm{WARNING:} \mathrm{nucleation\ rate\ nonexponential}$",
     "WARNING:spline_tnuc_unavailable": R"$\mathrm{WARNING:} T_\mathrm{nuc} \mathrm{\ spline\ unavailable}$",
     "WARNING:spline_tnuc_not_reached": R"$\mathrm{WARNING:} T_\mathrm{nuc} \mathrm{\ criterion\ not\ reached}$",
