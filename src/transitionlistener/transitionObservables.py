@@ -27,6 +27,8 @@ from transitionlistener.bubbledynamics import (
     calc_betaH_S3_approx,
     calcMeanBubbleSeparation,
     entropy_scheme_sensitivity,
+    entropy_scheme_is_sensitive,
+    entropy_scheme_threshold,
     falseVacuumVolumeGrowthRate,
     percolation_sound_speed_sq,
     expansion_interpolants,
@@ -651,6 +653,10 @@ class TransitionObservables:
                     time_temperature_mode=ctx.PercolationConf.time_temperature_mode,
                     entropy_definition=getattr(
                         ctx.PercolationConf, "entropy_definition", None),
+                    # The configured history is already built above; handing it over keeps
+                    # the comparison to one further entropy evaluation per support point,
+                    # and makes it a comparison against the history `Tperc` came from.
+                    configured_history=(logEntropyInt, coolingInt),
                 )
             except errors.Timeout:
                 raise
@@ -660,8 +666,7 @@ class TransitionObservables:
                     print("Error in comparing the entropy schemes: ", err)
             derived["DIAG:entropy_scheme_cs2_spread"] = float(spread)
             derived["DIAG:entropy_scheme_lna_gap"] = float(shift)
-            threshold = float(getattr(
-                ctx.PercolationConf, "entropy_scheme_warn_threshold", 0.02))
+            threshold = entropy_scheme_threshold(ctx.PercolationConf)
             # The flag is raised on the median spread of 3 c_s^2 over the support, which
             # estimates the relative shift the mean bubble separation takes between the
             # schemes to about 30%. The gap in ln a is recorded beside it but is not the
@@ -669,8 +674,8 @@ class TransitionObservables:
             # model-dependent factor, from 0.08 on an abelian dark Higgs line to 5.2 on a
             # 2HDM line. A spread that cannot be computed leaves the flag unset and the nan
             # visible beside it.
-            derived["WARNING:entropy_scheme_sensitive"] = bool(
-                np.isfinite(spread) and spread > threshold)
+            derived["WARNING:entropy_scheme_sensitive"] = entropy_scheme_is_sensitive(
+                spread, threshold)
             if derived["WARNING:entropy_scheme_sensitive"] and verbose:
                 console.print(
                     "[bold yellow]WARNING:[/bold yellow] the two entropy schemes differ by "

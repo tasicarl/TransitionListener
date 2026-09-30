@@ -89,7 +89,7 @@ class PercolationConf:
     # value is not critical and four per cent is the round one; on that calibration sample it
     # flags one point of the ninety-one, whose separation moves by 3.7%. Lower it to see the
     # weaker cases: 3.5% flags seven, all of which move by more than 2.9%.
-    entropy_scheme_warn_threshold = 0.04
+    entropy_scheme_warn_threshold = 0.04  # bubbledynamics.ENTROPY_SCHEME_DEFAULT_THRESHOLD
     entropy_definition = "dof_table"      # Thermodynamics of the expansion history:
                                           # "dof_table" (counted degrees of freedom, default)
                                           # or "eff_potential" (-dV/dT of the potential).

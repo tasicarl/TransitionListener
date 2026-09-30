@@ -18,6 +18,7 @@ from transitionlistener import bubbledynamics as bd
 from transitionlistener import constants as cn
 from transitionlistener import errors
 from transitionlistener.helper_functions import load_potential
+from transitionlistener.config import PercolationConf
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -183,74 +184,148 @@ class SpreadStatisticTests(unittest.TestCase):
         self.assertNotIn("np.max", src[i:i + 120])
 
 
-class FlagWiringTests(unittest.TestCase):
-    """The flag is raised on the spread, and the threshold is the one the user set."""
+class FlagPredicateTests(unittest.TestCase):
+    """The production predicate itself, not a copy of it.
 
-    class Conf:
-        time_temperature_mode = "sound_speed"
-        entropy_definition = "dof_table"
-        entropy_scheme_diagnostic = True
-        entropy_scheme_warn_threshold = 0.02
+    The flag is `bd.entropy_scheme_is_sensitive`, which `_compute_percolation` calls; a test
+    that re-implemented the comparison would keep passing if the observables stopped using
+    it.
+    """
 
-    def _derived(self, spread, shift, **conf):
-        """Run the observables' diagnostic block with a stubbed sensitivity."""
-        from transitionlistener import transitionObservables as to
-        c = self.Conf()
-        for k, v in conf.items():
-            setattr(c, k, v)
-        derived = {}
-        threshold = float(c.entropy_scheme_warn_threshold)
-        # Mirror of the block under test; the contract asserted here is that the flag comes
-        # from the spread and not from the gap.
-        derived["DIAG:entropy_scheme_cs2_spread"] = float(spread)
-        derived["DIAG:entropy_scheme_lna_gap"] = float(shift)
-        derived["WARNING:entropy_scheme_sensitive"] = bool(
-            np.isfinite(spread) and spread > threshold)
-        return derived
+    def test_a_spread_above_the_threshold_raises_it(self):
+        self.assertTrue(bd.entropy_scheme_is_sensitive(0.05, 0.04))
 
-    def test_the_source_flags_on_the_spread_and_not_on_the_gap(self):
-        # Read the shipped code rather than trusting the mirror above: the flag must be
-        # computed from the spread. A change to the gap must not be able to raise it.
+    def test_a_spread_below_it_does_not(self):
+        self.assertFalse(bd.entropy_scheme_is_sensitive(0.01, 0.04))
+
+    def test_the_boundary_is_strict(self):
+        self.assertFalse(bd.entropy_scheme_is_sensitive(0.04, 0.04))
+
+    def test_a_nan_spread_leaves_it_unset(self):
+        self.assertFalse(bd.entropy_scheme_is_sensitive(float("nan"), 0.04))
+
+    def test_the_threshold_is_the_callers(self):
+        self.assertTrue(bd.entropy_scheme_is_sensitive(0.005, 0.001))
+        self.assertFalse(bd.entropy_scheme_is_sensitive(0.005, 0.1))
+
+    def test_a_configuration_without_the_setting_gets_the_documented_default(self):
+        # A PercolationConf built before this setting existed must not be flagged at some
+        # other number written out at the call site.
+        import types
+        legacy = types.SimpleNamespace(time_temperature_mode="sound_speed")
+        self.assertAlmostEqual(bd.entropy_scheme_threshold(legacy),
+                               PercolationConf().entropy_scheme_warn_threshold)
+        self.assertAlmostEqual(bd.entropy_scheme_threshold(legacy), 0.04)
+
+    def test_a_configuration_with_the_setting_gets_its_own_value(self):
+        import types
+        self.assertAlmostEqual(
+            bd.entropy_scheme_threshold(
+                types.SimpleNamespace(entropy_scheme_warn_threshold=0.11)), 0.11)
+
+    def test_the_observables_use_this_predicate_and_the_shared_default(self):
+        # The flag must come from the predicate above, and the fallback used when a
+        # PercolationConf predates the setting must be the documented default, not a
+        # second copy of the number.
         import inspect
         from transitionlistener import transitionObservables as to
         src = inspect.getsource(to)
         i = src.index('derived["WARNING:entropy_scheme_sensitive"]')
         stanza = src[i:i + 200]
-        self.assertIn("spread", stanza)
+        self.assertIn("entropy_scheme_is_sensitive", stanza)
         self.assertNotIn("shift", stanza)
-
-    def test_a_large_gap_alone_does_not_raise_the_flag(self):
-        d = self._derived(spread=0.001, shift=10.0)
-        self.assertFalse(d["WARNING:entropy_scheme_sensitive"])
-
-    def test_a_spread_above_the_threshold_raises_it(self):
-        d = self._derived(spread=0.05, shift=0.0)
-        self.assertTrue(d["WARNING:entropy_scheme_sensitive"])
-
-    def test_a_nan_spread_leaves_it_unset(self):
-        d = self._derived(spread=float("nan"), shift=float("nan"))
-        self.assertFalse(d["WARNING:entropy_scheme_sensitive"])
-
-    def test_the_threshold_is_the_users(self):
-        self.assertTrue(self._derived(spread=0.005, shift=0.0,
-                                      entropy_scheme_warn_threshold=0.001
-                                      )["WARNING:entropy_scheme_sensitive"])
-        self.assertFalse(self._derived(spread=0.005, shift=0.0,
-                                       entropy_scheme_warn_threshold=0.1
-                                       )["WARNING:entropy_scheme_sensitive"])
+        self.assertIn("entropy_scheme_threshold(", src)
+        self.assertEqual(bd.ENTROPY_SCHEME_DEFAULT_THRESHOLD,
+                         PercolationConf().entropy_scheme_warn_threshold)
 
     def test_the_keys_are_registered_where_registration_is_required(self):
         from transitionlistener import config
         from transitionlistener.interface.samplers import get_empty_result
-        keys = ("WARNING:entropy_scheme_sensitive", "DIAG:entropy_scheme_cs2_spread",
-                "DIAG:entropy_scheme_lna_gap")
         empty = get_empty_result()
-        for k in keys:
+        for k in ("WARNING:entropy_scheme_sensitive", "DIAG:entropy_scheme_cs2_spread",
+                  "DIAG:entropy_scheme_lna_gap"):
             with self.subTest(key=k):
                 self.assertIn(k, config.all_observables)
                 self.assertIn(k, empty)
-        # and the invariant that keeps failed scan rows aligned with successful ones
         self.assertEqual(set(config.all_observables) - set(empty), set())
+
+
+class ReusedHistoryTests(unittest.TestCase):
+    """The configured history is handed in, not rebuilt.
+
+    Rebuilding it would cost two entropy evaluations per support point instead of one, and
+    would compare against a history that is not the one the observables came from.
+    """
+
+    def _count_evaluations(self, **kwargs):
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 20)
+        seen = []
+        real = bd.expansion_interpolants
+
+        def counting(pot_, phase, temps, **kw):
+            seen.append(kw.get("entropy_definition"))
+            return real(pot_, phase, temps, **kw)
+
+        with mock.patch.object(bd, "expansion_interpolants", counting):
+            out = bd.entropy_scheme_sensitivity(
+                pot, FixedPhase([0.0]), T, time_temperature_mode="sound_speed",
+                entropy_definition="dof_table", **kwargs)
+        return seen, out
+
+    def test_without_a_handed_history_both_schemes_are_built(self):
+        seen, _ = self._count_evaluations()
+        self.assertEqual(len(seen), 2)
+
+    def test_with_one_handed_in_only_the_other_is_built(self):
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 20)
+        history = bd.expansion_interpolants(
+            pot, FixedPhase([0.0]), T, entropy_definition="dof_table")
+        seen, _ = self._count_evaluations(configured_history=history)
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen, ["eff_potential"])
+
+    def test_the_answer_is_the_same_either_way(self):
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 20)
+        history = bd.expansion_interpolants(
+            pot, FixedPhase([0.0]), T, entropy_definition="dof_table")
+        a = bd.entropy_scheme_sensitivity(
+            pot, FixedPhase([0.0]), T, time_temperature_mode="sound_speed",
+            entropy_definition="dof_table")
+        c = bd.entropy_scheme_sensitivity(
+            pot, FixedPhase([0.0]), T, time_temperature_mode="sound_speed",
+            entropy_definition="dof_table", configured_history=history)
+        self.assertAlmostEqual(a[0], c[0], places=12)
+        self.assertAlmostEqual(a[1], c[1], places=12)
+
+    def test_a_history_that_could_not_be_built_gives_nan(self):
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 20)
+        spread, shift = bd.entropy_scheme_sensitivity(
+            pot, FixedPhase([0.0]), T, time_temperature_mode="sound_speed",
+            entropy_definition="dof_table", configured_history=(None, None))
+        self.assertTrue(np.isnan(spread) and np.isnan(shift))
+
+
+class EmptyDefinitionTests(unittest.TestCase):
+    def test_an_empty_definition_is_a_value_and_is_refused(self):
+        # `or` would have taken it for "not given" and silently used the default.
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 8)
+        with self.assertRaises(errors.PercolationError):
+            bd.entropy_scheme_sensitivity(
+                pot, FixedPhase([0.0]), T, time_temperature_mode="sound_speed",
+                entropy_definition="")
+
+    def test_none_still_means_the_default(self):
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 8)
+        spread, _ = bd.entropy_scheme_sensitivity(
+            pot, FixedPhase([0.0]), T, time_temperature_mode="sound_speed",
+            entropy_definition=None)
+        self.assertTrue(np.isfinite(spread))
 
 
 class RuntimeOverrideTests(unittest.TestCase):

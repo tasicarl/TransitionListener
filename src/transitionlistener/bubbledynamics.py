@@ -3262,6 +3262,33 @@ def expansion_interpolants(pot, phase_symmetric, T, *, time_temperature_mode: st
     return logEntropyInt, coolingInt
 
 
+ENTROPY_SCHEME_DEFAULT_THRESHOLD = 0.04
+"""Default for ``percolation_entropy_scheme_warn_threshold``; see ``config.PercolationConf``."""
+
+
+def entropy_scheme_threshold(conf) -> float:
+    """The spread above which a point is flagged, for a percolation configuration.
+
+    A configuration built before the setting existed does not carry it, and must then get
+    the documented default rather than a second number written out at the call site.
+    """
+    return float(getattr(conf, "entropy_scheme_warn_threshold",
+                         ENTROPY_SCHEME_DEFAULT_THRESHOLD))
+
+
+def entropy_scheme_is_sensitive(cs_sq_spread, threshold) -> bool:
+    """Whether a point's expansion history depends appreciably on the entropy scheme.
+
+    The criterion is the spread of ``3 c_s^2`` between the two schemes and never the gap in
+    ``ln a``: the spread estimates the relative shift the mean bubble separation takes
+    between them to about thirty per cent, while the gap is biased by a factor that depends
+    on the model. A spread that could not be computed is not a clean point, so it leaves the
+    flag unset and the ``nan`` visible beside it rather than raising anything.
+    """
+    spread = float(cs_sq_spread)
+    return bool(np.isfinite(spread) and spread > float(threshold))
+
+
 def entropy_scheme_sensitivity(
     pot,
     phase_symmetric,
@@ -3269,6 +3296,7 @@ def entropy_scheme_sensitivity(
     *,
     time_temperature_mode: str | None = None,
     entropy_definition: str | None = None,
+    configured_history=None,
 ):
     """How much the choice of entropy scheme matters on this percolation support.
 
@@ -3292,6 +3320,11 @@ def entropy_scheme_sensitivity(
         logarithmic entropy ratios over three, and it is the first-order estimate of the
         relative shift it would produce in the mean bubble separation.
 
+    Pass ``configured_history`` as the ``(logEntropyInt, coolingInt)`` pair already built for
+    the configured scheme, and only the other scheme is evaluated: one further entropy
+    evaluation per support point rather than two, and the comparison is then made against
+    the very history the observables came from.
+
     Returns
     -------
     tuple
@@ -3307,7 +3340,9 @@ def entropy_scheme_sensitivity(
     if temperatures.size < 2:
         return float("nan"), float("nan")
 
-    configured = str(entropy_definition or ENTROPY_DEFINITIONS[0])
+    # Only `None` means "not given": an empty string is a value, and a wrong one.
+    configured = (ENTROPY_DEFINITIONS[0] if entropy_definition is None
+                  else str(entropy_definition))
     if configured not in ENTROPY_DEFINITIONS:
         raise errors.PercolationError(
             f"Unknown percolation entropy definition {configured!r}. "
@@ -3316,7 +3351,16 @@ def entropy_scheme_sensitivity(
     other = [d for d in ENTROPY_DEFINITIONS if d != configured][0]
 
     histories = {}
-    for definition in (configured, other):
+    if configured_history is not None:
+        # The caller has the configured history already: it is the one the observables were
+        # computed from, and rebuilding it would double the cost of the comparison and risk
+        # comparing against a history that is not the one that produced `Tperc`.
+        log_entropy, cooling = configured_history
+        if log_entropy is None or cooling is None:
+            return float("nan"), float("nan")
+        histories[configured] = (log_entropy, cooling)
+    needed = [d for d in (configured, other) if d not in histories]
+    for definition in needed:
         log_entropy, cooling = expansion_interpolants(
             pot,
             phase_symmetric,

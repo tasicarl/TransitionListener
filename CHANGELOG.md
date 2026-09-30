@@ -8,6 +8,46 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+
+- Four diagnostics of how a point was reached, rather than of what it is.
+  `WARNING:action_rescue_attempted` says that actions were recomputed with the path
+  deformation tightened, by either the rate-jitter rescue or the fit rescue above;
+  `WARNING:action_rescue_failed` says that this did not settle the quantity that
+  prompted it. `DIAG:action_rescue_attempts` counts the actions recomputed and
+  `DIAG:runtime_s` gives the wall clock of the point, which is what makes the cost of a
+  rescue visible: a rescued 2HDM point took 1887 s against about 775 s without one.
+  The rate-jitter rescue already recorded its outcome internally and nothing read it.
+  These are written to `1_All_params.txt` under their own `Diagnostics:` heading, apart
+  from the observables, so that two runs of one point still agree there byte for byte.
+
+
+- Output column `Treh_DS_GeV`: the reheating temperature of the
+  transitioning sector, i.e. the fields of the potential and the coupled
+  radiation bath.
+- Model attribute `SM_bath` (`"coupled"` or `"decoupled"`) that names the
+  radiation bath holding the Standard Model. If it is not set, TL takes the
+  bath whose tables are `e_geffSM`, and warns if both are. A model with
+  Standard Model fields in its potential (e.g. the 2HDM) cannot decouple the
+  Standard Model; TL raises an error when it is set up that way.
+- `constants.h_eff_today`, today's entropy degrees of freedom.
+- Setting `entropy_definition` of the percolation solver, `"dof_table"` (default)
+  or `"eff_potential"`, with the run-time override
+  `percolation_entropy_definition`. It selects the thermodynamics of the
+  expansion history. Both describe the same plasma, the fields of the potential
+  and the coupled radiation bath without the decoupled one, and differ in how they
+  treat the fields. `"dof_table"` counts them as free particles at their
+  zero-temperature masses and adds the tabulated entropy degrees of freedom of the
+  coupled bath. `"eff_potential"` takes `-dV/dT` of the effective potential, which
+  gives the fields their thermal masses and the Arnold-Espinosa daisy term; it
+  carries the tabulated bath with its perturbative corrections too, since the
+  field-independent part of the potential is built from the same tables, and what
+  it lacks is those corrections for the fields of the potential themselves.
+  Neither scheme contains the other: the counted one has the perturbative
+  corrections everywhere and no thermal masses, the potential one has the thermal
+  masses and the daisy term but free-particle counting for the fields. No
+  published work decides between them, so the difference is a modelling
+  uncertainty that can now be measured by running both.
+
 - **A flag for points where the entropy scheme matters.** `entropy_definition` chooses
   between two approximations to one entropy density, and neither contains the other, so the
   choice is a modelling uncertainty of the expansion history rather than a numerical one.
