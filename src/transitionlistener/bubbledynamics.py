@@ -3365,14 +3365,9 @@ def entropy_scheme_sensitivity(
         cannot be made: in bag mode, on a support of fewer than two temperatures, or where
         one of the schemes has no usable history.
     """
-    if not percolation_uses_sound_speed(time_temperature_mode):
-        # In bag mode the history is 3 c_s^2 = 1 by construction and reads no entropy.
-        return float("nan"), float("nan")
-
-    temperatures = np.asarray(T, dtype=float)
-    if temperatures.size < 2:
-        return float("nan"), float("nan")
-
+    # The setting is validated before anything can return early. A misspelling is a
+    # configuration error whether or not this support would have been compared, and the
+    # exits below are not the place to discover that it was ignored.
     # Only `None` means "not given": an empty string is a value, and a wrong one.
     configured = (ENTROPY_DEFINITIONS[0] if entropy_definition is None
                   else str(entropy_definition))
@@ -3382,6 +3377,14 @@ def entropy_scheme_sensitivity(
             f"Supported definitions are {ENTROPY_DEFINITIONS[0]!r} and {ENTROPY_DEFINITIONS[1]!r}."
         )
     other = [d for d in ENTROPY_DEFINITIONS if d != configured][0]
+
+    if not percolation_uses_sound_speed(time_temperature_mode):
+        # In bag mode the history is 3 c_s^2 = 1 by construction and reads no entropy.
+        return float("nan"), float("nan")
+
+    temperatures = np.asarray(T, dtype=float)
+    if temperatures.size < 2:
+        return float("nan"), float("nan")
 
     histories = {}
     if configured_history is not None:

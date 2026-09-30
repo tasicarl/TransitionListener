@@ -102,6 +102,37 @@ class SensitivityTests(unittest.TestCase):
                 pot, FixedPhase([0.0]), T, time_temperature_mode="sound_speed",
                 entropy_definition="dof_tabel")
 
+    def test_it_is_refused_even_where_the_comparison_would_not_run(self):
+        """A misspelling is a configuration error, not something the exits may swallow.
+
+        Bag mode and a support of one temperature both return early, so validating after
+        them let `entropy_definition="typo"` come back as (nan, nan), which reads as "the
+        schemes agree here" rather than "you misspelled the setting".
+        """
+        pot = conformal()
+        for label, T, mode in (
+                ("bag mode", np.geomspace(50.0, 15.0, 8), "bag"),
+                ("one temperature", np.array([20.0]), "sound_speed"),
+        ):
+            with self.subTest(case=label):
+                with self.assertRaises(errors.PercolationError):
+                    bd.entropy_scheme_sensitivity(
+                        pot, FixedPhase([0.0]), T, time_temperature_mode=mode,
+                        entropy_definition="typo")
+
+    def test_those_exits_still_give_nan_for_a_valid_definition(self):
+        # The point is the validation order, not refusing the exits themselves.
+        pot = conformal()
+        for label, T, mode in (
+                ("bag mode", np.geomspace(50.0, 15.0, 8), "bag"),
+                ("one temperature", np.array([20.0]), "sound_speed"),
+        ):
+            with self.subTest(case=label):
+                spread, shift = bd.entropy_scheme_sensitivity(
+                    pot, FixedPhase([0.0]), T, time_temperature_mode=mode,
+                    entropy_definition="dof_table")
+                self.assertTrue(np.isnan(spread) and np.isnan(shift))
+
     def test_a_timeout_reaches_the_caller(self):
         pot = conformal()
         T = np.geomspace(50.0, 15.0, 8)
