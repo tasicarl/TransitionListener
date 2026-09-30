@@ -811,7 +811,6 @@ def _time_temperature_factors(
             entropy[i] = entropy_here
             usable_points += 1
 
-
     # The scale factor follows from entropy conservation, a^3 s = const, which is the integral
     # form of d ln a / dT = -1 / (3 c_s^2 T). Taking the ratio of entropies instead of
     # integrating the sound speed keeps a(T) accurate on the coarse grids of the percolation
@@ -3286,6 +3285,22 @@ ENTROPY_SCHEME_DEFAULT_THRESHOLD = 0.04
 """Default for ``percolation_entropy_scheme_warn_threshold``; see ``config.PercolationConf``."""
 
 
+def validate_entropy_definition(entropy_definition) -> str:
+    """Return the entropy definition to use, refusing anything unknown.
+
+    Only ``None`` means "not given": an empty string is a value, and a wrong one.
+    """
+    configured = (ENTROPY_DEFINITIONS[0] if entropy_definition is None
+                  else str(entropy_definition))
+    if configured not in ENTROPY_DEFINITIONS:
+        raise errors.PercolationError(
+            f"Unknown percolation entropy definition {configured!r}. "
+            f"Supported definitions are {ENTROPY_DEFINITIONS[0]!r} and "
+            f"{ENTROPY_DEFINITIONS[1]!r}."
+        )
+    return configured
+
+
 def entropy_scheme_threshold(conf) -> float:
     """The spread above which a point is flagged, for a percolation configuration.
 
@@ -3349,6 +3364,13 @@ def record_entropy_scheme_diagnostics(
     derived.setdefault("DIAG:entropy_scheme_cs2_spread", float("nan"))
     derived.setdefault("DIAG:entropy_scheme_lna_gap", float("nan"))
 
+    # Both settings are validated before anything can return early, for the same reason the
+    # definition is validated before the exits inside `entropy_scheme_sensitivity`: a bad
+    # value is a configuration error whether or not this point would have been compared, and
+    # these exits are not the place to discover that it was ignored.
+    threshold = entropy_scheme_threshold(conf)
+    validate_entropy_definition(getattr(conf, "entropy_definition", None))
+
     history_available = not (configured_history is None
                              or configured_history[0] is None)
     if not (history_available and getattr(conf, "entropy_scheme_diagnostic", True)):
@@ -3365,6 +3387,12 @@ def record_entropy_scheme_diagnostics(
         )
     except errors.Timeout:
         raise
+    except errors.PercolationError:
+        # A configuration error, not a solver failure: absorbing it would answer a bad
+        # setting with "the two agree here". The validation above already refuses the cases
+        # that arise today, so this guards a configuration error raised deeper in the
+        # comparison, which the ordinary-failure handler below would otherwise hide.
+        raise
     except Exception as err:
         spread = shift = float("nan")
         if verbose:
@@ -3372,7 +3400,6 @@ def record_entropy_scheme_diagnostics(
 
     derived["DIAG:entropy_scheme_cs2_spread"] = float(spread)
     derived["DIAG:entropy_scheme_lna_gap"] = float(shift)
-    threshold = entropy_scheme_threshold(conf)
     # The flag is raised on the median spread of 3 c_s^2 over the support, which estimates
     # the relative shift the mean bubble separation takes between the schemes to about 30%.
     # The gap in ln a is recorded beside it but is not the criterion: it is the linearised
@@ -3414,9 +3441,10 @@ def entropy_scheme_sensitivity(
         mean bubble separation actually takes between the schemes, this is an estimate of
         that shift: the ratio of the two has median 1.06 and lies between 0.88 and 1.29 for
         eight points in ten, and 93% of points agree within a factor of two. The bias is the
-        same on every line tested, between 1.01 and 1.17.
+        same on every line tested, between 1.00 and 1.17.
     ``scale_factor_shift``
-        ``|delta ln a|`` across the support. Since ``d ln a/d ln T = -1/(3 c_s^2)`` and
+        the gap between the two schemes in ``|delta ln a|`` across the support, not the
+        expansion itself. Since ``d ln a/d ln T = -1/(3 c_s^2)`` and
         ``ln a = -(1/3) ln s`` up to a constant, this is the difference of the two schemes'
         logarithmic entropy ratios over three, and it is the first-order estimate of the
         relative shift it would produce in the mean bubble separation.
@@ -3435,17 +3463,9 @@ def entropy_scheme_sensitivity(
         cannot be made: in bag mode, on a support of fewer than two temperatures, or where
         one of the schemes has no usable history.
     """
-    # The setting is validated before anything can return early. A misspelling is a
-    # configuration error whether or not this support would have been compared, and the
-    # exits below are not the place to discover that it was ignored.
-    # Only `None` means "not given": an empty string is a value, and a wrong one.
-    configured = (ENTROPY_DEFINITIONS[0] if entropy_definition is None
-                  else str(entropy_definition))
-    if configured not in ENTROPY_DEFINITIONS:
-        raise errors.PercolationError(
-            f"Unknown percolation entropy definition {configured!r}. "
-            f"Supported definitions are {ENTROPY_DEFINITIONS[0]!r} and {ENTROPY_DEFINITIONS[1]!r}."
-        )
+    # Validated before anything can return early: a misspelling is a configuration error
+    # whether or not this support would have been compared.
+    configured = validate_entropy_definition(entropy_definition)
     other = [d for d in ENTROPY_DEFINITIONS if d != configured][0]
 
     if not percolation_uses_sound_speed(time_temperature_mode):

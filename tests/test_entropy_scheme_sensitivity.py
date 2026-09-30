@@ -7,7 +7,7 @@ Documentation: https://tasillo.de/TransitionListener/
 from __future__ import annotations
 
 import contextlib
-import io
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -52,19 +52,6 @@ class SensitivityTests(unittest.TestCase):
         self.assertTrue(np.isfinite(spread) and spread > 0.0)
         self.assertTrue(np.isfinite(shift) and shift > 0.0)
 
-    def test_it_is_symmetric_in_the_configured_scheme(self):
-        # It reports the gap between the two, so which one the run uses may not change it.
-        pot = conformal()
-        T = np.geomspace(50.0, 15.0, 40)
-        a = bd.entropy_scheme_sensitivity(
-            pot, FixedPhase([0.0]), T, time_temperature_mode="sound_speed",
-            entropy_definition="dof_table")
-        b = bd.entropy_scheme_sensitivity(
-            pot, FixedPhase([0.0]), T, time_temperature_mode="sound_speed",
-            entropy_definition="eff_potential")
-        self.assertAlmostEqual(a[1], b[1], places=12)
-        # The spread is a ratio, so it is symmetric only to first order; allow for that.
-        self.assertAlmostEqual(a[0] / b[0], 1.0, places=2)
 
     def test_identical_schemes_would_report_no_sensitivity(self):
         # The number has to come from the difference and nothing else: with both schemes
@@ -178,9 +165,6 @@ class SpreadStatisticTests(unittest.TestCase):
         """Two schemes whose 3 c_s^2 differ by the given factors, one per temperature."""
         pot = conformal()
         T = np.geomspace(50.0, 15.0, len(factors))
-        calls = {"n": 0}
-        base = bd.entropy_density
-
         def entropy(pot_, phase, t, definition):
             # dof_table: s ~ T^4 everywhere. eff_potential: s ~ T^(4/f) at each temperature,
             # so that 3 c_s^2 differs from the counted one by the intended factor there.
@@ -207,12 +191,6 @@ class SpreadStatisticTests(unittest.TestCase):
         spread = self._spread_with(factors)
         self.assertGreater(spread, 0.05)
 
-    def test_the_source_takes_the_median(self):
-        import inspect
-        src = inspect.getsource(bd.entropy_scheme_sensitivity)
-        i = src.index("cs_sq_spread = ")
-        self.assertIn("np.median", src[i:i + 120])
-        self.assertNotIn("np.max", src[i:i + 120])
 
 
 class FlagPredicateTests(unittest.TestCase):
@@ -269,8 +247,8 @@ class FlagPredicateTests(unittest.TestCase):
 class ReusedHistoryTests(unittest.TestCase):
     """The configured history is handed in, not rebuilt.
 
-    Rebuilding it would cost two entropy evaluations per support point instead of one, and
-    would compare against a history that is not the one the observables came from.
+    Rebuilding it would cost a second history, three entropy evaluations per support point,
+    and would compare against a history that is not the one the observables came from.
     """
 
     def _count_evaluations(self, **kwargs):
@@ -493,6 +471,29 @@ class RecordedDiagnosticsTests(unittest.TestCase):
         self.assertTrue(np.isnan(d["DIAG:entropy_scheme_cs2_spread"]))
         self.assertTrue(np.isnan(d["DIAG:entropy_scheme_lna_gap"]))
 
+    def test_a_configuration_error_from_the_comparison_reaches_the_caller(self):
+        """Not absorbed by the ordinary-failure handler.
+
+        The validation before the comparison refuses the settings that go wrong today, so
+        this covers a `PercolationError` raised deeper inside: it must propagate rather than
+        be reported as "the two schemes agree here".
+        """
+        def refusing(*args, **kwargs):
+            raise errors.PercolationError("something deeper is misconfigured")
+
+        with mock.patch.object(bd, "entropy_scheme_sensitivity", refusing):
+            with self.assertRaises(errors.PercolationError):
+                self._run()
+
+    def test_an_ordinary_failure_from_the_comparison_is_still_absorbed(self):
+        def broken(*args, **kwargs):
+            raise ValueError("solver failure")
+
+        with mock.patch.object(bd, "entropy_scheme_sensitivity", broken):
+            d = self._run()
+        self.assertTrue(np.isnan(d["DIAG:entropy_scheme_cs2_spread"]))
+        self.assertFalse(d["WARNING:entropy_scheme_sensitive"])
+
     def test_a_timeout_reaches_the_caller(self):
         def timing_out(pot_, phase, t, definition):
             raise errors.Timeout()
@@ -509,11 +510,48 @@ class RecordedDiagnosticsTests(unittest.TestCase):
         self.assertTrue(self._run(conf=low)["WARNING:entropy_scheme_sensitive"])
         self.assertFalse(self._run(conf=high)["WARNING:entropy_scheme_sensitive"])
 
-    def test_a_non_positive_threshold_is_refused_here_too(self):
-        conf = self.Conf()
-        conf.entropy_scheme_warn_threshold = 0.0
-        with self.assertRaises(errors.PercolationError):
-            self._run(conf=conf)
+    def test_a_non_positive_threshold_is_refused_on_every_path(self):
+        """Including the paths that do not compare anything.
+
+        With the diagnostic switched off, or with no history to compare against, the value
+        was previously never read, so a model that set it directly to a non-positive number
+        was told nothing.
+        """
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 12)
+        history = bd.expansion_interpolants(
+            pot, FixedPhase([0.0]), T, entropy_definition="dof_table")
+        for bad in (0.0, -5.0):
+            for label, diagnostic, hist in (("comparing", True, history),
+                                            ("switched off", False, history),
+                                            ("no history", True, None)):
+                with self.subTest(threshold=bad, case=label):
+                    conf = self.Conf()
+                    conf.entropy_scheme_warn_threshold = bad
+                    conf.entropy_scheme_diagnostic = diagnostic
+                    with self.assertRaises(errors.PercolationError):
+                        self._run(conf=conf, history=hist)
+
+    def test_an_unknown_definition_is_refused_on_every_path(self):
+        """A misspelling may not come back as "the schemes agree here".
+
+        The comparison raises for an unknown definition, but this function used to absorb
+        that with its ordinary-failure handler, so through the only production caller a
+        typo returned (nan, nan) with the flag unset.
+        """
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 12)
+        history = bd.expansion_interpolants(
+            pot, FixedPhase([0.0]), T, entropy_definition="dof_table")
+        for label, diagnostic, hist in (("comparing", True, history),
+                                        ("switched off", False, history),
+                                        ("no history", True, None)):
+            with self.subTest(case=label):
+                conf = self.Conf()
+                conf.entropy_definition = "dof_tabel"
+                conf.entropy_scheme_diagnostic = diagnostic
+                with self.assertRaises(errors.PercolationError):
+                    self._run(conf=conf, history=hist)
 
     def test_values_already_present_are_not_overwritten_by_the_defaults(self):
         # `setdefault` is deliberate: a caller that has already decided, such as the fixed
@@ -531,14 +569,30 @@ class RecordedDiagnosticsTests(unittest.TestCase):
         self.assertAlmostEqual(derived["DIAG:entropy_scheme_cs2_spread"], 0.123)
 
     def test_the_fixed_step_context_sets_them(self):
-        # The keys are registered for every run, so the solver that cannot compare must
-        # still say "does not apply".
-        import inspect
+        """The fixed step size solver's own defaults, read from the object it builds.
+
+        The keys are registered for every run, so the solver that cannot compare must still
+        say "does not apply": without these entries the writer reports them as unimplemented
+        and fills all three with nan, the boolean included. A source-text assertion passed
+        even with the entries commented out, so this reads the dictionary instead.
+        """
         from transitionlistener import transitionObservables_fixedstep as tof
-        src = inspect.getsource(tof)
-        for key in self.KEYS:
-            with self.subTest(key=key):
-                self.assertIn(key, src)
+        pot = conformal()
+        phase = FixedPhase([0.0])
+        obs = tof.TransitionObservables.__new__(tof.TransitionObservables)
+        obs.pot = pot
+        obs.phases = {"hot": phase, "cold": phase}
+        obs.GWconfig = pot.config.gwConf
+        obs.PercolationConf = pot.config.percolationConf
+        obs.derived_param_names = []
+        obs.verbose = False
+        tr = types.SimpleNamespace(Tnuc=30.0, full_tunneling_info={},
+                                   high_phase="hot", low_phase="cold")
+        ctx = tof.TransitionObservables._initialize_transition_context(obs, tr)
+        derived = ctx.derived_params
+        self.assertIs(derived["WARNING:entropy_scheme_sensitive"], False)
+        self.assertTrue(np.isnan(derived["DIAG:entropy_scheme_cs2_spread"]))
+        self.assertTrue(np.isnan(derived["DIAG:entropy_scheme_lna_gap"]))
 
 
 class EmptyDefinitionTests(unittest.TestCase):

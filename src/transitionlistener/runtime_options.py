@@ -203,9 +203,6 @@ def apply_percolation_overrides(percolation_conf, overrides: dict[str, object]) 
                 + ", ".join(repr(d) for d in cn.ENTROPY_DEFINITIONS) + "."
             )
         percolation_conf.entropy_definition = definition
-    if overrides["percolation_entropy_scheme_diagnostic"] is not None:
-        percolation_conf.entropy_scheme_diagnostic = bool(
-            overrides["percolation_entropy_scheme_diagnostic"])
     if overrides["percolation_entropy_scheme_warn_threshold"] is not None:
         threshold = float(overrides["percolation_entropy_scheme_warn_threshold"])
         if not threshold > 0.0:
@@ -252,6 +249,7 @@ def apply_percolation_overrides(percolation_conf, overrides: dict[str, object]) 
     bool_overrides = {
         "percolation_action_jitter_tunneltight_rescue": "action_jitter_tunneltight_rescue",
         "percolation_betaH_S3_fit_rescue": "betaH_S3_fit_rescue",
+        "percolation_entropy_scheme_diagnostic": "entropy_scheme_diagnostic",
     }
     for key, attr in bool_overrides.items():
         if overrides[key] is not None:

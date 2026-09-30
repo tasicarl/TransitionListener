@@ -51,8 +51,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - **A flag for points where the entropy scheme matters.** `entropy_definition` chooses
   between two approximations to one entropy density, and neither contains the other, so the
   choice is a modelling uncertainty of the expansion history rather than a numerical one.
-  Every adaptive step size run now evaluates the other scheme on the support that fixed the
-  percolation temperature and reports `DIAG:entropy_scheme_cs2_spread`, the median relative
+  Every adaptive step size run in `sound_speed` mode now evaluates the other scheme on the
+  support that fixed the percolation temperature and reports `DIAG:entropy_scheme_cs2_spread`, the median relative
   difference
   between the two schemes' `3 c_s^2` over that support, and `DIAG:entropy_scheme_lna_gap`,
   the difference of their logarithmic entropy ratios over three.
