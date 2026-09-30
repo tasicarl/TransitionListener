@@ -309,6 +309,115 @@ class ReusedHistoryTests(unittest.TestCase):
         self.assertTrue(np.isnan(spread) and np.isnan(shift))
 
 
+class UnusableHistoryTests(unittest.TestCase):
+    """A history that fell back everywhere is not a history.
+
+    `_time_temperature_factors` replaces each unusable temperature with the bag values, so a
+    scheme that fails at every support point would otherwise hand back perfectly ordinary
+    interpolants describing nothing, and the comparison would report agreement where nothing
+    was computed. That is the one answer this diagnostic must never give.
+    """
+
+    def _failing_entropy(self, *a, **k):
+        raise ValueError("no entropy here")
+
+    def test_no_usable_temperature_gives_no_history(self):
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 20)
+        with mock.patch.object(bd, "entropy_density", self._failing_entropy):
+            self.assertEqual(
+                bd.expansion_interpolants(pot, FixedPhase([0.0]), T,
+                                          entropy_definition="dof_table"),
+                (None, None))
+
+    def test_the_diagnostic_then_reports_nothing_rather_than_agreement(self):
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 20)
+        with mock.patch.object(bd, "entropy_density", self._failing_entropy):
+            spread, shift = bd.entropy_scheme_sensitivity(
+                pot, FixedPhase([0.0]), T, time_temperature_mode="sound_speed",
+                entropy_definition="dof_table")
+        self.assertTrue(np.isnan(spread), "a failed comparison may not look like agreement")
+        self.assertTrue(np.isnan(shift))
+
+    def test_one_usable_temperature_is_still_a_history(self):
+        # The guard is "none usable", not "any unusable": a support that mostly fell back
+        # still carries what it computed.
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 20)
+        calls = {"n": 0}
+        real = bd.entropy_density
+
+        def sometimes(pot_, phase, t, definition):
+            calls["n"] += 1
+            if calls["n"] > 3:
+                raise ValueError("no entropy here")
+            return real(pot_, phase, t, definition)
+
+        with mock.patch.object(bd, "entropy_density", sometimes):
+            log_entropy, cooling = bd.expansion_interpolants(
+                pot, FixedPhase([0.0]), T, entropy_definition="dof_table")
+        self.assertIsNotNone(log_entropy)
+        self.assertIsNotNone(cooling)
+
+
+class SymmetryTests(unittest.TestCase):
+    """The spread is the distance between the schemes, so it cannot depend on which is set.
+
+    Dividing by the configured scheme made the number directional: for cooling factors 1 and
+    1.041 that is 4.10% one way and 3.94% the other, which straddles the default threshold,
+    so the same point would be flagged or not depending on the run's own setting.
+    """
+
+    def test_the_spread_is_identical_either_way(self):
+        pot = conformal()
+        T = np.geomspace(50.0, 15.0, 40)
+        a = bd.entropy_scheme_sensitivity(
+            pot, FixedPhase([0.0]), T, time_temperature_mode="sound_speed",
+            entropy_definition="dof_table")
+        b = bd.entropy_scheme_sensitivity(
+            pot, FixedPhase([0.0]), T, time_temperature_mode="sound_speed",
+            entropy_definition="eff_potential")
+        self.assertEqual(a[0], b[0])
+        self.assertAlmostEqual(a[1], b[1], places=15)
+
+    def test_the_flag_cannot_depend_on_the_configured_scheme(self):
+        # The case from the review, at the threshold where it decides the outcome.
+        a, b = 1.0, 1.041
+        symmetric = 2.0 * abs(b - a) / abs(a + b)
+        threshold = PercolationConf().entropy_scheme_warn_threshold
+        self.assertEqual(bd.entropy_scheme_is_sensitive(symmetric, threshold),
+                         bd.entropy_scheme_is_sensitive(symmetric, threshold))
+        # and the directional forms it replaced straddle the threshold, which is the point
+        self.assertGreater(abs(b / a - 1.0), threshold)
+        self.assertLess(abs(a / b - 1.0), threshold)
+
+
+class NonApplicableDefaultsTests(unittest.TestCase):
+    """Where the comparison does not apply, the keys still have to be written."""
+
+    def test_the_fixed_step_context_sets_them(self):
+        # The keys are registered for every run, so the solver that cannot compare must
+        # still say "does not apply" rather than leave the writer to fill the boolean
+        # with nan.
+        import inspect
+        from transitionlistener import transitionObservables_fixedstep as tof
+        src = inspect.getsource(tof)
+        for key in ("WARNING:entropy_scheme_sensitive", "DIAG:entropy_scheme_cs2_spread",
+                    "DIAG:entropy_scheme_lna_gap"):
+            with self.subTest(key=key):
+                self.assertIn(key, src)
+
+    def test_the_adaptive_solver_sets_them_before_the_condition(self):
+        import inspect
+        from transitionlistener import transitionObservables as to
+        src = inspect.getsource(to)
+        default = src.index('derived.setdefault("WARNING:entropy_scheme_sensitive"')
+        guarded = src.index('entropy_scheme_diagnostic', default)
+        self.assertLess(default, guarded,
+                        "the defaults must be set before the diagnostic is attempted")
+
+
 class EmptyDefinitionTests(unittest.TestCase):
     def test_an_empty_definition_is_a_value_and_is_refused(self):
         # `or` would have taken it for "not given" and silently used the default.

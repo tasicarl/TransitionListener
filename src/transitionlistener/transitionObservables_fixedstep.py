@@ -242,6 +242,13 @@ class TransitionObservables:
             "WARNING:action_rescue_attempted": False,
             "WARNING:action_rescue_failed": False,
             "DIAG:action_rescue_attempts": 0,
+            # This solver does not read `entropy_definition` and refuses anything but the
+            # default, so there is no second scheme to compare against. The keys are
+            # registered for every run, so they are set here to "does not apply" rather
+            # than left for the writer to fill with nan, the boolean included.
+            "WARNING:entropy_scheme_sensitive": False,
+            "DIAG:entropy_scheme_cs2_spread": float("nan"),
+            "DIAG:entropy_scheme_lna_gap": float("nan"),
         }
         return TransitionContext(
             tr=tr,

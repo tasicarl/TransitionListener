@@ -718,6 +718,7 @@ def _time_temperature_factors(
     T: np.ndarray,
     mode: str | None = None,
     definition: str | None = None,
+    usable_out: list | None = None,
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
     """Return ``(c_s^2, a/a_hot)`` arrays for the generalized integral.
 
@@ -747,6 +748,7 @@ def _time_temperature_factors(
     temperatures = np.asarray(T, dtype=float)
     sound_speed_sq = np.full_like(temperatures, 1.0 / 3.0, dtype=float)
     entropy = np.full_like(temperatures, np.nan, dtype=float)
+    usable_points = 0
     for i, temp in enumerate(temperatures):
         t = float(temp)
         # `valAt` extrapolates its spline rather than raising, so this is not a range check; it
@@ -807,6 +809,8 @@ def _time_temperature_factors(
         if usable:
             sound_speed_sq[i] = float(cs_sq)
             entropy[i] = entropy_here
+            usable_points += 1
+
 
     # The scale factor follows from entropy conservation, a^3 s = const, which is the integral
     # form of d ln a / dT = -1 / (3 c_s^2 T). Taking the ratio of entropies instead of
@@ -834,6 +838,12 @@ def _time_temperature_factors(
         ln_a[i] = ln_a[i - 1] + step
     ln_a = np.clip(ln_a, -700.0, 700.0)
     scale_factor = np.exp(ln_a)
+    if usable_out is not None:
+        # The arrays hold the bag values where a temperature fell back, so a caller cannot
+        # tell a history that was computed from one that was not. Ask for the count to find
+        # out; it is a parameter rather than module state so that concurrent calls cannot
+        # read each other's answer.
+        usable_out.append(usable_points)
     return sound_speed_sq, scale_factor
 
 
@@ -3244,10 +3254,20 @@ def expansion_interpolants(pot, phase_symmetric, T, *, time_temperature_mode: st
     temperatures = temperatures[np.isfinite(temperatures) & (temperatures > 0.0)][::-1]
     if temperatures.size < 2:
         return None, None
+    usable_points: list[int] = []
     sound_speed_sq, scale_factor = _time_temperature_factors(
-        pot, phase_symmetric, temperatures, time_temperature_mode, entropy_definition
+        pot, phase_symmetric, temperatures, time_temperature_mode, entropy_definition,
+        usable_out=usable_points,
     )
     if sound_speed_sq is None:
+        return None, None
+    if usable_points and usable_points[0] == 0:
+        # Every temperature fell back, so these arrays hold the bag relation throughout and
+        # describe no plasma. Interpolating them would give a history indistinguishable from
+        # one that was computed, and a caller comparing two schemes would read agreement
+        # where nothing was compared. The callers of this function treat `None` as "no
+        # history" and fall back to a ~ 1/T, which is what these arrays already say. The
+        # percolation integral reads `_time_temperature_factors` directly and is unaffected.
         return None, None
     ascending = temperatures[::-1]
     cs_sq_int = interpolate.PchipInterpolator(ascending, sound_speed_sq[::-1], extrapolate=True)
@@ -3381,7 +3401,7 @@ def entropy_scheme_sensitivity(
 
     a = coolings[configured]
     b = coolings[other]
-    usable = np.isfinite(a) & np.isfinite(b) & (a != 0.0)
+    usable = np.isfinite(a) & np.isfinite(b) & ((a + b) != 0.0)
     if not np.any(usable):
         return float("nan"), float("nan")
 
@@ -3391,7 +3411,14 @@ def entropy_scheme_sensitivity(
     # median is unbiased to 6% while the maximum overstates it by a factor 1.8, and a single
     # support temperature that has lost a usable sound speed in one scheme can drive the
     # maximum to 100% where the separation moves by a few per cent.
-    cs_sq_spread = float(np.median(np.abs(b[usable] / a[usable] - 1.0)))
+    # Symmetric in the two schemes: the difference is taken relative to their mean, not to
+    # the configured one. Dividing by the configured scheme would make the number, and with
+    # it the flag, depend on which scheme the run happened to use: for factors 1 and 1.041
+    # that is 4.10% one way and 3.94% the other, which straddles the default threshold.
+    # For a difference d the two agree to O(d^2), so the calibration is unaffected at the
+    # per cent level where it was measured.
+    cs_sq_spread = float(np.median(
+        2.0 * np.abs(b[usable] - a[usable]) / np.abs(a[usable] + b[usable])))
     scale_factor_shift = abs(ratios[configured] - ratios[other]) / 3.0
     if not np.isfinite(scale_factor_shift):
         return cs_sq_spread, float("nan")

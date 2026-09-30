@@ -643,6 +643,15 @@ class TransitionObservables:
         # difference is a modelling uncertainty of the expansion history. Reported, not
         # corrected: it tells the user whether the number they are about to quote depends on a
         # choice nothing in the literature settles.
+        # Assigned on every path. Where the comparison does not apply, because it is switched
+        # off, because bag mode reads no entropy, or because the configured history could not
+        # be built, the flag is False and the two numbers are nan. Leaving them unset would
+        # have the writer report them as unimplemented and fill all three with nan, the
+        # boolean included.
+        derived.setdefault("WARNING:entropy_scheme_sensitive", False)
+        derived.setdefault("DIAG:entropy_scheme_cs2_spread", float("nan"))
+        derived.setdefault("DIAG:entropy_scheme_lna_gap", float("nan"))
+
         if (logEntropyInt is not None
                 and getattr(ctx.PercolationConf, "entropy_scheme_diagnostic", True)):
             try:
