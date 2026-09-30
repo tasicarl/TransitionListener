@@ -118,6 +118,15 @@ The most important controls are:
   symmetric-phase :math:`c_s^2(T)` and the cosmological scale-factor ratio
   :math:`a(T)/a(T_\mathrm{hot})` inside the percolation integrand. ``bag``
   falls back to the :math:`c_s^2 = 1/3` limit (no scale-factor weighting).
+- ``percolation_entropy_definition``: which entropy fixes the
+  time-temperature relation, and so both the sound speed and the scale
+  factor. ``dof_table`` (default) counts the free particles of the traced
+  phase at their zero-temperature masses and adds the tabulated coupled
+  bath; ``eff_potential`` takes :math:`s = -\mathrm{d}V/\mathrm{d}T` from
+  the effective potential, with thermal masses and the Arnold-Espinosa
+  daisy. Only the adaptive step size solver reads this setting; the fixed
+  step size solver refuses anything but the default, because its
+  time-temperature relation is its own.
 - ``percolationConf.n_action``: fixed ``TSYM`` support count for
   ``fixed_step_size`` runs.
 - ``percolation_n_action_min``, ``percolation_n_action_increment``,

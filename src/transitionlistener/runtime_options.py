@@ -17,6 +17,7 @@ from collections.abc import Mapping
 
 from transitionlistener.config import TracingConf
 from transitionlistener import errors
+from transitionlistener import constants as cn
 
 
 ALGORITHM_MODES = ("adaptive_step_size", "fixed_step_size")
@@ -37,6 +38,7 @@ PRECISION_OVERRIDE_KEYS = (
 PERCOLATION_OVERRIDE_KEYS = (
     "percolation_integral_method",
     "percolation_time_temperature_mode",
+    "percolation_entropy_definition",
     "percolation_n_action",
     "percolation_n_action_min",
     "percolation_n_action_increment",
@@ -191,6 +193,14 @@ def apply_percolation_overrides(percolation_conf, overrides: dict[str, object]) 
         if mode not in {"sound_speed", "bag"}:
             raise ValueError("percolation_time_temperature_mode must be 'sound_speed' or 'bag'.")
         percolation_conf.time_temperature_mode = mode
+    if overrides["percolation_entropy_definition"] is not None:
+        definition = str(overrides["percolation_entropy_definition"])
+        if definition not in cn.ENTROPY_DEFINITIONS:
+            raise ValueError(
+                "percolation_entropy_definition must be one of "
+                + ", ".join(repr(d) for d in cn.ENTROPY_DEFINITIONS) + "."
+            )
+        percolation_conf.entropy_definition = definition
 
     int_minimums = {
         "percolation_n_action": ("n_action", 2),

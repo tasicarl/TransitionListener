@@ -30,8 +30,79 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   Standard Model fields in its potential (e.g. the 2HDM) cannot decouple the
   Standard Model; TL raises an error when it is set up that way.
 - `constants.h_eff_today`, today's entropy degrees of freedom.
+- Setting `entropy_definition` of the percolation solver, `"dof_table"` (default)
+  or `"eff_potential"`, with the run-time override
+  `percolation_entropy_definition`. It selects the thermodynamics of the
+  expansion history. Both describe the same plasma, the fields of the potential
+  and the coupled radiation bath without the decoupled one, and differ in how they
+  treat the fields. `"dof_table"` counts them as free particles at their
+  zero-temperature masses and adds the tabulated entropy degrees of freedom of the
+  coupled bath. `"eff_potential"` takes `-dV/dT` of the effective potential, which
+  gives the fields their thermal masses and the Arnold-Espinosa daisy term; it
+  carries the tabulated bath with its perturbative corrections too, since the
+  field-independent part of the potential is built from the same tables, and what
+  it lacks is those corrections for the fields of the potential themselves.
+  Neither scheme contains the other: the counted one has the perturbative
+  corrections everywhere and no thermal masses, the potential one has the thermal
+  masses and the daisy term but free-particle counting for the fields. No
+  published work decides between them, so the difference is a modelling
+  uncertainty that can now be measured by running both.
 
 ### Changed
+
+- **One entropy for the expansion history**: the time-temperature relation took
+  the scale factor from the counted degrees of freedom and the sound speed from
+  the effective potential. These are the same relation, since
+  `1/(3 c_s^2) = 1 + (1/3) d ln g_*s/d ln T`: a constant `g_*s`, `c_s^2 = 1/3`
+  and `a ~ 1/T` are one assumption and not three. Both now come from the entropy
+  selected by `entropy_definition`, and both are taken along the traced phase: the
+  sound speed is the logarithmic derivative of that same entropy, so it carries the
+  `d2V/dXdT * dX/dT` term that a derivative at fixed field value drops. That term is
+  exactly zero for a phase pinned at the origin and reaches 0.09% of `3 c_s^2` at a
+  drift of `dX/dT = 0.5` on the 2HDM, so it matters only where the symmetric phase
+  moves with temperature. `Tperc`, the mean bubble separation and
+  `(beta/H)_S3` all belong to one equation of state. How much the choice is worth
+  is a question for the first two of those: `(beta/H)_S3` is the slope of the
+  action, and at the default path deformation that slope is limited by the scatter
+  of `S3/T` rather than by the thermodynamics, on the 2HDM line in particular. The
+  default, `"dof_table"`, stays defined below about 2 MeV, where after neutrino
+  decoupling no single pressure with `dp/dT = s` exists and the potential route has
+  nothing to refer to. How far apart the two are is a property of the model. As a
+  fixed-field probe of the symmetric-phase thermodynamics at the 2HDM point of
+  `tests/test_potential_broadcasting.py` (lambda1 = 0.006, lambda2 = 0.25,
+  lambda3 = 8.27, lambda4 = -2.55, lambda5 = 0.76, m12^2 = 14186.7 GeV^2,
+  tan_beta = 17.7, v = 246.22 GeV), with the fields held at the origin: over
+  T = 160 to 31.2 GeV, which is the range in which that phase is traced, the counted
+  route gives `3 c_s^2` between 0.977 and 0.997 against 0.955 to 1.037 from the
+  potential, whose sound speed follows the thermal masses of the modes that are
+  becoming heavy, a separation of 5.5%. Continued to 20 GeV, below the traced range,
+  the potential route falls to 0.765 and the separation reaches 24%, but that is
+  extrapolation: the phase is traced only down to 31.11 GeV and this point does not
+  percolate at all. The window is part of the statement.
+
+  **This moves existing results.** The default sound speed previously came from the
+  potential while the scale factor came from the counted degrees of freedom, so
+  every adaptive run with the default `time_temperature_mode = "sound_speed"`
+  changes. On the released example point of `examples/example_point.yaml`
+  (conformal dark U(1), g = 0.7, v = 0.1 GeV, y = 0.01) the shifts are small,
+  because that model is close to conformal and the two entropies nearly agree:
+
+  | observable | before | after | change |
+  | --- | --- | --- | --- |
+  | `Tperc_SM_GeV` | 0.0022119 | 0.0022120 | +0.005% |
+  | `alpha` | 387.10 | 387.04 | -0.017% |
+  | `RH` | 0.070683 | 0.070726 | +0.061% |
+  | `betaH_RH` | 62.640 | 62.601 | -0.062% |
+  | `betaH_S3` | 63.232 | 63.190 | -0.066% |
+
+  Models whose `g_*s` varies strongly across the transition move much more. Over 95
+  points on four lines (a 2HDM `lambda_3` scan, an abelian dark Higgs `lambda` scan, a
+  conformal dark U(1) `g` scan and nine single benchmarks), the median shift against
+  the previous mixed default is 0.09% in `Tperc` and 2.4% in `R_*` on the 2HDM line,
+  reaching 3.9%, while the abelian line moves by 0.14% in `R_*`. `Tperc` is barely
+  affected throughout; what moves is the mean bubble separation and with it
+  `(beta/H)_RH`. Anyone reproducing a published number should say which entropy
+  definition produced it.
 
 - **Sound speed in the pseudo-trace**: the pseudo-trace strengths now divide
   the pressure of *both* phases by the broken-phase sound speed, as in
@@ -78,6 +149,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   its default. All amplitudes rise by 0.7 %.
 
 ### Fixed
+
+- **A timed-out point no longer comes back as a number**: `g_eff_DS` and `h_eff_DS`
+  caught `BaseException` around the phase evaluation and substituted the `T = 0`
+  vev, which absorbed the run's own `Timeout` and turned a timed-out point into a
+  finite entropy. They are the innermost evaluations on the counted route, below the
+  handlers in the percolation history, so the timeout is now re-raised in both copies
+  of both functions, and the fallback for ordinary failures is unchanged. The same held
+  one level up, where `percolation_temperature_from_ode` answered every exception with
+  `None`: the adaptive refinement then kept the interpolated percolation temperature and
+  finished a run that had timed out. Every consumer of the time-temperature factors now
+  has a test that a timeout in the innermost entropy evaluation reaches the caller.
 
 - **An unstable action slope is now retried at a tighter path deformation.**
   `calc_betaH_S3` fits the slope of `S3/T` over the support samples nearest the

@@ -345,6 +345,25 @@ def _build_percolation_settings(pot, nAction: int):
             "percolation_time_temperature_mode must be 'sound_speed' or "
             f"'bag', got {time_temperature_mode!r}."
         )
+    entropy_definition = str(getattr(conf, "entropy_definition", ENTROPY_DEFINITIONS[0]))
+    if entropy_definition not in ENTROPY_DEFINITIONS:
+        raise errors.PercolationError(
+            f"percolation_entropy_definition must be {ENTROPY_DEFINITIONS[0]!r} or "
+            f"{ENTROPY_DEFINITIONS[1]!r}, got {entropy_definition!r}."
+        )
+    if algorithm_mode == "fixed_step_size" and entropy_definition != ENTROPY_DEFINITIONS[0]:
+        # That solver keeps its own time-temperature relation, which takes both factors from the
+        # potential: `scalefactorRatio` integrates d2V/dT2 / (3 dV/dT), i.e. s = -dV/dT, and the
+        # sound speed comes from `calcSoundSpeedSq` on the same entropy. It never reads this
+        # setting, so the combination it is given is whatever it hard-codes; silently ignoring a
+        # thermodynamic choice is worse than refusing it. The default `dof_table` is accepted
+        # there only for backwards compatibility, and is the combination that is mislabelled.
+        raise errors.PercolationError(
+            f"percolation_entropy_definition={entropy_definition!r} is not implemented for "
+            "percolation_algorithm_mode='fixed_step_size', whose time-temperature relation is "
+            "its own. Use the adaptive step size solver, or leave the definition at "
+            f"{ENTROPY_DEFINITIONS[0]!r}."
+        )
 
     n_action_min = max(int(getattr(conf, "n_action_min", 20)), 2)
     n_action_increment = max(int(getattr(conf, "n_action_increment", 5)), 1)
@@ -354,6 +373,7 @@ def _build_percolation_settings(pot, nAction: int):
     conf.algorithm_mode = algorithm_mode
     conf.integral_method = integral_method
     conf.time_temperature_mode = time_temperature_mode
+    conf.entropy_definition = entropy_definition
     conf.n_action_min = n_action_min
     conf.n_action_increment = n_action_increment
     conf.n_action_max = n_action_max
@@ -447,6 +467,12 @@ def g_eff_DS(T_DS: float, pot, phase) -> float:
         Effective degrees of freedom in the dark sector."""
     try:
         vevT = phase.valAt(T_DS)
+    except errors.Timeout:
+        # `except BaseException` below would otherwise absorb the run's own timeout and hand
+        # back the T = 0 vev, so a timed-out point would come out as a finite number. This is
+        # the innermost potential evaluation on the counted entropy route, below the handlers
+        # in `_time_temperature_factors`, so it has to let the timeout through as well.
+        raise
     except BaseException:
         print("Warning: TBRO is too low for interpolation of vev, using T = 0 value")
         # Temperature is to low for interpolation of vev, use T = 0 value
@@ -482,6 +508,12 @@ def h_eff_DS(T_DS: float, pot, phase) -> float:
         Effective degrees of freedom in the dark sector."""
     try:
         vevT = phase.valAt(T_DS)
+    except errors.Timeout:
+        # `except BaseException` below would otherwise absorb the run's own timeout and hand
+        # back the T = 0 vev, so a timed-out point would come out as a finite number. This is
+        # the innermost potential evaluation on the counted entropy route, below the handlers
+        # in `_time_temperature_factors`, so it has to let the timeout through as well.
+        raise
     except BaseException:
         print("Warning: TBRO is too low for interpolation of vev, using T = 0 value")
         # Temperature is to low for interpolation of vev, use T = 0 value
@@ -634,13 +666,65 @@ def calcSoundSpeedSq(pot, X, T) -> float:
     return float(np.squeeze(cs_sq))
 
 
+ENTROPY_DEFINITIONS = cn.ENTROPY_DEFINITIONS
+
+# Relative step of the logarithmic entropy derivative of the "dof_table" scheme. The counted
+# entropy is a smooth function of the temperature (the Standard Model part is a spline through a
+# Savitzky-Golay-filtered table), so the choice is not delicate over several decades. Measured on
+# the conformal dark U(1) at g = 0.692, v = 6 GeV, on 60 points over internal temperatures 16 to
+# 30, which sit on the QCD crossover: the largest relative deviation of c_s^2 from its value at
+# this step is 1.5e-4 for a 1e-3 step and 1.5e-6 for 1e-5 and 1e-6, so the residual is dominated
+# by the table's own structure rather than by the step. A 1e-2 step is too coarse there, reaching
+# 4.5e-3 at the worst point.
+_ENTROPY_REL_STEP = 1.0e-4
+
+
+def entropy_density(pot, phase, T: float, definition: str = "dof_table") -> float:
+    """Entropy density of the plasma of the traced phase, in the chosen scheme.
+
+    Only ratios and logarithmic derivatives of this quantity are used, so the constant
+    ``2 pi^2/45`` is dropped from the counted form and the two schemes are not on a common
+    absolute normalisation.
+
+    Both describe the same plasma: the fields of the potential and the coupled radiation bath,
+    without the decoupled one. They differ in how they treat the fields. ``"dof_table"`` counts
+    them as free particles at their zero-temperature masses and adds the tabulated entropy
+    degrees of freedom of the coupled bath. ``"eff_potential"`` takes ``-dV/dT``, which gives
+    the fields their thermal masses and the Arnold-Espinosa daisy term, and which carries the
+    tabulated bath with its perturbative corrections as well, since the field-independent part
+    of the potential is built from the same tables. What it does not have is those corrections
+    for the fields of the potential themselves. Neither route contains the other; see the
+    ``entropy_definition`` setting.
+    """
+    t = float(T)
+    if definition == "eff_potential":
+        X = phase.valAt(t)
+        dT = temperatureDerivativeStep(pot, t, X)
+        return -float(np.squeeze(pot.dVdT(X, t, dT=dT, include_decoupled=False)))
+    if definition == ENTROPY_DEFINITIONS[0]:
+        return float(h_eff_DS(t, pot, phase) + h_eff_coupled_radiation(t, pot)) * t**3
+    # Both branches are named explicitly. Falling through to the counted route would answer a
+    # misspelled scheme with a number instead of an error; callers inside the package validate
+    # first, but this is a public function and the tests call it directly.
+    raise errors.PercolationError(
+        f"Unknown percolation entropy definition {definition!r}. "
+        f"Supported definitions are {ENTROPY_DEFINITIONS[0]!r} and {ENTROPY_DEFINITIONS[1]!r}."
+    )
+
+
 def _time_temperature_factors(
     pot,
     phase,
     T: np.ndarray,
     mode: str | None = None,
+    definition: str | None = None,
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
     """Return ``(c_s^2, a/a_hot)`` arrays for the generalized integral.
+
+    Both come from one entropy density, because ``d ln a/dT = -1/(3 c_s^2 T)`` and
+    ``s a^3 = const`` are the same relation: a constant ``g_*s``, ``c_s^2 = 1/3`` and
+    ``a ~ 1/T`` are one assumption, not three. Which entropy is used is the
+    ``entropy_definition`` setting.
 
     ``None, None`` is returned for the bag-limit mode so the historical ODE is
     used without any extra thermodynamic finite-difference cost.
@@ -651,6 +735,12 @@ def _time_temperature_factors(
             f"Unknown percolation time-temperature mode {mode!r}. "
             "Supported modes are 'sound_speed' and 'bag'."
         )
+    definition = "dof_table" if definition is None else str(definition)
+    if definition not in ENTROPY_DEFINITIONS:
+        raise errors.PercolationError(
+            f"Unknown percolation entropy definition {definition!r}. "
+            f"Supported definitions are {ENTROPY_DEFINITIONS[0]!r} and {ENTROPY_DEFINITIONS[1]!r}."
+        )
     if mode == "bag" or pot is None or phase is None:
         return None, None
 
@@ -659,32 +749,64 @@ def _time_temperature_factors(
     entropy = np.full_like(temperatures, np.nan, dtype=float)
     for i, temp in enumerate(temperatures):
         t = float(temp)
+        # `valAt` extrapolates its spline rather than raising, so this is not a range check; it
+        # only skips a temperature at which the traced phase cannot be evaluated at all. The
+        # range itself is the caller's: the grid comes from `_phase_overlap_interval`.
         try:
-            X = phase.valAt(t)
+            phase.valAt(t)
+        except errors.Timeout:
+            raise
         except Exception:
             continue
-        # The two quantities are taken separately: a sound speed that could be computed stays
-        # in use even where the entropy cannot be, and the other way round.
         try:
-            cs_sq = calcSoundSpeedSq(pot, X, t)
+            entropy_here = entropy_density(pot, phase, t, definition)
+        except errors.Timeout:
+            raise
+        except Exception:
+            entropy_here = np.nan
+        try:
+            # One stencil for both schemes, differentiating along the phase the same entropy
+            # that fixes a(T). A fixed-field derivative drops the term the phase contributes,
+            # d2V/dXdT * dX/dT: along a phase dV/dX = 0, so dX/dT = -(d2V/dX2)^-1 d2V/dXdT,
+            # and that term vanishes only where the phase does not move. It is exactly zero
+            # for a symmetric phase pinned at the origin, which is why the fixed-field route
+            # agreed to 1e-6 there, and reaches 0.09% at a drift of dX/dT = 0.5 on the 2HDM.
+            h = t * _ENTROPY_REL_STEP
+            # Keep the stencil inside the traced range. `valAt` interpolates a spline and
+            # happily extrapolates instead of raising, and where it does raise, `h_eff_DS`
+            # falls back to the zero-temperature vev; either way the derivative would be
+            # taken on a field configuration that is not the traced phase. Clamping turns
+            # the edges into a one-sided difference.
+            t_lo = max(t - h, float(getattr(phase, "Tmin", t - h)))
+            t_hi = min(t + h, float(getattr(phase, "Tmax", t + h)))
+            s_lo = entropy_density(pot, phase, t_lo, definition)
+            s_hi = entropy_density(pot, phase, t_hi, definition)
+            if s_lo > 0.0 and s_hi > 0.0 and t_hi > t_lo:
+                # c_s^2 = 1 / (d ln s / d ln T).
+                cs_sq = (np.log(t_hi) - np.log(t_lo)) / (np.log(s_hi) - np.log(s_lo))
+            else:
+                # A non-positive entropy has no logarithm and no sound speed. The potential
+                # route can reach that where dV/dT changes sign; the bag fallback applies.
+                cs_sq = np.nan
+        except errors.Timeout:
+            # Subclasses Exception and is raised from a signal handler, so it can fire inside any
+            # of these potential evaluations. Swallowing it would turn a timed-out run into a
+            # silent bag fallback.
+            raise
         except Exception:
             cs_sq = np.nan
-        try:
-            # The entropy of the transitioning sector from its degrees of freedom, not from
-            # -dV/dT: the Arnold-Espinosa daisy term tends to -T/(12 pi) sum n m^3 once the
-            # modes are heavy, so its contribution to -dV/dT tends to a constant and the
-            # entropy taken from the potential stops falling like T^3. At 1 GeV that already
-            # overstates the entropy of the 2HDM plasma by a factor 3.7.
-            entropy_density = float(h_eff_DS(t, pot, phase) + h_eff_coupled_radiation(t, pot)) * t**3
-        except Exception:
-            entropy_density = np.nan
         # A sound speed outside (0, 1] means the traced phase has stopped being a sensible
         # equilibrium, which happens far below completion, where the grid still reaches but
         # the false vacuum no longer describes a plasma. The bag value is the fallback there.
-        if np.isfinite(cs_sq) and 0.0 < cs_sq <= 1.0:
+        # The two are one entropy read twice, so a temperature contributes both or neither:
+        # keeping a sound speed where the entropy is unusable, or the other way round, would
+        # build the scale factor and the time-temperature relation from different amounts of
+        # information, which is the mixing this setting exists to end.
+        usable = (np.isfinite(cs_sq) and 0.0 < cs_sq <= 1.0
+                  and np.isfinite(entropy_here) and entropy_here > 0.0)
+        if usable:
             sound_speed_sq[i] = float(cs_sq)
-        if np.isfinite(entropy_density) and entropy_density > 0.0:
-            entropy[i] = entropy_density
+            entropy[i] = entropy_here
 
     # The scale factor follows from entropy conservation, a^3 s = const, which is the integral
     # form of d ln a / dT = -1 / (3 c_s^2 T). Taking the ratio of entropies instead of
@@ -1293,6 +1415,7 @@ def percolation_temperature_from_ode(
     phase_symmetric,
     time_temperature_mode: str | None,
     f_perc: float,
+    entropy_definition: str | None = None,
 ):
     """Return the percolation temperature straight from the integrator.
 
@@ -1310,6 +1433,7 @@ def percolation_temperature_from_ode(
             phase_symmetric,
             np.asarray(T, dtype=float),
             time_temperature_mode,
+            entropy_definition,
         )
         _, crossing = percIntegralODE(
             T,
@@ -1320,6 +1444,12 @@ def percolation_temperature_from_ode(
             scale_factor=scale_factor,
             i_target=target,
         )
+    except errors.Timeout:
+        # Returning None here would let the adaptive refinement keep the interpolated Tperc
+        # and finish a run that timed out. The entropy evaluations inside deliberately let the
+        # timeout through, so this fallback, which exists for ordinary solver failures, must
+        # not be the place that absorbs it.
+        raise
     except Exception:
         return None
     if crossing is None or not np.isfinite(crossing) or crossing <= 0.0:
@@ -1337,6 +1467,7 @@ def percIntegralODE_full_sweep(
     phase_symmetric=None,
     time_temperature_mode: str | None = None,
     integral_method: str | None = None,
+    entropy_definition: str | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     r"""One-shot ODE sweep: compute both I(T_i) and P(T_i) at every grid point.
 
@@ -1366,6 +1497,7 @@ def percIntegralODE_full_sweep(
             phase_symmetric,
             np.asarray(T, dtype=float),
             time_temperature_mode,
+            entropy_definition,
         )
         if sound_speed_sq is None:
             cooling_factor = None
@@ -1388,6 +1520,7 @@ def percIntegralODE_full_sweep(
             phase_symmetric,
             np.asarray(T, dtype=float),
             time_temperature_mode,
+            entropy_definition,
         )
         I_values = percIntegralODE(
             T,
@@ -3048,6 +3181,7 @@ def percolation_sound_speed_sq(
     T: float,
     *,
     time_temperature_mode: str | None = None,
+    entropy_definition: str | None = None,
 ) -> float:
     """Sound speed squared of the time-temperature relation used for the percolation history.
 
@@ -3059,7 +3193,7 @@ def percolation_sound_speed_sq(
     if not percolation_uses_sound_speed(time_temperature_mode):
         return 1.0 / 3.0
     sound_speed_sq, _ = _time_temperature_factors(
-        pot, phase_symmetric, np.array([float(T)]), time_temperature_mode
+        pot, phase_symmetric, np.array([float(T)]), time_temperature_mode, entropy_definition
     )
     if sound_speed_sq is None:
         return 1.0 / 3.0
@@ -3082,7 +3216,8 @@ def percolation_uses_sound_speed(time_temperature_mode: str | None) -> bool:
     return mode == "sound_speed"
 
 
-def expansion_interpolants(pot, phase_symmetric, T, *, time_temperature_mode: str | None = None):
+def expansion_interpolants(pot, phase_symmetric, T, *, time_temperature_mode: str | None = None,
+                           entropy_definition: str | None = None):
     """Interpolants of the expansion history for ``calcMeanBubbleSeparation``.
 
     Built from the same ``_time_temperature_factors`` as the percolation integral, on the
@@ -3110,7 +3245,7 @@ def expansion_interpolants(pot, phase_symmetric, T, *, time_temperature_mode: st
     if temperatures.size < 2:
         return None, None
     sound_speed_sq, scale_factor = _time_temperature_factors(
-        pot, phase_symmetric, temperatures, time_temperature_mode
+        pot, phase_symmetric, temperatures, time_temperature_mode, entropy_definition
     )
     if sound_speed_sq is None:
         return None, None

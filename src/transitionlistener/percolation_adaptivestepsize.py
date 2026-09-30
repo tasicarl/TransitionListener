@@ -966,6 +966,7 @@ def _compute_step2_profile(
         phase_symmetric=phase_symmetric,
         time_temperature_mode=settings.time_temperature_mode,
         integral_method=settings.integral_method,
+        entropy_definition=getattr(settings, "entropy_definition", None),
     )
     state.Pr[:] = Pr_ode
 
@@ -1148,6 +1149,7 @@ def _compute_step3_profile(
         phase_symmetric=phase_symmetric,
         time_temperature_mode=settings.time_temperature_mode,
         integral_method=settings.integral_method,
+        entropy_definition=getattr(settings, "entropy_definition", None),
     )
     state.Pr[:] = Pr_ode
 
@@ -1597,6 +1599,7 @@ def _refine_percolation_temperature_dynamiczoomwindow(
                     pot=pot,
                     phase_symmetric=phase_symmetric,
                     time_temperature_mode=settings.time_temperature_mode,
+                    entropy_definition=getattr(settings, "entropy_definition", None),
                     f_perc=settings.f_perc,
                 )
                 if tperc_ode is not None and float(TSYM[-1]) <= tperc_ode <= float(TSYM[0]):

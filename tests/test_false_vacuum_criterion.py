@@ -83,19 +83,70 @@ class PercolationSoundSpeedTests(unittest.TestCase):
             )
         self.assertEqual(value, 1.0 / 3.0)
 
-    def test_sound_speed_mode_uses_symmetric_phase_value(self):
+    def test_eff_potential_scheme_uses_the_potential(self):
+        # The sound speed is the logarithmic derivative of the entropy that fixes a(T), taken
+        # along the phase, for both schemes alike. So the potential route is identified by the
+        # definition its entropy is asked for, not by a separate fixed-field routine:
+        # s ~ T^4 must give c_s^2 = 1/4 whatever `calcSoundSpeedSq` would have said.
         phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
-        with mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21):
+        seen = []
+
+        def entropy(pot, ph, T, definition):
+            seen.append(definition)
+            return float(T) ** 4.0
+
+        with mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21), \
+                mock.patch.object(bd, "entropy_density", entropy):
             value = bd.percolation_sound_speed_sq(
-                object(), phase, 0.5, time_temperature_mode="sound_speed"
+                object(), phase, 0.5, time_temperature_mode="sound_speed",
+                entropy_definition="eff_potential",
             )
-        self.assertAlmostEqual(value, 0.21)
+        self.assertAlmostEqual(value, 0.25)
+        self.assertEqual(set(seen), {"eff_potential"})
+
+    def test_dof_table_scheme_uses_the_counted_entropy(self):
+        # s ~ T^k gives c_s^2 = 1/k exactly. The potential's sound speed must not enter,
+        # so it is mocked to a value the test would notice.
+        phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
+        for k in (3.0, 4.0, 5.0):
+            with self.subTest(k=k):
+                with mock.patch.object(bd, "entropy_density",
+                                       lambda pot, ph, T, d, k=k: float(T) ** k), \
+                     mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21):
+                    value = bd.percolation_sound_speed_sq(
+                        object(), phase, 0.5, time_temperature_mode="sound_speed",
+                        entropy_definition="dof_table",
+                    )
+                self.assertAlmostEqual(value, 1.0 / k, places=6)
 
     def test_unusable_sound_speed_falls_back_to_one_third(self):
+        # The potential route is the one that reads calcSoundSpeedSq, so the scheme has to
+        # be named: under the default "dof_table" this would reach the bag fallback because
+        # the stand-in potential makes the counted entropy raise, not because of the nan.
+        # A non-positive entropy has no logarithm, so the stencil yields no sound speed. The
+        # potential route reaches this where dV/dT changes sign.
         phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
-        with mock.patch.object(bd, "calcSoundSpeedSq", return_value=np.nan):
+        with mock.patch.object(bd, "entropy_density", lambda pot, ph, T, d: -1.0):
             value = bd.percolation_sound_speed_sq(
-                object(), phase, 0.5, time_temperature_mode="sound_speed"
+                object(), phase, 0.5, time_temperature_mode="sound_speed",
+                entropy_definition="eff_potential",
+            )
+        self.assertEqual(value, 1.0 / 3.0)
+
+    def test_unusable_counted_entropy_falls_back_to_one_third(self):
+        # The counterpart on the "dof_table" route. The entropy has to fail only at T
+        # itself: if it failed at the stencil points too, the sound speed would be nan and
+        # the other half of the guard would already return 1/3, so the test would pass
+        # without exercising the entropy half at all.
+        phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
+
+        def entropy(pot, ph, T, d, centre=0.5):
+            return np.nan if float(T) == centre else float(T) ** 4
+
+        with mock.patch.object(bd, "entropy_density", entropy):
+            value = bd.percolation_sound_speed_sq(
+                object(), phase, 0.5, time_temperature_mode="sound_speed",
+                entropy_definition="dof_table",
             )
         self.assertEqual(value, 1.0 / 3.0)
 
