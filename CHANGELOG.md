@@ -16,7 +16,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   between the two schemes' `3 c_s^2` over that support, and `DIAG:entropy_scheme_lna_gap`,
   the difference of their logarithmic entropy ratios over three.
   `WARNING:entropy_scheme_sensitive` is raised when the spread exceeds
-  `percolation_entropy_scheme_warn_threshold`, 4.4% by default, and the comparison can be
+  `percolation_entropy_scheme_warn_threshold`, 4% by default, and the comparison can be
   switched off with `percolation_entropy_scheme_diagnostic`. It costs one further entropy
   evaluation per support point and no further bounce actions: on the example point the
   runtime was 121.3 s against 121.6 s without it, and `Tperc` and `R_*` are unchanged.
@@ -27,14 +27,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   and lies between 0.88 and 1.29 for eight points in ten, with 93% of points inside a factor
   of two; the bias is between 1.01 and 1.17 on every line separately.
 
-  The default threshold says "flag a point whose `R_*` is uncertain at the 5% level from
-  this choice", and sits at 4.4% rather than 5% because of that scatter: a point whose
-  separation really moves by 5% can be estimated as low as 4.4%, so 5% would miss about one
-  such point in ten while 4.4% catches about nine. None of the 91 calibration points reaches
-  that level, the largest measured shift among them being 3.8%, so the flag is rare by
-  construction and the calibration constrains the estimate rather than the threshold. A run
-  that wants the weaker cases as well can lower it: at 3.5% the sample flags 7 points, every
-  one of which moves by more than 2.9%, and none that moves by less than 2%.
+  The default threshold says "flag a point whose `R_*` is uncertain at about the five per
+  cent level from this choice". It sits a little below five so that the scatter of the
+  estimate does not hide such a point, and the precise value is not critical. On the
+  calibration sample four per cent flags one of the ninety-one, whose separation moves by
+  3.7%; the largest measured shift in that sample is 3.8%, so the sample constrains the
+  estimate rather than the threshold. A run that wants the weaker cases can lower it: at 3.5%
+  the sample flags 7 points, every one of which moves by more than 2.9%, and none that moves
+  by less than 2%.
 
   Two choices behind those numbers are worth recording. The statistic is the median over the
   support and not the largest value, because the shift integrates the difference over the
