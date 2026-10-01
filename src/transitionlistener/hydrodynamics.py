@@ -354,7 +354,13 @@ class Hydrodynamics():
         # sound speed itself reaches zero, and DTheta below divides by it. Validate the two
         # sound speeds themselves, not only their ingredients.
         sound_speeds = (_scalar(cs2), _scalar(cb2))
-        if not all(np.isfinite(c) and c > 0.0 for c in sound_speeds):
+        # Positivity alone, so that positive infinity passes and reaches the refusal below.
+        # The check further up catches a denominator that is exactly zero, before the quotient
+        # is formed at all; one that is merely subnormal is finite, passes that check, and
+        # overflows here instead. Both are a sound speed above the limit rather than an absent
+        # plasma. No finiteness test is needed to keep the other two out: `nan` and negative
+        # infinity both compare false against zero and stay on the runaway path.
+        if not all(c > 0.0 for c in sound_speeds):
             if self.verbose:
                 print(
                     f"No usable sound speed for the wall velocity at T = {Tn}: "

@@ -952,6 +952,10 @@ class InfiniteSoundSpeedTests(unittest.TestCase):
     # is what decides between an infinite and a negative ratio, and at underflow it is not
     # under anyone's control.
     INFINITE = (-1.0, -0.0)
+    # Not zero, merely subnormal: the denominator is finite and passes every test for one,
+    # and the quotient overflows instead. The wall velocity returned its runaway branch here
+    # long after the exactly-zero case was refused.
+    OVERFLOWING = (-1.0, -5.0e-324)
     NO_PLASMA = (0.0, 0.0)
     NEGATIVE = (-1.0, 0.0)
 
@@ -961,9 +965,53 @@ class InfiniteSoundSpeedTests(unittest.TestCase):
         self.assertEqual(caught.exception.c_s, float("inf"))
 
     def test_the_wall_velocity_refuses_it(self):
-        with self.assertRaises(errors.SuperluminalSoundSpeedError) as caught:
-            self._hydro(*self.INFINITE).calcWallVelocityLTE(100.0)
-        self.assertEqual(caught.exception.c_s, float("inf"))
+        for label, pair in (("exactly zero", self.INFINITE),
+                            ("subnormal, overflowing", self.OVERFLOWING)):
+            with self.subTest(denominator=label):
+                with self.assertRaises(errors.SuperluminalSoundSpeedError) as caught:
+                    self._hydro(*pair).calcWallVelocityLTE(100.0)
+                self.assertEqual(caught.exception.c_s, float("inf"))
+                self.assertEqual(caught.exception.source, "wall_velocity")
+
+    def test_calc_cs_refuses_the_overflowing_one_too(self):
+        with self.assertRaises(errors.SuperluminalSoundSpeedError):
+            self._hydro(*self.OVERFLOWING).calc_cs(100.0, sym=False)
+
+    def test_the_wall_velocity_refusal_carries_the_diagnostics(self):
+        """`_ensure_wall_velocity` runs before `_ensure_sound_speed`.
+
+        A refusal from the wall velocity is therefore the first thing a default run produces,
+        and without this it would be the only refusal in the branch to arrive with neither
+        diagnostic, which is the opposite of the contract the rest of them keep.
+        """
+        from transitionlistener import transitionObservables as to
+        from transitionlistener import transitionObservables_fixedstep as tof
+        for module in (to, tof):
+            with self.subTest(module=module.__name__):
+                cls = module.TransitionObservables
+                obs = cls.__new__(cls)
+                pot = types.SimpleNamespace(
+                    daisy_outside_validity=lambda X, T: (True, 1.5e7))
+                ctx = types.SimpleNamespace(
+                    derived_param_names=["v_wall"], derived_params={},
+                    GWconfig=types.SimpleNamespace(wall_velocity="LTE"),
+                    pot=pot, phase_symmetric=FlatPhase([0.0]),
+                    phase_broken=FlatPhase([1.0]), verbose=False)
+                fake = mock.Mock()
+                fake.calcWallVelocityLTE.side_effect = (
+                    errors.SuperluminalSoundSpeedError(1.4, 30.0, phase="broken",
+                                                       source="wall_velocity"))
+                fake.sound_speed_is_step_dependent.return_value = (False, 3.0e-5)
+                with mock.patch.object(module, "Hydrodynamics", return_value=fake):
+                    with self.assertRaises(errors.SuperluminalSoundSpeedError) as caught:
+                        cls._ensure_wall_velocity(obs, ctx, 30.0)
+                self.assertAlmostEqual(caught.exception.step_change, 3.0e-5)
+                self.assertAlmostEqual(caught.exception.daisy_ratio, 1.5e7)
+                self.assertIs(caught.exception.daisy_outside, True)
+                self.assertEqual(caught.exception.source, "wall_velocity")
+                # And the remedy stays the one that works for this entry point.
+                self.assertIn("GWconfig.wall_velocity", str(caught.exception))
+                self.assertIn("outside its range", str(caught.exception))
 
     def test_it_is_told_apart_from_a_phase_with_no_plasma(self):
         """The cases that must keep their old answers, or the refusal has swallowed them."""

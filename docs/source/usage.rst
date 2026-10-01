@@ -196,10 +196,17 @@ The most important controls are:
   the entries of such a matrix go as :math:`T^2` but its eigenvalues do not. Of the
   models shipped in ``models/``, the two dark :math:`U(1)` parameterisations, the
   conformal dark :math:`U(1)` and the template get an exact :math:`\Pi`, while the
-  three 2HDM models and the dark flip-flop use the difference. A model that
-  rewrites the effective potential and overrides ``V1T_from_X``, the hook this
-  class documents for the temperature-dependent part of ``Vtot``, keeps its own:
-  the sound speed is taken from that rather than from a reconstruction.
+  three 2HDM models and the dark flip-flop use the difference.
+
+  A model that rewrites the effective potential must override
+  ``generic_potential.V_thermal`` as well as ``Vtot`` and ``V1T_from_X``. It
+  returns the temperature-dependent part on its own, including the radiation bath
+  its ``include_decoupled`` argument selects, and the sound speed, the transition
+  strengths and the wall velocity are all taken from it. Overriding ``Vtot`` or
+  ``V1T_from_X`` without it raises :class:`errors.PotentialError`: those two
+  differ in whether they carry the bath and the daisy term, so neither can be used
+  to stand in for it, and reconstructing one from the mass spectrum would not be
+  the model's own.
 - ``percolationConf.n_action``: fixed ``TSYM`` support count for
   ``fixed_step_size`` runs.
 - ``percolation_n_action_min``, ``percolation_n_action_increment``,

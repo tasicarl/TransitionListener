@@ -472,7 +472,22 @@ class TransitionObservables:
         derived = ctx.derived_params
         if GWconfig.wall_velocity == "LTE":
             hydr = Hydrodynamics(ctx.pot, ctx.phase_symmetric, ctx.phase_broken, ctx.verbose)
-            derived["v_wall"] = hydr.calcWallVelocityLTE(temperature)
+            try:
+                derived["v_wall"] = hydr.calcWallVelocityLTE(temperature)
+            except errors.SuperluminalSoundSpeedError as err:
+                # This stage runs before `_ensure_sound_speed`, so a refusal here is the first
+                # thing the user sees and would otherwise carry none of the diagnostics that
+                # the same refusal carries from `calc_cs`. They are measured now, on the phase
+                # the refusal names, and the error is re-raised with them.
+                symmetric = err.phase == "symmetric"
+                phase = ctx.phase_symmetric if symmetric else ctx.phase_broken
+                _, step_change = hydr.sound_speed_is_step_dependent(temperature, sym=symmetric)
+                daisy_outside, daisy_ratio = ctx.pot.daisy_outside_validity(
+                    phase.valAt(temperature), temperature)
+                raise errors.SuperluminalSoundSpeedError(
+                    err.c_s, err.T, phase=err.phase, step_change=step_change,
+                    daisy_ratio=daisy_ratio, daisy_outside=daisy_outside,
+                    source="wall_velocity") from err
         elif GWconfig.wall_velocity == "c":
             derived["v_wall"] = 1.0
         elif GWconfig.wall_velocity == "WallGo":

@@ -267,10 +267,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   And `Hydrodynamics.calc_cs` now differentiates `generic_potential.V_thermal`, the
   temperature-dependent part of the potential, rather than the whole of it. A model that
   rewrites the effective potential from scratch is told by this class to override `Vtot` and
-  `V1T_from_X`, the latter being "the temperature-dependent part of Vtot"; where it has,
-  `V_thermal` uses it rather than rebuilding one from the mass spectrum, so the sound speed,
-  the pseudo-trace strengths and the wall velocity run on the same thermodynamics as the rest
-  of that model. `V_thermal` is that hook, and it is a separate one from `V1T_from_X` on
+  `V1T_from_X`. Such a model must now override `V_thermal` as well, which is the
+  temperature-dependent part on its own and is what the sound speed, the pseudo-trace
+  strengths and the wall velocity are taken from; a reconstruction from the mass spectrum
+  would not be that model's own thermodynamics. It is a separate hook from `V1T_from_X` on
   purpose: the class documentation calls the latter the temperature-dependent part of `Vtot`,
   which would include the radiation bath, while its base implementation returns neither the
   bath nor the daisy term, and nothing in the signature says which an override means. Adding
@@ -366,14 +366,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   same footing as in `calc_cs`. A phase with no plasma at all is a different statement and is
   still the runaway branch, `v_wall = 1`, as before.
 
-  A second derivative that underflows to zero against a first derivative that has not is a
-  third case, and it is an infinite sound speed rather than either of those. It is refused in
-  both places. The comparison against one carries no finiteness test, so positive infinity
+  A second derivative that underflows against a first derivative that has not is a third case,
+  and it is an infinite sound speed rather than either of those. It is refused in both places,
+  whether the denominator reached zero exactly or is merely subnormal so that the quotient
+  overflows. The comparison against one carries no finiteness test, so positive infinity
   reaches it, while `nan` and negative infinity do not compare greater than or equal to one
   and still fall through to the frozen-phase branch. In the wall velocity the sign the
-  underflowed denominator kept is what decides between the two, so the quotient is formed
-  rather than assumed, and the check runs before the zero-denominator return that would
-  otherwise give the runaway answer first.
+  underflowed denominator kept is what decides between the two, so where it is exactly zero
+  the quotient is formed rather than assumed, and that check runs before the zero-denominator
+  return that would otherwise give the runaway answer first; where it is subnormal the
+  quotient overflows on its own and the guard on the computed sound speeds tests positivity
+  alone, which lets positive infinity through to the refusal and keeps the other two out.
+
+  A refusal raised by the wall velocity carries the same two diagnostics as one raised by the
+  sound speed. That stage runs before the sound-speed stage in both backends, so without it a
+  default run would get its only refusal with neither of them, and with the least to say of
+  any refusal in this change.
 
   The wall velocity itself barely moves, because the superluminal values were being handed to
   a `find_vw` that saturates: over the same 155 evaluations, 152 are bit-identical, the largest
