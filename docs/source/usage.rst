@@ -193,7 +193,10 @@ The most important controls are:
   the entries of such a matrix go as :math:`T^2` but its eigenvalues do not. Of the
   models shipped in ``models/``, the two dark :math:`U(1)` parameterisations, the
   conformal dark :math:`U(1)` and the template get an exact :math:`\Pi`, while the
-  three 2HDM models and the dark flip-flop use the difference.
+  three 2HDM models and the dark flip-flop use the difference. A model that
+  rewrites the effective potential and overrides ``V1T_from_X``, the hook this
+  class documents for the temperature-dependent part of ``Vtot``, keeps its own:
+  the sound speed is taken from that rather than from a reconstruction.
 - ``percolationConf.n_action``: fixed ``TSYM`` support count for
   ``fixed_step_size`` runs.
 - ``percolation_n_action_min``, ``percolation_n_action_increment``,

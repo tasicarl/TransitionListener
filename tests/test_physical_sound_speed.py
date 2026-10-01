@@ -1112,6 +1112,156 @@ class DefaultDebyeMassTests(unittest.TestCase):
                                    analytic, rtol=1.0e-12)
 
 
+class CustomPotentialHookTests(unittest.TestCase):
+    """A model that rewrites the effective potential must not be bypassed.
+
+    The class documents `V1T_from_X` as the hook for "the temperature-dependent part of
+    Vtot", which is exactly what `V_thermal` is. Rebuilding one from the mass spectrum anyway
+    would have the sound speed, the pseudo-trace and the wall velocity all run on different
+    thermodynamics from the rest of such a model.
+    """
+
+    def _custom(self):
+        pot = conformal()
+        marker = {"calls": 0}
+
+        def replacement(self, X, T):
+            marker["calls"] += 1
+            # Deliberately not the generic reconstruction, so using one instead of the other
+            # is visible in the value and not only in the call count.
+            return -3.0 * np.asarray(T, dtype=float) ** 4 * np.ones(np.shape(X)[:-1] or ())
+
+        patcher = mock.patch.object(type(pot), "V1T_from_X", replacement)
+        return pot, marker, patcher
+
+    def test_an_overridden_thermal_part_is_the_one_used(self):
+        pot, marker, patcher = self._custom()
+        X, T = np.array([900.0]), 30.0
+        with patcher:
+            value = float(np.squeeze(pot.V_thermal(X, T)))
+            expected = (-3.0 * T ** 4
+                        + float(np.squeeze(pot.constantTerms(np.asarray(T),
+                                                             include_decoupled=False))))
+        self.assertGreater(marker["calls"], 0, "the model's own thermal part was never called")
+        self.assertAlmostEqual(value / expected, 1.0, places=12)
+
+    def test_the_derivatives_and_the_sound_speed_follow_it(self):
+        """Not just `V_thermal`: everything the branch routes through it.
+
+        The reference is built here from the two pieces the override implies, its own `T^4`
+        term and the radiation bath, and differentiated independently of the code under test.
+        It is not `1/sqrt(3)`: the bath carries the Standard Model's counted degrees of
+        freedom, which are not exactly `T^4`, and the point is to detect the override rather
+        than to assume an idealised plasma.
+        """
+        pot, marker, patcher = self._custom()
+        hydro = ThermalDerivativeTests._hydro(ThermalDerivativeTests(), pot)
+        T = 22.12
+        untouched = hydro.calc_cs(T, sym=False)
+        with patcher:
+            cs = hydro.calc_cs(T, sym=False)
+        self.assertGreater(marker["calls"], 0)
+
+        def expected_thermal(t):
+            return (-3.0 * t ** 4
+                    + float(np.squeeze(pot.constantTerms(np.asarray(t),
+                                                         include_decoupled=False))))
+
+        h = T * 9.275e-5
+        d1 = (expected_thermal(T + h) - expected_thermal(T - h)) / (2.0 * h)
+        d2 = (expected_thermal(T + h) - 2.0 * expected_thermal(T)
+              + expected_thermal(T - h)) / h ** 2
+        self.assertAlmostEqual(cs / np.sqrt(d1 / (T * d2)), 1.0, places=6)
+        # And it is not simply the model's own answer, or this would pass without the override.
+        self.assertNotAlmostEqual(cs, untouched, places=4)
+
+    def test_the_base_implementation_is_not_used_when_it_is_not_overridden(self):
+        # The base `V1T_from_X` omits the daisy term, so delegating to it unconditionally
+        # would quietly drop exactly what this branch is about.
+        pot = conformal()
+        X, T = np.array([900.0]), 30.0
+        thermal = float(np.squeeze(pot.V_thermal(X, T)))
+        without_daisy = (float(np.squeeze(pot.V1T_from_X(X, np.asarray(T))))
+                         + float(np.squeeze(pot.constantTerms(np.asarray(T),
+                                                              include_decoupled=False))))
+        self.assertNotAlmostEqual(thermal / without_daisy, 1.0, places=9)
+
+
+class MasslessModeTests(unittest.TestCase):
+    """The lightest mode is the lightest mode, including when it is massless."""
+
+    def _phases(self, pot, T):
+        from transitionlistener.phases import Phases
+        with contextlib.redirect_stdout(io.StringIO()):
+            phases = Phases(pot, False).phases
+        usable = [p for p in phases.values() if p.Tmin <= T <= p.Tmax]
+        key = lambda p: float(np.linalg.norm(np.atleast_1d(np.squeeze(p.valAt(T)))))
+        return (np.atleast_1d(np.squeeze(min(usable, key=key).valAt(T))),
+                np.atleast_1d(np.squeeze(max(usable, key=key).valAt(T))))
+
+    def test_a_symmetric_phase_still_reports_its_ratio(self):
+        """Every zero-temperature mass vanishes there, so a strict `m2 > 0` filter kept none.
+
+        The diagnostic then returned `(False, nan)` and the ratio was lost from exactly the
+        case a symmetric-phase refusal would want to explain.
+        """
+        pot = conformal()
+        for ratio_T in (1.0e-1, 1.0e-3, 1.0e-5):
+            T = ratio_T * pot.v_stable
+            symmetric, _ = self._phases(pot, T)
+            with self.subTest(T_over_v=ratio_T):
+                m2 = np.ravel(np.asarray(pot.boson_massSq(symmetric, np.asarray([0.0]))[0],
+                                         dtype=float))
+                self.assertTrue(np.all(m2 == 0.0), "this phase was meant to be massless")
+                outside, value = pot.daisy_outside_validity(symmetric, T)
+                self.assertTrue(np.isfinite(value), "the ratio was discarded with the modes")
+                self.assertGreater(value, 0.0)
+                # Massless modes are the regime the resummation is for, so it must stay quiet.
+                self.assertFalse(outside)
+
+    def test_a_massless_mode_makes_the_spectrum_light(self):
+        # With a zero mode present the lightest mass is zero whatever else is in the spectrum,
+        # so the flag must not fire however heavy the rest is.
+        pot = conformal()
+        T = 1.0e-9 * pot.v_stable
+        _, broken = self._phases(pot, T)
+        outside_before, ratio_before = pot.daisy_outside_validity(broken, T)
+        self.assertTrue(outside_before, "the heavy broken phase was meant to fire")
+
+        real = type(pot).boson_massSq
+
+        def with_a_zero_mode(self, X, t):
+            m2, dof, c, phys = real(self, X, t)
+            m2 = np.array(m2, dtype=float, copy=True)
+            m2[..., 0] = 0.0
+            return m2, dof, c, phys
+
+        with mock.patch.object(type(pot), "boson_massSq", with_a_zero_mode):
+            outside_after, ratio_after = pot.daisy_outside_validity(broken, T)
+        self.assertFalse(outside_after, "a massless mode must keep the flag quiet")
+        self.assertTrue(np.isfinite(ratio_after))
+
+    def test_modes_without_degrees_of_freedom_do_not_count(self):
+        # The criterion is about modes that contribute to the daisy term; one with no degrees
+        # of freedom contributes nothing and must not be able to make the spectrum look light.
+        pot = conformal()
+        T = 1.0e-9 * pot.v_stable
+        _, broken = self._phases(pot, T)
+        real = type(pot).boson_massSq
+
+        def with_a_weightless_zero_mode(self, X, t):
+            m2, dof, c, phys = real(self, X, t)
+            m2 = np.array(m2, dtype=float, copy=True)
+            dof = np.array(dof, dtype=float, copy=True)
+            m2[..., 0] = 0.0
+            dof[0] = 0.0
+            return m2, dof, c, phys
+
+        with mock.patch.object(type(pot), "boson_massSq", with_a_weightless_zero_mode):
+            outside, _ = pot.daisy_outside_validity(broken, T)
+        self.assertTrue(outside, "a mode with no degrees of freedom was allowed to count")
+
+
 class ConfiguredSoundSpeedTests(unittest.TestCase):
     """Both solvers accept the setting the superluminal refusal tells the user to use."""
 

@@ -824,6 +824,15 @@ class generic_potential():
         potential has no significant digits left.
         """
         Ta = np.asarray(T, dtype=float)
+        # `V1T_from_X` is the hook this class already documents for models that rewrite the
+        # effective potential: "should only return the temperature-dependent part of Vtot".
+        # Where a model has overridden it, that is its thermal part by definition and
+        # rebuilding one from the mass spectrum would compute the sound speed from different
+        # thermodynamics than the rest of the run. The base implementation is not used, because
+        # it omits the daisy term, which is the whole subject of this branch.
+        if type(self).V1T_from_X is not generic_potential.V1T_from_X:
+            return (self.V1T_from_X(X, Ta)
+                    + self.constantTerms(Ta, include_decoupled=include_decoupled))
         bosons0 = self.boson_massSq(X, Ta * 0.0)
         bosonsT = self.boson_massSq(X, Ta)
         fermions = self.fermion_massSq(X)
@@ -900,8 +909,15 @@ class generic_potential():
             daisy = float(np.squeeze(self.Vdaisy(bosons0, bosonsT, Ta,
                                                  Pi=self.debye_massSq(X, Ta))))
             bath = float(np.squeeze(self.constantTerms(Ta, include_decoupled=False)))
+            # Modes that contribute to the daisy term, which is every boson with degrees of
+            # freedom and a mass squared that is not negative. Zero is kept: a massless mode
+            # is the lightest there is, and dropping it both misreads the lightest mass and,
+            # in a symmetric phase where every zero-temperature mass vanishes, left nothing to
+            # take a minimum over, so the ratio was discarded along with it.
             m2 = np.ravel(np.asarray(bosons0[0], dtype=float))
-            m2 = m2[np.isfinite(m2) & (m2 > 0.0)]
+            dof = np.ravel(np.broadcast_to(np.asarray(bosons0[1], dtype=float), m2.shape))
+            contributing = np.isfinite(m2) & (m2 >= 0.0) & (dof != 0.0)
+            m2 = m2[contributing]
             if m2.size == 0 or not np.isfinite(daisy) or not np.isfinite(bath) or bath == 0.0:
                 return False, float("nan")
             ratio = abs(daisy) / abs(bath)
@@ -918,10 +934,12 @@ class generic_potential():
     def debye_massSq(self, X: np.ndarray, T: float | np.ndarray):
         """The thermal part of the boson masses squared, if the model can give it directly.
 
-        Return an array shaped like the boson mass spectrum, or ``None`` when the model does
-        not provide one. ``None`` is the default and reproduces the previous behaviour, where
-        the daisy term takes the thermal part as the difference of the spectra at ``T`` and at
-        zero.
+        Returns an array shaped like the boson mass spectrum, or ``None``. ``None`` is not the
+        default: the base class measures the thermal part, as described below, and returns
+        ``None`` only where that measurement fails its own check. A model that states its Debye
+        masses in closed form should override this; where neither the override nor the
+        measurement is available, the daisy term falls back to the difference of the spectra at
+        ``T`` and at zero, which is what it used before.
 
         That difference is badly conditioned, and the daisy term is the one place it matters.
         On the conformal dark U(1) of ``examples/example_point.yaml``, at an internal

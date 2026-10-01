@@ -257,7 +257,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   function already uses.
 
   And `Hydrodynamics.calc_cs` now differentiates `generic_potential.V_thermal`, the
-  temperature-dependent part of the potential, rather than the whole of it. The two are the
+  temperature-dependent part of the potential, rather than the whole of it. A model that
+  rewrites the effective potential from scratch is told by this class to override `Vtot` and
+  `V1T_from_X`, the latter being "the temperature-dependent part of Vtot"; where it has,
+  `V_thermal` uses it rather than rebuilding one from the mass spectrum, so the sound speed,
+  the pseudo-trace strengths and the wall velocity run on the same thermodynamics as the rest
+  of that model. The base implementation of `V1T_from_X` is not used, because it omits the
+  daisy term. The two are the
   same analytically, since what does not depend on temperature drops out of both derivatives,
   and differ numerically: the whole potential subtracts the vacuum energy from itself, and
   under supercooling that vacuum energy is the larger by ten orders of magnitude or more.
@@ -434,7 +440,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `1/sqrt(3)` in a cold, heavily supercooled phase is therefore the prescription and not the
   plasma, and the physically expected value there is the `1/sqrt(3)` of the radiation that is
   still relativistic. The flag is raised when the daisy term exceeds that radiation and the
-  lightest mode has `m/T > 1`.
+  lightest mode has `m/T > 1`. The lightest mode is taken over every boson that contributes to
+  the daisy term, which is every one with degrees of freedom and a mass squared that is not
+  negative; massless modes are the lightest there are and are counted. Excluding them left a
+  symmetric phase, where every zero-temperature mass vanishes, with no modes at all, and the
+  ratio was discarded along with them in exactly the case a symmetric-phase refusal would want
+  it. On the conformal dark U(1) the symmetric phase now reports ratios of `0.005` to `0.01`
+  where it reported `nan`.
 
   This is reported and not corrected. A resummation that is Boltzmann suppressed at low
   temperature would remove the artefact and is the subject of planned follow-up work; it is a
