@@ -24,22 +24,11 @@ from scipy.optimize import root_scalar
 
 from transitionlistener import generic_potential
 from transitionlistener.phases import PhaseInfo
-from transitionlistener.helper_functions import (temperatureDerivativeStep,
-                                                 thermalDerivativeStep)
+from transitionlistener.helper_functions import thermalDerivativeStep
 
 from . import console
 from rich import print
 from rich.panel import Panel
-
-
-def _local_temperature_step(pot, T: float, X=None, include_decoupled: bool = False) -> float:
-    """Finite-difference temperature step that keeps the stencil at T > 0.
-
-    See :func:`helper_functions.temperatureDerivativeStep`: the step balances the
-    round-off from differencing the vacuum offset of the potential against the
-    truncation error of the stencil, so it depends on the field value.
-    """
-    return temperatureDerivativeStep(pot, T, X, include_decoupled=include_decoupled)
 
 
 def kappa_sw(alpha : float, vw: float, cs: float) -> float:
@@ -262,14 +251,19 @@ class Hydrodynamics():
         coupled = bool(self.pot.config.gwConf.coupled_hydrodynamics)
         phi_s = self.high_phase.valAt(Tn)
         phi_b = self.low_phase.valAt(Tn)
-        # each phase gets the step that suits its own vacuum offset, sized on the same
-        # sector the derivatives below difference
-        dT_s = _local_temperature_step(self.pot, Tn, phi_s, include_decoupled=coupled)
-        dT_b = _local_temperature_step(self.pot, Tn, phi_b, include_decoupled=coupled)
-        dVdT_s = self.pot.dVdT(phi_s, Tn, dT=dT_s, include_decoupled=coupled)
-        dVdT_b = self.pot.dVdT(phi_b, Tn, dT=dT_b, include_decoupled=coupled)
-        ddVdT_s = self.pot.d2VdT2(phi_s, Tn, dT=dT_s, include_decoupled=coupled)
-        ddVdT_b = self.pot.d2VdT2(phi_b, Tn, dT=dT_b, include_decoupled=coupled)
+        # The temperature-dependent part, for the same reason as in `_calc_cs_at_step`: the
+        # enthalpy `-T dV/dT` and the two sound speeds below are temperature derivatives, so
+        # the vacuum offset cancels out of them analytically and not numerically. Taken on the
+        # whole potential, the broken-phase sound speed here disagreed with the thermal part by
+        # more than one per cent at 42 of 135 points of the conformal line (`g = 0.45` to
+        # `0.75`, temperatures `1e-1` to `1e-7` of the scale) and was superluminal at two of
+        # them, which then went into `find_vw` unchecked.
+        dT_s = thermalDerivativeStep(self.pot, Tn, phi_s)
+        dT_b = thermalDerivativeStep(self.pot, Tn, phi_b)
+        dVdT_s = self.pot.dV_thermal_dT(phi_s, Tn, dT=dT_s, include_decoupled=coupled)
+        dVdT_b = self.pot.dV_thermal_dT(phi_b, Tn, dT=dT_b, include_decoupled=coupled)
+        ddVdT_s = self.pot.d2V_thermal_dT2(phi_s, Tn, dT=dT_s, include_decoupled=coupled)
+        ddVdT_b = self.pot.d2V_thermal_dT2(phi_b, Tn, dT=dT_b, include_decoupled=coupled)
 
         w_s = - Tn * dVdT_s
         w_b = - Tn * dVdT_b
@@ -315,6 +309,15 @@ class Hydrodynamics():
                     f"(c_s^2, c_b^2) = {sound_speeds}; set the wall velocity to 1."
                 )
             return 1
+
+        # One or more is refused here on the same footing as in `calc_cs`, and for the same
+        # reason: it is not a speed, and `DTheta` divides by it while `find_vw` compares the
+        # wall velocity against it. A phase with no plasma at all is a different statement and
+        # is still the runaway branch above.
+        for phase_name, c in (("symmetric", sound_speeds[0]), ("broken", sound_speeds[1])):
+            if c >= 1.0:
+                raise errors.SuperluminalSoundSpeedError(
+                    float(np.sqrt(c)), Tn, phase=phase_name)
 
         # Calculate the alpha definition from the paper
         # eq. (19) in `arxiv:2303.10171`

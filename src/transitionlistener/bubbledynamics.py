@@ -800,14 +800,19 @@ def _time_temperature_factors(
             raise
         except Exception:
             cs_sq = np.nan
-        # A sound speed outside (0, 1] means the traced phase has stopped being a sensible
+        # A sound speed outside (0, 1) means the traced phase has stopped being a sensible
         # equilibrium, which happens far below completion, where the grid still reaches but
         # the false vacuum no longer describes a plasma. The bag value is the fallback there.
+        # Strictly below one, as everywhere else: `calc_cs` refuses one or more and
+        # `resolve_configured_sound_speed` will not accept it, and the spectrum divides by
+        # `v_wall - c_s`, which is zero for a runaway wall at exactly one. The bound used to
+        # be inclusive here alone. In floating point the case is measure zero, so this is a
+        # consistency fix rather than a behaviour change.
         # The two are one entropy read twice, so a temperature contributes both or neither:
         # keeping a sound speed where the entropy is unusable, or the other way round, would
         # build the scale factor and the time-temperature relation from different amounts of
         # information, which is the mixing this setting exists to end.
-        usable = (np.isfinite(cs_sq) and 0.0 < cs_sq <= 1.0
+        usable = (np.isfinite(cs_sq) and 0.0 < cs_sq < 1.0
                   and np.isfinite(entropy_here) and entropy_here > 0.0)
         if usable:
             sound_speed_sq[i] = float(cs_sq)

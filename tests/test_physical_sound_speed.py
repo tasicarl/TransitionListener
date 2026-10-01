@@ -662,6 +662,104 @@ class PseudoTraceSoundSpeedTests(unittest.TestCase):
                 self.assertTrue(np.isfinite(value))
 
 
+class WallVelocitySoundSpeedTests(unittest.TestCase):
+    """`calcWallVelocityLTE` has its own copy of the sound speed, on the default path.
+
+    `GWConf.wall_velocity` is `"LTE"` by default and `_ensure_wall_velocity` runs before
+    `_ensure_sound_speed`, so this copy is evaluated first on every default run and the
+    refusal in `calc_cs` cannot protect it.
+    """
+
+    def _hydro(self, pot, T):
+        from transitionlistener.phases import Phases
+        with contextlib.redirect_stdout(io.StringIO()):
+            phases = Phases(pot, False).phases
+        def norm(p):
+            if not (p.Tmin <= T <= p.Tmax):
+                return -1.0
+            return float(np.linalg.norm(np.atleast_1d(np.squeeze(p.valAt(T)))))
+        usable = [p for p in phases.values() if norm(p) >= 0.0]
+        return Hydrodynamics(pot, min(usable, key=norm), max(usable, key=norm), False)
+
+    def test_it_does_not_read_the_whole_potential(self):
+        # Structural, because where the two routes agree a value test cannot tell them apart,
+        # and this function is a fourth copy of the same quantity: reverting it is invisible
+        # until a supercooled point, which is where it used to go superluminal.
+        pot = conformal()
+        T = 1.0e-1 * pot.v_stable
+        hydro = self._hydro(pot, T)
+        boom = mock.Mock(side_effect=AssertionError(
+            "calcWallVelocityLTE differenced the whole potential"))
+        with mock.patch.object(type(pot), "dVdT", boom):
+            with mock.patch.object(type(pot), "d2VdT2", boom):
+                vw = float(np.squeeze(hydro.calcWallVelocityLTE(T)))
+        self.assertTrue(0.0 < vw <= 1.0)
+
+    def test_it_uses_the_sector_its_caller_asks_for(self):
+        # The enthalpy and the sound speeds must come from the same plasma as the pressures
+        # they are combined with. `V_thermal` defaults to excluding the decoupled bath, so a
+        # call that forgets to forward `coupled_hydrodynamics` would mix two sectors.
+        pot = conformal()
+        T = 1.0e-1 * pot.v_stable
+        hydro = self._hydro(pot, T)
+        seen = []
+        real = type(pot).dV_thermal_dT
+
+        def spy(self, X, t, dT=None, include_decoupled=False):
+            seen.append(include_decoupled)
+            return real(self, X, t, dT=dT, include_decoupled=include_decoupled)
+
+        for coupled in (True, False):
+            with self.subTest(coupled_hydrodynamics=coupled):
+                seen.clear()
+                pot.config.gwConf.coupled_hydrodynamics = coupled
+                try:
+                    with mock.patch.object(type(pot), "dV_thermal_dT", spy):
+                        hydro.calcWallVelocityLTE(T)
+                finally:
+                    pot.config.gwConf.coupled_hydrodynamics = True
+                self.assertTrue(seen, "the enthalpy was not taken from the thermal part")
+                self.assertTrue(all(c is coupled for c in seen),
+                                f"the sector was not forwarded: {seen}")
+
+    def test_a_superluminal_value_is_refused_rather_than_used(self):
+        # It used to go into `find_vw` unchecked: on the conformal line the whole-potential
+        # route gave c_s = 1.26 at g = 0.650 and 1.11 at g = 0.750, both at T/v = 1e-5.
+        pot = conformal()
+        T = 1.0e-1 * pot.v_stable
+        hydro = self._hydro(pot, T)
+        for phase_is_broken in (True, False):
+            with self.subTest(broken=phase_is_broken):
+                target = (hydro.low_phase if phase_is_broken else hydro.high_phase).valAt(T)
+                real_d2 = type(pot).d2V_thermal_dT2
+                real_d1 = type(pot).dV_thermal_dT
+
+                def superluminal(self, X, t, dT=None, include_decoupled=False):
+                    # c_s^2 = (dV/dT)/(T d2V/dT2); halving the second derivative doubles it.
+                    value = real_d2(self, X, t, dT=dT, include_decoupled=include_decoupled)
+                    if np.allclose(np.atleast_1d(np.squeeze(X)),
+                                   np.atleast_1d(np.squeeze(target))):
+                        return value / 8.0
+                    return value
+
+                with mock.patch.object(type(pot), "d2V_thermal_dT2", superluminal):
+                    with self.assertRaises(errors.SuperluminalSoundSpeedError) as caught:
+                        hydro.calcWallVelocityLTE(T)
+                self.assertGreaterEqual(caught.exception.c_s, 1.0)
+                self.assertEqual(caught.exception.phase,
+                                 "broken" if phase_is_broken else "symmetric")
+
+    def test_a_phase_without_a_plasma_is_still_the_runaway_branch(self):
+        # A missing plasma and a value that is not a speed are different statements; only the
+        # second is refused. This is the behaviour the refusal must not swallow.
+        pot = conformal()
+        T = 1.0e-1 * pot.v_stable
+        hydro = self._hydro(pot, T)
+        with mock.patch.object(type(pot), "dV_thermal_dT",
+                               lambda self, X, t, dT=None, include_decoupled=False: 0.0):
+            self.assertEqual(hydro.calcWallVelocityLTE(T), 1)
+
+
 class ConfiguredSoundSpeedTests(unittest.TestCase):
     """Both solvers accept the setting the superluminal refusal tells the user to use."""
 
@@ -750,6 +848,13 @@ class SuperluminalReportingTests(unittest.TestCase):
             1.48, 1.0e-5, step_change=1.0e-5, daisy_ratio=0.2)
         self.assertIn("not a finite-difference artefact", str(quiet))
         self.assertIn("within the", str(quiet))
+        # The step check returns nan when one of the test steps is not a speed either, which
+        # is the case where the step dependence is strongest. Saying nothing there would
+        # leave that one case without a statement.
+        unknown = errors.SuperluminalSoundSpeedError(
+            1.48, 1.0e-5, step_change=float("nan"), daisy_ratio=0.2)
+        self.assertIn("not a speed at one of the test steps", str(unknown))
+        self.assertNotIn("stable under", str(unknown))
 
     def test_the_solvers_attach_them_before_refusing(self):
         # The diagnostics have to be taken before `calc_cs`, or the refusal cannot say which

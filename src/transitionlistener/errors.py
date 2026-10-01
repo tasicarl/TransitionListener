@@ -118,15 +118,28 @@ class SuperluminalSoundSpeedError(Exception):
                 "cannot support a sound speed here; run with GWconfig.sound_speed = '1/3' "
                 "to use the radiation value instead, or check the model."
             )
-            if step_change is not None and math.isfinite(step_change):
-                message += (
-                    f" Changing the derivative step by a factor ten moves c_s by "
-                    f"{step_change:.3g} of itself, so the finite differences are losing "
-                    "their significant digits."
-                    if step_change > 0.05 else
-                    f" The value is stable under a factor-ten change of the derivative step "
-                    f"({step_change:.3g}), so this is not a finite-difference artefact."
-                )
+            if step_change is not None:
+                if not math.isfinite(step_change):
+                    # `sound_speed_is_step_dependent` returns nan when one of the test steps
+                    # was itself not a speed. Saying nothing here would leave the case where
+                    # the step dependence is strongest as the one case with no statement
+                    # about it.
+                    message += (
+                        " The value is not a speed at one of the test steps either, so it "
+                        "depends on the derivative step as strongly as it can."
+                    )
+                elif step_change > 0.05:
+                    message += (
+                        f" Changing the derivative step by a factor ten moves c_s by "
+                        f"{step_change:.3g} of itself, so the finite differences are losing "
+                        "their significant digits."
+                    )
+                else:
+                    message += (
+                        f" The value is stable under a factor-ten change of the derivative "
+                        f"step ({step_change:.3g}), so this is not a finite-difference "
+                        "artefact."
+                    )
             if daisy_ratio is not None and math.isfinite(daisy_ratio):
                 message += (
                     f" The daisy term is {daisy_ratio:.3g} times the radiation part of the "

@@ -810,7 +810,8 @@ class generic_potential():
 
         return y
 
-    def V_thermal(self, X: np.ndarray, T: float | np.ndarray) -> float | np.ndarray:
+    def V_thermal(self, X: np.ndarray, T: float | np.ndarray,
+                  include_decoupled: bool = False) -> float | np.ndarray:
         """The temperature-dependent part of the effective potential, on its own.
 
         ``Vtot`` is ``V0 + V1 + Vct`` plus this. The first three do not depend on the
@@ -836,16 +837,28 @@ class generic_potential():
         else:
             raise errors.PotentialError(
                 f"Unknown daisy resummation scheme {self.daisy!r}.")
-        return y + self.constantTerms(Ta, include_decoupled=False)
+        return y + self.constantTerms(Ta, include_decoupled=include_decoupled)
 
-    def dV_thermal_dT(self, X: np.ndarray, T: float, dT: float):
-        """First temperature derivative of :func:`V_thermal`, by central difference."""
-        return (self.V_thermal(X, T + dT) - self.V_thermal(X, T - dT)) / (2.0 * dT)
+    def dV_thermal_dT(self, X: np.ndarray, T: float, dT: float,
+                      include_decoupled: bool = False):
+        """First temperature derivative of :func:`V_thermal`, by central difference.
 
-    def d2V_thermal_dT2(self, X: np.ndarray, T: float, dT: float):
+        ``include_decoupled`` selects the same sector the caller's other thermodynamics uses;
+        a derivative taken on one plasma and combined with a quantity taken on another is not
+        a thermodynamic identity. The sound speed excludes the decoupled bath, which is the
+        default; the wall velocity follows ``GWConf.coupled_hydrodynamics``.
+        """
+        return ((self.V_thermal(X, T + dT, include_decoupled=include_decoupled)
+                 - self.V_thermal(X, T - dT, include_decoupled=include_decoupled))
+                / (2.0 * dT))
+
+    def d2V_thermal_dT2(self, X: np.ndarray, T: float, dT: float,
+                        include_decoupled: bool = False):
         """Second temperature derivative of :func:`V_thermal`, by central difference."""
-        return (self.V_thermal(X, T + dT) - 2.0 * self.V_thermal(X, T)
-                + self.V_thermal(X, T - dT)) / (dT * dT)
+        return ((self.V_thermal(X, T + dT, include_decoupled=include_decoupled)
+                 - 2.0 * self.V_thermal(X, T, include_decoupled=include_decoupled)
+                 + self.V_thermal(X, T - dT, include_decoupled=include_decoupled))
+                / (dT * dT))
 
     def daisy_outside_validity(self, X: np.ndarray, T: float) -> tuple[bool, float]:
         """Whether the daisy resummation is being used where it does not apply.

@@ -86,6 +86,14 @@ class _EmptyBrokenPhasePotential:
     def d2VdT2(self, X, T, dT=None, include_decoupled=True):
         return self._wrap(0.0 if self._is_broken(X) else -3.0 / T)
 
+    # `calcWallVelocityLTE` takes the enthalpy and the sound speeds from the thermal part, so
+    # a stand-in that answers only `dVdT`/`d2VdT2` would raise before reaching the guard.
+    def dV_thermal_dT(self, X, T, dT=None, include_decoupled=True):
+        return self.dVdT(X, T, dT=dT, include_decoupled=include_decoupled)
+
+    def d2V_thermal_dT2(self, X, T, dT=None, include_decoupled=True):
+        return self.d2VdT2(X, T, dT=dT, include_decoupled=include_decoupled)
+
     def Vtot(self, X, T, include_decoupled=True):
         return self._wrap(-0.25 if self._is_broken(X) else -1.0)
 
@@ -195,6 +203,15 @@ class WallVelocityEntryPointTests(unittest.TestCase):
 
             def d2VdT2(self, X, T, dT=None, include_radiation=True, include_decoupled=True):
                 return 1.0e10 if self._is_broken(X) else -3.0 / T
+
+            # `calcWallVelocityLTE` takes the enthalpy and the two sound speeds from the
+            # thermal part now, so the stand-in has to answer there too or the test would be
+            # exercising an attribute error rather than the guard.
+            def dV_thermal_dT(self, X, T, dT=None, include_decoupled=True):
+                return self.dVdT(X, T, dT=dT, include_decoupled=include_decoupled)
+
+            def d2V_thermal_dT2(self, X, T, dT=None, include_decoupled=True):
+                return self.d2VdT2(X, T, dT=dT, include_decoupled=include_decoupled)
 
             def Vtot(self, X, T, include_decoupled=True):
                 return -0.25 if self._is_broken(X) else -1.0
@@ -417,10 +434,10 @@ class UnmockedEntryPointTests(unittest.TestCase):
         # part with no temperature dependence left, so a constant is what to return.
         real_V_thermal = pot.V_thermal
 
-        def frozen_V_thermal(X, T):
+        def frozen_V_thermal(X, T, include_decoupled=False):
             if np.allclose(np.atleast_1d(X), low.valAt(T)):
                 return 0.0
-            return real_V_thermal(X, T)
+            return real_V_thermal(X, T, include_decoupled=include_decoupled)
 
         pot.dVdT, pot.d2VdT2 = frozen_dVdT, frozen_d2VdT2
         pot.V_thermal = frozen_V_thermal

@@ -256,7 +256,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   | `1e-7` | `1.1` | `2.6e-9` |
   | `1e-9` | the daisy term has underflowed to zero | `1.5e-9` |
 
-  And on the sound speed itself: at this step `c_s` agrees to `4e-8` or better with the
+  And on the sound speed itself: at this step `c_s` agrees to `4e-8` or better, on the traced
+  broken phase, with the
   plateau measured over `dT/T` from `3e-5` to `1e-3`, at every temperature from `1e-1` to
   `1e-9` of the scale and at `g = 0.455`, `0.7` and `0.95`. Round-off takes over below
   `dT/T ~ 1e-5` and truncation above `3e-3`.
@@ -267,6 +268,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   took it at a hard-coded `dT/T = 1e-3`; the two now agree by construction. Where the released
   version returned nothing there, `alpha_thetabar`, `alpha_hyd` and `alpha_hyd_wall` were
   not-a-number and are now finite.
+
+  In the fixed-step backend that same function also fills `soundSpSq`, which enters
+  `falseVacuumVolumeGrowthRate` and so the percolation integral itself, so that backend's
+  percolation moves slightly. It is evaluated on the symmetric phase, where there is almost no
+  vacuum offset to cancel and therefore almost nothing to fix: measured on the conformal dark
+  U(1) over temperatures from `1e-1` to `1e-7` of the scale, the change is at most `1.9e-6`
+  relative.
 
   On the example point of `examples/example_point.yaml` the effect of all of this is nothing
   visible: all 54 entries of the transition table and all 58 of the observability table are
@@ -279,7 +287,35 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   analytic Debye masses are about a quarter; the two cases that actually occur, all modes small
   and none small, are each taken in one array operation rather than through the masked general
   path. End to end the cost is far smaller, because a scan is dominated by bounce solving
-  rather than by potential evaluations: the example point goes from 120 to 124 seconds, 3.7%.
+  rather than by potential evaluations: the example point goes from 121 to 124 seconds, under
+  3%, on two concurrent runs of the same node.
+
+- **The wall velocity takes its sound speed from the thermal part too.**
+  `Hydrodynamics.calcWallVelocityLTE` is a fourth copy of the same quantity and is on the
+  default path: `GWConf.wall_velocity` is `"LTE"`, and in the observables stage
+  `_ensure_wall_velocity` runs before `_ensure_sound_speed`, so it was evaluated first on
+  every default run and the refusal above could not protect it. Its enthalpy `-T dV/dT` and
+  its two sound speeds all came from the whole potential, with the same cancellation.
+
+  Measured on the conformal dark U(1), 31 couplings from `g = 0.45` to `0.75` and five
+  temperatures from `1e-1` to `1e-7` of the scale: the broken-phase sound speed it used
+  disagreed with the thermal part by more than one per cent at 42 of 135 points, and at two of
+  them it was superluminal, `c_s = 1.26` at `g = 0.650` and `1.11` at `g = 0.750`, both at a
+  temperature of `1e-5` of the scale. Those values went into `DTheta`, which divides by the
+  sound speed, and into `find_vw`, which compares the wall velocity against it. There was no
+  check that they were below one.
+
+  `generic_potential.V_thermal` and its two derivatives now take `include_decoupled`, because
+  this caller follows `GWConf.coupled_hydrodynamics` rather than always excluding the
+  decoupled bath: an enthalpy taken on one plasma and combined with a pressure taken on
+  another is not a thermodynamic identity. A sound speed of one or more is refused here on the
+  same footing as in `calc_cs`. A phase with no plasma at all is a different statement and is
+  still the runaway branch, `v_wall = 1`, as before.
+
+  The wall velocity itself barely moves, because the superluminal values were being handed to
+  a `find_vw` that saturates: over the same 155 evaluations, 152 are bit-identical, the largest
+  change is `1.0e-6` relative, and nothing is refused, since the superluminal values existed
+  only in the route that no longer runs.
 
 - **A sound speed of one or more is refused rather than replaced.** `c_s` sets the speed at
   which the bubbles grow, `max(v_wall, c_s)`, the efficiency factors and the spectrum, and for
@@ -321,9 +357,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   side alone would miss a value that breaks down as the step shrinks. The diagnostic does not
   propagate the refusal above; a step at which the value is not a speed at all is the
   strongest possible statement that it depends on the step, and it is reported as such.
-  Against the `0.05` alarm, the measured change in a healthy regime is `1e-6` to `2e-3`. With
-  the step rule the thermal derivatives used to inherit it was `1.8e-2`, a factor 2.8 below
-  the alarm and close enough to raise it on a point with nothing wrong with it. `WARNING:daisy_outside_validity` and `DIAG:daisy_over_radiation`
+
+  Measured through `Hydrodynamics.sound_speed_is_step_dependent` on the traced broken phase,
+  at `g = 0.455`, `0.7` and `0.95` and six temperatures each: with the step rule above the
+  change in a healthy regime is `1.4e-7` to `9.9e-7`, a factor 50000 below the `0.05` alarm.
+  With the step rule these derivatives used to inherit it runs from `2.1e-4` to `2.5e-2`, so
+  at its worst a factor two below the alarm, close enough to raise it on a point with nothing
+  wrong with it. `WARNING:daisy_outside_validity` and `DIAG:daisy_over_radiation`
   say whether the daisy resummation is being used where it does not apply.
 
   The second is a statement about the model rather than the arithmetic. The Arnold-Espinosa
