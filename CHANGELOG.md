@@ -348,6 +348,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `hydrodynamics.resolve_configured_sound_speed`, which reads `"1/3"` as the massless value
   `1/sqrt(3)` and anything else as `c_s` itself, strictly between zero and one.
 
+  On the shipped line scan of `examples/example_line.yaml`, 30 couplings from `g = 0.5` to `1.0`
+  at `v = 0.14 GeV`, nothing changes status: the same two points fail with the same error code and
+  the same 28 give a sound speed, none refused. Of the 79 shared columns 32 are bit-identical and
+  the rest move by at most `3.2e-4` relative, in `alpha` and `alpha_thetabar`; `c_s` by `2.4e-4`,
+  `betaH_RH` and `R_*` by `2.0e-4`, and the signal-to-noise ratios by about two parts in ten
+  thousand. The shifts are largest at the most supercooled surviving point, where the daisy term is
+  30 times the radiation, and fall away as that ratio does. The solver is deterministic: two runs
+  of the same code agree bit for bit on 82 of 83 files.
+
 - **Two diagnostics of whether the sound speed means anything.**
   `WARNING:noisy_c_s` and `DIAG:c_s_step_change` say whether it survives a change of the
   derivative step, because a value can be round-off and still be a speed, so no test on the
