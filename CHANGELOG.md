@@ -238,7 +238,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   sound speed there. A phase that has simply frozen out, where the ratio is zero over zero or
   negative, is still reported as not-a-number as before. Over 366 evaluations spanning
   `g = 0.45` to `0.75` and temperatures from `1e-1` to `1e-9` of the scale, before and after
-  the fixes, no point reaches one: `scans/sound_speed_line/` holds the script.
+  the fixes, no point reaches one: `examples/sound_speed_vs_coupling.py` reproduces it.
 
 - **Two diagnostics of whether the sound speed means anything.**
   `WARNING:noisy_c_s` and `DIAG:c_s_step_change` say whether it survives a change of the
