@@ -172,7 +172,7 @@ class GWConf:
     dilution = False                   # If True, apply a dilution factor to the GW signal.
     equilibrium_DS = True              # Not read. Which radiation is in equilibrium with the potential is set by kin_coupled_* and kin_decoupled_* on the model.
     epsilon_turbulence = 0.1           # Energy fraction redirected into turbulence (0 disables).
-    sound_speed = "compute"            # Sound-speed strategy: "compute" (broken-phase cs) or "1/3" (bag value).
+    sound_speed = "compute"            # Sound-speed strategy: "compute" (broken-phase cs), "1/3" (bag value), or a float in (0, 1).
     coupled_hydrodynamics = True       # Couple the dark and visible sectors in the hydro solve.
     check_if_T0_global_min = False     # If True, require the T=0 minimum to be global (else just warn).
 

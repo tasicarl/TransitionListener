@@ -781,6 +781,96 @@ class SuperluminalReportingTests(unittest.TestCase):
                 self.assertIn("outside its range", str(caught.exception))
 
 
+class ThermalPartDaisySchemeTests(unittest.TestCase):
+    """`V_thermal` dispatches on `self.daisy` a second time, beside `Vtot`.
+
+    The two have to agree for every scheme, or the sound speed is taken from a potential the
+    run is not using. Only the Arnold-Espinosa branch is the default, so the other two are
+    checked here rather than left to a model that happens to set them.
+    """
+
+    def test_every_scheme_matches_the_temperature_dependence_of_Vtot(self):
+        pot = conformal()
+        X = np.array([900.0])
+        # Differences rather than values: `Vtot(X, 0)` is not available, because
+        # `constantTerms` takes the logarithm of the temperature.
+        T1, T2 = 50.0, 49.0
+        for daisy in ("ArnoldEspinosa", "Parwani", "off"):
+            with self.subTest(daisy=daisy):
+                pot.daisy = daisy
+                thermal = float(np.squeeze(pot.V_thermal(X, T1) - pot.V_thermal(X, T2)))
+                whole = float(np.squeeze(pot.Vtot(X, T1, include_decoupled=False)
+                                         - pot.Vtot(X, T2, include_decoupled=False)))
+                self.assertAlmostEqual(thermal / whole, 1.0, places=9)
+        pot.daisy = "ArnoldEspinosa"
+
+    def test_the_schemes_are_not_all_the_same_potential(self):
+        # Without this the test above would pass for a `V_thermal` that ignored `self.daisy`.
+        pot = conformal()
+        X = np.array([900.0])
+        values = []
+        for daisy in ("ArnoldEspinosa", "Parwani", "off"):
+            pot.daisy = daisy
+            values.append(float(np.squeeze(pot.V_thermal(X, 50.0))))
+        pot.daisy = "ArnoldEspinosa"
+        self.assertEqual(len(set(values)), 3, f"the schemes did not differ: {values}")
+
+    def test_a_scheme_it_cannot_build_is_refused(self):
+        pot = conformal()
+        pot.daisy = "not-a-scheme"
+        try:
+            with self.assertRaises(errors.PotentialError):
+                pot.V_thermal(np.array([900.0]), 50.0)
+        finally:
+            pot.daisy = "ArnoldEspinosa"
+
+
+class SuperluminalPhaseAttributionTests(unittest.TestCase):
+    """The diagnostics in the message belong to the phase that was refused."""
+
+    def _ctx_and_fake(self, module, failing_phase):
+        pot = types.SimpleNamespace(
+            daisy_outside_validity=lambda X, T: (
+                (True, 7.0) if float(np.squeeze(X)) == 0.0 else (False, 0.25)))
+        ctx = types.SimpleNamespace(
+            derived_param_names=["c_s"], derived_params={},
+            GWconfig=types.SimpleNamespace(sound_speed="compute"),
+            pot=pot, phase_symmetric=FlatPhase([0.0]),
+            phase_broken=FlatPhase([1.0]), verbose=False)
+        fake = mock.Mock()
+        fake.sound_speed_is_step_dependent.side_effect = (
+            lambda T, sym: (True, 0.9) if sym else (False, 2.0e-5))
+        fake.calc_cs.side_effect = (
+            lambda T, sym: (_ for _ in ()).throw(
+                errors.SuperluminalSoundSpeedError(1.48, T, phase="symmetric"))
+            if sym else 0.5)
+        return ctx, fake
+
+    def test_a_symmetric_refusal_carries_the_symmetric_diagnostics(self):
+        # Mutating the re-raise to pass the broken-phase `change` and `ratio` regardless of
+        # the phase makes this fail: the message would then claim that a value it never
+        # measured is "not a finite-difference artefact".
+        from transitionlistener import transitionObservables as to
+        from transitionlistener import transitionObservables_fixedstep as tof
+        for module in (to, tof):
+            with self.subTest(module=module.__name__):
+                cls = module.TransitionObservables
+                obs = cls.__new__(cls)
+                ctx, fake = self._ctx_and_fake(module, "symmetric")
+                with mock.patch.object(module, "Hydrodynamics", return_value=fake):
+                    with self.assertRaises(errors.SuperluminalSoundSpeedError) as caught:
+                        cls._ensure_sound_speed(obs, ctx, 30.0)
+                err = caught.exception
+                self.assertEqual(err.phase, "symmetric")
+                self.assertAlmostEqual(err.step_change, 0.9)
+                self.assertAlmostEqual(err.daisy_ratio, 7.0)
+                self.assertIn("losing", str(err))
+                self.assertIn("outside its range", str(err))
+                # The columns stay the broken phase's: they are what the observable means.
+                self.assertAlmostEqual(ctx.derived_params["DIAG:c_s_step_change"], 2.0e-5)
+                self.assertAlmostEqual(ctx.derived_params["DIAG:daisy_over_radiation"], 0.25)
+
+
 class StepDependenceRobustnessTests(unittest.TestCase):
     """The diagnostic must survive what it is diagnosing."""
 
