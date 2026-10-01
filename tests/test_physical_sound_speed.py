@@ -1241,6 +1241,40 @@ class MasslessModeTests(unittest.TestCase):
         self.assertFalse(outside_after, "a massless mode must keep the flag quiet")
         self.assertTrue(np.isfinite(ratio_after))
 
+    def test_a_mode_with_no_debye_mass_does_not_count(self):
+        """A transverse gauge boson is massless and thermally uncorrected, in every model here.
+
+        It has degrees of freedom but adds exactly nothing to the daisy term, so counting it
+        pinned the lightest mass at zero permanently and the flag could never fire. On
+        `models/TL_2HDM.py` that is the transverse photon.
+        """
+        pot = conformal()
+        T = 1.0e-9 * pot.v_stable
+        _, broken = self._phases(pot, T)
+        Tref = np.asarray([pot.v_stable])
+        thermal = np.ravel(np.asarray(pot.debye_massSq(broken, Tref), dtype=float))
+        m2 = np.ravel(np.asarray(pot.boson_massSq(broken, np.asarray([0.0]))[0], dtype=float))
+        uncorrected = np.nonzero(thermal == 0.0)[0]
+        self.assertTrue(uncorrected.size, "this model was meant to have a transverse mode")
+
+        # Give that mode a vanishing mass, as a transverse gauge boson has in the symmetric
+        # phase. It still has no Debye mass, so it must not be allowed to call the spectrum
+        # light; every other mode here is far heavier than the temperature.
+        real = type(pot).boson_massSq
+
+        def massless_transverse(self, X, t):
+            masses, dof, c, phys = real(self, X, t)
+            masses = np.array(masses, dtype=float, copy=True)
+            masses[..., uncorrected[0]] = 0.0
+            return masses, dof, c, phys
+
+        with mock.patch.object(type(pot), "boson_massSq", massless_transverse):
+            outside, ratio = pot.daisy_outside_validity(broken, T)
+        self.assertTrue(outside, "a mode with no Debye mass was allowed to count as light")
+        self.assertTrue(np.isfinite(ratio))
+        # And the same mode with a Debye mass would count, which is what separates the two.
+        self.assertGreater(m2[thermal != 0.0].min(), 0.0)
+
     def test_modes_without_degrees_of_freedom_do_not_count(self):
         # The criterion is about modes that contribute to the daisy term; one with no degrees
         # of freedom contributes nothing and must not be able to make the spectrum look light.

@@ -909,14 +909,34 @@ class generic_potential():
             daisy = float(np.squeeze(self.Vdaisy(bosons0, bosonsT, Ta,
                                                  Pi=self.debye_massSq(X, Ta))))
             bath = float(np.squeeze(self.constantTerms(Ta, include_decoupled=False)))
-            # Modes that contribute to the daisy term, which is every boson with degrees of
-            # freedom and a mass squared that is not negative. Zero is kept: a massless mode
-            # is the lightest there is, and dropping it both misreads the lightest mass and,
-            # in a symmetric phase where every zero-temperature mass vanishes, left nothing to
-            # take a minimum over, so the ratio was discarded along with it.
+            # Modes that contribute to the daisy term: degrees of freedom, a mass squared
+            # that is not negative, and a Debye mass. All three are needed. A massless mode
+            # with a Debye mass is kept, because it is the lightest there is and dropping it
+            # both misreads the lightest mass and, in a symmetric phase where every
+            # zero-temperature mass vanishes, leaves nothing to take a minimum over, so the
+            # ratio is discarded along with it. A mode with no Debye mass is dropped however
+            # many degrees of freedom it has, because it adds exactly nothing to the term
+            # being judged: the transverse gauge bosons are massless and thermally uncorrected
+            # in every model here, and counting them pinned the lightest mass at zero and made
+            # the flag unable to fire at all.
+            #
+            # Whether a mode has a Debye mass is asked at the model's own scale rather than at
+            # `T`. It is a property of the mode, and at the temperatures this diagnostic
+            # exists for the difference of the two spectra has underflowed, which would make
+            # every mode look uncorrected.
             m2 = np.ravel(np.asarray(bosons0[0], dtype=float))
             dof = np.ravel(np.broadcast_to(np.asarray(bosons0[1], dtype=float), m2.shape))
-            contributing = np.isfinite(m2) & (m2 >= 0.0) & (dof != 0.0)
+            reference = float(getattr(self, "v_stable", 0.0) or 0.0) or float(T)
+            Tref = np.asarray([reference], dtype=float)
+            thermal_part = self.debye_massSq(X, Tref)
+            if thermal_part is None:
+                thermal_part = (np.asarray(self.boson_massSq(X, Tref)[0], dtype=float)
+                                - np.asarray(self.boson_massSq(X, Tref * 0.0)[0], dtype=float))
+            thermal_part = np.ravel(np.asarray(thermal_part, dtype=float))
+            if thermal_part.shape != m2.shape:
+                return False, float("nan")
+            contributing = (np.isfinite(m2) & (m2 >= 0.0) & (dof != 0.0)
+                            & np.isfinite(thermal_part) & (thermal_part != 0.0))
             m2 = m2[contributing]
             if m2.size == 0 or not np.isfinite(daisy) or not np.isfinite(bath) or bath == 0.0:
                 return False, float("nan")

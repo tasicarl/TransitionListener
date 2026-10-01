@@ -210,6 +210,26 @@ def test_smoke_sound_speed_diagnostics_are_populated(smoke_run: Path) -> None:
                 "daisy_over_radiation"):
         assert key in text, f"{key} missing: the sound-speed diagnostics did not run"
 
+    # Presence is not evidence. All four keys are registered with defaults, `nan` for the two
+    # numbers and False for the two flags, so every one of them appears in the output whether
+    # or not anything populated it. Only the two numbers can show that the observables
+    # actually ran the diagnostics, and only by coming back finite.
+    step_change = re.search(r"c_s_step_change\s+(\S+)", text)
+    assert step_change, "could not read the step-dependence diagnostic back"
+    try:
+        step_value = float(step_change.group(1))
+    except ValueError:
+        pytest.fail(
+            f"c_s_step_change was written as {step_change.group(1)!r} rather than a number, "
+            "so the observables did not populate it"
+        )
+    assert math.isfinite(step_value), (
+        "c_s_step_change came back as its registered nan default, so nothing populated it"
+    )
+    assert 0.0 <= step_value < 1.0e-3, (
+        f"unexpected step dependence on the example point: {step_value}"
+    )
+
     values = _parse_all_params(smoke_run)
     assert "c_s" in values, "c_s missing from the output"
 

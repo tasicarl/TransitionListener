@@ -441,12 +441,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   plasma, and the physically expected value there is the `1/sqrt(3)` of the radiation that is
   still relativistic. The flag is raised when the daisy term exceeds that radiation and the
   lightest mode has `m/T > 1`. The lightest mode is taken over every boson that contributes to
-  the daisy term, which is every one with degrees of freedom and a mass squared that is not
-  negative; massless modes are the lightest there are and are counted. Excluding them left a
-  symmetric phase, where every zero-temperature mass vanishes, with no modes at all, and the
-  ratio was discarded along with them in exactly the case a symmetric-phase refusal would want
-  it. On the conformal dark U(1) the symmetric phase now reports ratios of `0.005` to `0.01`
-  where it reported `nan`.
+  the daisy term, which is every one with degrees of freedom, a mass squared that is not
+  negative, and a Debye mass. All three are needed. A massless mode with a Debye mass is the
+  lightest there is and counts: excluding it left a symmetric phase, where every
+  zero-temperature mass vanishes, with no modes at all, and the ratio was discarded along with
+  them in exactly the case a symmetric-phase refusal would want it. On the conformal dark U(1)
+  the symmetric phase now reports ratios of `0.005` to `0.01` where it reported `nan`. A mode
+  with no Debye mass does not count, however many degrees of freedom it has, because it adds
+  exactly nothing to the term being judged: the transverse gauge bosons are massless and
+  thermally uncorrected in every model here, and counting them pinned the lightest mass at zero
+  and left the flag unable to fire at all. Whether a mode has a Debye mass is asked at the
+  model's own scale, since it is a property of the mode and at the temperatures this diagnostic
+  exists for the difference of the two spectra has underflowed.
 
   This is reported and not corrected. A resummation that is Boltzmann suppressed at low
   temperature would remove the artefact and is the subject of planned follow-up work; it is a
