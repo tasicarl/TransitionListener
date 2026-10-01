@@ -19,7 +19,7 @@ from transitionlistener.transitionObservables import _BoundedPchipInterpolator
 from . import thermodynamics as td
 from . import constants as cn
 from . import errors
-from transitionlistener.hydrodynamics import Hydrodynamics, calc_kappas
+from transitionlistener.hydrodynamics import Hydrodynamics, physical_sound_speed, calc_kappas
 from transitionlistener.bubbledynamics import (
     falseVacuumVolumeGrowthRate,
     integrate_broken_temperature,
@@ -233,6 +233,7 @@ class TransitionObservables:
         """Prepare reusable data structures for a single transition."""
         derived_params = {
             "WARNING:too_weak_to_compute_perc": False,
+            "WARNING:unphysical_c_s": False,
             "WARNING:no_perc_splines": False,
             "WARNING:false_vacuum_not_shrinking": False,
             "WARNING:betaH_small": False,
@@ -303,9 +304,14 @@ class TransitionObservables:
             hydr = Hydrodynamics(ctx.pot, ctx.phase_symmetric, ctx.phase_broken, ctx.verbose)
             c_sb = hydr.calc_cs(T, sym=False)
             c_ss = hydr.calc_cs(T, sym=True)
-            derived["c_s"] = c_sb
+            # The same guard as in the adaptive solver: `c_s` feeds the expansion speed of
+            # the bubbles and the spectrum, so it has to be a speed, while `c_s_bro` keeps
+            # the computed number.
+            usable, replaced = physical_sound_speed(c_sb)
+            derived["c_s"] = usable
             derived["c_s_sym"] = c_ss
             derived["c_s_bro"] = c_sb
+            derived["WARNING:unphysical_c_s"] = bool(replaced)
         else:
             cs = 0.0
             try:

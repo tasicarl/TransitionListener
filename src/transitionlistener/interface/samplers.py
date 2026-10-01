@@ -538,6 +538,7 @@ def get_empty_result() -> dict:
            'WARNING:action_rescue_failed': False,
            'DIAG:action_rescue_attempts': 0,
            'DIAG:runtime_s': np.nan,
+           'WARNING:unphysical_c_s': False,
            'WARNING:entropy_scheme_sensitive': False,
            'DIAG:entropy_scheme_cs2_spread': np.nan,
            'DIAG:entropy_scheme_lna_gap': np.nan,

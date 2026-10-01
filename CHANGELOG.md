@@ -193,6 +193,36 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A sound speed that is not a speed no longer sets the expansion speed of the bubbles.**
+  `c_s` is taken as `c_s^2 = (dV/dT)/(T d2V/dT2)` by finite differences of the full
+  potential. Under extreme supercooling the thermal part of the potential sits below double
+  precision against the vacuum energy, `Tperc^4/Delta V` reaching `1e-16` to `1e-20`, and
+  those differences return round-off; the cases that come out as zero over zero or negative
+  were already turned into not-a-number, but a finite round-off value was not, and values
+  above one were seen. Since the bubbles grow at `max(v_wall, c_s)`, such a value replaces
+  the wall velocity, and for a runaway wall it inflates `(beta/H)_RH` by the factor `c_s`.
+  On a classically conformal dark U(1) scan reaching percolation temperatures of `1e-8` of
+  the scale, 7 of the 264 points with a finite sound speed came out between 1.01 and 1.71,
+  and `(beta/H)_RH` there was 2.3% to 69.5% above a direct integration of the false-vacuum
+  fraction while `Tperc`, which does not use the sound speed, agreed to 0.8%.
+
+  `hydrodynamics.physical_sound_speed` now replaces a value that is not a speed, meaning
+  not-a-number, infinite, non-positive or `c_s >= 1`, with the massless value `1/sqrt(3)`,
+  in both solvers. `c_s_bro` keeps the computed number, so the output still shows what the
+  potential gave, and `WARNING:unphysical_c_s` says when the replacement happened.
+
+  **Only values that are not speeds are replaced, and that is deliberate.** A plasma whose
+  particles have masses has `c_s^2 < 1/3`, reaching `1/3` only in the massless limit and
+  from below, as the lattice equation of state of quantum chromodynamics shows across the
+  whole crossover (arXiv:1309.5258, arXiv:1407.6387). Clamping at `1/sqrt(3)` would
+  therefore be the physical bound, but it fires on 108 of 286 campaign runs, where the
+  excess is 4e-5 to 5e-4 and is finite-difference accuracy rather than round-off, and on the
+  example point of `examples/example_point.yaml`, whose sound speed is 0.58951, 2.1% above
+  `1/sqrt(3)`. Those points have `c_s` below both one and the wall velocity, so the bubble
+  separation is untouched, but the efficiency factors and the spectrum would move. The
+  tighter bound needs its own measurement and is left to a change of its own. With the guard
+  as it stands the example point is byte-identical with it switched off.
+
 - **A timed-out point no longer comes back as a number**: `g_eff_DS` and `h_eff_DS`
   caught `BaseException` around the phase evaluation and substituted the `T = 0`
   vev, which absorbed the run's own `Timeout` and turned a timed-out point into a

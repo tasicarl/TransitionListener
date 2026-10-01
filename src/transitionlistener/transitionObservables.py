@@ -19,7 +19,7 @@ from transitionlistener.transitions import TransitionInfo
 from . import thermodynamics as td
 from . import constants as cn
 from . import errors
-from transitionlistener.hydrodynamics import Hydrodynamics, calc_kappas
+from transitionlistener.hydrodynamics import Hydrodynamics, physical_sound_speed, calc_kappas
 from transitionlistener.bubbledynamics import (
     calcPercAndEvolve,
     calcAlphas,
@@ -424,6 +424,7 @@ class TransitionObservables:
         """Prepare reusable data structures for a single transition."""
         derived_params = {
             "WARNING:too_weak_to_compute_perc": False,
+            "WARNING:unphysical_c_s": False,
             "WARNING:no_perc_splines": False,
             "WARNING:false_vacuum_not_shrinking": False,
             "WARNING:betaH_small": False,
@@ -498,9 +499,20 @@ class TransitionObservables:
             hydr = Hydrodynamics(ctx.pot, ctx.phase_symmetric, ctx.phase_broken, ctx.verbose)
             c_sb = hydr.calc_cs(temperature, sym=False)
             c_ss = hydr.calc_cs(temperature, sym=True)
-            derived["c_s"] = c_sb
+            # `c_s` is what the expansion speed of the bubbles, max(v_wall, c_s), the
+            # efficiency factors and the spectrum are built from, so it has to be a speed.
+            # `c_s_bro` keeps the computed number, so the output still shows what the
+            # potential gave.
+            usable, replaced = physical_sound_speed(c_sb)
+            derived["c_s"] = usable
             derived["c_s_sym"] = c_ss
             derived["c_s_bro"] = c_sb
+            derived["WARNING:unphysical_c_s"] = bool(replaced)
+            if replaced and ctx.verbose:
+                print(f"WARNING: the broken-phase sound speed came out as {c_sb}, which is "
+                      f"not a speed; using the radiation value {usable:.6f} for the bubble "
+                      "expansion speed, the efficiency factors and the spectrum. The "
+                      "computed value is still reported as c_s_bro.")
         elif GWconfig.sound_speed == "1/3":
             value = 1 / np.sqrt(3)
             derived["c_s"] = value

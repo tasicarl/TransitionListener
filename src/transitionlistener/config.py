@@ -228,6 +228,8 @@ all_observables = {
     "WARNING:action_rescue_failed": R"$\mathrm{WARNING:} \mathrm{action\ rescue\ failed}$",
     "DIAG:action_rescue_attempts": R"$\mathrm{DIAG:} \mathrm{actions\ recomputed}$",
     "DIAG:runtime_s": R"$\mathrm{DIAG:} \mathrm{runtime\ [s]}$",
+    "WARNING:unphysical_c_s":
+        R"$\mathrm{WARNING:} c_\mathrm{s} \mathrm{\ not\ a\ speed}$",
     "WARNING:entropy_scheme_sensitive":
         R"$\mathrm{WARNING:} \mathrm{entropy\ scheme\ matters}$",
     "DIAG:entropy_scheme_cs2_spread": R"$\mathrm{DIAG:} \Delta(3c_s^2)/3c_s^2$",

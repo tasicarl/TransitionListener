@@ -79,6 +79,46 @@ def kappa_sw(alpha : float, vw: float, cs: float) -> float:
         return num / denom
 
 
+RADIATION_SOUND_SPEED = 1.0 / np.sqrt(3.0)
+"""Sound speed of a massless plasma, the fallback where the computed value is not a speed."""
+
+
+def physical_sound_speed(c_s) -> tuple[float, bool]:
+    """Return ``(c_s, replaced)`` with a value that can be used as a speed.
+
+    ``calc_cs`` takes ``c_s^2 = (dV/dT)/(T d2V/dT2)`` by finite differences of the full
+    potential. Under extreme supercooling the thermal part of the potential sits below double
+    precision against the vacuum energy, ``Tperc^4/Delta V`` reaching ``1e-16`` to ``1e-20``,
+    and those differences return round-off. Values that come out as zero over zero or
+    negative are already turned into not-a-number upstream; a finite round-off value is not,
+    and values above one have been seen.
+
+    That matters because the expansion speed of the bubbles is ``max(v_wall, c_s)``, so a
+    superluminal value replaces the wall velocity and inflates ``(beta/H)_RH`` by ``c_s``.
+    On a classically conformal dark U(1) scan reaching ``Tperc`` of ``1e-8`` of the scale, 7
+    of 264 points with a finite sound speed came out between 1.01 and 1.71, and ``(beta/H)_RH``
+    there was 2.3% to 69.5% above a direct integration of the false-vacuum fraction.
+
+    Only values that are not speeds are replaced: not-a-number, infinite, non-positive, and
+    ``c_s >= 1``. A plasma whose particles have masses in fact has ``c_s^2 < 1/3``, reaching
+    ``1/3`` only in the massless limit and from below, as the lattice equation of state of
+    quantum chromodynamics shows across the whole crossover (arXiv:1309.5258,
+    arXiv:1407.6387). Clamping at ``1/sqrt(3)`` would therefore be the physical bound, but it
+    fires on 108 of 286 ordinary campaign runs, where the excess is 4e-5 to 5e-4 above
+    ``1/sqrt(3)`` and is finite-difference accuracy rather than round-off. Those points have
+    ``c_s`` below both one and the wall velocity, so the bubble separation is untouched, but
+    the efficiency factors and the spectrum of electroweak two-Higgs-doublet benchmarks would
+    move. The tighter bound needs its own measurement and is left to a change of its own.
+    """
+    try:
+        value = float(c_s)
+    except (TypeError, ValueError):
+        return RADIATION_SOUND_SPEED, True
+    if not np.isfinite(value) or value <= 0.0 or value >= 1.0:
+        return RADIATION_SOUND_SPEED, True
+    return value, False
+
+
 class Hydrodynamics():
     """Provide hydrodynamic solutions for expanding first-order phase transition bubbles."""
 
