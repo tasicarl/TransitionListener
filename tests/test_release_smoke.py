@@ -198,22 +198,40 @@ def test_smoke_entropy_scheme_diagnostics_are_populated(smoke_run: Path) -> None
     )
 
 
-def test_smoke_sound_speed_guard_reports_itself(smoke_run: Path) -> None:
-    """The guard has to run in a real run, not only in its unit tests.
+def test_smoke_sound_speed_diagnostics_are_populated(smoke_run: Path) -> None:
+    """The caller boundary, exercised by a real run rather than read from the source.
 
-    The unit tests call `_ensure_sound_speed` on a context they build themselves, so deleting
-    the call from the solver left the suite green. The example point already runs here.
+    The sound-speed flags are set in `_ensure_sound_speed`. Unit tests of the functions
+    behind them cannot tell whether the observables still call them, and a source-text
+    assertion would pass if they stopped. The example point already runs here.
     """
     text = smoke_run.read_text()
-    assert "unphysical_c_s" in text, (
-        "WARNING:unphysical_c_s missing: the sound-speed guard did not run"
-    )
+    for key in ("noisy_c_s", "c_s_step_change", "daisy_outside_validity",
+                "daisy_over_radiation"):
+        assert key in text, f"{key} missing: the sound-speed diagnostics did not run"
+
     values = _parse_all_params(smoke_run)
     assert "c_s" in values, "c_s missing from the output"
-    # This point has an ordinary thermal broken phase, so the guard must not have fired.
-    flag = re.search(r"unphysical_c_s\s+(\S+)", text)
-    assert flag and flag.group(1) == "False", (
-        f"the guard fired on the example point: {flag.group(1) if flag else None}"
+
+    # This point has an ordinary thermal broken phase well inside the daisy term's domain,
+    # so neither flag may fire.
+    for key in ("noisy_c_s", "daisy_outside_validity"):
+        flag = re.search(key + r"\s+(\S+)", text)
+        assert flag and flag.group(1) == "False", (
+            f"{key} fired on the example point: {flag.group(1) if flag else None}"
+        )
+
+    ratio = re.search(r"daisy_over_radiation\s+(\S+)", text)
+    assert ratio, "could not read the daisy ratio back"
+    try:
+        value = float(ratio.group(1))
+    except ValueError:
+        pytest.fail(
+            f"the daisy ratio was written as {ratio.group(1)!r} rather than a number, so "
+            "the observables did not populate it"
+        )
+    assert math.isfinite(value) and 0.0 < value < 1.0, (
+        f"unexpected daisy-to-radiation ratio on the example point: {value}"
     )
 
 

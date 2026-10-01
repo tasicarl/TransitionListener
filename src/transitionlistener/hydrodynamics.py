@@ -17,6 +17,8 @@ Authors of the hydrodynamics routines:
 """
 
 import numpy as np
+
+from transitionlistener import errors
 from scipy.integrate import solve_ivp, simpson
 from scipy.optimize import root_scalar
 
@@ -82,58 +84,11 @@ def kappa_sw(alpha : float, vw: float, cs: float) -> float:
 RADIATION_SOUND_SPEED = 1.0 / np.sqrt(3.0)
 """Sound speed of a massless plasma, the fallback where the computed value is not a speed."""
 
+SOUND_SPEED_STEP_RATIO = 10.0
+"""Factor by which the derivative step is varied to test a sound speed for step dependence."""
 
-def physical_sound_speed(c_s: float | None) -> tuple[float, bool]:
-    """Return ``(c_s, replaced)`` with a value that can be used as a speed.
-
-    ``calc_cs`` takes ``c_s^2 = (dV/dT)/(T d2V/dT2)`` by finite differences of the full
-    potential. Under extreme supercooling the thermal part of the potential sits below double
-    precision against the vacuum energy, ``Tperc^4/Delta V`` reaching ``1e-16`` to ``1e-20``,
-    and those differences return round-off. Values that come out as zero over zero or
-    negative are already turned into not-a-number upstream; a finite round-off value is not,
-    and values above one have been seen.
-
-    That matters because the expansion speed of the bubbles is ``max(v_wall, c_s)``, so a
-    superluminal value replaces the wall velocity and inflates ``(beta/H)_RH`` by ``c_s``.
-    On a classically conformal dark U(1) scan reaching ``Tperc`` of ``1e-8`` of the scale, 7
-    of 264 points with a finite sound speed came out between 1.01 and 1.71, and ``(beta/H)_RH``
-    there was 2.3% to 69.5% above a direct integration of the false-vacuum fraction.
-
-    Only values that are not speeds are replaced: not-a-number, infinite, non-positive, and
-    ``c_s >= 1``. Since the expansion speed is ``max(v_wall, c_s)``, the inflation factor is
-    ``c_s/v_wall``, which is ``c_s`` for a runaway wall.
-
-    A plasma whose particles have masses in fact has ``c_s^2 < 1/3``, reaching ``1/3`` only
-    in the massless limit and from below, as the lattice equation of state of quantum
-    chromodynamics shows (arXiv:1309.5258, arXiv:1407.6387). Clamping at ``1/sqrt(3)`` would
-    therefore be the physical bound, and it is deliberately not done here, for two reasons.
-
-    It fires on 108 of 286 campaign runs, and on the example point of
-    ``examples/example_point.yaml``, whose broken-phase sound speed is 0.589508, 2.1% above
-    ``1/sqrt(3)``. That value is not stencil noise: it is stable to six digits over
-    temperature steps from ``dT/T = 1e-3`` to ``1e-1``, so it is a property of the effective
-    potential, and clamping would override a converged number.
-
-    And on that point the clamp moves the spectrum: the sound-wave peak frequency by -2.7%,
-    the peak amplitude by +0.4%, one pulsar-timing signal-to-noise ratio by +3.4%, and one
-    detectability verdict from false to true. The efficiency factors do not move there,
-    because ``v_wall = 1`` exceeds the sound speed either way, but they do depend on it for a
-    wall slower than the sound speed. The tighter bound therefore needs its own measurement.
-
-    What this does not do is detect the round-off regime. A value can be round-off and still
-    be a speed: on the conformal dark U(1) at a temperature where ``T^4/Delta V`` is 2.8e-16,
-    the computed ``c_s`` is 0.82 and swings over ``c_s^2 = -0.001`` to ``0.89`` with the step,
-    yet it passes this guard untouched. Catching that needs the temperature derivatives of
-    the thermal part of the potential alone, without the vacuum energy that cancels in them,
-    which is a change to the thermodynamics rather than a guard.
-    """
-    try:
-        value = float(c_s)
-    except (TypeError, ValueError):
-        return RADIATION_SOUND_SPEED, True
-    if not np.isfinite(value) or value <= 0.0 or value >= 1.0:
-        return RADIATION_SOUND_SPEED, True
-    return value, False
+SOUND_SPEED_JUMP_TOLERANCE = 0.05
+"""Relative change of ``c_s`` under that step change above which the value is called noisy."""
 
 
 class Hydrodynamics():
@@ -174,11 +129,24 @@ class Hydrodynamics():
         float
             speed of sound in the broken phase.
         """
+        return self._calc_cs_at_step(T, sym)[0]
+
+    def _calc_cs_at_step(self, T: float, sym: bool, step_factor: float = 1.0):
+        """``calc_cs`` with the derivative step scaled, for the step-dependence check."""
         phase = self.high_phase if sym else self.low_phase
         phi = phase.valAt(T)
-        dT = _local_temperature_step(self.pot, T, phi)
-        dVdT = self.pot.dVdT(phi, T, dT=dT, include_decoupled=False)
-        ddVdT = self.pot.d2VdT2(phi, T, dT=dT, include_decoupled=False)
+        dT = _local_temperature_step(self.pot, T, phi) * float(step_factor)
+        # Differentiate the temperature-dependent part of the potential, not the whole of
+        # it. The two are the same analytically, since what does not depend on temperature
+        # drops out of both derivatives, and differ numerically: taking them on the whole
+        # potential subtracts the vacuum energy from itself, and under supercooling that
+        # vacuum energy is the larger by ten or more orders of magnitude. Measured on the
+        # conformal dark U(1) of `examples/example_point.yaml`, the whole-potential route
+        # degrades from a temperature of 5e-4 of the scale, returns 0.19 and 0.02 where the
+        # answer is 0.70, and gives nothing at all below 1e-6; the thermal part stays good
+        # to a temperature of 2.75e-9 of the scale, the lowest tested.
+        dVdT = self.pot.dV_thermal_dT(phi, T, dT=dT)
+        ddVdT = self.pot.d2V_thermal_dT2(phi, T, dT=dT)
         # Once a phase has frozen out both derivatives vanish and this is 0/0, which raises
         # for plain floats and warns for numpy scalars; and where the ratio is negative the
         # square root is not a number either. A phase without a plasma has no sound speed, so
@@ -186,6 +154,11 @@ class Hydrodynamics():
         with np.errstate(divide="ignore", invalid="ignore"):
             cs_sq = np.asarray(dVdT, dtype=float) / (float(T) * np.asarray(ddVdT, dtype=float))
         cs_sq = float(np.squeeze(cs_sq))
+        if np.isfinite(cs_sq) and cs_sq >= 1.0:
+            # Not a speed. Refused rather than replaced: which thermodynamics the model has
+            # is the user's choice, and substituting one here would hide the fact that this
+            # potential, as evaluated, does not have a sound speed at this temperature.
+            raise errors.SuperluminalSoundSpeedError(float(np.sqrt(cs_sq)), T)
         if not np.isfinite(cs_sq) or cs_sq <= 0.0:
             if self.verbose:
                 phase_name = "symmetric" if sym else "broken"
@@ -193,8 +166,29 @@ class Hydrodynamics():
                     f"No usable {phase_name}-phase sound speed at T = {T}: "
                     f"c_s^2 = {cs_sq}; returning nan."
                 )
-            return float("nan")
-        return float(np.sqrt(cs_sq))
+            return float("nan"), dT
+        return float(np.sqrt(cs_sq)), dT
+
+    def sound_speed_is_step_dependent(self, T: float, sym: bool) -> tuple[bool, float]:
+        """Whether the sound speed at ``T`` changes when the derivative step is changed.
+
+        A value can be round-off and still be a speed, so no test on the value itself can
+        find it. Under extreme supercooling the thermal part of the potential sits far below
+        the vacuum energy and the finite differences lose their significant digits; what
+        comes back is then a number that moves when the step moves. Measured on the conformal
+        dark U(1), at a temperature where the thermal part is 2.8e-16 of the vacuum energy,
+        ``c_s`` comes out as 0.82 while ``c_s^2`` ranges over -0.001 to 0.89 across steps
+        from ``dT/T = 1e-3`` to ``2e-1``: perfectly subluminal, and meaningless.
+
+        Returns ``(noisy, relative_change)``. A sound speed that cannot be computed at either
+        step is not called noisy; it is already reported as not-a-number.
+        """
+        base, _ = self._calc_cs_at_step(T, sym, 1.0)
+        other, _ = self._calc_cs_at_step(T, sym, SOUND_SPEED_STEP_RATIO)
+        if not (np.isfinite(base) and np.isfinite(other)) or base <= 0.0:
+            return False, float("nan")
+        change = abs(other / base - 1.0)
+        return bool(change > SOUND_SPEED_JUMP_TOLERANCE), float(change)
 
     def calcWallVelocityLTE(self, Tn: float) -> float:
         """Calculate the wall velocity in local thermal equilibrium (LTE).

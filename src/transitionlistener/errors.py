@@ -77,6 +77,28 @@ class DeformationError(Exception):
         """Initialise the error with the convergence diagnostic message."""
         super().__init__(message)
 
+class SuperluminalSoundSpeedError(Exception):
+    """The effective potential gave a sound speed of one or more.
+
+    ``c_s^2 = (dV/dT)/(T d2V/dT2)`` of the broken phase sets the speed at which the bubbles
+    grow, ``max(v_wall, c_s)``, the efficiency factors and the spectrum. A value of one or
+    more is not a speed, so nothing downstream of it has a meaning: for a runaway wall it
+    replaces the wall velocity and multiplies ``(beta/H)_RH`` by ``c_s``, and the spectrum
+    divides by ``v_wall - c_s``. Rather than substitute a number the model did not give, the
+    point is refused and the computation that produced it is reported.
+    """
+
+    def __init__(self, c_s, T, message=None):
+        self.c_s = c_s
+        self.T = T
+        super().__init__(message or (
+            f"The broken-phase sound speed came out as {c_s} at T = {T}, which is not a "
+            "speed. The effective potential, or the precision it is evaluated with, cannot "
+            "support a sound speed here; run with GWconfig.sound_speed = '1/3' to use the "
+            "radiation value instead, or check the model."
+        ))
+
+
 class PotentialError(Exception):
     """
     Used when the potential does not have the expected characteristics.

@@ -19,7 +19,7 @@ from transitionlistener.transitionObservables import _BoundedPchipInterpolator
 from . import thermodynamics as td
 from . import constants as cn
 from . import errors
-from transitionlistener.hydrodynamics import Hydrodynamics, physical_sound_speed, calc_kappas
+from transitionlistener.hydrodynamics import Hydrodynamics, calc_kappas
 from transitionlistener.bubbledynamics import (
     falseVacuumVolumeGrowthRate,
     integrate_broken_temperature,
@@ -233,7 +233,10 @@ class TransitionObservables:
         """Prepare reusable data structures for a single transition."""
         derived_params = {
             "WARNING:too_weak_to_compute_perc": False,
-            "WARNING:unphysical_c_s": False,
+            "WARNING:noisy_c_s": False,
+            "DIAG:c_s_step_change": float("nan"),
+            "WARNING:daisy_outside_validity": False,
+            "DIAG:daisy_over_radiation": float("nan"),
             "WARNING:no_perc_splines": False,
             "WARNING:false_vacuum_not_shrinking": False,
             "WARNING:betaH_small": False,
@@ -307,16 +310,21 @@ class TransitionObservables:
             # The same guard as in the adaptive solver: `c_s` feeds the expansion speed of
             # the bubbles and the spectrum, so it has to be a speed, while `c_s_bro` keeps
             # the computed number.
-            usable, replaced = physical_sound_speed(c_sb)
-            derived["c_s"] = usable
+            derived["c_s"] = c_sb
             derived["c_s_sym"] = c_ss
             derived["c_s_bro"] = c_sb
-            derived["WARNING:unphysical_c_s"] = bool(replaced)
-            if replaced and ctx.verbose:
-                print(f"WARNING: the broken-phase sound speed came out as {c_sb}, which is "
-                      f"not a speed; using the radiation value {usable:.6f} for the bubble "
-                      "expansion speed, the efficiency factors and the spectrum. The "
-                      "computed value is still reported as c_s_bro.")
+            # A value can be round-off and still be a speed, so no test on the value finds
+            # it. Ask whether it survives a change of the derivative step instead.
+            noisy, change = hydr.sound_speed_is_step_dependent(T, sym=False)
+            derived["WARNING:noisy_c_s"] = bool(noisy)
+            derived["DIAG:c_s_step_change"] = float(change)
+            # Where the daisy resummation is used outside its own domain the plasma's
+            # thermodynamics, and with it this sound speed, is the prescription's rather
+            # than the model's.
+            outside, ratio = ctx.pot.daisy_outside_validity(
+                ctx.phase_broken.valAt(T), T)
+            derived["WARNING:daisy_outside_validity"] = bool(outside)
+            derived["DIAG:daisy_over_radiation"] = float(ratio)
         else:
             cs = 0.0
             try:

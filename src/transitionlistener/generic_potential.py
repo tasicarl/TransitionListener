@@ -57,6 +57,55 @@ from transitionlistener.particles import (
 )
 
 
+def _daisy_mass_cubed_difference(m20, m2T, Pi=None):
+    r"""Return ``(m_T^2)^{3/2} - (m_0^2)^{3/2}`` without losing significant digits.
+
+    The daisy term of the Arnold-Espinosa resummation is proportional to this difference.
+    Written out directly it subtracts two nearly equal numbers whenever the thermal
+    correction is small against the mass itself, which is the whole low-temperature regime:
+    on the conformal dark U(1) of ``examples/example_point.yaml`` at an internal temperature
+    of 0.02, the two cubes are about ``1e9`` in internal units while their difference is
+    about ``0.3``, so ten of the sixteen digits are gone before anything else happens. The
+    potential itself tolerates that; its second temperature derivative does not, and the
+    sound speed divides by exactly that second derivative. Measured there, the second
+    derivative of the daisy term used to change by 60% when the derivative step was changed
+    by a factor ten, and now changes by 2e-11.
+
+    Two things are needed. The difference is written as
+    ``(m_0^2)^{3/2} [(1 + u)^{3/2} - 1]`` with ``u = Pi/m_0^2``, and the bracket is evaluated
+    as ``expm1(1.5 log1p(u))``, which has no cancellation. And that evaluation is kept in
+    real arithmetic: numpy's complex ``log1p`` and ``expm1`` lose accuracy for small
+    arguments, by a relative ``8e-8`` at ``u = 1e-9`` against ``1e-16`` for the real ones, so
+    the ``+0j`` that exists only to admit tachyonic modes must not be applied to the modes
+    that are fine. Negative ``m_0^2``, and a thermal correction that is not small, keep the
+    direct complex form, where there is nothing to cancel.
+    """
+    m20 = np.asarray(m20)
+    m2T = np.asarray(m2T)
+    out = np.empty(np.broadcast(m20, m2T).shape, dtype=complex)
+    m20b, m2Tb = np.broadcast_arrays(m20, m2T)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        positive = np.asarray(np.real(m20b) > 0.0)
+        u = np.zeros(out.shape, dtype=float)
+        # `Pi` given analytically is exact; taken as a difference it keeps only the digits
+        # by which the two spectra differ, and underflows to zero at low temperature.
+        thermal = (np.real(np.broadcast_to(Pi, out.shape)) if Pi is not None
+                   else np.real(m2Tb) - np.real(m20b))
+        np.divide(thermal, np.real(m20b), out=u, where=positive)
+        # Only where the correction is genuinely small is the rearrangement worth it; the
+        # threshold is where the direct form still has about half its digits.
+        small = positive & (np.abs(u) < 1.0e-2)
+    if np.any(small):
+        base = np.real(m20b)[small] ** 1.5
+        out[small] = base * np.expm1(1.5 * np.log1p(u[small]))
+    rest = ~small
+    if np.any(rest):
+        hot = (np.real(m20b) + np.real(np.broadcast_to(Pi, out.shape))
+               if Pi is not None else m2Tb)
+        out[rest] = pow(hot[rest] + 0j, 1.5) - pow(m20b[rest] + 0j, 1.5)
+    return out
+
+
 class generic_potential():
     """
     An abstract class from which one can easily create finite-temperature
@@ -742,7 +791,7 @@ class generic_potential():
             y += self.V1T(bosonsT, fermions, T)
         elif self.daisy == "ArnoldEspinosa":
             # Carrington (1992), Arnold and Espinosa (1992) prescription. Zero modes only.
-            Vdaisy = self.Vdaisy(bosons0, bosonsT, T)
+            Vdaisy = self.Vdaisy(bosons0, bosonsT, T, Pi=self.debye_massSq(X, T))
             y += self.V1T(bosons0, fermions, T) + Vdaisy
 
         # Add field-independent terms, so that the energy density can be computed
@@ -752,7 +801,109 @@ class generic_potential():
 
         return y
 
-    def Vdaisy(self, bosons0, bosonsT , T: float | np.ndarray
+    def V_thermal(self, X: np.ndarray, T: float | np.ndarray) -> float | np.ndarray:
+        """The temperature-dependent part of the effective potential, on its own.
+
+        ``Vtot`` is ``V0 + V1 + Vct`` plus this. The first three do not depend on the
+        temperature, so they drop out of every temperature derivative analytically, but not
+        numerically: forming the sum first and differencing afterwards subtracts the vacuum
+        energy from itself, and under supercooling the thermal part is ten or more orders of
+        magnitude smaller. On the conformal dark U(1) of ``examples/example_point.yaml`` the
+        thermal part is ``7e-4`` of the vacuum energy at the percolation temperature and
+        ``1e-13`` of it two decades below, where a second temperature derivative of the whole
+        potential has no significant digits left.
+        """
+        Ta = np.asarray(T, dtype=float)
+        bosons0 = self.boson_massSq(X, Ta * 0.0)
+        bosonsT = self.boson_massSq(X, Ta)
+        fermions = self.fermion_massSq(X)
+        if self.daisy == "off":
+            y = self.V1T(bosons0, fermions, Ta)
+        elif self.daisy == "Parwani":
+            y = self.V1T(bosonsT, fermions, Ta)
+        elif self.daisy == "ArnoldEspinosa":
+            y = self.V1T(bosons0, fermions, Ta) + self.Vdaisy(
+                bosons0, bosonsT, Ta, Pi=self.debye_massSq(X, Ta))
+        else:
+            raise errors.PotentialError(
+                f"Unknown daisy resummation scheme {self.daisy!r}.")
+        return y + self.constantTerms(Ta, include_decoupled=False)
+
+    def dV_thermal_dT(self, X: np.ndarray, T: float, dT: float):
+        """First temperature derivative of :func:`V_thermal`, by central difference."""
+        return (self.V_thermal(X, T + dT) - self.V_thermal(X, T - dT)) / (2.0 * dT)
+
+    def d2V_thermal_dT2(self, X: np.ndarray, T: float, dT: float):
+        """Second temperature derivative of :func:`V_thermal`, by central difference."""
+        return (self.V_thermal(X, T + dT) - 2.0 * self.V_thermal(X, T)
+                + self.V_thermal(X, T - dT)) / (dT * dT)
+
+    def daisy_outside_validity(self, X: np.ndarray, T: float) -> tuple[bool, float]:
+        """Whether the daisy resummation is being used where it does not apply.
+
+        The Arnold-Espinosa term resums the zero Matsubara mode of the bosons, which is
+        justified where that mode is infrared-enhanced, meaning ``m << T``. Where instead
+        ``m >> T`` a mode should be Boltzmann suppressed, and the one-loop thermal integral
+        is: ``V1T`` goes to exactly zero. The daisy term does not. With a thermal correction
+        ``Pi`` small against ``m^2`` it tends to ``-(T^3/8 pi) sum n_i c_i m_i``, a power law
+        with no ``exp(-m/T)`` in it, so it survives where the physics says it should not and
+        eventually exceeds the radiation that is still relativistic.
+
+        Measured on the conformal dark U(1) of ``examples/example_point.yaml``: the daisy term
+        is 7% of the field-independent radiation at ``T/v = 1e-1``, equal to it at about
+        ``1e-2``, thirteen times it at ``1e-3`` and ten million times it at ``1e-9``, while
+        the lightest mode runs from ``m/T = 1.3`` to ``1.3e8``. Where it dominates, the free
+        energy goes as ``T^3`` rather than ``T^4`` and the sound speed of the plasma tends to
+        ``1/sqrt(2)`` instead of the ``1/sqrt(3)`` of the radiation that is actually there.
+        A sound speed above ``1/sqrt(3)`` in a late, cold, heavily supercooled phase is
+        therefore this, and not a property of the plasma.
+
+        This is reported and not corrected. Which resummation a model uses is the user's
+        choice, and a prescription that is Boltzmann suppressed at low temperature is a change
+        to the thermodynamics rather than a guard; it is left to a change of its own.
+
+        Returns ``(outside, ratio)`` with the ratio of the daisy term to the field-independent
+        radiation. ``(False, nan)`` where it cannot be decided.
+        """
+        try:
+            Ta = np.asarray([float(T)], dtype=float)
+            X = np.asarray(X)
+            bosons0 = self.boson_massSq(X, Ta * 0.0)
+            bosonsT = self.boson_massSq(X, Ta)
+            daisy = float(np.squeeze(self.Vdaisy(bosons0, bosonsT, Ta,
+                                                 Pi=self.debye_massSq(X, Ta))))
+            bath = float(np.squeeze(self.constantTerms(Ta, include_decoupled=False)))
+            m2 = np.ravel(np.asarray(bosons0[0], dtype=float))
+            m2 = m2[np.isfinite(m2) & (m2 > 0.0)]
+            if m2.size == 0 or not np.isfinite(daisy) or not np.isfinite(bath) or bath == 0.0:
+                return False, float("nan")
+            ratio = abs(daisy) / abs(bath)
+            lightest_over_T = float(np.sqrt(m2.min())) / float(T)
+            # Both conditions: at high temperature the daisy term is legitimate and also
+            # goes as T^4, so a large ratio alone is not the signature.
+            return bool(ratio > 1.0 and lightest_over_T > 1.0), float(ratio)
+        except Exception:
+            return False, float("nan")
+
+    def debye_massSq(self, X: np.ndarray, T: float | np.ndarray):
+        """The thermal part of the boson masses squared, if the model can give it directly.
+
+        Return an array shaped like the boson mass spectrum, or ``None`` when the model does
+        not provide one. ``None`` is the default and reproduces the previous behaviour, where
+        the daisy term takes the thermal part as the difference of the spectra at ``T`` and at
+        zero.
+
+        That difference is badly conditioned, and the daisy term is the one place it matters.
+        On the conformal dark U(1) of ``examples/example_point.yaml``, at an internal
+        temperature of 0.02, the masses squared are about ``5e4`` while their thermal part is
+        about ``5e-5``, so the subtraction keeps seven of sixteen digits; by an internal
+        temperature of ``1e-7`` it keeps none and the thermal part underflows to exactly zero,
+        which silently removes the daisy term altogether. A model that builds its masses as
+        ``m^2(X) + Pi(T)`` already holds ``Pi`` and can hand it over exactly.
+        """
+        return None
+
+    def Vdaisy(self, bosons0, bosonsT , T: float | np.ndarray, Pi=None
                ) -> float | np.ndarray:
         """
         Calculate the daisy resummation term for the Arnold-Espinosa
@@ -769,7 +920,8 @@ class generic_potential():
         m20, nb, _, _ = bosons0
         m2T, _, _, _ = bosonsT
 
-        y = np.real(-(T/(12.*np.pi))*np.sum(nb * (pow(m2T+0j, 1.5) - pow(m20+0j, 1.5)), axis=-1))
+        y = np.real(-(T/(12.*np.pi))
+                    * np.sum(nb * _daisy_mass_cubed_difference(m20, m2T, Pi), axis=-1))
         return y
 
     def Vdaisy_from_X(self, X,  T: float | np.ndarray,

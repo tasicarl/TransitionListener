@@ -193,61 +193,77 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **A sound speed that is not a speed no longer sets the expansion speed of the bubbles.**
-  `c_s` is taken as `c_s^2 = (dV/dT)/(T d2V/dT2)` by finite differences of the full
-  potential. Under extreme supercooling the thermal part of the potential sits below double
-  precision against the vacuum energy, `Tperc^4/Delta V` reaching `1e-16` to `1e-20`, and
-  those differences return round-off; the cases that come out as zero over zero or negative
-  were already turned into not-a-number, but a finite round-off value was not, and values
-  above one were seen. Since the bubbles grow at `max(v_wall, c_s)`, such a value replaces
-  the wall velocity, and for a runaway wall it inflates `(beta/H)_RH` by the factor `c_s`.
-  On a classically conformal dark U(1) scan reaching percolation temperatures of `1e-8` of
-  the scale, 7 of the 264 points with a finite sound speed came out between 1.01 and 1.71,
-  and `(beta/H)_RH` there was 2.3% to 69.5% above a direct integration of the false-vacuum
-  fraction while `Tperc`, which does not use the sound speed, agreed to 0.8%.
+- **The daisy term is evaluated without throwing away its significant digits, and the sound
+  speed is taken from the thermal part of the potential.** Both are numerics: the same
+  expressions, evaluated so that they keep their accuracy. Three cancellations stood on top of
+  one another.
 
-  `hydrodynamics.physical_sound_speed` now replaces a value that is not a speed, meaning
-  not-a-number, infinite, non-positive or `c_s >= 1`, with the massless value `1/sqrt(3)`,
-  in both solvers. `c_s_bro` keeps the computed number, so the output still shows what the
-  potential gave, and `WARNING:unphysical_c_s` says when the replacement happened.
+  The Arnold-Espinosa term is proportional to `(m_T^2)^{3/2} - (m_0^2)^{3/2}`. Written that
+  way it subtracts two nearly equal numbers wherever the thermal correction is small against
+  the mass, which is the whole low-temperature regime: on the conformal dark U(1) of
+  `examples/example_point.yaml` at an internal temperature of 0.02 the two cubes are about
+  `1e9` while their difference is about `0.3`. It is now evaluated as
+  `(m_0^2)^{3/2} [(1 + u)^{3/2} - 1]` with `u = Pi/m_0^2`, through `expm1(1.5 log1p(u))`.
+  That rearrangement is kept in real arithmetic, because numpy's complex `log1p` and `expm1`
+  lose a relative `8e-8` at `u = 1e-9` against `1e-16` for the real ones, and the `+0j` that
+  exists only to admit tachyonic modes was being applied to every mode.
 
-  **Only values that are not speeds are replaced, and that is deliberate.** A plasma whose
-  particles have masses has `c_s^2 < 1/3`, reaching `1/3` only in the massless limit and from
-  below, as the lattice equation of state of quantum chromodynamics shows (arXiv:1309.5258,
-  arXiv:1407.6387). Clamping at `1/sqrt(3)` would therefore be the physical bound, and it is
-  left to a change of its own for two reasons.
+  The thermal correction itself was taken as the difference of the mass spectra at `T` and at
+  zero, which keeps seven of sixteen digits at that temperature and **underflows to exactly
+  zero** below an internal temperature of about `1e-7`, silently deleting the daisy term.
+  `generic_potential.debye_massSq(X, T)` lets a model hand it over directly instead; it
+  returns `None` by default, which reproduces the previous behaviour, and
+  `models/TL_conformal_dark_u1.py` implements it with the same `T^2` coefficients its mass
+  function already uses.
 
-  It fires on 108 of 286 campaign runs, and on the example point of
-  `examples/example_point.yaml`, whose broken-phase sound speed is 0.589508, 2.1% above
-  `1/sqrt(3)`. That is not stencil noise: it is stable to six digits over temperature steps
-  from `dT/T = 1e-3` to `1e-1`, so it is a property of the effective potential, and clamping
-  would override a converged number. And on that point the clamp moves the spectrum, by
-  -2.7% in the sound-wave peak frequency, +0.4% in the peak amplitude, +3.4% in one
-  pulsar-timing signal-to-noise ratio, and one detectability verdict from false to true. The
-  efficiency factors do not move there, because `v_wall = 1` exceeds the sound speed either
-  way; they do depend on it for a wall slower than the sound speed. With the guard as it
-  stands the example point is identical in every observable with it switched off, the wall
-  clock aside.
+  And `Hydrodynamics.calc_cs` now differentiates `generic_potential.V_thermal`, the
+  temperature-dependent part of the potential, rather than the whole of it. The two are the
+  same analytically, since what does not depend on temperature drops out of both derivatives,
+  and differ numerically: the whole potential subtracts the vacuum energy from itself, and
+  under supercooling that vacuum energy is the larger by ten orders of magnitude or more.
 
-  **What the guard does not do.** It is not a detector of the round-off regime: a value can be
-  round-off and still be a speed. On the conformal dark U(1) at a temperature where
-  `Tperc^4/Delta V` is 2.8e-16 the computed `c_s` is 0.82 and swings over `c_s^2 = -0.001` to
-  `0.89` with the derivative step, and passes untouched. Catching that needs the temperature
-  derivatives of the thermal part of the potential alone, without the vacuum energy that
-  cancels in them, which is a change to the thermodynamics rather than a guard.
+  Measured together, on the second temperature derivative of the daisy term, as the relative
+  change when the derivative step is changed by a factor ten: `1.6e-6` to `2.8e-8` at the
+  percolation temperature, 35% to `3.4e-11` two decades below it, 86% to `1.3e-10` three
+  decades below. On the released example point every observable is unchanged except `c_s` and
+  `c_s_bro`, which move by 0.0017%, the last of the five digits the output carries.
 
-  Two other computations of the same quantity keep the raw value, deliberately and for now.
-  `bubbledynamics.calcSoundSpeedSq`, which builds the pseudo-trace and `alpha_hyd`, and
-  `Hydrodynamics.calcWallVelocityLTE`, which is the default wall velocity, each check only
-  that the value is finite and positive. Routing them through this guard would change
-  `alpha_hyd` by up to a factor three on the points that motivate this entry, so it is a
-  change to the energy budget rather than a guard on a speed, and wants its own measurement.
+- **A sound speed of one or more is refused rather than replaced.** `c_s` sets the speed at
+  which the bubbles grow, `max(v_wall, c_s)`, the efficiency factors and the spectrum, and for
+  a runaway wall a superluminal value multiplies `(beta/H)_RH` by `c_s` while the spectrum
+  divides by `v_wall - c_s`. `errors.SuperluminalSoundSpeedError` now names the value and the
+  temperature, and suggests `GWconfig.sound_speed = "1/3"` for a run that wants the radiation
+  value. Nothing is substituted: which thermodynamics a model has is the user's choice, and a
+  number the model did not give would hide the fact that the potential, as evaluated, has no
+  sound speed there. A phase that has simply frozen out, where the ratio is zero over zero or
+  negative, is still reported as not-a-number as before. Over 366 evaluations spanning
+  `g = 0.45` to `0.75` and temperatures from `1e-1` to `1e-9` of the scale, before and after
+  the fixes, no point reaches one: `scans/sound_speed_line/` holds the script.
 
-  The not-a-number case is replaced as well, not only the finite round-off values. For a
-  runaway wall that changes nothing, since `max(v_wall, nan)` already returned the wall
-  velocity, but a run with a configured wall slower than `1/sqrt(3)` now gets the radiation
-  value where it previously had none, which raises `(beta/H)_RH` on exactly the points that
-  had no usable sound speed.
+- **Two diagnostics of whether the sound speed means anything.**
+  `WARNING:noisy_c_s` and `DIAG:c_s_step_change` say whether it survives a change of the
+  derivative step, because a value can be round-off and still be a speed, so no test on the
+  value itself can find it. `WARNING:daisy_outside_validity` and `DIAG:daisy_over_radiation`
+  say whether the daisy resummation is being used where it does not apply.
+
+  The second is a statement about the model rather than the arithmetic. The Arnold-Espinosa
+  term resums the bosonic zero Matsubara mode, which is justified where that mode is infrared
+  enhanced, `m << T`. Where `m >> T` a mode should be Boltzmann suppressed, and the one-loop
+  thermal integral is: it goes to exactly zero. The daisy term does not, tending instead to
+  `-(T^3/8 pi) sum n_i c_i m_i`, a power law with no `exp(-m/T)` in it. On the conformal dark
+  U(1) it is 7% of the field-independent radiation at a temperature of `1e-1` of the scale,
+  thirteen times it at `1e-3` and ten million times it at `1e-9`, while the lightest mode runs
+  from `m/T = 1.3` to `1.3e8`. Where it dominates the free energy goes as `T^3` instead of
+  `T^4`, so the entropy goes as `T^2` and `c_s^2 = s/(T ds/dT)` tends to `1/2`. No gas of
+  particles does that: masses only ever lower `c_s^2` below `1/3`. A sound speed above
+  `1/sqrt(3)` in a cold, heavily supercooled phase is therefore the prescription and not the
+  plasma, and the physically expected value there is the `1/sqrt(3)` of the radiation that is
+  still relativistic. The flag is raised when the daisy term exceeds that radiation and the
+  lightest mode has `m/T > 1`.
+
+  This is reported and not corrected. A resummation that is Boltzmann suppressed at low
+  temperature would remove the artefact and is the subject of planned follow-up work; it is a
+  change to the thermodynamics rather than a guard, and it belongs in a change of its own.
 
 - **A timed-out point no longer comes back as a number**: `g_eff_DS` and `h_eff_DS`
   caught `BaseException` around the phase evaluation and substituted the `T = 0`

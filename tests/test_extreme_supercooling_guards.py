@@ -119,6 +119,15 @@ class SoundSpeedOutputTests(unittest.TestCase):
                     return self._wrap(0.0 if mode == "frozen" else -3.0 / T)
                 return self._wrap(-3.0 / T)
 
+            # `calc_cs` differentiates the temperature-dependent part of the potential, so a
+            # stand-in has to offer those derivatives. The values are the same: what does not
+            # depend on the temperature drops out of either.
+            def dV_thermal_dT(self, X, T, dT=None):
+                return self.dVdT(X, T, dT=dT)
+
+            def d2V_thermal_dT2(self, X, T, dT=None):
+                return self.d2VdT2(X, T, dT=dT)
+
         class Phase:
             def __init__(self, x):
                 self.x = np.array([x])

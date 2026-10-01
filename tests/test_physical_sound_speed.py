@@ -1,4 +1,4 @@
-"""The guard on the sound speed that feeds the bubble expansion speed.
+"""The sound speed that feeds the bubble expansion speed, and the flags around it.
 
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
@@ -6,266 +6,310 @@ Documentation: https://tasillo.de/TransitionListener/
 
 from __future__ import annotations
 
+import contextlib
+import io
 import types
 import unittest
+from pathlib import Path
+from unittest import mock
 
 import numpy as np
 
 from transitionlistener import config
-from transitionlistener.hydrodynamics import (
-    RADIATION_SOUND_SPEED, physical_sound_speed)
+from transitionlistener import errors
+from transitionlistener.helper_functions import load_potential
+from transitionlistener.hydrodynamics import Hydrodynamics
 from transitionlistener.interface.samplers import get_empty_result
 
+REPO = Path(__file__).resolve().parents[1]
 
-class PhysicalSoundSpeedTests(unittest.TestCase):
-    """Only values that are not speeds are replaced."""
 
-    def test_an_ordinary_sound_speed_is_kept(self):
-        for value in (0.1, 0.5, RADIATION_SOUND_SPEED, 0.9, 0.999999):
-            with self.subTest(c_s=value):
-                out, replaced = physical_sound_speed(value)
-                self.assertAlmostEqual(out, value, places=12)
-                self.assertFalse(replaced)
+def conformal(g=0.7, v_GeV=0.1, y=0.01):
+    with contextlib.redirect_stdout(io.StringIO()):
+        return load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+                              "specific_potential")(
+            {"g": g, "y": y, "v_GeV": v_GeV}, verbose=False)
 
-    def test_a_value_just_above_the_radiation_speed_is_kept(self):
-        """The tighter 1/sqrt(3) bound is deliberately NOT applied here.
 
-        It is the physical bound for a plasma whose particles have masses, but it fires on
-        108 of 286 campaign runs where the excess is finite-difference accuracy, and on the
-        released example point, whose sound speed is 0.58951, 2.1% above 1/sqrt(3). Clamping
-        there would move the efficiency factors and the spectrum of points that have a
-        perfectly ordinary thermal broken phase.
+class FlatPhase:
+    Tmin, Tmax = 1.0e-9, 1.0e9
+
+    def __init__(self, x):
+        self.x = np.asarray(x, float)
+
+    def valAt(self, T, deriv=0):
+        T = np.asarray(T, float)
+        return np.broadcast_to(self.x, T.shape + self.x.shape).copy()
+
+
+class DaisyEvaluationTests(unittest.TestCase):
+    """The daisy term, evaluated without throwing away significant digits."""
+
+    def test_a_small_thermal_correction_matches_the_series(self):
+        from transitionlistener.generic_potential import _daisy_mass_cubed_difference
+        m20 = np.array([5.0e4])
+        for Pi in (5.0e-5, 1.0e-9, 1.0e-14):
+            with self.subTest(Pi=Pi):
+                # Pi is handed over, not recovered from the sum: at 1e-14 it is below the
+                # spacing of floats near 5e4, so `m20 + Pi` is exactly `m20` and the
+                # information is gone before the function is even called. That is the whole
+                # reason for the hook.
+                got = complex(_daisy_mass_cubed_difference(
+                    m20, m20 + Pi, Pi=np.array([Pi]))[0]).real
+                u = Pi / m20[0]
+                exact = m20[0] ** 1.5 * (1.5 * u + 0.375 * u * u)
+                self.assertLess(abs(got / exact - 1.0), 1.0e-6)
+
+    def test_the_sum_itself_loses_a_tiny_thermal_correction(self):
+        # Stated as a measurement, because it is the premise of the hook.
+        m20 = 5.0e4
+        self.assertEqual(m20 + 1.0e-14, m20)
+        self.assertNotEqual(m20 + 5.0e-5, m20)
+
+    def test_the_direct_form_would_lose_those_digits(self):
+        # The point of the rearrangement: the naive difference is wrong where it matters.
+        m20 = 5.0e4
+        Pi = 1.0e-9
+        naive = (m20 + Pi) ** 1.5 - m20 ** 1.5
+        exact = m20 ** 1.5 * 1.5 * (Pi / m20)
+        self.assertGreater(abs(naive / exact - 1.0), 1.0e-3)
+
+    def test_a_large_correction_is_unchanged(self):
+        from transitionlistener.generic_potential import _daisy_mass_cubed_difference
+        got = complex(_daisy_mass_cubed_difference(np.array([1.0]), np.array([100.0]))[0]).real
+        self.assertAlmostEqual(got, 100.0 ** 1.5 - 1.0, places=9)
+
+    def test_a_tachyonic_mode_still_goes_through_the_complex_branch(self):
+        from transitionlistener.generic_potential import _daisy_mass_cubed_difference
+        got = _daisy_mass_cubed_difference(np.array([-1.0e4]), np.array([-9.0e3]))[0]
+        self.assertNotAlmostEqual(complex(got).imag, 0.0)
+
+    def test_the_analytic_thermal_masses_match_the_subtraction_where_it_is_sound(self):
+        pot = conformal()
+        X = np.array([1000.0])
+        # The tolerance follows the conditioning: the subtraction keeps thirteen digits at
+        # the percolation temperature and about seven two decades below it.
+        for T, rtol in ((22.12, 1.0e-12), (0.02, 1.0e-6)):
+            with self.subTest(T=T):
+                analytic = np.ravel(pot.debye_massSq(X, T))
+                m20 = np.ravel(np.asarray(pot.boson_massSq(X, np.asarray([0.0]))[0], float))
+                m2T = np.ravel(np.asarray(pot.boson_massSq(X, np.asarray([T]))[0], float))
+                np.testing.assert_allclose(analytic, m2T - m20, rtol=rtol, atol=0)
+
+    def test_the_subtraction_underflows_where_the_analytic_form_does_not(self):
+        # This is why the hook exists: below about T = 1e-7 the thermal part of the masses
+        # is lost entirely, which silently removes the daisy term.
+        pot = conformal()
+        X = np.array([1000.0])
+        T = 1.0e-7
+        m20 = np.ravel(np.asarray(pot.boson_massSq(X, np.asarray([0.0]))[0], float))
+        m2T = np.ravel(np.asarray(pot.boson_massSq(X, np.asarray([T]))[0], float))
+        self.assertTrue(np.all(m2T - m20 == 0.0))
+        self.assertTrue(np.any(np.ravel(pot.debye_massSq(X, T)) > 0.0))
+
+    def test_the_default_hook_declines(self):
+        from transitionlistener import generic_potential as gp
+        self.assertIsNone(gp.generic_potential.debye_massSq(conformal(), None, 1.0))
+
+
+class ThermalDerivativeTests(unittest.TestCase):
+    """The sound speed is taken from the thermal part, not from the whole potential."""
+
+    def _phases(self, pot):
+        from transitionlistener.phases import Phases
+        with contextlib.redirect_stdout(io.StringIO()):
+            return Phases(pot, False).phases
+
+    def _hydro(self, pot):
+        phases = self._phases(pot)
+        T = 22.12
+        def norm(p):
+            if not (p.Tmin <= T <= p.Tmax):
+                return -1.0
+            return float(np.linalg.norm(np.atleast_1d(np.squeeze(p.valAt(T)))))
+        broken = max(phases.values(), key=norm)
+        symmetric = min(phases.values(), key=lambda p: norm(p) if norm(p) >= 0 else 1e30)
+        return Hydrodynamics(pot, symmetric, broken, False)
+
+    def test_the_thermal_part_excludes_what_does_not_depend_on_temperature(self):
+        pot = conformal()
+        X = np.array([1000.0])
+        T = 22.12
+        thermal = float(np.squeeze(pot.V_thermal(X, T)))
+        full = float(np.squeeze(pot.Vtot(X, T, include_decoupled=False)))
+        constant = (float(np.squeeze(pot.V0(X))) + float(np.squeeze(pot.Vct(X)))
+                    + float(np.squeeze(pot.V1_from_X(X))))
+        self.assertAlmostEqual(thermal / (full - constant), 1.0, places=9)
+
+    def test_the_sound_speed_survives_deep_supercooling(self):
+        """Where the whole-potential derivative has no digits left.
+
+        The released route returns nan below a temperature of about 1e-6 of the scale; this
+        one is still finite at 1e-9 of it.
         """
-        for value in (RADIATION_SOUND_SPEED * (1 + 1e-8), 0.5776, 0.58951, 0.7):
-            with self.subTest(c_s=value):
-                out, replaced = physical_sound_speed(value)
-                self.assertAlmostEqual(out, value, places=12)
-                self.assertFalse(replaced)
+        pot = conformal()
+        hydro = self._hydro(pot)
+        for ratio in (1.0e-5, 1.0e-7, 1.0e-9):
+            with self.subTest(T_over_v=ratio):
+                cs = hydro.calc_cs(ratio * pot.v_stable, sym=False)
+                self.assertTrue(np.isfinite(cs), "no sound speed at this depth")
+                self.assertGreater(cs, 0.0)
+                self.assertLess(cs, 1.0)
 
-    def test_a_superluminal_value_is_replaced(self):
-        # The seven points of the conformal scan came out between 1.01 and 1.71.
-        for value in (1.0, 1.01, 1.025, 1.054, 1.332, 1.706, 5.0):
-            with self.subTest(c_s=value):
-                out, replaced = physical_sound_speed(value)
-                self.assertAlmostEqual(out, RADIATION_SOUND_SPEED, places=12)
-                self.assertTrue(replaced)
-
-    def test_values_that_are_not_numbers_at_all_are_replaced(self):
-        for value in (0.0, -0.3, float("nan"), float("inf"), -float("inf"), None, "x"):
-            with self.subTest(c_s=value):
-                out, replaced = physical_sound_speed(value)
-                self.assertAlmostEqual(out, RADIATION_SOUND_SPEED, places=12)
-                self.assertTrue(replaced)
-
-    def test_the_replacement_is_the_massless_value(self):
-        self.assertAlmostEqual(RADIATION_SOUND_SPEED, 1.0 / np.sqrt(3.0), places=15)
-
-    def test_a_runaway_wall_keeps_its_expansion_speed(self):
-        """What the guard is for: max(v_wall, c_s) must stay at the wall velocity.
-
-        A superluminal sound speed replaces the wall velocity through that maximum and
-        inflates (beta/H)_RH by the factor c_s.
-        """
-        v_wall = 1.0
-        for raw in (1.01, 1.332, 1.706):
-            with self.subTest(c_s=raw):
-                self.assertGreater(max(v_wall, raw), v_wall)          # the defect
-                usable, _ = physical_sound_speed(raw)
-                self.assertEqual(max(v_wall, usable), v_wall)         # after the guard
+    def test_it_agrees_with_the_whole_potential_where_that_still_works(self):
+        pot = conformal()
+        hydro = self._hydro(pot)
+        T = 1.0e-1 * pot.v_stable
+        X = np.atleast_1d(np.squeeze(hydro.low_phase.valAt(T)))
+        h = T * 1.0e-3
+        def V(t):
+            return float(np.squeeze(pot.Vtot(X, t, include_decoupled=False)))
+        d1 = (V(T + h) - V(T - h)) / (2 * h)
+        d2 = (V(T + h) - 2 * V(T) + V(T - h)) / h ** 2
+        self.assertAlmostEqual(hydro.calc_cs(T, sym=False) / np.sqrt(d1 / (T * d2)),
+                               1.0, places=4)
 
 
-class SolverUsesTheGuardTests(unittest.TestCase):
-    """Both solvers must put the guarded value into `c_s`, not the computed one.
+class SuperluminalTests(unittest.TestCase):
+    """A sound speed of one or more is refused, not replaced."""
 
-    `c_s` is what the bubble expansion speed, the efficiency factors and the spectrum are
-    built from. A unit test of the guard cannot tell whether the solvers apply it: with the
-    assignment reverted to the raw value, every other test in this file still passed.
-    """
+    def _hydro_returning(self, cs_sq):
+        class Pot:
+            X0 = np.array([1.0])
+            config = types.SimpleNamespace(
+                gwConf=types.SimpleNamespace(coupled_hydrodynamics=True))
 
-    RAW = 1.706          # the worst point of the conformal scan
+            def dV_thermal_dT(self, X, T, dT=None):
+                return cs_sq * T
 
-    def _ensure(self, module, verbose=False):
-        from pathlib import Path
-        from unittest import mock
-        from transitionlistener.helper_functions import load_potential
-        from transitionlistener import hydrodynamics
+            def d2V_thermal_dT2(self, X, T, dT=None):
+                return 1.0
 
-        repo = Path(__file__).resolve().parents[1]
-        pot = load_potential(str(repo / "models/TL_conformal_dark_u1.py"),
-                             "specific_potential")(
-            {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
+        hydro = Hydrodynamics.__new__(Hydrodynamics)
+        hydro.pot = Pot()
+        hydro.high_phase = hydro.low_phase = FlatPhase([1.0])
+        hydro.verbose = False
+        return hydro
 
-        class Phase:
-            Tmin, Tmax = 1.0e-6, 1.0e6
+    def test_one_or_more_raises(self):
+        for cs_sq in (1.0, 1.21, 2.9):
+            with self.subTest(c_s=np.sqrt(cs_sq)):
+                with self.assertRaises(errors.SuperluminalSoundSpeedError):
+                    self._hydro_returning(cs_sq).calc_cs(100.0, sym=False)
 
-            def valAt(self, T, deriv=0):
-                T = np.asarray(T, float)
-                return np.zeros(T.shape + (1,))
+    def test_the_error_carries_the_value_and_the_temperature(self):
+        try:
+            self._hydro_returning(2.9).calc_cs(100.0, sym=False)
+        except errors.SuperluminalSoundSpeedError as err:
+            self.assertAlmostEqual(err.c_s, np.sqrt(2.9), places=9)
+            self.assertAlmostEqual(err.T, 100.0, places=9)
+            self.assertIn("not a speed", str(err))
+        else:
+            self.fail("no error raised")
 
-        derived = {}
-        ctx = types.SimpleNamespace(
-            derived_param_names=["c_s"], derived_params=derived,
-            GWconfig=types.SimpleNamespace(sound_speed="compute"),
-            pot=pot, phase_symmetric=Phase(), phase_broken=Phase(), verbose=verbose)
+    def test_an_ordinary_value_passes(self):
+        self.assertAlmostEqual(self._hydro_returning(1.0 / 3.0).calc_cs(100.0, sym=False),
+                               1.0 / np.sqrt(3.0), places=9)
 
-        def fake_cs(self, T, sym):
-            return 0.4 if sym else self_raw[0]
-
-        self_raw = [self.RAW]
-        with mock.patch.object(hydrodynamics.Hydrodynamics, "calc_cs", fake_cs):
-            module.TransitionObservables._ensure_sound_speed(
-                module.TransitionObservables.__new__(module.TransitionObservables), ctx, 30.0)
-        return derived
-
-    def test_both_solvers_replace_a_superluminal_value_in_c_s(self):
-        from transitionlistener import transitionObservables as to
-        from transitionlistener import transitionObservables_fixedstep as tof
-        for module in (to, tof):
-            with self.subTest(module=module.__name__):
-                derived = self._ensure(module)
-                self.assertAlmostEqual(derived["c_s"], RADIATION_SOUND_SPEED, places=12)
-                self.assertTrue(derived["WARNING:unphysical_c_s"])
-
-    def test_both_solvers_still_report_the_computed_value(self):
-        from transitionlistener import transitionObservables as to
-        from transitionlistener import transitionObservables_fixedstep as tof
-        for module in (to, tof):
-            with self.subTest(module=module.__name__):
-                derived = self._ensure(module)
-                self.assertAlmostEqual(derived["c_s_bro"], self.RAW, places=12)
-
-    def test_both_solvers_say_so_when_they_replace(self):
-        """A silent replacement is the thing a user would want told.
-
-        Both solvers print it under `verbose`, and the message names the computed value and
-        the one substituted for it.
-        """
-        import contextlib as _ctx
-        import io as _io
-        from transitionlistener import transitionObservables as to
-        from transitionlistener import transitionObservables_fixedstep as tof
-        for module in (to, tof):
-            with self.subTest(module=module.__name__):
-                buffer = _io.StringIO()
-                with _ctx.redirect_stdout(buffer):
-                    self._ensure(module, verbose=True)
-                printed = buffer.getvalue()
-                self.assertIn("not a speed", printed)
-                self.assertIn("1.706", printed)
-                self.assertIn("0.577350", printed)
-
-    def test_neither_solver_says_anything_when_it_does_not_replace(self):
-        import contextlib as _ctx
-        import io as _io
-        from unittest import mock
-        from transitionlistener import transitionObservables as to
-        from transitionlistener import transitionObservables_fixedstep as tof
-        for module in (to, tof):
-            with self.subTest(module=module.__name__):
-                buffer = _io.StringIO()
-                with mock.patch.object(type(self), "RAW", 0.58951):
-                    with _ctx.redirect_stdout(buffer):
-                        self._ensure(module, verbose=True)
-                self.assertNotIn("not a speed", buffer.getvalue())
-
-    def test_an_ordinary_value_reaches_c_s_unchanged(self):
-        from unittest import mock
-        from transitionlistener import transitionObservables as to
-        from transitionlistener import transitionObservables_fixedstep as tof
-        for module in (to, tof):
-            with self.subTest(module=module.__name__):
-                with mock.patch.object(type(self), "RAW", 0.58951):
-                    derived = self._ensure(module)
-                self.assertAlmostEqual(derived["c_s"], 0.58951, places=12)
-                self.assertFalse(derived["WARNING:unphysical_c_s"])
+    def test_a_phase_without_a_plasma_is_still_nan_rather_than_an_error(self):
+        # Zero over zero and a negative ratio are not impossibilities, they are a phase that
+        # has frozen out; those stay as nan, as before.
+        for cs_sq in (0.0, -1.0):
+            with self.subTest(cs_sq=cs_sq):
+                self.assertTrue(np.isnan(
+                    self._hydro_returning(cs_sq).calc_cs(100.0, sym=False)))
 
 
-class ConfiguredSoundSpeedTests(unittest.TestCase):
-    """A configured value must satisfy the same notion of a speed as a computed one.
+class StepDependenceTests(unittest.TestCase):
+    """A value can be round-off and still be a speed, so the value alone cannot be checked."""
 
-    The fixed step size solver accepts a number in `GWconfig.sound_speed`. It used to allow
-    exactly one, which the guard on the computed value classifies as not a speed, and which
-    the spectrum cannot use: it divides by `v_wall - c_s`, so one with a runaway wall is a
-    division by zero.
-    """
+    def _hydro(self, pot):
+        return ThermalDerivativeTests._hydro(ThermalDerivativeTests(), pot)
 
-    def _apply(self, value):
-        from pathlib import Path
-        from transitionlistener.helper_functions import load_potential
-        from transitionlistener import transitionObservables_fixedstep as tof
+    def test_a_healthy_point_is_not_flagged(self):
+        pot = conformal()
+        noisy, change = self._hydro(pot).sound_speed_is_step_dependent(22.12, sym=False)
+        self.assertFalse(noisy)
+        self.assertLess(change, 1.0e-2)
 
-        repo = Path(__file__).resolve().parents[1]
-        pot = load_potential(str(repo / "models/TL_conformal_dark_u1.py"),
-                             "specific_potential")(
-            {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
+    def test_the_threshold_is_the_documented_one(self):
+        from transitionlistener import hydrodynamics as hyd
+        self.assertAlmostEqual(hyd.SOUND_SPEED_JUMP_TOLERANCE, 0.05)
+        self.assertAlmostEqual(hyd.SOUND_SPEED_STEP_RATIO, 10.0)
 
-        class Phase:
-            Tmin, Tmax = 1.0e-6, 1.0e6
+    def test_a_value_that_moves_with_the_step_is_flagged(self):
+        pot = conformal()
+        hydro = self._hydro(pot)
+        real = hydro._calc_cs_at_step
 
-            def valAt(self, T, deriv=0):
-                T = np.asarray(T, float)
-                return np.zeros(T.shape + (1,))
+        def wobbling(T, sym, step_factor=1.0):
+            cs, dT = real(T, sym, step_factor)
+            return cs * (1.0 + 0.5 * (step_factor - 1.0)), dT
 
-        derived = {}
-        ctx = types.SimpleNamespace(
-            derived_param_names=["c_s"], derived_params=derived,
-            GWconfig=types.SimpleNamespace(sound_speed=str(value)),
-            pot=pot, phase_symmetric=Phase(), phase_broken=Phase(), verbose=False)
-        cls = tof.TransitionObservables
-        cls._ensure_sound_speed(cls.__new__(cls), ctx, 30.0)
-        return derived
+        with mock.patch.object(hydro, "_calc_cs_at_step", wobbling):
+            noisy, change = hydro.sound_speed_is_step_dependent(22.12, sym=False)
+        self.assertTrue(noisy)
+        self.assertGreater(change, 0.05)
 
-    def test_a_configured_value_in_range_is_used(self):
-        for value in (0.4, 0.5, 0.9):
-            with self.subTest(c_s=value):
-                self.assertAlmostEqual(self._apply(value)["c_s"], value, places=12)
 
-    def test_exactly_one_is_refused(self):
-        # The spectrum divides by (v_wall - c_s); one with a runaway wall is a zero divide.
-        with self.assertRaises(ValueError):
-            self._apply(1.0)
+class DaisyValidityTests(unittest.TestCase):
+    """The daisy resummation reports when it is being used where it does not apply."""
 
-    def test_values_outside_the_range_are_refused(self):
-        for value in (0.0, -0.2, 1.5):
-            with self.subTest(c_s=value):
-                with self.assertRaises(ValueError):
-                    self._apply(value)
+    def _X(self, pot, T):
+        from transitionlistener.phases import Phases
+        with contextlib.redirect_stdout(io.StringIO()):
+            phases = Phases(pot, False).phases
+        def norm(p):
+            if not (p.Tmin <= T <= p.Tmax):
+                return -1.0
+            return float(np.linalg.norm(np.atleast_1d(np.squeeze(p.valAt(T)))))
+        return np.atleast_1d(np.squeeze(max(phases.values(), key=norm).valAt(T)))
+
+    def test_it_is_quiet_where_the_modes_are_light(self):
+        pot = conformal()
+        for ratio in (1.0e-1, 1.0e-2):
+            T = ratio * pot.v_stable
+            with self.subTest(T_over_v=ratio):
+                outside, result = pot.daisy_outside_validity(self._X(pot, T), T)
+                self.assertFalse(outside)
+                self.assertLess(result, 1.0)
+
+    def test_it_fires_where_the_daisy_term_has_overtaken_the_radiation(self):
+        pot = conformal()
+        for ratio in (1.0e-3, 1.0e-5, 1.0e-9):
+            T = ratio * pot.v_stable
+            with self.subTest(T_over_v=ratio):
+                outside, result = pot.daisy_outside_validity(self._X(pot, T), T)
+                self.assertTrue(outside)
+                self.assertGreater(result, 1.0)
+
+    def test_both_conditions_are_needed(self):
+        # A large ratio alone is not the signature: at high temperature the daisy term is
+        # legitimate and goes as T^4 like the radiation.
+        pot = conformal()
+        T = 1.0e-1 * pot.v_stable
+        X = self._X(pot, T)
+        outside, _ = pot.daisy_outside_validity(X, T)
+        self.assertFalse(outside)
 
 
 class RegistrationTests(unittest.TestCase):
-    def test_the_warning_is_registered_where_registration_is_required(self):
+    KEYS = ("WARNING:noisy_c_s", "DIAG:c_s_step_change",
+            "WARNING:daisy_outside_validity", "DIAG:daisy_over_radiation")
+
+    def test_every_key_is_registered_where_registration_is_required(self):
         empty = get_empty_result()
-        self.assertIn("WARNING:unphysical_c_s", config.all_observables)
-        self.assertIn("WARNING:unphysical_c_s", empty)
-        # Failed scan points must keep producing rows that line up with successful ones.
+        for key in self.KEYS:
+            with self.subTest(key=key):
+                self.assertIn(key, config.all_observables)
+                self.assertIn(key, empty)
         self.assertEqual(set(config.all_observables) - set(empty), set())
 
-    def test_both_solvers_default_the_warning_to_false(self):
-        """The key is registered for every run, so every context must carry it.
-
-        Left unset, the writer reports it as unimplemented and fills a boolean column with
-        not-a-number. Read from the context each solver builds, not from its source: a
-        source-text assertion passes even with the entry commented out, because the key name
-        is still there in the comment.
-        """
-        from pathlib import Path
-        from transitionlistener.helper_functions import load_potential
+    def test_both_solvers_default_them(self):
         from transitionlistener import transitionObservables as to
         from transitionlistener import transitionObservables_fixedstep as tof
-
-        repo = Path(__file__).resolve().parents[1]
-        pot = load_potential(str(repo / "models/TL_conformal_dark_u1.py"),
-                             "specific_potential")(
-            {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
-
-        class Phase:
-            Tmin, Tmax = 1.0e-6, 1.0e6
-
-            def valAt(self, T, deriv=0):
-                T = np.asarray(T, float)
-                return np.zeros(T.shape + (1,))
-
-        phase = Phase()
+        pot = conformal()
+        phase = FlatPhase([0.0])
         tr = types.SimpleNamespace(Tnuc=30.0, full_tunneling_info={},
                                    high_phase="hot", low_phase="cold")
         for module in (to, tof):
@@ -278,8 +322,11 @@ class RegistrationTests(unittest.TestCase):
                 obs.PercolationConf = pot.config.percolationConf
                 obs.derived_param_names = []
                 obs.verbose = False
-                ctx = cls._initialize_transition_context(obs, tr)
-                self.assertIs(ctx.derived_params["WARNING:unphysical_c_s"], False)
+                derived = cls._initialize_transition_context(obs, tr).derived_params
+                self.assertIs(derived["WARNING:noisy_c_s"], False)
+                self.assertIs(derived["WARNING:daisy_outside_validity"], False)
+                self.assertTrue(np.isnan(derived["DIAG:c_s_step_change"]))
+                self.assertTrue(np.isnan(derived["DIAG:daisy_over_radiation"]))
 
 
 if __name__ == "__main__":
