@@ -232,6 +232,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   cent. For those four there is no `Pi` to hand over and the subtraction is the only route, so
   declining is the correct answer rather than a missing feature.
 
+  The quadratic law is checked mode by mode, with a relative tolerance and a round-off-sized
+  absolute floor for the modes whose coefficient is exactly zero. A single tolerance scaled to
+  the largest coefficient only ever tests that one, and a mode whose coefficient is orders of
+  magnitude smaller could be badly non-quadratic and still pass, after which a heavy mode can
+  make that wrong contribution matter at low temperature. None of the eight models in
+  `models/` distinguishes the two rules, the worst per-mode deviation among those that pass
+  being `8e-15`, so this guards a case none of them exhibits.
+
   The verdict is settled once per model and at field points the model itself fixes, not at
   whichever point arrives first: `Vtot` is called with random field values while a model is
   being constructed, and a verdict read off those would differ between runs of the same input.
@@ -262,8 +270,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `V1T_from_X`, the latter being "the temperature-dependent part of Vtot"; where it has,
   `V_thermal` uses it rather than rebuilding one from the mass spectrum, so the sound speed,
   the pseudo-trace strengths and the wall velocity run on the same thermodynamics as the rest
-  of that model. The base implementation of `V1T_from_X` is not used, because it omits the
-  daisy term. The two are the
+  of that model. `V_thermal` is that hook, and it is a separate one from `V1T_from_X` on
+  purpose: the class documentation calls the latter the temperature-dependent part of `Vtot`,
+  which would include the radiation bath, while its base implementation returns neither the
+  bath nor the daisy term, and nothing in the signature says which an override means. Adding
+  the bath to an override that has it double counts, and not adding it to one that does not
+  drops it, so a model that has rewritten `Vtot` or `V1T_from_X` without also overriding
+  `V_thermal` is told so with an `errors.PotentialError` rather than handed a guess. No model
+  in `models/` overrides either, so none is affected. The two are the
   same analytically, since what does not depend on temperature drops out of both derivatives,
   and differ numerically: the whole potential subtracts the vacuum energy from itself, and
   under supercooling that vacuum energy is the larger by ten orders of magnitude or more.

@@ -1134,6 +1134,53 @@ class DefaultDebyeMassTests(unittest.TestCase):
         self.assertIsNotNone(at_reference, "the probed field should still be served")
         self.assertIsNone(away, "a field where the law fails was handed a synthesised Pi")
 
+    def test_a_small_coefficient_is_judged_against_itself(self):
+        """A single tolerance scaled to the largest coefficient only ever tests that one.
+
+        No model shipped here distinguishes the two rules: all eight get the same verdict
+        either way and the worst per-mode deviation among those that pass is `8e-15`. The case
+        has to be constructed, and it is worth guarding because a heavy mode can make a small
+        Debye coefficient matter in the daisy term at low temperature.
+        """
+        from transitionlistener.generic_potential import _debye_agrees
+        reference = np.array([1.0, 1.0e-12])
+        magnitude = 1.0
+
+        # The small mode is wrong by half of itself, and still sits well inside a tolerance of
+        # 1e-9 times the largest coefficient, which is what made that rule blind to it.
+        broken = np.array([1.0, 1.5e-12])
+        self.assertLess(np.max(np.abs(broken - reference)), 1.0e-9 * magnitude,
+                        "the fixture was meant to slip past a global tolerance")
+        self.assertFalse(_debye_agrees(broken, reference, magnitude))
+
+        agreeing = np.array([1.0, 1.0e-12 * (1.0 + 1.0e-12)])
+        self.assertTrue(_debye_agrees(agreeing, reference, magnitude))
+
+        # A coefficient of exactly zero, which the transverse gauge bosons have, has nothing
+        # to be relative to and is covered by the round-off floor instead.
+        with_zero = np.array([1.0, 0.0])
+        self.assertTrue(_debye_agrees(np.array([1.0, 1.0e-18]), with_zero, magnitude))
+        self.assertFalse(_debye_agrees(np.array([1.0, 1.0e-10]), with_zero, magnitude))
+
+    def test_a_non_quadratic_small_mode_is_refused_end_to_end(self):
+        # And the helper is actually what the classification uses, not merely present.
+        pot = self._model("dark_U1")
+        scale = pot.v_stable
+        real = type(pot).boson_massSq
+
+        def tiny_non_quadratic_mode(self, X, t):
+            masses, dof, c, phys = real(self, X, t)
+            masses = np.array(masses, dtype=float, copy=True)
+            t = np.asarray(t, dtype=float)
+            # Small against the other Debye masses, and cubic rather than quadratic.
+            masses[..., 2] = masses[..., 2] + 1.0e-9 * scale * t ** 3
+            return masses, dof, c, phys
+
+        pot._debye_state = None
+        with mock.patch.object(type(pot), "boson_massSq", tiny_non_quadratic_mode):
+            value = pot.debye_massSq(self._X(pot), np.asarray([0.1 * scale]))
+        self.assertIsNone(value, "a mode that is not quadratic was accepted as if it were")
+
     def test_a_cached_coefficient_survives_a_second_call(self):
         # The cached value is an array, and comparing an array against the string states is
         # elementwise; branching on that raises. It broke model construction, which calls
@@ -1166,78 +1213,68 @@ class DefaultDebyeMassTests(unittest.TestCase):
 
 
 class CustomPotentialHookTests(unittest.TestCase):
-    """A model that rewrites the effective potential must not be bypassed.
+    """A model that rewrites the effective potential states its own thermal part.
 
-    The class documents `V1T_from_X` as the hook for "the temperature-dependent part of
-    Vtot", which is exactly what `V_thermal` is. Rebuilding one from the mass spectrum anyway
-    would have the sound speed, the pseudo-trace and the wall velocity all run on different
-    thermodynamics from the rest of such a model.
+    `V_thermal` is the hook, and it is a separate one from `V1T_from_X` on purpose. The class
+    documentation calls `V1T_from_X` the temperature-dependent part of `Vtot`, which would
+    include the radiation bath, while the base implementation returns neither the bath nor the
+    daisy term; nothing in the signature says which an override means. Adding the bath to one
+    that has it double counts, and not adding it to one that does not drops it, so neither
+    guess is safe and the model is asked instead.
     """
 
-    def _custom(self):
-        pot = conformal()
-        marker = {"calls": 0}
-
-        def replacement(self, X, T):
-            marker["calls"] += 1
-            # Deliberately not the generic reconstruction, so using one instead of the other
-            # is visible in the value and not only in the call count.
-            return -3.0 * np.asarray(T, dtype=float) ** 4 * np.ones(np.shape(X)[:-1] or ())
-
-        patcher = mock.patch.object(type(pot), "V1T_from_X", replacement)
-        return pot, marker, patcher
-
     def test_an_overridden_thermal_part_is_the_one_used(self):
-        pot, marker, patcher = self._custom()
-        X, T = np.array([900.0]), 30.0
-        with patcher:
-            value = float(np.squeeze(pot.V_thermal(X, T)))
-            expected = (-3.0 * T ** 4
-                        + float(np.squeeze(pot.constantTerms(np.asarray(T),
-                                                             include_decoupled=False))))
-        self.assertGreater(marker["calls"], 0, "the model's own thermal part was never called")
-        self.assertAlmostEqual(value / expected, 1.0, places=12)
+        pot = conformal()
+        calls = {"n": 0}
 
-    def test_the_derivatives_and_the_sound_speed_follow_it(self):
-        """Not just `V_thermal`: everything the branch routes through it.
+        def replacement(self, X, T, include_decoupled=False):
+            calls["n"] += 1
+            return -3.0 * np.asarray(T, dtype=float) ** 4
 
-        The reference is built here from the two pieces the override implies, its own `T^4`
-        term and the radiation bath, and differentiated independently of the code under test.
-        It is not `1/sqrt(3)`: the bath carries the Standard Model's counted degrees of
-        freedom, which are not exactly `T^4`, and the point is to detect the override rather
-        than to assume an idealised plasma.
+        with mock.patch.object(type(pot), "V_thermal", replacement):
+            value = float(np.squeeze(pot.V_thermal(np.array([900.0]), 30.0)))
+        self.assertGreater(calls["n"], 0)
+        self.assertAlmostEqual(value, -3.0 * 30.0 ** 4, places=9)
+
+    def test_the_sound_speed_follows_it(self):
+        """A thermal part going as `T^4` has `c_s^2 = 1/3` exactly.
+
+        Nothing is added to the override here, so unlike the model's own thermal part there is
+        no radiation bath with counted degrees of freedom in it, and the value is the clean one.
         """
-        pot, marker, patcher = self._custom()
+        pot = conformal()
+
+        def replacement(self, X, T, include_decoupled=False):
+            return -3.0 * np.asarray(T, dtype=float) ** 4
+
         hydro = ThermalDerivativeTests._hydro(ThermalDerivativeTests(), pot)
-        T = 22.12
-        untouched = hydro.calc_cs(T, sym=False)
-        with patcher:
-            cs = hydro.calc_cs(T, sym=False)
-        self.assertGreater(marker["calls"], 0)
-
-        def expected_thermal(t):
-            return (-3.0 * t ** 4
-                    + float(np.squeeze(pot.constantTerms(np.asarray(t),
-                                                         include_decoupled=False))))
-
-        h = T * 9.275e-5
-        d1 = (expected_thermal(T + h) - expected_thermal(T - h)) / (2.0 * h)
-        d2 = (expected_thermal(T + h) - 2.0 * expected_thermal(T)
-              + expected_thermal(T - h)) / h ** 2
-        self.assertAlmostEqual(cs / np.sqrt(d1 / (T * d2)), 1.0, places=6)
-        # And it is not simply the model's own answer, or this would pass without the override.
+        untouched = hydro.calc_cs(22.12, sym=False)
+        with mock.patch.object(type(pot), "V_thermal", replacement):
+            cs = hydro.calc_cs(22.12, sym=False)
+        self.assertAlmostEqual(cs, 1.0 / np.sqrt(3.0), places=6)
         self.assertNotAlmostEqual(cs, untouched, places=4)
 
-    def test_the_base_implementation_is_not_used_when_it_is_not_overridden(self):
-        # The base `V1T_from_X` omits the daisy term, so delegating to it unconditionally
-        # would quietly drop exactly what this branch is about.
+    def test_rewriting_the_potential_without_it_is_refused(self):
+        """Refused rather than reconstructed, which would not be the model's own thermal part.
+
+        Both documented entry points are checked, because a model may have rewritten either.
+        """
+        for name in ("Vtot", "V1T_from_X"):
+            with self.subTest(overrides=name):
+                pot = conformal()
+                with mock.patch.object(type(pot), name,
+                                       lambda self, *a, **k: np.asarray(0.0)):
+                    with self.assertRaises(errors.PotentialError) as caught:
+                        pot.V_thermal(np.array([900.0]), 30.0)
+                message = str(caught.exception)
+                self.assertIn(name, message)
+                self.assertIn("V_thermal", message, "the message must name the hook to use")
+
+    def test_an_ordinary_model_is_not_refused(self):
+        # The refusal must key on the override and not fire for every model.
         pot = conformal()
-        X, T = np.array([900.0]), 30.0
-        thermal = float(np.squeeze(pot.V_thermal(X, T)))
-        without_daisy = (float(np.squeeze(pot.V1T_from_X(X, np.asarray(T))))
-                         + float(np.squeeze(pot.constantTerms(np.asarray(T),
-                                                              include_decoupled=False))))
-        self.assertNotAlmostEqual(thermal / without_daisy, 1.0, places=9)
+        self.assertTrue(np.isfinite(float(np.squeeze(
+            pot.V_thermal(np.array([900.0]), 30.0)))))
 
 
 class MasslessModeTests(unittest.TestCase):

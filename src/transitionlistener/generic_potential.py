@@ -57,6 +57,22 @@ from transitionlistener.particles import (
 )
 
 
+def _debye_agrees(measured, reference, magnitude):
+    """Whether two Debye coefficients agree, mode by mode.
+
+    Judged per mode rather than against the largest of them. A single tolerance scaled to the
+    largest coefficient only ever tests that one: a mode whose coefficient is orders of
+    magnitude smaller can be badly non-quadratic and still sit inside it, and a heavy mode can
+    make that small contribution matter in the daisy term at low temperature.
+
+    The absolute floor is round-off sized against the largest coefficient and exists for the
+    modes whose coefficient is exactly zero, the transverse gauge bosons, where a relative
+    tolerance has nothing to be relative to.
+    """
+    return bool(np.all(np.abs(measured - reference)
+                       <= 1.0e-9 * np.abs(reference) + 1.0e-14 * magnitude))
+
+
 def _daisy_mass_cubed_difference(m20, m2T, Pi=None):
     r"""Return ``(m_T^2)^{3/2} - (m_0^2)^{3/2}`` without losing significant digits.
 
@@ -138,6 +154,16 @@ class generic_potential():
     temperature-dependent part of Vtot; used in temperature derivative
     calculations), and possibly override :func:`V0` (used by
     :func:`massSqMatrix` and for plotting at tree level).
+
+    Such a model must also override :func:`V_thermal`, which is the
+    temperature-dependent part of the potential on its own and is what the sound
+    speed, the transition strengths and the wall velocity are taken from. It is a
+    separate hook from :func:`V1T_from_X` because the two differ in what they
+    include: :func:`V_thermal` carries the radiation bath that its
+    ``include_decoupled`` argument selects and the daisy term, while the base
+    :func:`V1T_from_X` carries neither. Overriding the potential without it raises
+    :class:`errors.PotentialError` rather than reconstructing a thermal part from
+    the mass spectrum, which would not be the model's own.
 
     The `__init__` function performs initialization specific for this abstract
     class. Subclasses should either override this initialization *but make sure
@@ -824,15 +850,27 @@ class generic_potential():
         potential has no significant digits left.
         """
         Ta = np.asarray(T, dtype=float)
-        # `V1T_from_X` is the hook this class already documents for models that rewrite the
-        # effective potential: "should only return the temperature-dependent part of Vtot".
-        # Where a model has overridden it, that is its thermal part by definition and
-        # rebuilding one from the mass spectrum would compute the sound speed from different
-        # thermodynamics than the rest of the run. The base implementation is not used, because
-        # it omits the daisy term, which is the whole subject of this branch.
-        if type(self).V1T_from_X is not generic_potential.V1T_from_X:
-            return (self.V1T_from_X(X, Ta)
-                    + self.constantTerms(Ta, include_decoupled=include_decoupled))
+        # A model that rewrites the effective potential has a thermal part this cannot
+        # reconstruct, and there is no way to borrow one. `V1T_from_X` looks like the hook,
+        # but its contract is ambiguous: the class documentation calls it the
+        # temperature-dependent part of `Vtot`, which would include the radiation bath, while
+        # the base implementation returns neither the bath nor the daisy term. Adding the bath
+        # to an override that already has it double counts it, and not adding it to one that
+        # does not drops it, and nothing in the signature says which. So the hook is this
+        # method, and a model that has rewritten the potential is told to override it rather
+        # than being given a guess.
+        rewritten = [name for name in ("Vtot", "V1T_from_X")
+                     if getattr(type(self), name) is not getattr(generic_potential, name)]
+        if rewritten:
+            raise errors.PotentialError(
+                f"{type(self).__name__} overrides {' and '.join(rewritten)}, so the "
+                "temperature-dependent part of its potential cannot be rebuilt from the mass "
+                "spectrum. Override V_thermal(X, T, include_decoupled=False) as well, "
+                "returning that part on its own, including the radiation bath that "
+                "include_decoupled selects and excluding everything that does not depend on "
+                "the temperature. The sound speed, the transition strengths and the wall "
+                "velocity are all taken from it."
+            )
         bosons0 = self.boson_massSq(X, Ta * 0.0)
         bosonsT = self.boson_massSq(X, Ta)
         fermions = self.fermion_massSq(X)
@@ -1064,18 +1102,15 @@ class generic_potential():
             if not all(np.all(np.isfinite(v)) for v in parts):
                 self._debye_state = "unavailable"
                 return None
-            # Relative to the largest coefficient, so a mode with no Debye mass, of which
-            # every gauge theory here has some, does not set the scale or divide by zero.
             magnitude = float(np.max(np.abs(here))) if here.size else 0.0
             if magnitude <= 0.0:
                 self._debye_state = "unavailable"
                 return None
-            tolerance = 1.0e-9 * magnitude
-            if (np.max(np.abs(check_here - here)) > tolerance
-                    or np.max(np.abs(check_there - there)) > tolerance):
+            if not (_debye_agrees(check_here, here, magnitude)
+                    and _debye_agrees(check_there, there, magnitude)):
                 self._debye_state = "unavailable"
                 return None
-            if here.shape == there.shape and np.max(np.abs(there - here)) <= tolerance:
+            if here.shape == there.shape and _debye_agrees(there, here, magnitude):
                 self._debye_state = here
                 return here
             self._debye_state = "field_dependent"
@@ -1098,7 +1133,7 @@ class generic_potential():
         magnitude = float(np.max(np.abs(coefficient))) if coefficient.size else 0.0
         if magnitude <= 0.0:
             return None
-        if np.max(np.abs(verification - coefficient)) > 1.0e-9 * magnitude:
+        if not _debye_agrees(verification, coefficient, magnitude):
             return None
         return coefficient
 
