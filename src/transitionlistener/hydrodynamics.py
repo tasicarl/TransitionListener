@@ -24,7 +24,8 @@ from scipy.optimize import root_scalar
 
 from transitionlistener import generic_potential
 from transitionlistener.phases import PhaseInfo
-from transitionlistener.helper_functions import temperatureDerivativeStep
+from transitionlistener.helper_functions import (temperatureDerivativeStep,
+                                                 thermalDerivativeStep)
 
 from . import console
 from rich import print
@@ -81,14 +82,38 @@ def kappa_sw(alpha : float, vw: float, cs: float) -> float:
         return num / denom
 
 
-RADIATION_SOUND_SPEED = 1.0 / np.sqrt(3.0)
-"""Sound speed of a massless plasma, the fallback where the computed value is not a speed."""
-
 SOUND_SPEED_STEP_RATIO = 10.0
 """Factor by which the derivative step is varied to test a sound speed for step dependence."""
 
 SOUND_SPEED_JUMP_TOLERANCE = 0.05
 """Relative change of ``c_s`` under that step change above which the value is called noisy."""
+
+
+def resolve_configured_sound_speed(setting) -> float:
+    """Turn a non-``"compute"`` ``GWconfig.sound_speed`` setting into a speed.
+
+    ``"1/3"`` names ``c_s^2 = 1/3``, the massless plasma, and gives ``1/sqrt(3)``. Anything
+    else is read as ``c_s`` itself. The two solvers historically accepted different halves of
+    this, the adaptive one only the label and the fixed-step one only a number, so the value
+    the sound-speed refusal in :class:`errors.SuperluminalSoundSpeedError` recommends was
+    rejected by one of them. Both go through here now.
+
+    The result is strictly between zero and one: the spectrum divides by ``v_wall - c_s``, so
+    a configured value of exactly one with a runaway wall is a division by zero, and the guard
+    on the computed value calls one not a speed.
+    """
+    if isinstance(setting, str) and setting.strip() == "1/3":
+        return 1.0 / np.sqrt(3.0)
+    try:
+        cs = float(setting)
+    except (TypeError, ValueError):
+        raise NotImplementedError(
+            "The GWconfig.sound_speed option is not implemented yet: "
+            f"{setting}. Use 'compute', '1/3', or a number strictly between 0 and 1."
+        ) from None
+    if not (0.0 < cs < 1.0):
+        raise ValueError(f"The speed of sound must satisfy 0 < cs < 1, not {cs}.")
+    return cs
 
 
 class Hydrodynamics():
@@ -135,7 +160,7 @@ class Hydrodynamics():
         """``calc_cs`` with the derivative step scaled, for the step-dependence check."""
         phase = self.high_phase if sym else self.low_phase
         phi = phase.valAt(T)
-        dT = _local_temperature_step(self.pot, T, phi) * float(step_factor)
+        dT = thermalDerivativeStep(self.pot, T, phi) * float(step_factor)
         # Differentiate the temperature-dependent part of the potential, not the whole of
         # it. The two are the same analytically, since what does not depend on temperature
         # drops out of both derivatives, and differ numerically: taking them on the whole
@@ -158,7 +183,9 @@ class Hydrodynamics():
             # Not a speed. Refused rather than replaced: which thermodynamics the model has
             # is the user's choice, and substituting one here would hide the fact that this
             # potential, as evaluated, does not have a sound speed at this temperature.
-            raise errors.SuperluminalSoundSpeedError(float(np.sqrt(cs_sq)), T)
+            raise errors.SuperluminalSoundSpeedError(
+                float(np.sqrt(cs_sq)), T, phase="symmetric" if sym else "broken"
+            )
         if not np.isfinite(cs_sq) or cs_sq <= 0.0:
             if self.verbose:
                 phase_name = "symmetric" if sym else "broken"
@@ -180,14 +207,29 @@ class Hydrodynamics():
         ``c_s`` comes out as 0.82 while ``c_s^2`` ranges over -0.001 to 0.89 across steps
         from ``dT/T = 1e-3`` to ``2e-1``: perfectly subluminal, and meaningless.
 
-        Returns ``(noisy, relative_change)``. A sound speed that cannot be computed at either
-        step is not called noisy; it is already reported as not-a-number.
+        Returns ``(noisy, relative_change)``, the change being the larger of the two the step
+        variation produces. A sound speed that cannot be computed at the base step is not
+        called noisy; it is already reported as not-a-number.
         """
-        base, _ = self._calc_cs_at_step(T, sym, 1.0)
-        other, _ = self._calc_cs_at_step(T, sym, SOUND_SPEED_STEP_RATIO)
-        if not (np.isfinite(base) and np.isfinite(other)) or base <= 0.0:
+        # The step is varied both ways. A coarser step adds truncation error and a finer one
+        # adds round-off, and only the second is the failure this looks for, so testing one
+        # side alone would miss a value that breaks down as the step shrinks.
+        try:
+            base, _ = self._calc_cs_at_step(T, sym, 1.0)
+            coarse, _ = self._calc_cs_at_step(T, sym, SOUND_SPEED_STEP_RATIO)
+            fine, _ = self._calc_cs_at_step(T, sym, 1.0 / SOUND_SPEED_STEP_RATIO)
+        except errors.SuperluminalSoundSpeedError:
+            # A step at which the value is not a speed at all is the strongest possible
+            # statement that it depends on the step. This is a diagnostic, so it reports
+            # that rather than propagating: the refusal belongs to `calc_cs`, whose caller
+            # asked for the number, not to the check, whose caller asked about it.
+            return True, float("nan")
+        if not np.isfinite(base) or base <= 0.0:
             return False, float("nan")
-        change = abs(other / base - 1.0)
+        changes = [abs(other / base - 1.0) for other in (coarse, fine) if np.isfinite(other)]
+        if not changes:
+            return False, float("nan")
+        change = max(changes)
         return bool(change > SOUND_SPEED_JUMP_TOLERANCE), float(change)
 
     def calcWallVelocityLTE(self, Tn: float) -> float:

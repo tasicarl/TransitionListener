@@ -82,27 +82,36 @@ def _daisy_mass_cubed_difference(m20, m2T, Pi=None):
     """
     m20 = np.asarray(m20)
     m2T = np.asarray(m2T)
-    out = np.empty(np.broadcast(m20, m2T).shape, dtype=complex)
+    shape = np.broadcast(m20, m2T).shape
     m20b, m2Tb = np.broadcast_arrays(m20, m2T)
+    m20r = np.real(m20b)
     with np.errstate(divide="ignore", invalid="ignore"):
-        positive = np.asarray(np.real(m20b) > 0.0)
-        u = np.zeros(out.shape, dtype=float)
+        positive = np.asarray(m20r > 0.0)
+        u = np.zeros(shape, dtype=float)
         # `Pi` given analytically is exact; taken as a difference it keeps only the digits
         # by which the two spectra differ, and underflows to zero at low temperature.
-        thermal = (np.real(np.broadcast_to(Pi, out.shape)) if Pi is not None
-                   else np.real(m2Tb) - np.real(m20b))
-        np.divide(thermal, np.real(m20b), out=u, where=positive)
+        thermal = (np.real(np.broadcast_to(Pi, shape)) if Pi is not None
+                   else np.real(m2Tb) - m20r)
+        np.divide(thermal, m20r, out=u, where=positive)
         # Only where the correction is genuinely small is the rearrangement worth it; the
         # threshold is where the direct form still has about half its digits.
         small = positive & (np.abs(u) < 1.0e-2)
-    if np.any(small):
-        base = np.real(m20b)[small] ** 1.5
-        out[small] = base * np.expm1(1.5 * np.log1p(u[small]))
+    # `Vtot` is called hundreds of thousands of times in a scan and the spectra are a handful
+    # of modes, so the masked, two-branch general path costs more in numpy overhead than the
+    # arithmetic in it. The two cases that actually occur are all modes small, which is every
+    # supercooled evaluation, and none small, which is the high-temperature one; both are
+    # taken whole, in one array operation, and the mixed case keeps the general path.
+    all_small = bool(small.all())
+    if all_small:
+        return (m20r ** 1.5 * np.expm1(1.5 * np.log1p(u))).astype(complex, copy=False)
+    hot = (m20r + np.real(np.broadcast_to(Pi, shape))) if Pi is not None else m2Tb
+    if not small.any():
+        return pow(hot + 0j, 1.5) - pow(m20b + 0j, 1.5)
+    out = np.empty(shape, dtype=complex)
+    base = m20r[small] ** 1.5
+    out[small] = base * np.expm1(1.5 * np.log1p(u[small]))
     rest = ~small
-    if np.any(rest):
-        hot = (np.real(m20b) + np.real(np.broadcast_to(Pi, out.shape))
-               if Pi is not None else m2Tb)
-        out[rest] = pow(hot[rest] + 0j, 1.5) - pow(m20b[rest] + 0j, 1.5)
+    out[rest] = pow(hot[rest] + 0j, 1.5) - pow(m20b[rest] + 0j, 1.5)
     return out
 
 
@@ -882,6 +891,9 @@ class generic_potential():
             # Both conditions: at high temperature the daisy term is legitimate and also
             # goes as T^4, so a large ratio alone is not the signature.
             return bool(ratio > 1.0 and lightest_over_T > 1.0), float(ratio)
+        except errors.Timeout:
+            # A diagnostic must not cancel the abort it is being run inside of.
+            raise
         except Exception:
             return False, float("nan")
 
@@ -943,7 +955,9 @@ class generic_potential():
         X = np.asanyarray(X, dtype=float)
         bosons0 = self.boson_massSq(X, 0)
         bosons = self.boson_massSq(X, T)
-        return self.Vdaisy(bosons0, bosons, T)
+        # Same `Pi` as `Vtot` passes, or this helper and the potential it is a piece of
+        # disagree wherever the model provides analytic Debye masses.
+        return self.Vdaisy(bosons0, bosons, T, Pi=self.debye_massSq(X, T))
 
 
     def DVtot(self, X: np.ndarray, T: float | np.ndarray) -> np.ndarray:

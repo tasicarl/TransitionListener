@@ -24,7 +24,8 @@ from scipy import integrate
 from transitionlistener import thermodynamics as td
 from transitionlistener import constants as cn
 from transitionlistener import errors
-from transitionlistener.helper_functions import temperatureDerivativeStep
+from transitionlistener.helper_functions import (temperatureDerivativeStep,
+                                                 thermalDerivativeStep)
 from transitionlistener.pathDeformation import bounceAction
 from transitionlistener.finiteT import Jb_spline as Jb
 from transitionlistener.finiteT import Jf_spline as Jf
@@ -655,12 +656,14 @@ def calcSoundSpeedSq(pot, X, T) -> float:
     Decoupled radiation is excluded because it does not participate in the
     local time-temperature relation of the transitioning plasma.
     """
-    # The broken-phase potential carries a large temperature-independent vacuum offset;
-    # differencing it over too small a step is what made this sound speed noisy.
-    # See helper_functions.temperatureDerivativeStep.
-    dT = temperatureDerivativeStep(pot, T, X)
-    dVdT = pot.dVdT(X, T, dT=dT, include_decoupled=False)
-    d2VdT2 = pot.d2VdT2(X, T, dT=dT, include_decoupled=False)
+    # Differentiate the temperature-dependent part on its own, not the whole potential. The
+    # latter carries a large temperature-independent vacuum offset which cancels analytically
+    # and not numerically, and under supercooling it is the larger by ten or more orders of
+    # magnitude, so the finite differences lose every significant digit. `V_thermal` excludes
+    # the decoupled bath, as this function requires.
+    dT = thermalDerivativeStep(pot, T, X)
+    dVdT = pot.dV_thermal_dT(X, T, dT=dT)
+    d2VdT2 = pot.d2V_thermal_dT2(X, T, dT=dT)
     with np.errstate(divide="ignore", invalid="ignore"):
         cs_sq = np.asarray(dVdT, dtype=float) / (float(T) * np.asarray(d2VdT2, dtype=float))
     return float(np.squeeze(cs_sq))

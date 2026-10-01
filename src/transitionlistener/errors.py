@@ -14,6 +14,8 @@ Authors:
     Carlo Tasillo <carlo.tasillo@ific.uv.es>
 """
 
+import math
+
 # Terminal errors
 class NoModelError(Exception):
     """Raised when the model file is not found or cannot be loaded."""
@@ -80,23 +82,62 @@ class DeformationError(Exception):
 class SuperluminalSoundSpeedError(Exception):
     """The effective potential gave a sound speed of one or more.
 
-    ``c_s^2 = (dV/dT)/(T d2V/dT2)`` of the broken phase sets the speed at which the bubbles
-    grow, ``max(v_wall, c_s)``, the efficiency factors and the spectrum. A value of one or
-    more is not a speed, so nothing downstream of it has a meaning: for a runaway wall it
-    replaces the wall velocity and multiplies ``(beta/H)_RH`` by ``c_s``, and the spectrum
-    divides by ``v_wall - c_s``. Rather than substitute a number the model did not give, the
-    point is refused and the computation that produced it is reported.
+    ``c_s^2 = (dV/dT)/(T d2V/dT2)`` sets the speed at which the bubbles grow,
+    ``max(v_wall, c_s)``, the efficiency factors and the spectrum. A value of one or more is
+    not a speed, so nothing downstream of it has a meaning: for a runaway wall it replaces
+    the wall velocity and multiplies ``(beta/H)_RH`` by ``c_s``, and the spectrum divides by
+    ``v_wall - c_s``. Rather than substitute a number the model did not give, the point is
+    refused and the computation that produced it is reported.
+
+    Which phase it came from is part of the report. Both are refused: the symmetric-phase
+    value is what the hydrodynamic matching across the wall is solved with, so a value of
+    one or more there is no more usable than in the broken phase.
+
+    ``step_change`` and ``daisy_ratio``, where the caller has them, say which of the two
+    known mechanisms produced it. A large ``step_change`` means the finite differences have
+    lost their significant digits and the number is round-off. A large ``daisy_ratio`` means
+    the Arnold-Espinosa daisy resummation dominates the thermal potential, which it only
+    does outside its own range of validity, ``m << T``; there the resummed term falls as a
+    power of the temperature where the mode it stands for should be Boltzmann suppressed,
+    and ``c_s^2`` drifts towards the ``1/2`` of a ``T^3`` potential rather than the ``1/3``
+    of radiation. Neither is a property of the physics.
     """
 
-    def __init__(self, c_s, T, message=None):
+    def __init__(self, c_s, T, message=None, phase="broken", step_change=None,
+                 daisy_ratio=None):
+        """Attach the CLI error code identifying a sound speed that is not a speed."""
         self.c_s = c_s
         self.T = T
-        super().__init__(message or (
-            f"The broken-phase sound speed came out as {c_s} at T = {T}, which is not a "
-            "speed. The effective potential, or the precision it is evaluated with, cannot "
-            "support a sound speed here; run with GWconfig.sound_speed = '1/3' to use the "
-            "radiation value instead, or check the model."
-        ))
+        self.phase = phase
+        self.step_change = step_change
+        self.daisy_ratio = daisy_ratio
+        if message is None:
+            message = (
+                f"The {phase}-phase sound speed came out as {c_s} at T = {T}, which is not "
+                "a speed. The effective potential, or the precision it is evaluated with, "
+                "cannot support a sound speed here; run with GWconfig.sound_speed = '1/3' "
+                "to use the radiation value instead, or check the model."
+            )
+            if step_change is not None and math.isfinite(step_change):
+                message += (
+                    f" Changing the derivative step by a factor ten moves c_s by "
+                    f"{step_change:.3g} of itself, so the finite differences are losing "
+                    "their significant digits."
+                    if step_change > 0.05 else
+                    f" The value is stable under a factor-ten change of the derivative step "
+                    f"({step_change:.3g}), so this is not a finite-difference artefact."
+                )
+            if daisy_ratio is not None and math.isfinite(daisy_ratio):
+                message += (
+                    f" The daisy term is {daisy_ratio:.3g} times the radiation part of the "
+                    "thermal potential, and the Arnold-Espinosa resummation is only valid "
+                    "for m << T, so it is being used outside its range here."
+                    if daisy_ratio > 1.0 else
+                    f" The daisy term is {daisy_ratio:.3g} of the radiation part, within the "
+                    "range the resummation is valid in."
+                )
+        super().__init__(message)
+        self.errorcode = 18
 
 
 class PotentialError(Exception):

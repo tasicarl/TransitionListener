@@ -19,7 +19,8 @@ from transitionlistener.transitionObservables import _BoundedPchipInterpolator
 from . import thermodynamics as td
 from . import constants as cn
 from . import errors
-from transitionlistener.hydrodynamics import Hydrodynamics, calc_kappas
+from transitionlistener.hydrodynamics import (Hydrodynamics, calc_kappas,
+                                              resolve_configured_sound_speed)
 from transitionlistener.bubbledynamics import (
     falseVacuumVolumeGrowthRate,
     integrate_broken_temperature,
@@ -305,46 +306,39 @@ class TransitionObservables:
             print("Calculating sound speed...")
         if GWconfig.sound_speed == "compute":
             hydr = Hydrodynamics(ctx.pot, ctx.phase_symmetric, ctx.phase_broken, ctx.verbose)
-            c_sb = hydr.calc_cs(T, sym=False)
-            c_ss = hydr.calc_cs(T, sym=True)
-            # The same guard as in the adaptive solver: `c_s` feeds the expansion speed of
-            # the bubbles and the spectrum, so it has to be a speed, while `c_s_bro` keeps
-            # the computed number.
+            # The diagnostics are taken first, because `calc_cs` refuses a value of one or
+            # more and these two are what say which mechanism produced it. A value can be
+            # round-off and still be a speed, so no test on the value finds that; ask whether
+            # it survives a change of the derivative step instead. And where the daisy
+            # resummation is used outside its own domain the plasma's thermodynamics, and
+            # with it this sound speed, is the prescription's rather than the model's.
+            noisy, change = hydr.sound_speed_is_step_dependent(T, sym=False)
+            outside, ratio = ctx.pot.daisy_outside_validity(
+                ctx.phase_broken.valAt(T), T)
+            derived["WARNING:noisy_c_s"] = bool(noisy)
+            derived["DIAG:c_s_step_change"] = float(change)
+            derived["WARNING:daisy_outside_validity"] = bool(outside)
+            derived["DIAG:daisy_over_radiation"] = float(ratio)
+            try:
+                c_sb = hydr.calc_cs(T, sym=False)
+                c_ss = hydr.calc_cs(T, sym=True)
+            except errors.SuperluminalSoundSpeedError as err:
+                # Re-raised rather than annotated in place, so the message carries the two
+                # diagnostics and the user is told why, not only that.
+                raise errors.SuperluminalSoundSpeedError(
+                    err.c_s, err.T, phase=err.phase,
+                    step_change=change, daisy_ratio=ratio) from err
+            # `c_s` is what the expansion speed of the bubbles, max(v_wall, c_s), the
+            # efficiency factors and the spectrum are built from. `c_s_bro` repeats it and
+            # `c_s_sym` is the symmetric-phase value the wall matching uses.
             derived["c_s"] = c_sb
             derived["c_s_sym"] = c_ss
             derived["c_s_bro"] = c_sb
-            # A value can be round-off and still be a speed, so no test on the value finds
-            # it. Ask whether it survives a change of the derivative step instead.
-            noisy, change = hydr.sound_speed_is_step_dependent(T, sym=False)
-            derived["WARNING:noisy_c_s"] = bool(noisy)
-            derived["DIAG:c_s_step_change"] = float(change)
-            # Where the daisy resummation is used outside its own domain the plasma's
-            # thermodynamics, and with it this sound speed, is the prescription's rather
-            # than the model's.
-            outside, ratio = ctx.pot.daisy_outside_validity(
-                ctx.phase_broken.valAt(T), T)
-            derived["WARNING:daisy_outside_validity"] = bool(outside)
-            derived["DIAG:daisy_over_radiation"] = float(ratio)
         else:
-            cs = 0.0
-            try:
-                cs = float(GWconfig.sound_speed)
-            except:
-                raise NotImplementedError(
-                    "The GWconfig.sound_speed option is not implemented yet: "
-                    + GWconfig.sound_speed
-                )
-            # Strictly below one: the spectrum divides by (v_wall - c_s), so a configured
-            # value of exactly one with a runaway wall is a division by zero, and the guard
-            # on the computed value classifies one as not a speed.
-            if 0.0 < cs < 1.0:
-                derived["c_s"] = cs
-                derived["c_s_sym"] = cs
-                derived["c_s_bro"] = cs
-            else:
-                raise ValueError(
-                    f"The speed of sound must satisfy 0 < cs < 1, not {cs}.")
-            
+            value = resolve_configured_sound_speed(GWconfig.sound_speed)
+            derived["c_s"] = value
+            derived["c_s_sym"] = value
+            derived["c_s_bro"] = value
 
     def _compute_transition_strength(self, ctx: TransitionContext) -> float:
         """Return alpha_theta at nucleation and handle logging."""

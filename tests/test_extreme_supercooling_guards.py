@@ -226,6 +226,16 @@ class _FrozenPlasmaPotential:
     def d2VdT2(self, X, T, dT=None, include_decoupled=True):
         return 0.0
 
+    def V_thermal(self, X, T):
+        # Constant in T, so both thermal derivatives vanish, which is the point of the stub.
+        return 0.0
+
+    def dV_thermal_dT(self, X, T, dT=None):
+        return 0.0
+
+    def d2V_thermal_dT2(self, X, T, dT=None):
+        return 0.0
+
 
 class SoundSpeedHelperTests(unittest.TestCase):
     """calcSoundSpeedSq itself divides by T d2V/dT2, before any caller can check it."""
@@ -401,7 +411,19 @@ class UnmockedEntryPointTests(unittest.TestCase):
             return real_d2VdT2(X, T, dT, include_radiation=include_radiation,
                                include_decoupled=include_decoupled)
 
+        # `calcSoundSpeedSq` reads the thermal part of the potential, not the whole of it, so
+        # freezing only `dVdT`/`d2VdT2` would leave the sound speed computable and the test
+        # would no longer be about a frozen phase. A phase that has frozen out has a thermal
+        # part with no temperature dependence left, so a constant is what to return.
+        real_V_thermal = pot.V_thermal
+
+        def frozen_V_thermal(X, T):
+            if np.allclose(np.atleast_1d(X), low.valAt(T)):
+                return 0.0
+            return real_V_thermal(X, T)
+
         pot.dVdT, pot.d2VdT2 = frozen_dVdT, frozen_d2VdT2
+        pot.V_thermal = frozen_V_thermal
         with warnings.catch_warnings():
             warnings.simplefilter("error", RuntimeWarning)
             return module.calcAlphas(3.4e2, pot, high, low, verbose=False,
