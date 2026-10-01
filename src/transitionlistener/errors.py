@@ -114,7 +114,7 @@ class SuperluminalSoundSpeedError(Exception):
     """
 
     def __init__(self, c_s, T, message=None, phase="broken", step_change=None,
-                 daisy_ratio=None, daisy_outside=None):
+                 daisy_ratio=None, daisy_outside=None, source="sound_speed"):
         """Attach the CLI error code identifying a sound speed that is not a speed."""
         self.c_s = c_s
         self.T = T
@@ -122,12 +122,28 @@ class SuperluminalSoundSpeedError(Exception):
         self.step_change = step_change
         self.daisy_ratio = daisy_ratio
         self.daisy_outside = daisy_outside
+        self.source = source
         if message is None:
+            # The remedy depends on which computation raised. `calcWallVelocityLTE` builds its
+            # own sound speed from the potential and never reads `GWconfig.sound_speed`, and
+            # it runs before the observables stage that does, so recommending that setting
+            # there sends the user back to the identical error.
+            if source == "wall_velocity":
+                remedy = (
+                    "this is the local-equilibrium wall-velocity matching, which computes "
+                    "its own sound speed and does not read GWconfig.sound_speed; set "
+                    "GWconfig.wall_velocity to 'c' or to a number in (0, 1] to skip the "
+                    "matching, or check the model."
+                )
+            else:
+                remedy = (
+                    "run with GWconfig.sound_speed = '1/3' to use the radiation value "
+                    "instead, or check the model."
+                )
             message = (
                 f"The {phase}-phase sound speed came out as {c_s} at T = {T}, which is not "
                 "a speed. The effective potential, or the precision it is evaluated with, "
-                "cannot support a sound speed here; run with GWconfig.sound_speed = '1/3' "
-                "to use the radiation value instead, or check the model."
+                f"cannot support a sound speed here; {remedy}"
             )
             if step_change is not None:
                 if not math.isfinite(step_change):
@@ -164,10 +180,21 @@ class SuperluminalSoundSpeedError(Exception):
                         "lightest mode here is heavier than the temperature, so it is being "
                         "used outside its range."
                     )
-                elif daisy_outside is False:
+                elif daisy_outside is False and daisy_ratio > 1.0:
+                    # Outside validity needs a large ratio *and* heavy modes. With the ratio
+                    # already large, the verdict can only have been false because the modes
+                    # are light, and that is the one case where saying so is sound.
                     message += size + (
                         " The modes are light enough for the Arnold-Espinosa resummation to "
                         "apply, so this is not a resummation artefact."
+                    )
+                elif daisy_outside is False:
+                    # Here the ratio is what made the verdict false, and it says nothing about
+                    # the masses: `daisy_outside_validity` returns false for heavy modes too
+                    # whenever the daisy term has not overtaken the radiation.
+                    message += size + (
+                        " It has not overtaken the radiation, so the Arnold-Espinosa "
+                        "resummation is not what is driving this."
                     )
                 else:
                     message += size

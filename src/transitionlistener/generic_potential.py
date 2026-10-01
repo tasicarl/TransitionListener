@@ -929,9 +929,126 @@ class generic_potential():
         about ``5e-5``, so the subtraction keeps seven of sixteen digits; by an internal
         temperature of ``1e-7`` it keeps none and the thermal part underflows to exactly zero,
         which silently removes the daisy term altogether. A model that builds its masses as
-        ``m^2(X) + Pi(T)`` already holds ``Pi`` and can hand it over exactly.
+        ``m^2(X) + Pi(T)`` already holds ``Pi`` and can hand it over exactly, and should
+        override this with the closed form.
+
+        The default measures it instead of declining. Where the thermal part is
+        ``Pi = c(X) T^2``, which is what the Arnold-Espinosa Debye masses are, the coefficient
+        can be read off at a reference temperature high enough for the subtraction to keep its
+        digits and then evaluated at any temperature. The reference is the model's own scale
+        ``v_stable``, where ``Pi`` is of order the masses themselves.
+
+        That the thermal part goes as ``T^2`` is assumed by nothing here: it is checked, at a
+        second reference temperature and at two field points, and the default declines
+        whenever the check fails.
+
+        The check is not a formality, and neither is doing it at two field points. Of the
+        eight models shipped in ``models/``, four pass and four fail, and the failures are all
+        the same physics: where the bosonic masses are eigenvalues of a mass matrix whose
+        *entries* go as ``T^2``, the eigenvalues do not. Measured on ``models/TL_2HDM.py``,
+        the two longitudinal gauge modes move their apparent coefficient by 4.6% and 11%
+        between ``T`` and ``T/2``. ``models/TL_dark_flipflop.py`` fails only where both of its
+        fields are on: along ``X0``, where the second vanishes and the matrix is diagonal, it
+        looks quadratic to ``7e-18``, and at a generic point it is off by ``5e-3``. A check at
+        one field point would have accepted it and handed the daisy term a ``Pi`` that is
+        wrong by half a per cent.
+
+        For those models there is no ``Pi`` to hand over: the daisy term needs the two spectra
+        themselves and the subtraction is the only route, so declining is the correct answer
+        rather than a missing feature.
+
+        Returns an array shaped like the boson mass spectrum, or ``None``.
         """
-        return None
+        coefficient = self._debye_coefficient(X)
+        if coefficient is None:
+            return None
+        T2 = np.asarray(T, dtype=float) ** 2
+        if np.ndim(T2):
+            return coefficient * T2[..., np.newaxis]
+        return coefficient * float(T2)
+
+    # Outcome of the check in `_debye_coefficient`, kept because `Vtot` calls it on every
+    # evaluation and the answer cannot change for a given model: `None` not yet asked,
+    # `"unavailable"` the thermal part does not go as `T^2`, `"field_dependent"` it does but
+    # the coefficient moves with the field, or the coefficient array itself where it does not.
+    _debye_state = None
+
+    def _debye_coefficient(self, X: np.ndarray):
+        """``c`` with ``Pi = c T^2``, measured and verified, or ``None``.
+
+        Separate from :func:`debye_massSq` so the verification is paid once rather than on
+        every call, and decided at two field points fixed by the model rather than at whatever
+        field value happens to arrive first. ``Vtot`` is called with random field points while
+        the model is being built, and a verdict read off those would differ from run to run.
+
+        Three outcomes. A model whose thermal part is not quadratic never measures again. One
+        whose coefficient is the same at both reference points is taken to be field
+        independent and never measures again either. The rest measure on every call, two extra
+        spectrum evaluations. None of the models shipped here takes that third path: the four
+        that pass the check all have a field-independent coefficient, and the four whose
+        coefficient does move with the field turn out not to be quadratic either, which is the
+        same mixing in both cases. It is kept for models that are.
+        """
+        state = self._debye_state
+        # The array test comes first: comparing a cached coefficient array against a string
+        # is an elementwise comparison, and `if` on its result raises.
+        if isinstance(state, np.ndarray):
+            return state
+        if state == "unavailable":
+            return None
+
+        scale = float(getattr(self, "v_stable", 0.0) or 0.0)
+        if not np.isfinite(scale) or scale <= 0.0:
+            self._debye_state = "unavailable"
+            return None
+
+        def measure(Xa, T):
+            zero = np.asarray(self.boson_massSq(Xa, np.asarray(0.0))[0], dtype=float)
+            hot = np.asarray(self.boson_massSq(Xa, np.asarray(T))[0], dtype=float)
+            return (hot - zero) / T ** 2
+
+        if state != "field_dependent":
+            try:
+                reference = np.atleast_1d(
+                    np.asarray(self.X0, dtype=float)).ravel()[:self.Ndim]
+                elsewhere = 0.37 * reference + 0.11 * scale
+                here, there = measure(reference, scale), measure(elsewhere, scale)
+                # The quadratic law is checked at both points, so a model that is quadratic
+                # only where it happens to have been sampled does not pass.
+                check_here = measure(reference, 0.5 * scale)
+                check_there = measure(elsewhere, 0.5 * scale)
+            except errors.Timeout:
+                raise
+            except Exception:
+                self._debye_state = "unavailable"
+                return None
+            parts = (here, there, check_here, check_there)
+            if not all(np.all(np.isfinite(v)) for v in parts):
+                self._debye_state = "unavailable"
+                return None
+            # Relative to the largest coefficient, so a mode with no Debye mass, of which
+            # every gauge theory here has some, does not set the scale or divide by zero.
+            magnitude = float(np.max(np.abs(here))) if here.size else 0.0
+            if magnitude <= 0.0:
+                self._debye_state = "unavailable"
+                return None
+            tolerance = 1.0e-9 * magnitude
+            if (np.max(np.abs(check_here - here)) > tolerance
+                    or np.max(np.abs(check_there - there)) > tolerance):
+                self._debye_state = "unavailable"
+                return None
+            if here.shape == there.shape and np.max(np.abs(there - here)) <= tolerance:
+                self._debye_state = here
+                return here
+            self._debye_state = "field_dependent"
+
+        try:
+            coefficient = measure(np.asarray(X), scale)
+        except errors.Timeout:
+            raise
+        except Exception:
+            return None
+        return coefficient if np.all(np.isfinite(coefficient)) else None
 
     def Vdaisy(self, bosons0, bosonsT , T: float | np.ndarray, Pi=None
                ) -> float | np.ndarray:

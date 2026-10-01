@@ -16,6 +16,7 @@ from unittest import mock
 import numpy as np
 
 from transitionlistener import config
+from transitionlistener import generic_potential
 from transitionlistener import errors
 from transitionlistener.helper_functions import load_potential
 from transitionlistener.helper_functions import (temperatureDerivativeStep,
@@ -110,9 +111,19 @@ class DaisyEvaluationTests(unittest.TestCase):
         self.assertTrue(np.all(m2T - m20 == 0.0))
         self.assertTrue(np.any(np.ravel(pot.debye_massSq(X, T)) > 0.0))
 
-    def test_the_default_hook_declines(self):
+    def test_the_default_hook_measures_rather_than_declining(self):
+        """The base class no longer returns `None` for everything.
+
+        It reads the `T^2` coefficient off the model's own spectrum and verifies it, so a
+        model that does not state its Debye masses still gets them. It declines only where the
+        verification fails, which `DefaultDebyeMassTests` covers.
+        """
         from transitionlistener import generic_potential as gp
-        self.assertIsNone(gp.generic_potential.debye_massSq(conformal(), None, 1.0))
+        pot = conformal()
+        X = np.array([900.0])
+        value = gp.generic_potential.debye_massSq(pot, X, np.asarray([0.3 * pot.v_stable]))
+        self.assertIsNotNone(value)
+        self.assertTrue(np.any(np.ravel(np.asarray(value, dtype=float)) > 0.0))
 
 
 class DaisyFastPathTests(unittest.TestCase):
@@ -974,6 +985,133 @@ class InfiniteSoundSpeedTests(unittest.TestCase):
         self.assertTrue(np.isnan(change))
 
 
+class DefaultDebyeMassTests(unittest.TestCase):
+    """The framework measures the Debye masses itself, and refuses where it cannot."""
+
+    @staticmethod
+    def _model(name):
+        import sys
+        from pathlib import Path as _Path
+        sys.path.insert(0, str(_Path(__file__).resolve().parent))
+        from test_potential_broadcasting import build
+        with contextlib.redirect_stdout(io.StringIO()):
+            return build(name)
+
+    @staticmethod
+    def _X(pot):
+        return np.atleast_1d(np.asarray(pot.X0, dtype=float)).ravel()[:pot.Ndim]
+
+    # Quadratic thermal part, so the coefficient can be read off and used at any temperature.
+    QUADRATIC = ("dark_U1", "dark_U1_g", "template")
+    # Masses that are eigenvalues of a mixing matrix, where no such coefficient exists.
+    MIXING = ("2HDM", "flipflop")
+
+    def test_it_matches_the_subtraction_where_the_subtraction_is_sound(self):
+        for name in self.QUADRATIC:
+            with self.subTest(model=name):
+                pot = self._model(name)
+                X = self._X(pot)
+                T = np.asarray([0.1 * pot.v_stable])
+                Pi = pot.debye_massSq(X, T)
+                self.assertIsNotNone(Pi, "the default declined a quadratic thermal part")
+                subtraction = (np.asarray(pot.boson_massSq(X, T)[0], dtype=float)
+                               - np.asarray(pot.boson_massSq(X, T * 0.0)[0], dtype=float))
+                a, b = np.ravel(np.asarray(Pi, dtype=float)), np.ravel(subtraction)
+                nonzero = np.abs(b) > 0.0
+                self.assertTrue(nonzero.any(), "no mode had a thermal mass to compare")
+                np.testing.assert_allclose(a[nonzero], b[nonzero], rtol=1.0e-9)
+
+    def test_it_declines_where_the_masses_mix(self):
+        """Not a gap: for these the daisy term genuinely needs the two spectra.
+
+        Where the bosonic masses are eigenvalues of a matrix whose entries go as `T^2`, the
+        eigenvalues do not, so there is no `Pi` to hand over and the subtraction is the only
+        route. Handing one over anyway would make the daisy term wrong rather than imprecise.
+        """
+        for name in self.MIXING:
+            with self.subTest(model=name):
+                pot = self._model(name)
+                self.assertIsNone(pot.debye_massSq(self._X(pot), np.asarray([30.0])))
+
+    def test_the_quadratic_law_is_checked_at_more_than_one_field_point(self):
+        """`flipflop` is quadratic along X0 and not away from it, and must still be refused.
+
+        Its second field vanishes at `X0`, where its mass matrix is diagonal and the law holds
+        to `7e-18`; at a point with both fields on it is off by `5e-3`. A check at one field
+        point would accept it and hand the daisy term a `Pi` wrong by half a per cent.
+        """
+        pot = self._model("flipflop")
+        scale = pot.v_stable
+        reference = self._X(pot)
+
+        def coefficient(X, T):
+            zero = np.asarray(pot.boson_massSq(X, np.asarray(0.0))[0], dtype=float)
+            hot = np.asarray(pot.boson_massSq(X, np.asarray(T))[0], dtype=float)
+            return (hot - zero) / T ** 2
+
+        along = np.max(np.abs(coefficient(reference, scale)
+                              - coefficient(reference, 0.5 * scale)))
+        off_axis_point = 0.37 * reference + 0.11 * scale
+        off_axis = np.max(np.abs(coefficient(off_axis_point, scale)
+                                 - coefficient(off_axis_point, 0.5 * scale)))
+        self.assertLess(along, 1.0e-15, "X0 was meant to be the deceptive direction")
+        self.assertGreater(off_axis, 1.0e-4, "the off-axis point was meant to break the law")
+        self.assertIsNone(pot.debye_massSq(reference, np.asarray([30.0])))
+
+    def test_the_verdict_does_not_depend_on_the_field_it_first_saw(self):
+        """`Vtot` is called with random field points while the model is built.
+
+        A verdict read off whichever point arrived first would differ between runs of the same
+        input, so it is taken at field points the model itself fixes.
+        """
+        import numpy
+        verdicts = []
+        for probe in (None, "far", "origin"):
+            pot = self._model("dark_U1")
+            scale = pot.v_stable
+            if probe == "far":
+                pot.debye_massSq(np.asarray([7.3 * scale]), np.asarray([0.5 * scale]))
+            elif probe == "origin":
+                pot.debye_massSq(np.asarray([0.0]), np.asarray([0.5 * scale]))
+            value = pot.debye_massSq(self._X(pot), np.asarray([0.1 * scale]))
+            verdicts.append(None if value is None
+                            else np.ravel(np.asarray(value, dtype=float)).copy())
+        self.assertTrue(all(v is not None for v in verdicts),
+                        "the verdict changed with the field point seen first")
+        for other in verdicts[1:]:
+            np.testing.assert_allclose(other, verdicts[0], rtol=0.0, atol=0.0)
+
+    def test_a_cached_coefficient_survives_a_second_call(self):
+        # The cached value is an array, and comparing an array against the string states is
+        # elementwise; branching on that raises. It broke model construction, which calls
+        # `Vtot` more than once.
+        pot = self._model("dark_U1")
+        X, T = self._X(pot), np.asarray([0.1 * pot.v_stable])
+        first = pot.debye_massSq(X, T)
+        self.assertIsNotNone(first)
+        second = pot.debye_massSq(X, T)
+        np.testing.assert_allclose(np.ravel(np.asarray(second, dtype=float)),
+                                   np.ravel(np.asarray(first, dtype=float)),
+                                   rtol=0.0, atol=0.0)
+
+    def test_it_reproduces_a_model_that_states_its_own(self):
+        """The conformal dark U(1) writes its Debye masses in closed form.
+
+        That makes it the one case where the measured default can be checked against an
+        analytic answer rather than against the subtraction it is meant to replace.
+        """
+        pot = conformal()
+        X = np.array([900.0])
+        T = np.asarray([0.3 * pot.v_stable])
+        analytic = np.ravel(np.asarray(pot.debye_massSq(X, T), dtype=float))
+        with mock.patch.object(type(pot), "debye_massSq",
+                               generic_potential.generic_potential.debye_massSq):
+            measured = pot.debye_massSq(X, T)
+        self.assertIsNotNone(measured, "the default declined a model with a closed form")
+        np.testing.assert_allclose(np.ravel(np.asarray(measured, dtype=float)),
+                                   analytic, rtol=1.0e-12)
+
+
 class ConfiguredSoundSpeedTests(unittest.TestCase):
     """Both solvers accept the setting the superluminal refusal tells the user to use."""
 
@@ -1063,7 +1201,13 @@ class SuperluminalReportingTests(unittest.TestCase):
         quiet = errors.SuperluminalSoundSpeedError(
             1.48, 1.0e-5, step_change=1.0e-5, daisy_ratio=0.2, daisy_outside=False)
         self.assertIn("not a finite-difference artefact", str(quiet))
-        self.assertIn("light enough", str(quiet))
+        # Ratio below one: the verdict is false because the daisy term has not taken over, and
+        # that says nothing about the masses, so the message must not claim light modes.
+        self.assertIn("has not overtaken the radiation", str(quiet))
+        self.assertNotIn("light enough", str(quiet))
+        light = errors.SuperluminalSoundSpeedError(
+            1.48, 1.0e-5, daisy_ratio=50.0, daisy_outside=False)
+        self.assertIn("light enough", str(light))
         # The step check returns nan when one of the test steps is not a speed either, which
         # is the case where the step dependence is strongest. Saying nothing there would
         # leave that one case without a statement.

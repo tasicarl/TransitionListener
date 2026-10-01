@@ -310,7 +310,7 @@ class Hydrodynamics():
                 ratio = np.float64(numerator) / np.float64(denominator)
             if np.isposinf(ratio):
                 raise errors.SuperluminalSoundSpeedError(
-                    float("inf"), Tn, phase=phase_name)
+                    float("inf"), Tn, phase=phase_name, source="wall_velocity")
 
         if (not np.isfinite(enthalpy_s) or enthalpy_s <= 0.0
                 or not np.isfinite(enthalpy_b) or enthalpy_b <= 0.0
@@ -349,7 +349,7 @@ class Hydrodynamics():
         for phase_name, c in (("symmetric", sound_speeds[0]), ("broken", sound_speeds[1])):
             if c >= 1.0:
                 raise errors.SuperluminalSoundSpeedError(
-                    float(np.sqrt(c)), Tn, phase=phase_name)
+                    float(np.sqrt(c)), Tn, phase=phase_name, source="wall_velocity")
 
         # Calculate the alpha definition from the paper
         # eq. (19) in `arxiv:2303.10171`

@@ -211,11 +211,45 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   The thermal correction itself was taken as the difference of the mass spectra at `T` and at
   zero, which keeps seven of sixteen digits at that temperature and **underflows to exactly
   zero** below an internal temperature of about `1e-7`, silently deleting the daisy term.
-  `generic_potential.debye_massSq(X, T)` lets a model hand it over directly instead; it
-  returns `None` by default, which keeps taking the thermal part as that difference, as
-  before, though the rearrangement above still improves the accuracy of the difference once
-  it is taken. On the conformal dark U(1) the hook changes the thermal part of the potential
-  by `1.7e-3` of itself at a temperature of `1e-7` of the scale, and at `1e-9` the version
+  `generic_potential.debye_massSq(X, T)` provides it directly. A model that writes its Debye
+  masses in closed form overrides it, as `models/TL_conformal_dark_u1.py` does, and the base
+  class measures it for every model that does not: where the thermal part is `Pi = c(X) T^2`,
+  which is what the Arnold-Espinosa Debye masses are, the coefficient is read off at the
+  model's own scale, where the subtraction still keeps its digits, and then used at any
+  temperature.
+
+  Nothing here assumes the quadratic law. It is verified, at a second temperature and at two
+  field points, and the base class declines whenever the check fails. The check decides four
+  of the eight models in `models/` each way. It passes for the conformal dark U(1), both dark
+  U(1) parameterisations and the template. It fails for the three 2HDM models and for the dark
+  flip-flop, and for one reason in all four: their bosonic masses are eigenvalues of a mass
+  matrix whose *entries* go as `T^2`, and the eigenvalues of such a matrix do not. On
+  `models/TL_2HDM.py` the two longitudinal gauge modes move their apparent coefficient by 4.6%
+  and 11% between `T` and `T/2`. `models/TL_dark_flipflop.py` is the reason the check uses two
+  field points rather than one: along `X0` its second field vanishes, its matrix is diagonal
+  and the law holds to `7e-18`, while at a point with both fields on it is off by `5e-3`, so a
+  one-point check would have accepted it and handed the daisy term a `Pi` wrong by half a per
+  cent. For those four there is no `Pi` to hand over and the subtraction is the only route, so
+  declining is the correct answer rather than a missing feature.
+
+  The verdict is settled once per model and at field points the model itself fixes, not at
+  whichever point arrives first: `Vtot` is called with random field values while a model is
+  being constructed, and a verdict read off those would differ between runs of the same input.
+  Models whose coefficient is field independent, which is all four that pass, cache it and
+  never measure again. Measured on the conformal dark U(1), the base class reproduces that
+  model's own closed form to `1e-12`, and on the others it agrees with the subtraction to
+  `1e-13` wherever the subtraction still works.
+
+  This changes the daisy term of `models/TL_dark_U1.py`,
+  `models/TL_dark_U1_g_parameterization.py` and `models/templatePotential.py`, which now get
+  an exact thermal part where they previously got the difference of two spectra. A scalar
+  `Vtot` costs 9 to 13% more on those, and 1% or less on the models that decline, since the
+  verdict is cached. Where a model declines, the thermal part is still taken as the difference
+  of the two spectra, as before, and the rearrangement above still improves the accuracy of
+  that difference once it is taken.
+
+  On the conformal dark U(1) an exact `Pi` changes the thermal part of the potential by
+  `1.7e-3` of itself at a temperature of `1e-7` of the scale, and at `1e-9` the version
   without it has nothing left to compare. It changes `Vtot` by nothing measurable at any of
   them, which is the point: the shift lives below the last digit of the vacuum energy, and
   that is why the sound speed is taken from the thermal part. And

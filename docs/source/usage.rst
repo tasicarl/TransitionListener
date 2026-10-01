@@ -181,6 +181,19 @@ The most important controls are:
   reports a modelling choice, not an error, and nothing is corrected. It applies
   only to ``daisy = "ArnoldEspinosa"``; with ``"Parwani"`` or ``"off"`` there is no
   such term in the potential and both come back as a false flag beside a ``nan``.
+
+  The daisy term itself needs the thermal part of the boson masses,
+  :math:`\Pi`. Where a model writes its Debye masses in closed form it should
+  override ``generic_potential.debye_massSq``; otherwise the base class measures
+  them, by reading the :math:`T^2` coefficient off the model's own spectrum at a
+  temperature where the difference of the spectra still keeps its digits. That the
+  thermal part is quadratic is verified rather than assumed, and the base class
+  falls back to the difference of the two spectra wherever it is not. It is not,
+  for every model whose bosonic masses are eigenvalues of a mass matrix that mixes:
+  the entries of such a matrix go as :math:`T^2` but its eigenvalues do not. Of the
+  models shipped in ``models/``, the two dark :math:`U(1)` parameterisations, the
+  conformal dark :math:`U(1)` and the template get an exact :math:`\Pi`, while the
+  three 2HDM models and the dark flip-flop use the difference.
 - ``percolationConf.n_action``: fixed ``TSYM`` support count for
   ``fixed_step_size`` runs.
 - ``percolation_n_action_min``, ``percolation_n_action_increment``,
