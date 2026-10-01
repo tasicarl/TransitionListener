@@ -169,7 +169,11 @@ class Hydrodynamics():
         with np.errstate(divide="ignore", invalid="ignore"):
             cs_sq = np.asarray(dVdT, dtype=float) / (float(T) * np.asarray(ddVdT, dtype=float))
         cs_sq = float(np.squeeze(cs_sq))
-        if np.isfinite(cs_sq) and cs_sq >= 1.0:
+        # No finiteness test on this comparison. A nonzero first derivative over a second one
+        # that has underflowed to zero is positive infinity, which is a sound speed above the
+        # limit and belongs here, not in the frozen-phase branch below. `nan` and `-inf` do
+        # not compare greater than or equal to one, so they still fall through.
+        if cs_sq >= 1.0:
             # Not a speed. Refused rather than replaced: which thermodynamics the model has
             # is the user's choice, and substituting one here would hide the fact that this
             # potential, as evaluated, does not have a sound speed at this temperature.
@@ -286,6 +290,28 @@ class Hydrodynamics():
 
         denominator_s, denominator_b = Tn * _scalar(ddVdT_s), Tn * _scalar(ddVdT_b)
         enthalpy_s, enthalpy_b = _scalar(w_s), _scalar(w_b)
+
+        # A vanishing denominator is two different situations and they get different answers.
+        # With the first derivative vanishing too it is the 0/0 of a phase with no plasma,
+        # handled just below as the runaway branch. With the first derivative still finite and
+        # nonzero it is an infinite sound speed, which is refused like any other value of one
+        # or more; it has to be told apart here, because the runaway return comes first.
+        for phase_name, numerator, denominator in (
+                ("symmetric", _scalar(dVdT_s), denominator_s),
+                ("broken", _scalar(dVdT_b), denominator_b)):
+            if denominator != 0.0 or not np.isfinite(numerator) or numerator == 0.0:
+                # The last clause only skips a pointless division: with a vanishing numerator
+                # the quotient is nan, which the test below rejects anyway.
+                continue
+            # Which infinity it is depends on the sign the underflowed denominator kept, so
+            # the quotient is formed rather than guessed. Plain floats raise on division by
+            # zero; numpy gives the signed infinity, as it does everywhere else here.
+            with np.errstate(divide="ignore", invalid="ignore"):
+                ratio = np.float64(numerator) / np.float64(denominator)
+            if np.isposinf(ratio):
+                raise errors.SuperluminalSoundSpeedError(
+                    float("inf"), Tn, phase=phase_name)
+
         if (not np.isfinite(enthalpy_s) or enthalpy_s <= 0.0
                 or not np.isfinite(enthalpy_b) or enthalpy_b <= 0.0
                 or not np.isfinite(denominator_s) or denominator_s == 0.0

@@ -312,6 +312,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   same footing as in `calc_cs`. A phase with no plasma at all is a different statement and is
   still the runaway branch, `v_wall = 1`, as before.
 
+  A second derivative that underflows to zero against a first derivative that has not is a
+  third case, and it is an infinite sound speed rather than either of those. It is refused in
+  both places. The comparison against one carries no finiteness test, so positive infinity
+  reaches it, while `nan` and negative infinity do not compare greater than or equal to one
+  and still fall through to the frozen-phase branch. In the wall velocity the sign the
+  underflowed denominator kept is what decides between the two, so the quotient is formed
+  rather than assumed, and the check runs before the zero-denominator return that would
+  otherwise give the runaway answer first.
+
   The wall velocity itself barely moves, because the superluminal values were being handed to
   a `find_vw` that saturates: over the same 155 evaluations, 152 are bit-identical, the largest
   change is `1.0e-6` relative, and nothing is refused, since the superluminal values existed

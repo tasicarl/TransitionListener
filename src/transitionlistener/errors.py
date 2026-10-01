@@ -95,14 +95,22 @@ class SuperluminalSoundSpeedError(Exception):
     value is what the hydrodynamic matching across the wall is solved with, so a value of
     one or more there is no more usable than in the broken phase.
 
-    ``step_change`` and ``daisy_ratio``, where the caller has them, say which of the two
-    known mechanisms produced it. A large ``step_change`` means the finite differences have
-    lost their significant digits and the number is round-off. A large ``daisy_ratio`` means
-    the Arnold-Espinosa daisy resummation dominates the thermal potential, which it only
-    does outside its own range of validity, ``m << T``; there the resummed term falls as a
-    power of the temperature where the mode it stands for should be Boltzmann suppressed,
-    and ``c_s^2`` drifts towards the ``1/2`` of a ``T^3`` potential rather than the ``1/3``
-    of radiation. Neither is a property of the physics.
+    ``step_change``, ``daisy_ratio`` and ``daisy_outside``, where the caller has them, say
+    which of the two known mechanisms produced it. Neither is a property of the physics.
+
+    A large ``step_change`` means the finite differences have lost their significant digits
+    and the number is round-off.
+
+    ``daisy_ratio`` is a size and ``daisy_outside`` is the verdict; the size alone does not
+    imply the verdict. Where the Arnold-Espinosa resummation is used outside its range of
+    validity, ``m << T``, the resummed term falls as a power of the temperature where the
+    mode it stands for should be Boltzmann suppressed, it comes to dominate the thermal
+    potential, and ``c_s^2`` drifts towards the ``1/2`` of a ``T^3`` potential rather than
+    the ``1/3`` of radiation. But a daisy term larger than the radiation is not by itself
+    that failure: at high temperature it legitimately exceeds the radiation while every mode
+    is still lighter than the temperature. ``daisy_outside`` is
+    :func:`generic_potential.daisy_outside_validity`, which requires both, and it is what the
+    message draws its conclusion from.
     """
 
     def __init__(self, c_s, T, message=None, phase="broken", step_change=None,

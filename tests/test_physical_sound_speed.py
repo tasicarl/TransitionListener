@@ -159,13 +159,37 @@ class DaisyFastPathTests(unittest.TestCase):
                         np.testing.assert_allclose(got, want, rtol=0.0, atol=0.0)
 
     def test_the_shortcuts_are_the_ones_being_taken(self):
-        # Otherwise this would pass while measuring nothing: the two cases that the fast paths
-        # exist for have to be the cases that occur.
+        """Which branch runs, not merely that the answer is finite.
+
+        Asserting finiteness pins nothing: routing both homogeneous cases through the masked
+        general path gives the same values, so the test would pass with the shortcuts gone and
+        the performance claim unmeasured. The general path is the only one that allocates its
+        complex output with `np.empty`, so counting that allocation is what distinguishes them.
+        """
+        import numpy
         from transitionlistener.generic_potential import _daisy_mass_cubed_difference as f
-        m20 = np.array([5.0e4, 1.0e9])
-        self.assertTrue(np.all(np.isfinite(f(m20, m20 + 1.0e-9, Pi=np.full(2, 1.0e-9)))))
+
+        def allocations(call):
+            with mock.patch.object(numpy, "empty", wraps=numpy.empty) as spy:
+                out = call()
+            return out, spy.call_count
+
+        small = np.array([5.0e4, 1.0e9])
+        out, n = allocations(lambda: f(small, small + 1.0e-9, Pi=np.full(2, 1.0e-9)))
+        self.assertTrue(np.all(np.isfinite(out)))
+        self.assertEqual(n, 0, "the all-small case took the masked general path")
+
         hot = np.array([1.0, 2.0])
-        self.assertTrue(np.all(np.isfinite(f(hot, hot * 7.0))))
+        out, n = allocations(lambda: f(hot, hot * 7.0))
+        self.assertTrue(np.all(np.isfinite(out)))
+        self.assertEqual(n, 0, "the none-small case took the masked general path")
+
+        # And the mixed case must still take it, or the shortcut is being applied where the
+        # two forms disagree, which `test_the_shortcuts_reproduce_the_general_path` checks.
+        mixed = np.array([5.0e4, 1.0])
+        out, n = allocations(lambda: f(mixed, np.array([5.0e4 + 1.0e-9, 9.0])))
+        self.assertTrue(np.all(np.isfinite(out)))
+        self.assertGreaterEqual(n, 1, "the mixed case skipped the general path")
 
 
 class ThermalDerivativeTests(unittest.TestCase):
@@ -870,6 +894,84 @@ class ReviewFollowUpTests(unittest.TestCase):
                         cls._ensure_sound_speed(obs, ctx, 30.0)
                 self.assertIs(caught.exception.daisy_outside, False)
                 self.assertNotIn("outside its range", str(caught.exception))
+
+
+class InfiniteSoundSpeedTests(unittest.TestCase):
+    """A second derivative that underflows to zero gives an infinite sound speed.
+
+    That is a value above the limit, not the frozen-phase zero-over-zero, and the two used to
+    be lumped together: `calc_cs` returned not-a-number for it and `calcWallVelocityLTE`
+    returned the runaway branch, because its zero-denominator guard runs before the refusal.
+    """
+
+    def _hydro(self, d1, d2):
+        class Pot:
+            T_eps = 1.0e-3
+            X0 = np.array([1.0])
+            config = types.SimpleNamespace(
+                gwConf=types.SimpleNamespace(coupled_hydrodynamics=True))
+
+            @staticmethod
+            def _broken(X):
+                return bool(np.allclose(np.atleast_1d(X), 1.0))
+
+            def dV_thermal_dT(self, X, T, dT=None, include_decoupled=False):
+                return d1
+
+            def d2V_thermal_dT2(self, X, T, dT=None, include_decoupled=False):
+                return d2
+
+            def dVdT(self, X, T, dT=None, include_decoupled=True, include_radiation=True):
+                return d1
+
+            def d2VdT2(self, X, T, dT=None, include_decoupled=True, include_radiation=True):
+                return d2
+
+            def Vtot(self, X, T, include_decoupled=True):
+                return -0.25 if self._broken(X) else -1.0
+
+        hydro = Hydrodynamics.__new__(Hydrodynamics)
+        hydro.pot = Pot()
+        hydro.high_phase, hydro.low_phase = FlatPhase([0.0]), FlatPhase([1.0])
+        hydro.verbose = False
+        return hydro
+
+    # The entropy is positive, so dV/dT < 0; the sign the underflowed second derivative keeps
+    # is what decides between an infinite and a negative ratio, and at underflow it is not
+    # under anyone's control.
+    INFINITE = (-1.0, -0.0)
+    NO_PLASMA = (0.0, 0.0)
+    NEGATIVE = (-1.0, 0.0)
+
+    def test_calc_cs_refuses_it(self):
+        with self.assertRaises(errors.SuperluminalSoundSpeedError) as caught:
+            self._hydro(*self.INFINITE).calc_cs(100.0, sym=False)
+        self.assertEqual(caught.exception.c_s, float("inf"))
+
+    def test_the_wall_velocity_refuses_it(self):
+        with self.assertRaises(errors.SuperluminalSoundSpeedError) as caught:
+            self._hydro(*self.INFINITE).calcWallVelocityLTE(100.0)
+        self.assertEqual(caught.exception.c_s, float("inf"))
+
+    def test_it_is_told_apart_from_a_phase_with_no_plasma(self):
+        """The cases that must keep their old answers, or the refusal has swallowed them."""
+        for label, pair in (("no plasma", self.NO_PLASMA), ("negative ratio", self.NEGATIVE)):
+            with self.subTest(case=label):
+                hydro = self._hydro(*pair)
+                self.assertTrue(np.isnan(hydro.calc_cs(100.0, sym=False)))
+                self.assertEqual(hydro.calcWallVelocityLTE(100.0), 1)
+
+    def test_the_symmetric_phase_is_refused_too(self):
+        hydro = self._hydro(*self.INFINITE)
+        with self.assertRaises(errors.SuperluminalSoundSpeedError) as caught:
+            hydro.calc_cs(100.0, sym=True)
+        self.assertEqual(caught.exception.phase, "symmetric")
+
+    def test_the_step_check_reports_it_rather_than_raising(self):
+        noisy, change = self._hydro(*self.INFINITE).sound_speed_is_step_dependent(
+            100.0, sym=False)
+        self.assertTrue(noisy)
+        self.assertTrue(np.isnan(change))
 
 
 class ConfiguredSoundSpeedTests(unittest.TestCase):
