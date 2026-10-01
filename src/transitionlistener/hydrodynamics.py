@@ -83,7 +83,7 @@ RADIATION_SOUND_SPEED = 1.0 / np.sqrt(3.0)
 """Sound speed of a massless plasma, the fallback where the computed value is not a speed."""
 
 
-def physical_sound_speed(c_s) -> tuple[float, bool]:
+def physical_sound_speed(c_s: float | None) -> tuple[float, bool]:
     """Return ``(c_s, replaced)`` with a value that can be used as a speed.
 
     ``calc_cs`` takes ``c_s^2 = (dV/dT)/(T d2V/dT2)`` by finite differences of the full
@@ -100,15 +100,32 @@ def physical_sound_speed(c_s) -> tuple[float, bool]:
     there was 2.3% to 69.5% above a direct integration of the false-vacuum fraction.
 
     Only values that are not speeds are replaced: not-a-number, infinite, non-positive, and
-    ``c_s >= 1``. A plasma whose particles have masses in fact has ``c_s^2 < 1/3``, reaching
-    ``1/3`` only in the massless limit and from below, as the lattice equation of state of
-    quantum chromodynamics shows across the whole crossover (arXiv:1309.5258,
-    arXiv:1407.6387). Clamping at ``1/sqrt(3)`` would therefore be the physical bound, but it
-    fires on 108 of 286 ordinary campaign runs, where the excess is 4e-5 to 5e-4 above
-    ``1/sqrt(3)`` and is finite-difference accuracy rather than round-off. Those points have
-    ``c_s`` below both one and the wall velocity, so the bubble separation is untouched, but
-    the efficiency factors and the spectrum of electroweak two-Higgs-doublet benchmarks would
-    move. The tighter bound needs its own measurement and is left to a change of its own.
+    ``c_s >= 1``. Since the expansion speed is ``max(v_wall, c_s)``, the inflation factor is
+    ``c_s/v_wall``, which is ``c_s`` for a runaway wall.
+
+    A plasma whose particles have masses in fact has ``c_s^2 < 1/3``, reaching ``1/3`` only
+    in the massless limit and from below, as the lattice equation of state of quantum
+    chromodynamics shows (arXiv:1309.5258, arXiv:1407.6387). Clamping at ``1/sqrt(3)`` would
+    therefore be the physical bound, and it is deliberately not done here, for two reasons.
+
+    It fires on 108 of 286 campaign runs, and on the example point of
+    ``examples/example_point.yaml``, whose broken-phase sound speed is 0.589508, 2.1% above
+    ``1/sqrt(3)``. That value is not stencil noise: it is stable to six digits over
+    temperature steps from ``dT/T = 1e-3`` to ``1e-1``, so it is a property of the effective
+    potential, and clamping would override a converged number.
+
+    And on that point the clamp moves the spectrum: the sound-wave peak frequency by -2.7%,
+    the peak amplitude by +0.4%, one pulsar-timing signal-to-noise ratio by +3.4%, and one
+    detectability verdict from false to true. The efficiency factors do not move there,
+    because ``v_wall = 1`` exceeds the sound speed either way, but they do depend on it for a
+    wall slower than the sound speed. The tighter bound therefore needs its own measurement.
+
+    What this does not do is detect the round-off regime. A value can be round-off and still
+    be a speed: on the conformal dark U(1) at a temperature where ``T^4/Delta V`` is 2.8e-16,
+    the computed ``c_s`` is 0.82 and swings over ``c_s^2 = -0.001`` to ``0.89`` with the step,
+    yet it passes this guard untouched. Catching that needs the temperature derivatives of
+    the thermal part of the potential alone, without the vacuum energy that cancels in them,
+    which is a change to the thermodynamics rather than a guard.
     """
     try:
         value = float(c_s)

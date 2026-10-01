@@ -51,6 +51,10 @@ EXPECTED = {
     "alpha":        (1.0e+1, 1.0e+4),
     "alpha_thetabar": (1.0e+1, 1.0e+4),
     "RH":           (1.0e-6, 1.0e+0),
+    # The sound speed must be a speed: it sets the bubble expansion speed through
+    # max(v_wall, c_s), the efficiency factors and the spectrum. A band rather than a value,
+    # since the point is that the guard leaves an ordinary value alone.
+    "c_s":          (1.0e-3, 0.999),
 }
 
 
@@ -191,6 +195,25 @@ def test_smoke_entropy_scheme_diagnostics_are_populated(smoke_run: Path) -> None
     flag = flag_re.search(text)
     assert flag and flag.group(1) in ("True", "False"), (
         f"the flag is not a boolean: {flag.group(1) if flag else None}"
+    )
+
+
+def test_smoke_sound_speed_guard_reports_itself(smoke_run: Path) -> None:
+    """The guard has to run in a real run, not only in its unit tests.
+
+    The unit tests call `_ensure_sound_speed` on a context they build themselves, so deleting
+    the call from the solver left the suite green. The example point already runs here.
+    """
+    text = smoke_run.read_text()
+    assert "unphysical_c_s" in text, (
+        "WARNING:unphysical_c_s missing: the sound-speed guard did not run"
+    )
+    values = _parse_all_params(smoke_run)
+    assert "c_s" in values, "c_s missing from the output"
+    # This point has an ordinary thermal broken phase, so the guard must not have fired.
+    flag = re.search(r"unphysical_c_s\s+(\S+)", text)
+    assert flag and flag.group(1) == "False", (
+        f"the guard fired on the example point: {flag.group(1) if flag else None}"
     )
 
 

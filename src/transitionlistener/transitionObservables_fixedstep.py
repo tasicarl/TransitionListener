@@ -312,6 +312,11 @@ class TransitionObservables:
             derived["c_s_sym"] = c_ss
             derived["c_s_bro"] = c_sb
             derived["WARNING:unphysical_c_s"] = bool(replaced)
+            if replaced and ctx.verbose:
+                print(f"WARNING: the broken-phase sound speed came out as {c_sb}, which is "
+                      f"not a speed; using the radiation value {usable:.6f} for the bubble "
+                      "expansion speed, the efficiency factors and the spectrum. The "
+                      "computed value is still reported as c_s_bro.")
         else:
             cs = 0.0
             try:
@@ -321,13 +326,16 @@ class TransitionObservables:
                     "The GWconfig.sound_speed option is not implemented yet: "
                     + GWconfig.sound_speed
                 )
-            if cs <= 1.0 and cs > 0:
+            # Strictly below one: the spectrum divides by (v_wall - c_s), so a configured
+            # value of exactly one with a runaway wall is a division by zero, and the guard
+            # on the computed value classifies one as not a speed.
+            if 0.0 < cs < 1.0:
                 derived["c_s"] = cs
                 derived["c_s_sym"] = cs
                 derived["c_s_bro"] = cs
             else:
-                raise ValueError("Speed of sound must be 0 < cs <= 1." +
-                                 " Not ", cs, "!")
+                raise ValueError(
+                    f"The speed of sound must satisfy 0 < cs < 1, not {cs}.")
             
 
     def _compute_transition_strength(self, ctx: TransitionContext) -> float:

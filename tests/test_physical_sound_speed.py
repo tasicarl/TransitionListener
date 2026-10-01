@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """The guard on the sound speed that feeds the bubble expansion speed.
 
 Part of TransitionListener v2
@@ -85,7 +84,7 @@ class SolverUsesTheGuardTests(unittest.TestCase):
 
     RAW = 1.706          # the worst point of the conformal scan
 
-    def _ensure(self, module):
+    def _ensure(self, module, verbose=False):
         from pathlib import Path
         from unittest import mock
         from transitionlistener.helper_functions import load_potential
@@ -107,7 +106,7 @@ class SolverUsesTheGuardTests(unittest.TestCase):
         ctx = types.SimpleNamespace(
             derived_param_names=["c_s"], derived_params=derived,
             GWconfig=types.SimpleNamespace(sound_speed="compute"),
-            pot=pot, phase_symmetric=Phase(), phase_broken=Phase(), verbose=False)
+            pot=pot, phase_symmetric=Phase(), phase_broken=Phase(), verbose=verbose)
 
         def fake_cs(self, T, sym):
             return 0.4 if sym else self_raw[0]
@@ -135,6 +134,40 @@ class SolverUsesTheGuardTests(unittest.TestCase):
                 derived = self._ensure(module)
                 self.assertAlmostEqual(derived["c_s_bro"], self.RAW, places=12)
 
+    def test_both_solvers_say_so_when_they_replace(self):
+        """A silent replacement is the thing a user would want told.
+
+        Both solvers print it under `verbose`, and the message names the computed value and
+        the one substituted for it.
+        """
+        import contextlib as _ctx
+        import io as _io
+        from transitionlistener import transitionObservables as to
+        from transitionlistener import transitionObservables_fixedstep as tof
+        for module in (to, tof):
+            with self.subTest(module=module.__name__):
+                buffer = _io.StringIO()
+                with _ctx.redirect_stdout(buffer):
+                    self._ensure(module, verbose=True)
+                printed = buffer.getvalue()
+                self.assertIn("not a speed", printed)
+                self.assertIn("1.706", printed)
+                self.assertIn("0.577350", printed)
+
+    def test_neither_solver_says_anything_when_it_does_not_replace(self):
+        import contextlib as _ctx
+        import io as _io
+        from unittest import mock
+        from transitionlistener import transitionObservables as to
+        from transitionlistener import transitionObservables_fixedstep as tof
+        for module in (to, tof):
+            with self.subTest(module=module.__name__):
+                buffer = _io.StringIO()
+                with mock.patch.object(type(self), "RAW", 0.58951):
+                    with _ctx.redirect_stdout(buffer):
+                        self._ensure(module, verbose=True)
+                self.assertNotIn("not a speed", buffer.getvalue())
+
     def test_an_ordinary_value_reaches_c_s_unchanged(self):
         from unittest import mock
         from transitionlistener import transitionObservables as to
@@ -145,6 +178,58 @@ class SolverUsesTheGuardTests(unittest.TestCase):
                     derived = self._ensure(module)
                 self.assertAlmostEqual(derived["c_s"], 0.58951, places=12)
                 self.assertFalse(derived["WARNING:unphysical_c_s"])
+
+
+class ConfiguredSoundSpeedTests(unittest.TestCase):
+    """A configured value must satisfy the same notion of a speed as a computed one.
+
+    The fixed step size solver accepts a number in `GWconfig.sound_speed`. It used to allow
+    exactly one, which the guard on the computed value classifies as not a speed, and which
+    the spectrum cannot use: it divides by `v_wall - c_s`, so one with a runaway wall is a
+    division by zero.
+    """
+
+    def _apply(self, value):
+        from pathlib import Path
+        from transitionlistener.helper_functions import load_potential
+        from transitionlistener import transitionObservables_fixedstep as tof
+
+        repo = Path(__file__).resolve().parents[1]
+        pot = load_potential(str(repo / "models/TL_conformal_dark_u1.py"),
+                             "specific_potential")(
+            {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
+
+        class Phase:
+            Tmin, Tmax = 1.0e-6, 1.0e6
+
+            def valAt(self, T, deriv=0):
+                T = np.asarray(T, float)
+                return np.zeros(T.shape + (1,))
+
+        derived = {}
+        ctx = types.SimpleNamespace(
+            derived_param_names=["c_s"], derived_params=derived,
+            GWconfig=types.SimpleNamespace(sound_speed=str(value)),
+            pot=pot, phase_symmetric=Phase(), phase_broken=Phase(), verbose=False)
+        cls = tof.TransitionObservables
+        cls._ensure_sound_speed(cls.__new__(cls), ctx, 30.0)
+        return derived
+
+    def test_a_configured_value_in_range_is_used(self):
+        for value in (0.4, 0.5, 0.9):
+            with self.subTest(c_s=value):
+                self.assertAlmostEqual(self._apply(value)["c_s"], value, places=12)
+
+    def test_exactly_one_is_refused(self):
+        # The spectrum divides by (v_wall - c_s); one with a runaway wall is a zero divide.
+        with self.assertRaises(ValueError):
+            self._apply(1.0)
+
+    def test_values_outside_the_range_are_refused(self):
+        for value in (0.0, -0.2, 1.5):
+            with self.subTest(c_s=value):
+                with self.assertRaises(ValueError):
+                    self._apply(value)
 
 
 class RegistrationTests(unittest.TestCase):

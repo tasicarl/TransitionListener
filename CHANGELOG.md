@@ -212,16 +212,42 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   potential gave, and `WARNING:unphysical_c_s` says when the replacement happened.
 
   **Only values that are not speeds are replaced, and that is deliberate.** A plasma whose
-  particles have masses has `c_s^2 < 1/3`, reaching `1/3` only in the massless limit and
-  from below, as the lattice equation of state of quantum chromodynamics shows across the
-  whole crossover (arXiv:1309.5258, arXiv:1407.6387). Clamping at `1/sqrt(3)` would
-  therefore be the physical bound, but it fires on 108 of 286 campaign runs, where the
-  excess is 4e-5 to 5e-4 and is finite-difference accuracy rather than round-off, and on the
-  example point of `examples/example_point.yaml`, whose sound speed is 0.58951, 2.1% above
-  `1/sqrt(3)`. Those points have `c_s` below both one and the wall velocity, so the bubble
-  separation is untouched, but the efficiency factors and the spectrum would move. The
-  tighter bound needs its own measurement and is left to a change of its own. With the guard
-  as it stands the example point is byte-identical with it switched off.
+  particles have masses has `c_s^2 < 1/3`, reaching `1/3` only in the massless limit and from
+  below, as the lattice equation of state of quantum chromodynamics shows (arXiv:1309.5258,
+  arXiv:1407.6387). Clamping at `1/sqrt(3)` would therefore be the physical bound, and it is
+  left to a change of its own for two reasons.
+
+  It fires on 108 of 286 campaign runs, and on the example point of
+  `examples/example_point.yaml`, whose broken-phase sound speed is 0.589508, 2.1% above
+  `1/sqrt(3)`. That is not stencil noise: it is stable to six digits over temperature steps
+  from `dT/T = 1e-3` to `1e-1`, so it is a property of the effective potential, and clamping
+  would override a converged number. And on that point the clamp moves the spectrum, by
+  -2.7% in the sound-wave peak frequency, +0.4% in the peak amplitude, +3.4% in one
+  pulsar-timing signal-to-noise ratio, and one detectability verdict from false to true. The
+  efficiency factors do not move there, because `v_wall = 1` exceeds the sound speed either
+  way; they do depend on it for a wall slower than the sound speed. With the guard as it
+  stands the example point is identical in every observable with it switched off, the wall
+  clock aside.
+
+  **What the guard does not do.** It is not a detector of the round-off regime: a value can be
+  round-off and still be a speed. On the conformal dark U(1) at a temperature where
+  `Tperc^4/Delta V` is 2.8e-16 the computed `c_s` is 0.82 and swings over `c_s^2 = -0.001` to
+  `0.89` with the derivative step, and passes untouched. Catching that needs the temperature
+  derivatives of the thermal part of the potential alone, without the vacuum energy that
+  cancels in them, which is a change to the thermodynamics rather than a guard.
+
+  Two other computations of the same quantity keep the raw value, deliberately and for now.
+  `bubbledynamics.calcSoundSpeedSq`, which builds the pseudo-trace and `alpha_hyd`, and
+  `Hydrodynamics.calcWallVelocityLTE`, which is the default wall velocity, each check only
+  that the value is finite and positive. Routing them through this guard would change
+  `alpha_hyd` by up to a factor three on the points that motivate this entry, so it is a
+  change to the energy budget rather than a guard on a speed, and wants its own measurement.
+
+  The not-a-number case is replaced as well, not only the finite round-off values. For a
+  runaway wall that changes nothing, since `max(v_wall, nan)` already returned the wall
+  velocity, but a run with a configured wall slower than `1/sqrt(3)` now gets the radiation
+  value where it previously had none, which raises `(beta/H)_RH` on exactly the points that
+  had no usable sound speed.
 
 - **A timed-out point no longer comes back as a number**: `g_eff_DS` and `h_eff_DS`
   caught `BaseException` around the phase evaluation and substituted the `T = 0`
