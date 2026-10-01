@@ -1080,13 +1080,27 @@ class generic_potential():
                 return here
             self._debye_state = "field_dependent"
 
+        # The two fixed probes established the quadratic law at two field points, which is
+        # what decides whether the coefficient can be cached. It is not a licence to synthesise
+        # `Pi = c(X) T^2` at a third field point without looking: a model that is quadratic
+        # where it was probed can fail to be elsewhere, and the daisy term would then be handed
+        # a thermal part the model does not have. The law is checked again here, at the field
+        # value actually asked for.
         try:
             coefficient = measure(np.asarray(X), scale)
+            verification = measure(np.asarray(X), 0.5 * scale)
         except errors.Timeout:
             raise
         except Exception:
             return None
-        return coefficient if np.all(np.isfinite(coefficient)) else None
+        if not (np.all(np.isfinite(coefficient)) and np.all(np.isfinite(verification))):
+            return None
+        magnitude = float(np.max(np.abs(coefficient))) if coefficient.size else 0.0
+        if magnitude <= 0.0:
+            return None
+        if np.max(np.abs(verification - coefficient)) > 1.0e-9 * magnitude:
+            return None
+        return coefficient
 
     def Vdaisy(self, bosons0, bosonsT , T: float | np.ndarray, Pi=None
                ) -> float | np.ndarray:

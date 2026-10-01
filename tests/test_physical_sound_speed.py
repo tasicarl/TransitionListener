@@ -22,6 +22,7 @@ from transitionlistener.helper_functions import load_potential
 from transitionlistener.helper_functions import (temperatureDerivativeStep,
                                                  thermalDerivativeStep)
 from transitionlistener.hydrodynamics import (Hydrodynamics,
+                                              SOUND_SPEED_STEP_RATIO,
                                               resolve_configured_sound_speed)
 from transitionlistener.interface.samplers import get_empty_result
 
@@ -979,9 +980,17 @@ class InfiniteSoundSpeedTests(unittest.TestCase):
         self.assertEqual(caught.exception.phase, "symmetric")
 
     def test_the_step_check_reports_it_rather_than_raising(self):
+        """It must not propagate the refusal, and must not call this noise either.
+
+        This fixture's derivatives do not depend on the step, so the value is infinite at
+        every one of them. That is a breakdown of the potential's thermodynamics, which the
+        refusal itself reports, and not an artefact of the derivative step; calling it noisy
+        would point at a finite-difference problem that is not there. The change cannot be put
+        as a ratio of two infinities, so it comes back as not-a-number.
+        """
         noisy, change = self._hydro(*self.INFINITE).sound_speed_is_step_dependent(
             100.0, sym=False)
-        self.assertTrue(noisy)
+        self.assertFalse(noisy)
         self.assertTrue(np.isnan(change))
 
 
@@ -1080,6 +1089,50 @@ class DefaultDebyeMassTests(unittest.TestCase):
                         "the verdict changed with the field point seen first")
         for other in verdicts[1:]:
             np.testing.assert_allclose(other, verdicts[0], rtol=0.0, atol=0.0)
+
+    def test_a_field_dependent_model_is_rechecked_where_it_is_asked(self):
+        """The two fixed probes decide cacheability, not licence to extrapolate anywhere.
+
+        A model can be quadratic where it was probed and not elsewhere. No model shipped here
+        takes this path, because the four that pass the check all have a field-independent
+        coefficient, so it is built here: a spectrum that is quadratic at the two reference
+        fields and cubic in temperature away from them. The coefficient must be refused there
+        and still provided at the reference fields.
+        """
+        pot = self._model("dark_U1")
+        scale = pot.v_stable
+        reference = self._X(pot)
+        elsewhere = 0.37 * reference + 0.11 * scale
+        probed = (float(reference[0]), float(elsewhere[0]))
+        real = type(pot).boson_massSq
+
+        def quadratic_only_where_probed(self, X, t):
+            masses, dof, c, phys = real(self, X, t)
+            here = float(np.ravel(np.asarray(X, dtype=float))[0])
+            t2 = np.asarray(t, dtype=float) ** 2
+            masses = np.array(masses, dtype=float, copy=True)
+            if abs(here - probed[0]) < 1.0e-6 * scale:
+                return masses, dof, c, phys
+            if abs(here - probed[1]) < 1.0e-6 * scale:
+                # Still quadratic, but with a different coefficient, so the two probes
+                # disagree and the model is classified as field dependent rather than cached.
+                masses[..., 0] = masses[..., 0] + 0.25 * t2
+                return masses, dof, c, phys
+            # Anywhere else the thermal part picks up a T^3 piece, so no single coefficient
+            # reproduces it at both temperatures and it must be refused.
+            masses[..., 0] = masses[..., 0] + 1.0e-6 * np.asarray(t, dtype=float) ** 3
+            return masses, dof, c, phys
+
+        # Building the model already called `Vtot`, and with it the classification, so the
+        # verdict is cleared to let it be taken under the spectrum below.
+        pot._debye_state = None
+        with mock.patch.object(type(pot), "boson_massSq", quadratic_only_where_probed):
+            at_reference = pot.debye_massSq(reference, np.asarray([0.1 * scale]))
+            away = pot.debye_massSq(np.asarray([0.613 * scale]), np.asarray([0.1 * scale]))
+        self.assertEqual(pot._debye_state, "field_dependent",
+                         "the fixture was meant to be classified field dependent")
+        self.assertIsNotNone(at_reference, "the probed field should still be served")
+        self.assertIsNone(away, "a field where the law fails was handed a synthesised Pi")
 
     def test_a_cached_coefficient_survives_a_second_call(self):
         # The cached value is an array, and comparing an array against the string states is
@@ -1524,13 +1577,58 @@ class StepDependenceRobustnessTests(unittest.TestCase):
     """The diagnostic must survive what it is diagnosing."""
 
     def test_it_does_not_propagate_the_refusal(self):
-        # A step at which the value is not a speed is the strongest statement that the value
-        # depends on the step. Letting the refusal out of here would make the diagnostic
-        # unusable precisely where it matters, and would abort before it is recorded.
+        """The refusal belongs to `calc_cs`, not to the check; and it is not itself noise.
+
+        This fixture's derivatives do not depend on the step, so its sound speed is the same
+        at every one of them. It is not a speed, but it is perfectly step independent, and
+        reporting otherwise would send the user looking for a finite-difference problem that
+        is not there. The check must come back quiet, and must not raise.
+        """
         hydro = SuperluminalTests._hydro_returning(SuperluminalTests(), 2.9)
         noisy, change = hydro.sound_speed_is_step_dependent(100.0, sym=False)
+        self.assertFalse(noisy)
+        self.assertAlmostEqual(change, 0.0, places=12)
+
+    def test_a_refusal_at_some_steps_but_not_others_is_noise(self):
+        """That is the case the previous behaviour was reaching for, and it is a real one.
+
+        A value that is a speed at one step and not at another has stopped being one somewhere
+        inside the step range, which cannot be read off any single step.
+        """
+        hydro = SuperluminalTests._hydro_returning(SuperluminalTests(), 2.9)
+        real = hydro._calc_cs_at_step
+
+        def subluminal_when_coarse(T, sym, step_factor=1.0):
+            if step_factor > 1.0:
+                return 0.5, T * 1.0e-3
+            return real(T, sym, step_factor)
+
+        with mock.patch.object(hydro, "_calc_cs_at_step", subluminal_when_coarse):
+            noisy, change = hydro.sound_speed_is_step_dependent(100.0, sym=False)
         self.assertTrue(noisy)
         self.assertTrue(np.isnan(change))
+
+    def test_a_refused_value_that_moves_with_the_step_is_noise(self):
+        # Refused at every step, but not the same value at every step: that is ordinary step
+        # dependence and is reported as such, on the refused values.
+        hydro = SuperluminalTests._hydro_returning(SuperluminalTests(), 2.9)
+        real = hydro._calc_cs_at_step
+
+        # Every step stays above one, so the refusal status is the same at all three and only
+        # the refused value moves. A factor that dipped below one would be the other case,
+        # which `test_a_refusal_at_some_steps_but_not_others_is_noise` covers.
+        by_factor = {1.0: 2.9, SOUND_SPEED_STEP_RATIO: 2.9 * 9.0,
+                     1.0 / SOUND_SPEED_STEP_RATIO: 2.9 * 4.0}
+
+        def drifting(T, sym, step_factor=1.0):
+            scaled = by_factor[step_factor]
+            inner = SuperluminalTests._hydro_returning(SuperluminalTests(), scaled)
+            return inner._calc_cs_at_step(T, sym, 1.0)
+
+        with mock.patch.object(hydro, "_calc_cs_at_step", drifting):
+            noisy, change = hydro.sound_speed_is_step_dependent(100.0, sym=False)
+        self.assertTrue(noisy)
+        self.assertGreater(change, 0.05)
 
     def test_it_varies_the_step_in_both_directions(self):
         # Round-off grows as the step shrinks and truncation as it grows, so a check that only

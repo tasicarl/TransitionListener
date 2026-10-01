@@ -202,24 +202,41 @@ class Hydrodynamics():
         from ``dT/T = 1e-3`` to ``2e-1``: perfectly subluminal, and meaningless.
 
         Returns ``(noisy, relative_change)``, the change being the larger of the two the step
-        variation produces. A sound speed that cannot be computed at the *base* step is not
-        called noisy; it is already reported as not-a-number. One that cannot be computed at a
-        *varied* step is, on the same footing as one that comes out superluminal there: in both
-        cases the value has stopped being a speed somewhere inside the step range, which is the
-        strongest statement about step dependence there is.
+        variation produces.
+
+        A value that is refused at one step and not at another is noisy: it has stopped being
+        a speed somewhere inside the step range, which no single step can show. A value that
+        is refused at *every* step is not: it is not a speed, but it does not depend on the
+        step, and the refusal already reports what is wrong with it. Refused values are
+        compared like any others, so one that is refused everywhere and also moves is noisy
+        too. A value that cannot be computed at the base step is not called noisy; it is
+        already reported as not-a-number.
         """
         # The step is varied both ways. A coarser step adds truncation error and a finer one
         # adds round-off, and only the second is the failure this looks for, so testing one
         # side alone would miss a value that breaks down as the step shrinks.
-        try:
-            base, _ = self._calc_cs_at_step(T, sym, 1.0)
-            coarse, _ = self._calc_cs_at_step(T, sym, SOUND_SPEED_STEP_RATIO)
-            fine, _ = self._calc_cs_at_step(T, sym, 1.0 / SOUND_SPEED_STEP_RATIO)
-        except errors.SuperluminalSoundSpeedError:
-            # A step at which the value is not a speed at all is the strongest possible
-            # statement that it depends on the step. This is a diagnostic, so it reports
-            # that rather than propagating: the refusal belongs to `calc_cs`, whose caller
-            # asked for the number, not to the check, whose caller asked about it.
+        def sample(factor):
+            """``(refused, c_s)`` at this step, the value being the refused one if refused.
+
+            The refusal belongs to `calc_cs`, whose caller asked for the number, not to this
+            check, whose caller asked about it, so it is caught per step rather than around
+            the group. Catching the group let a refusal at the base step end the measurement
+            before either varied step was taken, and a value that is not a speed but is the
+            same at every step was then reported as maximally step dependent.
+            """
+            try:
+                value, _ = self._calc_cs_at_step(T, sym, factor)
+                return False, value
+            except errors.SuperluminalSoundSpeedError as err:
+                return True, float(err.c_s)
+
+        base_refused, base = sample(1.0)
+        coarse_refused, coarse = sample(SOUND_SPEED_STEP_RATIO)
+        fine_refused, fine = sample(1.0 / SOUND_SPEED_STEP_RATIO)
+
+        if len({base_refused, coarse_refused, fine_refused}) > 1:
+            # A speed at one step and not at another: the value has stopped being one
+            # somewhere inside the step range, which is step dependence of the strongest kind.
             return True, float("nan")
         if not np.isfinite(base) or base <= 0.0:
             return False, float("nan")
@@ -228,6 +245,9 @@ class Hydrodynamics():
             # the step at which the sound speed still exists, which is the opposite of what
             # happened.
             return True, float("nan")
+        # Refused at every step is compared like any other value. A sound speed that is not a
+        # speed can still be perfectly independent of the step, and saying otherwise would
+        # send the user looking for a finite-difference problem that is not there.
         change = max(abs(other / base - 1.0) for other in (coarse, fine))
         return bool(change > SOUND_SPEED_JUMP_TOLERANCE), float(change)
 

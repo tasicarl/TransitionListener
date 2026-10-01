@@ -413,8 +413,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   and the larger of the two changes is reported: a coarser step adds truncation error and a
   finer one adds round-off, and only the second is the failure being looked for, so testing one
   side alone would miss a value that breaks down as the step shrinks. The diagnostic does not
-  propagate the refusal above; a step at which the value is not a speed at all is the
-  strongest possible statement that it depends on the step, and it is reported as such.
+  propagate the refusal above. Each step is evaluated on its own and a refused value is
+  compared like any other, so the three cases come apart: refused at one step and not at
+  another is noise, because the value stopped being a speed somewhere inside the step range
+  and no single step shows that; refused everywhere but moving is noise too; and refused
+  everywhere with the same value is not, because it is not a speed but it does not depend on
+  the step, and the refusal already says what is wrong with it. Catching the refusal around
+  the group rather than per step let one at the base step end the measurement before either
+  varied step was taken, and a constant superluminal value was then reported as maximally
+  step dependent.
 
   Measured through `Hydrodynamics.sound_speed_is_step_dependent` on the traced broken phase,
   at `g = 0.455`, `0.7` and `0.95` and six temperatures each: with the step rule above the

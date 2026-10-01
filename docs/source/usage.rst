@@ -164,9 +164,12 @@ The most important controls are:
   still lie between zero and one, so no test on the value itself finds it; the
   step is varied by a factor ten in each direction and the larger relative change
   is reported, with the warning raised above 5%. On a healthy point the change is
-  of order :math:`10^{-7}`. ``nan`` means the sound speed was not a speed, or did not
-  exist at all, at one of the two test steps; that is reported as noisy, because the
-  value has stopped being a speed somewhere inside the step range.
+  of order :math:`10^{-7}`. A value that is refused at one test step and not at
+  another is noisy, because it stopped being a speed somewhere inside the step
+  range and no single step shows that; one refused at every step is not, since it
+  does not depend on the step and the refusal itself already reports it. ``nan``
+  means the change could not be put as a ratio, which happens when the value does
+  not exist at one of the steps or is infinite at all of them.
 - ``WARNING:daisy_outside_validity`` and ``DIAG:daisy_over_radiation``: whether
   the Arnold-Espinosa daisy resummation is being used where it does not apply.
   That term resums the bosonic zero Matsubara mode, which is justified for
