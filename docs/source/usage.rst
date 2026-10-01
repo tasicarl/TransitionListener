@@ -164,8 +164,9 @@ The most important controls are:
   still lie between zero and one, so no test on the value itself finds it; the
   step is varied by a factor ten in each direction and the larger relative change
   is reported, with the warning raised above 5%. On a healthy point the change is
-  of order :math:`10^{-7}`. ``nan`` means the value was not a speed at one of the
-  test steps, which is reported as noisy.
+  of order :math:`10^{-7}`. ``nan`` means the sound speed was not a speed, or did not
+  exist at all, at one of the two test steps; that is reported as noisy, because the
+  value has stopped being a speed somewhere inside the step range.
 - ``WARNING:daisy_outside_validity`` and ``DIAG:daisy_over_radiation``: whether
   the Arnold-Espinosa daisy resummation is being used where it does not apply.
   That term resums the bosonic zero Matsubara mode, which is justified for
@@ -177,7 +178,9 @@ The most important controls are:
   ratio of the daisy term to the field-independent radiation, and the warning is
   raised when that exceeds one *and* the lightest mode has :math:`m/T > 1`; both
   are needed, because at high temperature a large ratio is legitimate. This
-  reports a modelling choice, not an error, and nothing is corrected.
+  reports a modelling choice, not an error, and nothing is corrected. It applies
+  only to ``daisy = "ArnoldEspinosa"``; with ``"Parwani"`` or ``"off"`` there is no
+  such term in the potential and both come back as a false flag beside a ``nan``.
 - ``percolationConf.n_action``: fixed ``TSYM`` support count for
   ``fixed_step_size`` runs.
 - ``percolation_n_action_min``, ``percolation_n_action_increment``,

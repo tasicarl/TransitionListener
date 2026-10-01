@@ -520,7 +520,7 @@ class TransitionObservables:
             except errors.SuperluminalSoundSpeedError as err:
                 # Re-raised rather than annotated in place, so the message carries the two
                 # diagnostics and the user is told why, not only that.
-                step_change, daisy_ratio = change, ratio
+                step_change, daisy_ratio, daisy_outside = change, ratio, outside
                 if err.phase == "symmetric":
                     # The two above are the broken phase's, which is the one the columns
                     # report. Where it is the symmetric phase that is not a speed, they are
@@ -529,11 +529,11 @@ class TransitionObservables:
                     # is valid in"), and drawing it about a phase that was never looked at
                     # would be a wrong statement rather than a missing one.
                     _, step_change = hydr.sound_speed_is_step_dependent(temperature, sym=True)
-                    _, daisy_ratio = ctx.pot.daisy_outside_validity(
+                    daisy_outside, daisy_ratio = ctx.pot.daisy_outside_validity(
                         ctx.phase_symmetric.valAt(temperature), temperature)
                 raise errors.SuperluminalSoundSpeedError(
-                    err.c_s, err.T, phase=err.phase,
-                    step_change=step_change, daisy_ratio=daisy_ratio) from err
+                    err.c_s, err.T, phase=err.phase, step_change=step_change,
+                    daisy_ratio=daisy_ratio, daisy_outside=daisy_outside) from err
             # `c_s` is what the expansion speed of the bubbles, max(v_wall, c_s), the
             # efficiency factors and the spectrum are built from. `c_s_bro` repeats it and
             # `c_s_sym` is the symmetric-phase value the wall matching uses.

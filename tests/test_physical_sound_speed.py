@@ -760,6 +760,118 @@ class WallVelocitySoundSpeedTests(unittest.TestCase):
             self.assertEqual(hydro.calcWallVelocityLTE(T), 1)
 
 
+class ReviewFollowUpTests(unittest.TestCase):
+    """Three defects the first review of this branch found, each pinned by a test."""
+
+    def test_the_message_takes_its_verdict_from_the_flag_not_the_ratio(self):
+        """A large ratio with light modes is legitimate, and the message must say so.
+
+        `daisy_outside_validity` needs both a ratio above one *and* a lightest mode heavier
+        than the temperature. Deciding from the ratio alone, as the message used to, calls the
+        legitimate high-temperature case a breakdown.
+        """
+        legit = errors.SuperluminalSoundSpeedError(
+            1.2, 1.0, daisy_ratio=50.0, daisy_outside=False)
+        self.assertNotIn("outside its range", str(legit))
+        self.assertIn("light enough", str(legit))
+        broken = errors.SuperluminalSoundSpeedError(
+            1.2, 1.0, daisy_ratio=50.0, daisy_outside=True)
+        self.assertIn("outside its range", str(broken))
+        # Same ratio, opposite verdict: the ratio alone cannot be what decides.
+        self.assertNotEqual(str(legit), str(broken))
+        # Without a verdict the size is still reported, but nothing is concluded from it.
+        silent = errors.SuperluminalSoundSpeedError(1.2, 1.0, daisy_ratio=50.0)
+        self.assertIn("50 times the radiation", str(silent))
+        self.assertNotIn("outside its range", str(silent))
+        self.assertNotIn("light enough", str(silent))
+
+    def test_the_message_and_the_flag_share_one_threshold(self):
+        from transitionlistener import hydrodynamics as hyd
+        from transitionlistener import constants as cn
+        self.assertIs(hyd.SOUND_SPEED_JUMP_TOLERANCE, cn.SOUND_SPEED_JUMP_TOLERANCE)
+        tol = cn.SOUND_SPEED_JUMP_TOLERANCE
+        self.assertIn("losing", str(errors.SuperluminalSoundSpeedError(
+            1.2, 1.0, step_change=tol * 1.1)))
+        self.assertIn("stable", str(errors.SuperluminalSoundSpeedError(
+            1.2, 1.0, step_change=tol * 0.9)))
+
+    def test_the_daisy_check_is_silent_for_other_resummations(self):
+        """With Parwani or no resummation there is no Arnold-Espinosa term to report on."""
+        pot = conformal()
+        X = DaisyValidityTests._X(DaisyValidityTests(), pot, 1.0e-9 * pot.v_stable)
+        T = 1.0e-9 * pot.v_stable
+        self.assertEqual(pot.daisy, "ArnoldEspinosa")
+        outside, ratio = pot.daisy_outside_validity(X, T)
+        self.assertTrue(outside, "the Arnold-Espinosa case must still fire")
+        self.assertTrue(np.isfinite(ratio))
+        for scheme in ("Parwani", "off"):
+            with self.subTest(daisy=scheme):
+                with mock.patch.object(pot, "daisy", scheme):
+                    outside, ratio = pot.daisy_outside_validity(X, T)
+                self.assertFalse(outside)
+                self.assertTrue(np.isnan(ratio))
+
+    def test_a_varied_step_that_is_not_a_speed_is_noisy(self):
+        """One nan among the varied steps used to be discarded and the rest ranked quiet.
+
+        That reported the stability of the step at which the sound speed still existed, which
+        is the opposite of what happened.
+        """
+        pot = conformal()
+        hydro = ThermalDerivativeTests._hydro(ThermalDerivativeTests(), pot)
+        real = hydro._calc_cs_at_step
+        for broken_factor in (10.0, 0.1):
+            with self.subTest(step_factor=broken_factor):
+                def partly_undefined(T, sym, step_factor=1.0):
+                    cs, dT = real(T, sym, step_factor)
+                    if np.isclose(step_factor, broken_factor):
+                        return float("nan"), dT
+                    return cs, dT
+                with mock.patch.object(hydro, "_calc_cs_at_step", partly_undefined):
+                    noisy, change = hydro.sound_speed_is_step_dependent(22.12, sym=False)
+                self.assertTrue(noisy, "a varied step with no sound speed is step dependence")
+                self.assertTrue(np.isnan(change))
+
+    def test_a_non_positive_varied_step_counts_the_same(self):
+        pot = conformal()
+        hydro = ThermalDerivativeTests._hydro(ThermalDerivativeTests(), pot)
+        real = hydro._calc_cs_at_step
+
+        def non_positive(T, sym, step_factor=1.0):
+            cs, dT = real(T, sym, step_factor)
+            return (0.0 if step_factor > 1.0 else cs), dT
+
+        with mock.patch.object(hydro, "_calc_cs_at_step", non_positive):
+            noisy, change = hydro.sound_speed_is_step_dependent(22.12, sym=False)
+        self.assertTrue(noisy)
+        self.assertTrue(np.isnan(change))
+
+    def test_both_solvers_hand_the_verdict_to_the_refusal(self):
+        """The flag has to reach the exception, not just exist beside it."""
+        from transitionlistener import transitionObservables as to
+        from transitionlistener import transitionObservables_fixedstep as tof
+        for module in (to, tof):
+            with self.subTest(module=module.__name__):
+                cls = module.TransitionObservables
+                obs = cls.__new__(cls)
+                pot = types.SimpleNamespace(
+                    daisy_outside_validity=lambda X, T: (False, 50.0))
+                ctx = types.SimpleNamespace(
+                    derived_param_names=["c_s"], derived_params={},
+                    GWconfig=types.SimpleNamespace(sound_speed="compute"),
+                    pot=pot, phase_symmetric=FlatPhase([0.0]),
+                    phase_broken=FlatPhase([1.0]), verbose=False)
+                fake = mock.Mock()
+                fake.sound_speed_is_step_dependent.return_value = (False, 2.0e-5)
+                fake.calc_cs.side_effect = errors.SuperluminalSoundSpeedError(
+                    1.48, 30.0, phase="broken")
+                with mock.patch.object(module, "Hydrodynamics", return_value=fake):
+                    with self.assertRaises(errors.SuperluminalSoundSpeedError) as caught:
+                        cls._ensure_sound_speed(obs, ctx, 30.0)
+                self.assertIs(caught.exception.daisy_outside, False)
+                self.assertNotIn("outside its range", str(caught.exception))
+
+
 class ConfiguredSoundSpeedTests(unittest.TestCase):
     """Both solvers accept the setting the superluminal refusal tells the user to use."""
 
@@ -839,15 +951,17 @@ class SuperluminalReportingTests(unittest.TestCase):
 
     def test_the_diagnostics_reach_the_message(self):
         err = errors.SuperluminalSoundSpeedError(
-            1.48, 1.0e-5, phase="broken", step_change=0.4, daisy_ratio=1.5e7)
+            1.48, 1.0e-5, phase="broken", step_change=0.4, daisy_ratio=1.5e7,
+            daisy_outside=True)
         self.assertEqual(err.step_change, 0.4)
         self.assertEqual(err.daisy_ratio, 1.5e7)
+        self.assertIs(err.daisy_outside, True)
         self.assertIn("losing", str(err))
         self.assertIn("outside its range", str(err))
         quiet = errors.SuperluminalSoundSpeedError(
-            1.48, 1.0e-5, step_change=1.0e-5, daisy_ratio=0.2)
+            1.48, 1.0e-5, step_change=1.0e-5, daisy_ratio=0.2, daisy_outside=False)
         self.assertIn("not a finite-difference artefact", str(quiet))
-        self.assertIn("within the", str(quiet))
+        self.assertIn("light enough", str(quiet))
         # The step check returns nan when one of the test steps is not a speed either, which
         # is the case where the step dependence is strongest. Saying nothing there would
         # leave that one case without a statement.

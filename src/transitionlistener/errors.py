@@ -16,6 +16,8 @@ Authors:
 
 import math
 
+from transitionlistener import constants
+
 # Terminal errors
 class NoModelError(Exception):
     """Raised when the model file is not found or cannot be loaded."""
@@ -104,13 +106,14 @@ class SuperluminalSoundSpeedError(Exception):
     """
 
     def __init__(self, c_s, T, message=None, phase="broken", step_change=None,
-                 daisy_ratio=None):
+                 daisy_ratio=None, daisy_outside=None):
         """Attach the CLI error code identifying a sound speed that is not a speed."""
         self.c_s = c_s
         self.T = T
         self.phase = phase
         self.step_change = step_change
         self.daisy_ratio = daisy_ratio
+        self.daisy_outside = daisy_outside
         if message is None:
             message = (
                 f"The {phase}-phase sound speed came out as {c_s} at T = {T}, which is not "
@@ -128,7 +131,7 @@ class SuperluminalSoundSpeedError(Exception):
                         " The value is not a speed at one of the test steps either, so it "
                         "depends on the derivative step as strongly as it can."
                     )
-                elif step_change > 0.05:
+                elif step_change > constants.SOUND_SPEED_JUMP_TOLERANCE:
                     message += (
                         f" Changing the derivative step by a factor ten moves c_s by "
                         f"{step_change:.3g} of itself, so the finite differences are losing "
@@ -141,14 +144,25 @@ class SuperluminalSoundSpeedError(Exception):
                         "artefact."
                     )
             if daisy_ratio is not None and math.isfinite(daisy_ratio):
-                message += (
-                    f" The daisy term is {daisy_ratio:.3g} times the radiation part of the "
-                    "thermal potential, and the Arnold-Espinosa resummation is only valid "
-                    "for m << T, so it is being used outside its range here."
-                    if daisy_ratio > 1.0 else
-                    f" The daisy term is {daisy_ratio:.3g} of the radiation part, within the "
-                    "range the resummation is valid in."
-                )
+                size = (f" The daisy term is {daisy_ratio:.3g} times the radiation part of "
+                        "the thermal potential.")
+                # The verdict is `daisy_outside`, not the ratio. Being outside the range of
+                # the resummation needs a large ratio *and* heavy modes: at high temperature
+                # the daisy term legitimately exceeds the radiation while every mode still
+                # has m < T, and deciding from the ratio alone would call that a breakdown.
+                if daisy_outside is True:
+                    message += size + (
+                        " The Arnold-Espinosa resummation is only valid for m << T, and the "
+                        "lightest mode here is heavier than the temperature, so it is being "
+                        "used outside its range."
+                    )
+                elif daisy_outside is False:
+                    message += size + (
+                        " The modes are light enough for the Arnold-Espinosa resummation to "
+                        "apply, so this is not a resummation artefact."
+                    )
+                else:
+                    message += size
         super().__init__(message)
         self.errorcode = 18
 

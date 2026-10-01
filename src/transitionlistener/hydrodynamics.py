@@ -19,6 +19,7 @@ Authors of the hydrodynamics routines:
 import numpy as np
 
 from transitionlistener import errors
+from transitionlistener import constants as cn
 from scipy.integrate import solve_ivp, simpson
 from scipy.optimize import root_scalar
 
@@ -74,7 +75,7 @@ def kappa_sw(alpha : float, vw: float, cs: float) -> float:
 SOUND_SPEED_STEP_RATIO = 10.0
 """Factor by which the derivative step is varied to test a sound speed for step dependence."""
 
-SOUND_SPEED_JUMP_TOLERANCE = 0.05
+SOUND_SPEED_JUMP_TOLERANCE = cn.SOUND_SPEED_JUMP_TOLERANCE
 """Relative change of ``c_s`` under that step change above which the value is called noisy."""
 
 
@@ -197,8 +198,11 @@ class Hydrodynamics():
         from ``dT/T = 1e-3`` to ``2e-1``: perfectly subluminal, and meaningless.
 
         Returns ``(noisy, relative_change)``, the change being the larger of the two the step
-        variation produces. A sound speed that cannot be computed at the base step is not
-        called noisy; it is already reported as not-a-number.
+        variation produces. A sound speed that cannot be computed at the *base* step is not
+        called noisy; it is already reported as not-a-number. One that cannot be computed at a
+        *varied* step is, on the same footing as one that comes out superluminal there: in both
+        cases the value has stopped being a speed somewhere inside the step range, which is the
+        strongest statement about step dependence there is.
         """
         # The step is varied both ways. A coarser step adds truncation error and a finer one
         # adds round-off, and only the second is the failure this looks for, so testing one
@@ -215,10 +219,12 @@ class Hydrodynamics():
             return True, float("nan")
         if not np.isfinite(base) or base <= 0.0:
             return False, float("nan")
-        changes = [abs(other / base - 1.0) for other in (coarse, fine) if np.isfinite(other)]
-        if not changes:
-            return False, float("nan")
-        change = max(changes)
+        if any(not np.isfinite(other) or other <= 0.0 for other in (coarse, fine)):
+            # Discarding these and ranking the remaining one would report a quiet value from
+            # the step at which the sound speed still exists, which is the opposite of what
+            # happened.
+            return True, float("nan")
+        change = max(abs(other / base - 1.0) for other in (coarse, fine))
         return bool(change > SOUND_SPEED_JUMP_TOLERANCE), float(change)
 
     def calcWallVelocityLTE(self, Tn: float) -> float:

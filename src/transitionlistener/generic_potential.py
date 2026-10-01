@@ -885,8 +885,13 @@ class generic_potential():
         to the thermodynamics rather than a guard; it is left to a change of its own.
 
         Returns ``(outside, ratio)`` with the ratio of the daisy term to the field-independent
-        radiation. ``(False, nan)`` where it cannot be decided.
+        radiation. ``(False, nan)`` where it cannot be decided, and where the model is not using
+        this resummation at all: with ``daisy`` set to ``"Parwani"`` or ``"off"`` there is no
+        Arnold-Espinosa term in the potential, so building one here and reporting its size would
+        describe a prescription the run does not use.
         """
+        if getattr(self, "daisy", None) != "ArnoldEspinosa":
+            return False, float("nan")
         try:
             Ta = np.asarray([float(T)], dtype=float)
             X = np.asarray(X)

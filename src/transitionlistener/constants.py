@@ -69,3 +69,11 @@ CW_CONSTANTS = {
 # bath; "eff_potential" takes s = -dV/dT from the effective potential, with thermal masses and the
 # Arnold-Espinosa daisy. Defined here because both percolation solvers validate against it.
 ENTROPY_DEFINITIONS = ("dof_table", "eff_potential")
+
+SOUND_SPEED_JUMP_TOLERANCE = 0.05
+"""Relative change of ``c_s`` under a factor-ten step change above which it is called noisy.
+
+Here rather than in ``hydrodynamics`` because ``errors.SuperluminalSoundSpeedError`` phrases its
+message around the same threshold, and a message that decided "stable" by one number while the
+flag decided "noisy" by another would be worse than no message.
+"""

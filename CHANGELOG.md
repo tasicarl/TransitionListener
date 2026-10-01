@@ -373,7 +373,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   With the step rule these derivatives used to inherit it runs from `2.1e-4` to `2.5e-2`, so
   at its worst a factor two below the alarm, close enough to raise it on a point with nothing
   wrong with it. `WARNING:daisy_outside_validity` and `DIAG:daisy_over_radiation`
-  say whether the daisy resummation is being used where it does not apply.
+  say whether the daisy resummation is being used where it does not apply. They report only
+  on `daisy = "ArnoldEspinosa"`; with `"Parwani"` or `"off"` there is no such term in the
+  potential, and both come back as a false flag beside a `nan`.
 
   The second is a statement about the model rather than the arithmetic. The Arnold-Espinosa
   term resums the bosonic zero Matsubara mode, which is justified where that mode is infrared
