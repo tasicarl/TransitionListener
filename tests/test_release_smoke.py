@@ -51,6 +51,10 @@ EXPECTED = {
     "alpha":        (1.0e+1, 1.0e+4),
     "alpha_thetabar": (1.0e+1, 1.0e+4),
     "RH":           (1.0e-6, 1.0e+0),
+    # The sound speed must be a speed: it sets the bubble expansion speed through
+    # max(v_wall, c_s), the efficiency factors and the spectrum. A band rather than a value,
+    # since the point is that the guard leaves an ordinary value alone.
+    "c_s":          (1.0e-3, 0.999),
 }
 
 
@@ -191,6 +195,63 @@ def test_smoke_entropy_scheme_diagnostics_are_populated(smoke_run: Path) -> None
     flag = flag_re.search(text)
     assert flag and flag.group(1) in ("True", "False"), (
         f"the flag is not a boolean: {flag.group(1) if flag else None}"
+    )
+
+
+def test_smoke_sound_speed_diagnostics_are_populated(smoke_run: Path) -> None:
+    """The caller boundary, exercised by a real run rather than read from the source.
+
+    The sound-speed flags are set in `_ensure_sound_speed`. Unit tests of the functions
+    behind them cannot tell whether the observables still call them, and a source-text
+    assertion would pass if they stopped. The example point already runs here.
+    """
+    text = smoke_run.read_text()
+    for key in ("noisy_c_s", "c_s_step_change", "daisy_outside_validity",
+                "daisy_over_radiation"):
+        assert key in text, f"{key} missing: the sound-speed diagnostics did not run"
+
+    # Presence is not evidence. All four keys are registered with defaults, `nan` for the two
+    # numbers and False for the two flags, so every one of them appears in the output whether
+    # or not anything populated it. Only the two numbers can show that the observables
+    # actually ran the diagnostics, and only by coming back finite.
+    step_change = re.search(r"c_s_step_change\s+(\S+)", text)
+    assert step_change, "could not read the step-dependence diagnostic back"
+    try:
+        step_value = float(step_change.group(1))
+    except ValueError:
+        pytest.fail(
+            f"c_s_step_change was written as {step_change.group(1)!r} rather than a number, "
+            "so the observables did not populate it"
+        )
+    assert math.isfinite(step_value), (
+        "c_s_step_change came back as its registered nan default, so nothing populated it"
+    )
+    assert 0.0 <= step_value < 1.0e-3, (
+        f"unexpected step dependence on the example point: {step_value}"
+    )
+
+    values = _parse_all_params(smoke_run)
+    assert "c_s" in values, "c_s missing from the output"
+
+    # This point has an ordinary thermal broken phase well inside the daisy term's domain,
+    # so neither flag may fire.
+    for key in ("noisy_c_s", "daisy_outside_validity"):
+        flag = re.search(key + r"\s+(\S+)", text)
+        assert flag and flag.group(1) == "False", (
+            f"{key} fired on the example point: {flag.group(1) if flag else None}"
+        )
+
+    ratio = re.search(r"daisy_over_radiation\s+(\S+)", text)
+    assert ratio, "could not read the daisy ratio back"
+    try:
+        value = float(ratio.group(1))
+    except ValueError:
+        pytest.fail(
+            f"the daisy ratio was written as {ratio.group(1)!r} rather than a number, so "
+            "the observables did not populate it"
+        )
+    assert math.isfinite(value) and 0.0 < value < 1.0, (
+        f"unexpected daisy-to-radiation ratio on the example point: {value}"
     )
 
 

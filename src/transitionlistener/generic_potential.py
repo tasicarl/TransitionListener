@@ -57,6 +57,80 @@ from transitionlistener.particles import (
 )
 
 
+def _debye_agrees(measured, reference, magnitude):
+    """Whether two Debye coefficients agree, mode by mode.
+
+    Judged per mode rather than against the largest of them. A single tolerance scaled to the
+    largest coefficient only ever tests that one: a mode whose coefficient is orders of
+    magnitude smaller can be badly non-quadratic and still sit inside it, and a heavy mode can
+    make that small contribution matter in the daisy term at low temperature.
+
+    The absolute floor is round-off sized against the largest coefficient and exists for the
+    modes whose coefficient is exactly zero, the transverse gauge bosons, where a relative
+    tolerance has nothing to be relative to.
+    """
+    return bool(np.all(np.abs(measured - reference)
+                       <= 1.0e-9 * np.abs(reference) + 1.0e-14 * magnitude))
+
+
+def _daisy_mass_cubed_difference(m20, m2T, Pi=None):
+    r"""Return ``(m_T^2)^{3/2} - (m_0^2)^{3/2}`` without losing significant digits.
+
+    The daisy term of the Arnold-Espinosa resummation is proportional to this difference.
+    Written out directly it subtracts two nearly equal numbers whenever the thermal
+    correction is small against the mass itself, which is the whole low-temperature regime:
+    on the conformal dark U(1) of ``examples/example_point.yaml`` at an internal temperature
+    of 0.02, the two cubes are about ``1e9`` in internal units while their difference is
+    about ``0.3``, so ten of the sixteen digits are gone before anything else happens. The
+    potential itself tolerates that; its second temperature derivative does not, and the
+    sound speed divides by exactly that second derivative. Measured there, the second
+    derivative of the daisy term used to change by 60% when the derivative step was changed
+    by a factor ten, and now changes by 2e-11.
+
+    Two things are needed. The difference is written as
+    ``(m_0^2)^{3/2} [(1 + u)^{3/2} - 1]`` with ``u = Pi/m_0^2``, and the bracket is evaluated
+    as ``expm1(1.5 log1p(u))``, which has no cancellation. And that evaluation is kept in
+    real arithmetic: numpy's complex ``log1p`` and ``expm1`` lose accuracy for small
+    arguments, by a relative ``8e-8`` at ``u = 1e-9`` against ``1e-16`` for the real ones, so
+    the ``+0j`` that exists only to admit tachyonic modes must not be applied to the modes
+    that are fine. Negative ``m_0^2``, and a thermal correction that is not small, keep the
+    direct complex form, where there is nothing to cancel.
+    """
+    m20 = np.asarray(m20)
+    m2T = np.asarray(m2T)
+    shape = np.broadcast(m20, m2T).shape
+    m20b, m2Tb = np.broadcast_arrays(m20, m2T)
+    m20r = np.real(m20b)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        positive = np.asarray(m20r > 0.0)
+        u = np.zeros(shape, dtype=float)
+        # `Pi` given analytically is exact; taken as a difference it keeps only the digits
+        # by which the two spectra differ, and underflows to zero at low temperature.
+        thermal = (np.real(np.broadcast_to(Pi, shape)) if Pi is not None
+                   else np.real(m2Tb) - m20r)
+        np.divide(thermal, m20r, out=u, where=positive)
+        # Only where the correction is genuinely small is the rearrangement worth it; the
+        # threshold is where the direct form still has about half its digits.
+        small = positive & (np.abs(u) < 1.0e-2)
+    # `Vtot` is called hundreds of thousands of times in a scan and the spectra are a handful
+    # of modes, so the masked, two-branch general path costs more in numpy overhead than the
+    # arithmetic in it. The two cases that actually occur are all modes small, which is every
+    # supercooled evaluation, and none small, which is the high-temperature one; both are
+    # taken whole, in one array operation, and the mixed case keeps the general path.
+    all_small = bool(small.all())
+    if all_small:
+        return (m20r ** 1.5 * np.expm1(1.5 * np.log1p(u))).astype(complex, copy=False)
+    hot = (m20r + np.real(np.broadcast_to(Pi, shape))) if Pi is not None else m2Tb
+    if not small.any():
+        return pow(hot + 0j, 1.5) - pow(m20b + 0j, 1.5)
+    out = np.empty(shape, dtype=complex)
+    base = m20r[small] ** 1.5
+    out[small] = base * np.expm1(1.5 * np.log1p(u[small]))
+    rest = ~small
+    out[rest] = pow(hot[rest] + 0j, 1.5) - pow(m20b[rest] + 0j, 1.5)
+    return out
+
+
 class generic_potential():
     """
     An abstract class from which one can easily create finite-temperature
@@ -80,6 +154,16 @@ class generic_potential():
     temperature-dependent part of Vtot; used in temperature derivative
     calculations), and possibly override :func:`V0` (used by
     :func:`massSqMatrix` and for plotting at tree level).
+
+    Such a model must also override :func:`V_thermal`, which is the
+    temperature-dependent part of the potential on its own and is what the sound
+    speed, the transition strengths and the wall velocity are taken from. It is a
+    separate hook from :func:`V1T_from_X` because the two differ in what they
+    include: :func:`V_thermal` carries the radiation bath that its
+    ``include_decoupled`` argument selects and the daisy term, while the base
+    :func:`V1T_from_X` carries neither. Overriding the potential without it raises
+    :class:`errors.PotentialError` rather than reconstructing a thermal part from
+    the mass spectrum, which would not be the model's own.
 
     The `__init__` function performs initialization specific for this abstract
     class. Subclasses should either override this initialization *but make sure
@@ -742,7 +826,7 @@ class generic_potential():
             y += self.V1T(bosonsT, fermions, T)
         elif self.daisy == "ArnoldEspinosa":
             # Carrington (1992), Arnold and Espinosa (1992) prescription. Zero modes only.
-            Vdaisy = self.Vdaisy(bosons0, bosonsT, T)
+            Vdaisy = self.Vdaisy(bosons0, bosonsT, T, Pi=self.debye_massSq(X, T))
             y += self.V1T(bosons0, fermions, T) + Vdaisy
 
         # Add field-independent terms, so that the energy density can be computed
@@ -752,7 +836,308 @@ class generic_potential():
 
         return y
 
-    def Vdaisy(self, bosons0, bosonsT , T: float | np.ndarray
+    def V_thermal(self, X: np.ndarray, T: float | np.ndarray,
+                  include_decoupled: bool = False) -> float | np.ndarray:
+        """The temperature-dependent part of the effective potential, on its own.
+
+        ``Vtot`` is ``V0 + V1 + Vct`` plus this. The first three do not depend on the
+        temperature, so they drop out of every temperature derivative analytically, but not
+        numerically: forming the sum first and differencing afterwards subtracts the vacuum
+        energy from itself, and under supercooling the thermal part is ten or more orders of
+        magnitude smaller. On the conformal dark U(1) of ``examples/example_point.yaml`` the
+        thermal part is ``7e-4`` of the vacuum energy at the percolation temperature and
+        ``1e-13`` of it two decades below, where a second temperature derivative of the whole
+        potential has no significant digits left.
+        """
+        Ta = np.asarray(T, dtype=float)
+        # A model that rewrites the effective potential has a thermal part this cannot
+        # reconstruct, and there is no way to borrow one. `V1T_from_X` looks like the hook,
+        # but its contract is ambiguous: the class documentation calls it the
+        # temperature-dependent part of `Vtot`, which would include the radiation bath, while
+        # the base implementation returns neither the bath nor the daisy term. Adding the bath
+        # to an override that already has it double counts it, and not adding it to one that
+        # does not drops it, and nothing in the signature says which. So the hook is this
+        # method, and a model that has rewritten the potential is told to override it rather
+        # than being given a guess.
+        rewritten = [name for name in ("Vtot", "V1T_from_X")
+                     if getattr(type(self), name) is not getattr(generic_potential, name)]
+        if rewritten:
+            raise errors.PotentialError(
+                f"{type(self).__name__} overrides {' and '.join(rewritten)}, so the "
+                "temperature-dependent part of its potential cannot be rebuilt from the mass "
+                "spectrum. Override V_thermal(X, T, include_decoupled=False) as well, "
+                "returning that part on its own, including the radiation bath that "
+                "include_decoupled selects and excluding everything that does not depend on "
+                "the temperature. The sound speed, the transition strengths and the wall "
+                "velocity are all taken from it."
+            )
+        bosons0 = self.boson_massSq(X, Ta * 0.0)
+        bosonsT = self.boson_massSq(X, Ta)
+        fermions = self.fermion_massSq(X)
+        if self.daisy == "off":
+            y = self.V1T(bosons0, fermions, Ta)
+        elif self.daisy == "Parwani":
+            y = self.V1T(bosonsT, fermions, Ta)
+        elif self.daisy == "ArnoldEspinosa":
+            y = self.V1T(bosons0, fermions, Ta) + self.Vdaisy(
+                bosons0, bosonsT, Ta, Pi=self.debye_massSq(X, Ta))
+        else:
+            raise errors.PotentialError(
+                f"Unknown daisy resummation scheme {self.daisy!r}.")
+        return y + self.constantTerms(Ta, include_decoupled=include_decoupled)
+
+    def dV_thermal_dT(self, X: np.ndarray, T: float, dT: float,
+                      include_decoupled: bool = False):
+        """First temperature derivative of :func:`V_thermal`, by central difference.
+
+        ``include_decoupled`` selects the same sector the caller's other thermodynamics uses;
+        a derivative taken on one plasma and combined with a quantity taken on another is not
+        a thermodynamic identity. The sound speed excludes the decoupled bath, which is the
+        default; the wall velocity follows ``GWConf.coupled_hydrodynamics``.
+        """
+        return ((self.V_thermal(X, T + dT, include_decoupled=include_decoupled)
+                 - self.V_thermal(X, T - dT, include_decoupled=include_decoupled))
+                / (2.0 * dT))
+
+    def d2V_thermal_dT2(self, X: np.ndarray, T: float, dT: float,
+                        include_decoupled: bool = False):
+        """Second temperature derivative of :func:`V_thermal`, by central difference."""
+        return ((self.V_thermal(X, T + dT, include_decoupled=include_decoupled)
+                 - 2.0 * self.V_thermal(X, T, include_decoupled=include_decoupled)
+                 + self.V_thermal(X, T - dT, include_decoupled=include_decoupled))
+                / (dT * dT))
+
+    def daisy_outside_validity(self, X: np.ndarray, T: float) -> tuple[bool, float]:
+        """Whether the daisy resummation is being used where it does not apply.
+
+        The Arnold-Espinosa term resums the zero Matsubara mode of the bosons, which is
+        justified where that mode is infrared-enhanced, meaning ``m << T``. Where instead
+        ``m >> T`` a mode should be Boltzmann suppressed, and the one-loop thermal integral
+        is: ``V1T`` goes to exactly zero. The daisy term does not. With a thermal correction
+        ``Pi`` small against ``m^2`` it tends to ``-(T^3/8 pi) sum n_i c_i m_i``, a power law
+        with no ``exp(-m/T)`` in it, so it survives where the physics says it should not and
+        eventually exceeds the radiation that is still relativistic.
+
+        Measured on the conformal dark U(1) of ``examples/example_point.yaml``: the daisy term
+        is 7% of the field-independent radiation at ``T/v = 1e-1``, equal to it at about
+        ``1e-2``, thirteen times it at ``1e-3`` and ten million times it at ``1e-9``, while
+        the lightest mode runs from ``m/T = 1.3`` to ``1.3e8``. Where it dominates, the free
+        energy goes as ``T^3`` rather than ``T^4`` and the sound speed of the plasma tends to
+        ``1/sqrt(2)`` instead of the ``1/sqrt(3)`` of the radiation that is actually there.
+        A sound speed above ``1/sqrt(3)`` in a late, cold, heavily supercooled phase is
+        therefore this, and not a property of the plasma.
+
+        This is reported and not corrected. Which resummation a model uses is the user's
+        choice, and a prescription that is Boltzmann suppressed at low temperature is a change
+        to the thermodynamics rather than a guard; it is left to a change of its own.
+
+        Returns ``(outside, ratio)`` with the ratio of the daisy term to the field-independent
+        radiation. ``(False, nan)`` where it cannot be decided, and where the model is not using
+        this resummation at all: with ``daisy`` set to ``"Parwani"`` or ``"off"`` there is no
+        Arnold-Espinosa term in the potential, so building one here and reporting its size would
+        describe a prescription the run does not use.
+        """
+        if getattr(self, "daisy", None) != "ArnoldEspinosa":
+            return False, float("nan")
+        try:
+            Ta = np.asarray([float(T)], dtype=float)
+            X = np.asarray(X)
+            bosons0 = self.boson_massSq(X, Ta * 0.0)
+            bosonsT = self.boson_massSq(X, Ta)
+            daisy = float(np.squeeze(self.Vdaisy(bosons0, bosonsT, Ta,
+                                                 Pi=self.debye_massSq(X, Ta))))
+            bath = float(np.squeeze(self.constantTerms(Ta, include_decoupled=False)))
+            # Modes that contribute to the daisy term: degrees of freedom, a mass squared
+            # that is not negative, and a Debye mass. All three are needed. A massless mode
+            # with a Debye mass is kept, because it is the lightest there is and dropping it
+            # both misreads the lightest mass and, in a symmetric phase where every
+            # zero-temperature mass vanishes, leaves nothing to take a minimum over, so the
+            # ratio is discarded along with it. A mode with no Debye mass is dropped however
+            # many degrees of freedom it has, because it adds exactly nothing to the term
+            # being judged: the transverse gauge bosons are massless and thermally uncorrected
+            # in every model here, and counting them pinned the lightest mass at zero and made
+            # the flag unable to fire at all.
+            #
+            # Whether a mode has a Debye mass is asked at the model's own scale rather than at
+            # `T`. It is a property of the mode, and at the temperatures this diagnostic
+            # exists for the difference of the two spectra has underflowed, which would make
+            # every mode look uncorrected.
+            m2 = np.ravel(np.asarray(bosons0[0], dtype=float))
+            dof = np.ravel(np.broadcast_to(np.asarray(bosons0[1], dtype=float), m2.shape))
+            reference = float(getattr(self, "v_stable", 0.0) or 0.0) or float(T)
+            Tref = np.asarray([reference], dtype=float)
+            thermal_part = self.debye_massSq(X, Tref)
+            if thermal_part is None:
+                thermal_part = (np.asarray(self.boson_massSq(X, Tref)[0], dtype=float)
+                                - np.asarray(self.boson_massSq(X, Tref * 0.0)[0], dtype=float))
+            thermal_part = np.ravel(np.asarray(thermal_part, dtype=float))
+            if thermal_part.shape != m2.shape:
+                return False, float("nan")
+            contributing = (np.isfinite(m2) & (m2 >= 0.0) & (dof != 0.0)
+                            & np.isfinite(thermal_part) & (thermal_part != 0.0))
+            m2 = m2[contributing]
+            if m2.size == 0 or not np.isfinite(daisy) or not np.isfinite(bath) or bath == 0.0:
+                return False, float("nan")
+            ratio = abs(daisy) / abs(bath)
+            lightest_over_T = float(np.sqrt(m2.min())) / float(T)
+            # Both conditions: at high temperature the daisy term is legitimate and also
+            # goes as T^4, so a large ratio alone is not the signature.
+            return bool(ratio > 1.0 and lightest_over_T > 1.0), float(ratio)
+        except errors.Timeout:
+            # A diagnostic must not cancel the abort it is being run inside of.
+            raise
+        except Exception:
+            return False, float("nan")
+
+    def debye_massSq(self, X: np.ndarray, T: float | np.ndarray):
+        """The thermal part of the boson masses squared, if the model can give it directly.
+
+        Returns an array shaped like the boson mass spectrum, or ``None``. ``None`` is not the
+        default: the base class measures the thermal part, as described below, and returns
+        ``None`` only where that measurement fails its own check. A model that states its Debye
+        masses in closed form should override this; where neither the override nor the
+        measurement is available, the daisy term falls back to the difference of the spectra at
+        ``T`` and at zero, which is what it used before.
+
+        That difference is badly conditioned, and the daisy term is the one place it matters.
+        On the conformal dark U(1) of ``examples/example_point.yaml``, at an internal
+        temperature of 0.02, the masses squared are about ``5e4`` while their thermal part is
+        about ``5e-5``, so the subtraction keeps seven of sixteen digits; by an internal
+        temperature of ``1e-7`` it keeps none and the thermal part underflows to exactly zero,
+        which silently removes the daisy term altogether. A model that builds its masses as
+        ``m^2(X) + Pi(T)`` already holds ``Pi`` and can hand it over exactly, and should
+        override this with the closed form.
+
+        The default measures it instead of declining. Where the thermal part is
+        ``Pi = c(X) T^2``, which is what the Arnold-Espinosa Debye masses are, the coefficient
+        can be read off at a reference temperature high enough for the subtraction to keep its
+        digits and then evaluated at any temperature. The reference is the model's own scale
+        ``v_stable``, where ``Pi`` is of order the masses themselves.
+
+        That the thermal part goes as ``T^2`` is assumed by nothing here: it is checked, at a
+        second reference temperature and at two field points, and the default declines
+        whenever the check fails.
+
+        The check is not a formality, and neither is doing it at two field points. Of the
+        eight models shipped in ``models/``, four pass and four fail, and the failures are all
+        the same physics: where the bosonic masses are eigenvalues of a mass matrix whose
+        *entries* go as ``T^2``, the eigenvalues do not. Measured on ``models/TL_2HDM.py``,
+        the two longitudinal gauge modes move their apparent coefficient by 4.6% and 11%
+        between ``T`` and ``T/2``. ``models/TL_dark_flipflop.py`` fails only where both of its
+        fields are on: along ``X0``, where the second vanishes and the matrix is diagonal, it
+        looks quadratic to ``7e-18``, and at a generic point it is off by ``5e-3``. A check at
+        one field point would have accepted it and handed the daisy term a ``Pi`` that is
+        wrong by half a per cent.
+
+        For those models there is no ``Pi`` to hand over: the daisy term needs the two spectra
+        themselves and the subtraction is the only route, so declining is the correct answer
+        rather than a missing feature.
+
+        Returns an array shaped like the boson mass spectrum, or ``None``.
+        """
+        coefficient = self._debye_coefficient(X)
+        if coefficient is None:
+            return None
+        T2 = np.asarray(T, dtype=float) ** 2
+        if np.ndim(T2):
+            return coefficient * T2[..., np.newaxis]
+        return coefficient * float(T2)
+
+    # Outcome of the check in `_debye_coefficient`, kept because `Vtot` calls it on every
+    # evaluation and the answer cannot change for a given model: `None` not yet asked,
+    # `"unavailable"` the thermal part does not go as `T^2`, `"field_dependent"` it does but
+    # the coefficient moves with the field, or the coefficient array itself where it does not.
+    _debye_state = None
+
+    def _debye_coefficient(self, X: np.ndarray):
+        """``c`` with ``Pi = c T^2``, measured and verified, or ``None``.
+
+        Separate from :func:`debye_massSq` so the verification is paid once rather than on
+        every call, and decided at two field points fixed by the model rather than at whatever
+        field value happens to arrive first. ``Vtot`` is called with random field points while
+        the model is being built, and a verdict read off those would differ from run to run.
+
+        Three outcomes. A model whose thermal part is not quadratic never measures again. One
+        whose coefficient is the same at both reference points is taken to be field
+        independent and never measures again either. The rest measure on every call, two extra
+        spectrum evaluations. None of the models shipped here takes that third path: the four
+        that pass the check all have a field-independent coefficient, and the four whose
+        coefficient does move with the field turn out not to be quadratic either, which is the
+        same mixing in both cases. It is kept for models that are.
+        """
+        state = self._debye_state
+        # The array test comes first: comparing a cached coefficient array against a string
+        # is an elementwise comparison, and `if` on its result raises.
+        if isinstance(state, np.ndarray):
+            return state
+        if state == "unavailable":
+            return None
+
+        scale = float(getattr(self, "v_stable", 0.0) or 0.0)
+        if not np.isfinite(scale) or scale <= 0.0:
+            self._debye_state = "unavailable"
+            return None
+
+        def measure(Xa, T):
+            zero = np.asarray(self.boson_massSq(Xa, np.asarray(0.0))[0], dtype=float)
+            hot = np.asarray(self.boson_massSq(Xa, np.asarray(T))[0], dtype=float)
+            return (hot - zero) / T ** 2
+
+        if state != "field_dependent":
+            try:
+                reference = np.atleast_1d(
+                    np.asarray(self.X0, dtype=float)).ravel()[:self.Ndim]
+                elsewhere = 0.37 * reference + 0.11 * scale
+                here, there = measure(reference, scale), measure(elsewhere, scale)
+                # The quadratic law is checked at both points, so a model that is quadratic
+                # only where it happens to have been sampled does not pass.
+                check_here = measure(reference, 0.5 * scale)
+                check_there = measure(elsewhere, 0.5 * scale)
+            except errors.Timeout:
+                raise
+            except Exception:
+                self._debye_state = "unavailable"
+                return None
+            parts = (here, there, check_here, check_there)
+            if not all(np.all(np.isfinite(v)) for v in parts):
+                self._debye_state = "unavailable"
+                return None
+            magnitude = float(np.max(np.abs(here))) if here.size else 0.0
+            if magnitude <= 0.0:
+                self._debye_state = "unavailable"
+                return None
+            if not (_debye_agrees(check_here, here, magnitude)
+                    and _debye_agrees(check_there, there, magnitude)):
+                self._debye_state = "unavailable"
+                return None
+            if here.shape == there.shape and _debye_agrees(there, here, magnitude):
+                self._debye_state = here
+                return here
+            self._debye_state = "field_dependent"
+
+        # The two fixed probes established the quadratic law at two field points, which is
+        # what decides whether the coefficient can be cached. It is not a licence to synthesise
+        # `Pi = c(X) T^2` at a third field point without looking: a model that is quadratic
+        # where it was probed can fail to be elsewhere, and the daisy term would then be handed
+        # a thermal part the model does not have. The law is checked again here, at the field
+        # value actually asked for.
+        try:
+            coefficient = measure(np.asarray(X), scale)
+            verification = measure(np.asarray(X), 0.5 * scale)
+        except errors.Timeout:
+            raise
+        except Exception:
+            return None
+        if not (np.all(np.isfinite(coefficient)) and np.all(np.isfinite(verification))):
+            return None
+        magnitude = float(np.max(np.abs(coefficient))) if coefficient.size else 0.0
+        if magnitude <= 0.0:
+            return None
+        if not _debye_agrees(verification, coefficient, magnitude):
+            return None
+        return coefficient
+
+    def Vdaisy(self, bosons0, bosonsT , T: float | np.ndarray, Pi=None
                ) -> float | np.ndarray:
         """
         Calculate the daisy resummation term for the Arnold-Espinosa
@@ -769,7 +1154,8 @@ class generic_potential():
         m20, nb, _, _ = bosons0
         m2T, _, _, _ = bosonsT
 
-        y = np.real(-(T/(12.*np.pi))*np.sum(nb * (pow(m2T+0j, 1.5) - pow(m20+0j, 1.5)), axis=-1))
+        y = np.real(-(T/(12.*np.pi))
+                    * np.sum(nb * _daisy_mass_cubed_difference(m20, m2T, Pi), axis=-1))
         return y
 
     def Vdaisy_from_X(self, X,  T: float | np.ndarray,
@@ -791,7 +1177,9 @@ class generic_potential():
         X = np.asanyarray(X, dtype=float)
         bosons0 = self.boson_massSq(X, 0)
         bosons = self.boson_massSq(X, T)
-        return self.Vdaisy(bosons0, bosons, T)
+        # Same `Pi` as `Vtot` passes, or this helper and the potential it is a piece of
+        # disagree wherever the model provides analytic Debye masses.
+        return self.Vdaisy(bosons0, bosons, T, Pi=self.debye_massSq(X, T))
 
 
     def DVtot(self, X: np.ndarray, T: float | np.ndarray) -> np.ndarray:

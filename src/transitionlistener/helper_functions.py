@@ -932,3 +932,74 @@ def temperatureDerivativeStep(pot, T: float, X=None,
     if T_abs > 0.0:
         dT = min(dT, 0.25 * T_abs)
     return dT
+
+
+def thermalDerivativeStep(pot, T: float, X=None) -> float:
+    r"""Finite-difference step for temperature derivatives of the *thermal* potential.
+
+    :func:`temperatureDerivativeStep` cannot serve
+    :meth:`generic_potential.dV_thermal_dT` and :meth:`generic_potential.d2V_thermal_dT2`.
+    It sizes the step from :math:`|V_{\rm tot}|`, whose vacuum offset is exactly what those
+    two do not carry, and its sixth-root balance is derived for five-point stencils where
+    they are two- and three-point ones. Applied to them it saturates its own
+    :math:`3\times10^{-2}` ceiling below :math:`T/v = 10^{-3}`, which costs accuracy in the
+    fourth digit of the sound speed.
+
+    What binds for the ratio :math:`c_s^2 = \partial_T V_{\rm th}/(T\,\partial_T^2 V_{\rm th})`
+    is the round-off of the second difference against the truncation of the first:
+
+    .. math::
+        \frac{4\epsilon |V_{\rm th}|}{\Delta T^2\, |\partial_T^2 V_{\rm th}|}
+        \;\simeq\;
+        \frac{\Delta T^2 |\partial_T^3 V_{\rm th}|}{6\, |\partial_T V_{\rm th}|} \,.
+
+    The pairing is not the obvious one. The second difference is the noisier of the two, by
+    a factor :math:`1/\Delta T`, so it sets the round-off; the fourth derivative that would
+    set *its* truncation nearly vanishes wherever the daisy term dominates, because there
+    :math:`V_{\rm th} \propto T^3` and :math:`n(n-1)(n-2)(n-3) = 0` at :math:`n = 3`. The
+    third derivative does not vanish, so the first difference sets the truncation.
+
+    For :math:`V_{\rm th} \propto T^n` this gives
+
+    .. math::
+        \frac{\Delta T}{T} \simeq
+        \left(\frac{24\,\epsilon}{n(n-1)^2(n-2)}\right)^{1/4} \,,
+
+    and the magnitude :math:`|V_{\rm th}|` cancels out of it, because round-off and
+    truncation both scale with it. So the step is a pure number, and sizing it on whichever
+    contribution dominates the thermal part is the derivation of that number rather than a
+    reason for it to vary: radiation, :math:`n = 4`, gives
+    :math:`(\epsilon/3)^{1/4} = 9.3\times10^{-5}`, and a daisy-dominated :math:`n = 3` gives
+    :math:`(2\epsilon)^{1/4} = 1.45\times10^{-4}`. The two differ by 50 %, the optimum is
+    flat, and the radiation value is used for both.
+
+    Verified on the conformal dark U(1) at ``g = 0.455``, ``0.7`` and ``0.95``, at internal
+    temperatures from :math:`10^{-1}` to :math:`10^{-9}` of the scale: ``c_s`` at this step
+    agrees with the plateau measured over :math:`\Delta T/T \in [3\times10^{-5}, 10^{-3}]` to
+    :math:`4\times10^{-8}` or better everywhere, and at :math:`T/v = 10^{-9}` returns
+    ``0.70710672`` against the analytic daisy limit :math:`1/\sqrt{2} = 0.70710678`. Round-off
+    takes over below :math:`\Delta T/T \sim 10^{-5}` and truncation above
+    :math:`3\times10^{-3}`.
+
+    Parameters
+    ----------
+    pot : generic_potential
+        Effective potential; used only for the ``T_eps`` fallback at zero temperature.
+    T : float
+        Temperature at which the derivative is taken.
+    X : np.ndarray, optional
+        Field value. Accepted for symmetry with :func:`temperatureDerivativeStep` and
+        unused: that the step does not depend on it is the result derived above.
+
+    Returns
+    -------
+    float
+        Temperature step, capped at ``0.25 * T`` so the stencil stays at positive temperature.
+    """
+    T_abs = abs(float(T))
+    dT = T_abs * (np.finfo(float).eps / 3.0) ** 0.25
+    if not np.isfinite(dT) or dT <= 0.0:
+        dT = float(getattr(pot, "T_eps", 1.0e-3))
+    if T_abs > 0.0:
+        dT = min(dT, 0.25 * T_abs)
+    return dT

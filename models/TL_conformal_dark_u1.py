@@ -122,6 +122,28 @@ class specific_potential(generic_potential.generic_potential):
 
         return y / (64 * np.pi * np.pi)
 
+    def debye_massSq(self, X, T):
+        """The thermal part of the boson masses squared, exactly rather than by subtraction.
+
+        These are the same ``T^2`` terms that ``boson_mass_function`` adds to the tree-level
+        masses: the scalar prefactor for the two scalar modes, nothing for the transverse
+        gauge boson, and the longitudinal prefactor for the longitudinal one. Handing them to
+        the daisy term directly avoids taking the difference of two masses squared that agree
+        to within one part in ``1e9`` at low temperature.
+        """
+        import numpy as _np
+        X = _np.asarray(X)
+        T2 = _np.asarray(T, dtype=float) ** 2
+        scalar_prefactor = self.l / 3.0 + self.g**2 / 4.0 + self.y**2 / 12.0
+        longitudinal_prefactor = (1.0 / 3.0 + (self.Q_l**2 + self.Q_r**2) / 6.0) * self.g**2
+        shape = _np.broadcast(X[..., 0], T2).shape
+        Pi = _np.zeros(shape + (4,), dtype=float)
+        Pi[..., 0] = scalar_prefactor * T2
+        Pi[..., 1] = scalar_prefactor * T2
+        Pi[..., 2] = 0.0
+        Pi[..., 3] = longitudinal_prefactor * T2
+        return Pi
+
     def _build_mass_spectrum(self) -> MassSpectrum:
 
         phi_particle = Scalar(

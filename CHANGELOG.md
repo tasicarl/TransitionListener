@@ -193,6 +193,300 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The daisy term is evaluated without throwing away its significant digits, and the sound
+  speed is taken from the thermal part of the potential.** Both are numerics: the same
+  expressions, evaluated so that they keep their accuracy. Three cancellations stood on top of
+  one another.
+
+  The Arnold-Espinosa term is proportional to `(m_T^2)^{3/2} - (m_0^2)^{3/2}`. Written that
+  way it subtracts two nearly equal numbers wherever the thermal correction is small against
+  the mass, which is the whole low-temperature regime: on the conformal dark U(1) of
+  `examples/example_point.yaml` at an internal temperature of 0.02 the two cubes are about
+  `1e9` while their difference is about `0.3`. It is now evaluated as
+  `(m_0^2)^{3/2} [(1 + u)^{3/2} - 1]` with `u = Pi/m_0^2`, through `expm1(1.5 log1p(u))`.
+  That rearrangement is kept in real arithmetic, because numpy's complex `log1p` and `expm1`
+  lose a relative `8e-8` at `u = 1e-9` against `1e-16` for the real ones, and the `+0j` that
+  exists only to admit tachyonic modes was being applied to every mode.
+
+  The thermal correction itself was taken as the difference of the mass spectra at `T` and at
+  zero, which keeps seven of sixteen digits at that temperature and **underflows to exactly
+  zero** below an internal temperature of about `1e-7`, silently deleting the daisy term.
+  `generic_potential.debye_massSq(X, T)` provides it directly. A model that writes its Debye
+  masses in closed form overrides it, as `models/TL_conformal_dark_u1.py` does, and the base
+  class measures it for every model that does not: where the thermal part is `Pi = c(X) T^2`,
+  which is what the Arnold-Espinosa Debye masses are, the coefficient is read off at the
+  model's own scale, where the subtraction still keeps its digits, and then used at any
+  temperature.
+
+  Nothing here assumes the quadratic law. It is verified, at a second temperature and at two
+  field points, and the base class declines whenever the check fails. The check decides four
+  of the eight models in `models/` each way. It passes for the conformal dark U(1), both dark
+  U(1) parameterisations and the template. It fails for the three 2HDM models and for the dark
+  flip-flop, and for one reason in all four: their bosonic masses are eigenvalues of a mass
+  matrix whose *entries* go as `T^2`, and the eigenvalues of such a matrix do not. On
+  `models/TL_2HDM.py` the two longitudinal gauge modes move their apparent coefficient by 4.6%
+  and 11% between `T` and `T/2`. `models/TL_dark_flipflop.py` is the reason the check uses two
+  field points rather than one: along `X0` its second field vanishes, its matrix is diagonal
+  and the law holds to `7e-18`, while at a point with both fields on it is off by `5e-3`, so a
+  one-point check would have accepted it and handed the daisy term a `Pi` wrong by half a per
+  cent. For those four there is no `Pi` to hand over and the subtraction is the only route, so
+  declining is the correct answer rather than a missing feature.
+
+  The quadratic law is checked mode by mode, with a relative tolerance and a round-off-sized
+  absolute floor for the modes whose coefficient is exactly zero. A single tolerance scaled to
+  the largest coefficient only ever tests that one, and a mode whose coefficient is orders of
+  magnitude smaller could be badly non-quadratic and still pass, after which a heavy mode can
+  make that wrong contribution matter at low temperature. None of the eight models in
+  `models/` distinguishes the two rules, the worst per-mode deviation among those that pass
+  being `8e-15`, so this guards a case none of them exhibits.
+
+  The verdict is settled once per model and at field points the model itself fixes, not at
+  whichever point arrives first: `Vtot` is called with random field values while a model is
+  being constructed, and a verdict read off those would differ between runs of the same input.
+  Models whose coefficient is field independent, which is all four that pass, cache it and
+  never measure again. Measured on the conformal dark U(1), the base class reproduces that
+  model's own closed form to `1e-12`, and on the others it agrees with the subtraction to
+  `1e-13` wherever the subtraction still works.
+
+  This changes the daisy term of `models/TL_dark_U1.py`,
+  `models/TL_dark_U1_g_parameterization.py` and `models/templatePotential.py`, which now get
+  an exact thermal part where they previously got the difference of two spectra. A scalar
+  `Vtot` costs 9 to 13% more on those, and 1% or less on the models that decline, since the
+  verdict is cached. Where a model declines, the thermal part is still taken as the difference
+  of the two spectra, as before, and the rearrangement above still improves the accuracy of
+  that difference once it is taken.
+
+  On the conformal dark U(1) an exact `Pi` changes the thermal part of the potential by
+  `1.7e-3` of itself at a temperature of `1e-7` of the scale, and at `1e-9` the version
+  without it has nothing left to compare. It changes `Vtot` by nothing measurable at any of
+  them, which is the point: the shift lives below the last digit of the vacuum energy, and
+  that is why the sound speed is taken from the thermal part. And
+  `models/TL_conformal_dark_u1.py` implements it with the same `T^2` coefficients its mass
+  function already uses.
+
+  And `Hydrodynamics.calc_cs` now differentiates `generic_potential.V_thermal`, the
+  temperature-dependent part of the potential, rather than the whole of it. A model that
+  rewrites the effective potential from scratch is told by this class to override `Vtot` and
+  `V1T_from_X`. Such a model must now override `V_thermal` as well, which is the
+  temperature-dependent part on its own and is what the sound speed, the pseudo-trace
+  strengths and the wall velocity are taken from; a reconstruction from the mass spectrum
+  would not be that model's own thermodynamics. It is a separate hook from `V1T_from_X` on
+  purpose: the class documentation calls the latter the temperature-dependent part of `Vtot`,
+  which would include the radiation bath, while its base implementation returns neither the
+  bath nor the daisy term, and nothing in the signature says which an override means. Adding
+  the bath to an override that has it double counts, and not adding it to one that does not
+  drops it, so a model that has rewritten `Vtot` or `V1T_from_X` without also overriding
+  `V_thermal` is told so with an `errors.PotentialError` rather than handed a guess. No model
+  in `models/` overrides either, so none is affected. The two are the
+  same analytically, since what does not depend on temperature drops out of both derivatives,
+  and differ numerically: the whole potential subtracts the vacuum energy from itself, and
+  under supercooling that vacuum energy is the larger by ten orders of magnitude or more.
+
+  And the derivative step is sized for what is being differenced. `temperatureDerivativeStep`
+  sizes it from the magnitude of the whole potential, vacuum offset included, with a
+  sixth-root balance derived for the five-point stencils of `dVdT` and `d2VdT2`; below a
+  temperature of `1e-3` of the scale it saturates its own `3e-2` ceiling.
+  `helper_functions.thermalDerivativeStep` replaces it for the thermal part. There the
+  binding balance is the round-off of the second difference against the truncation of the
+  first, `4 eps |V_th| / dT^2 |d2V_th|` against `dT^2 |d3V_th| / 6 |dV_th|`; the fourth
+  derivative that would set the second difference's own truncation nearly vanishes wherever
+  the daisy term dominates, because there `V_th` goes as `T^3` and `n(n-1)(n-2)(n-3) = 0` at
+  `n = 3`. For `V_th` proportional to `T^n` that balance gives
+  `dT/T = (24 eps / n(n-1)^2(n-2))^{1/4}`, in which the magnitude of `V_th` cancels because
+  round-off and truncation both scale with it. The step is therefore a pure number:
+  `(eps/3)^{1/4} = 9.3e-5` for radiation, `(2 eps)^{1/4} = 1.45e-4` for a daisy-dominated
+  `T^3`, and the radiation value is used for both.
+
+  Measured together, on the second temperature derivative of the daisy term, as the relative
+  change when the derivative step is changed by a factor ten, released against fixed, on the
+  traced broken phase of the conformal dark U(1) at `g = 0.7`:
+
+  | `T/v` | as released | fixed |
+  | --- | --- | --- |
+  | `1e-1` | `3.7e-6` | `1.1e-7` |
+  | `1e-2` | `7.7e-7` | `1.9e-9` |
+  | `1e-3` | `7.5e-7` | `6.6e-9` |
+  | `1e-5` | `5.6e-3` | `5.8e-9` |
+  | `1e-7` | `1.1` | `2.6e-9` |
+  | `1e-9` | the daisy term has underflowed to zero | `1.5e-9` |
+
+  And on the sound speed itself: at this step `c_s` agrees to `4e-8` or better, on the traced
+  broken phase, with the
+  plateau measured over `dT/T` from `3e-5` to `1e-3`, at every temperature from `1e-1` to
+  `1e-9` of the scale and at `g = 0.455`, `0.7` and `0.95`. Round-off takes over below
+  `dT/T ~ 1e-5` and truncation above `3e-3`.
+
+  `bubbledynamics.calcSoundSpeedSq`, which both percolation backends use for the sound speed
+  that normalises the pseudo-trace strengths, differentiates the thermal part as well. Before,
+  the adaptive backend took the whole potential at the step rule above and the fixed-step one
+  took it at a hard-coded `dT/T = 1e-3`; the two now agree by construction. Where the released
+  version returned nothing there, `alpha_thetabar`, `alpha_hyd` and `alpha_hyd_wall` were
+  not-a-number and are now finite.
+
+  In the fixed-step backend that same function also fills `soundSpSq`, which enters
+  `falseVacuumVolumeGrowthRate` and so the percolation integral itself, so that backend's
+  percolation moves slightly. It is evaluated on the symmetric phase, where there is almost no
+  vacuum offset to cancel and therefore almost nothing to fix: measured on the conformal dark
+  U(1) over temperatures from `1e-1` to `1e-7` of the scale, the change is at most `1.9e-6`
+  relative.
+
+  On the example point of `examples/example_point.yaml` the effect of all of this is nothing
+  visible: all 54 entries of the transition table and all 58 of the observability table are
+  unchanged to the digits the output carries, and the only new columns are the four
+  diagnostics below. The point is healthy, which is what that shows: `DIAG:c_s_step_change`
+  is `4.9e-7` against its `0.05` alarm and `DIAG:daisy_over_radiation` is `0.32`.
+
+  The cancellation-free daisy evaluation costs time, because it decides per mode which form to
+  use. A single scalar `Vtot` goes from 132 to 173 microseconds, 31% more, of which the
+  analytic Debye masses are about a quarter; the two cases that actually occur, all modes small
+  and none small, are each taken in one array operation rather than through the masked general
+  path. End to end the cost is far smaller, because a scan is dominated by bounce solving
+  rather than by potential evaluations: the example point goes from 121 to 124 seconds, under
+  3%, on two concurrent runs of the same node.
+
+- **The wall velocity takes its sound speed from the thermal part too.**
+  `Hydrodynamics.calcWallVelocityLTE` is a fourth copy of the same quantity and is on the
+  default path: `GWConf.wall_velocity` is `"LTE"`, and in the observables stage
+  `_ensure_wall_velocity` runs before `_ensure_sound_speed`, so it was evaluated first on
+  every default run and the refusal above could not protect it. Its enthalpy `-T dV/dT` and
+  its two sound speeds all came from the whole potential, with the same cancellation.
+
+  Measured on the conformal dark U(1), 31 couplings from `g = 0.45` to `0.75` and five
+  temperatures from `1e-1` to `1e-7` of the scale: the broken-phase sound speed it used
+  disagreed with the thermal part by more than one per cent at 42 of 135 points, and at two of
+  them it was superluminal, `c_s = 1.26` at `g = 0.650` and `1.11` at `g = 0.750`, both at a
+  temperature of `1e-5` of the scale. Those values went into `DTheta`, which divides by the
+  sound speed, and into `find_vw`, which compares the wall velocity against it. There was no
+  check that they were below one.
+
+  `generic_potential.V_thermal` and its two derivatives now take `include_decoupled`, because
+  this caller follows `GWConf.coupled_hydrodynamics` rather than always excluding the
+  decoupled bath: an enthalpy taken on one plasma and combined with a pressure taken on
+  another is not a thermodynamic identity. A sound speed of one or more is refused here on the
+  same footing as in `calc_cs`. A phase with no plasma at all is a different statement and is
+  still the runaway branch, `v_wall = 1`, as before.
+
+  A second derivative that underflows against a first derivative that has not is a third case,
+  and it is an infinite sound speed rather than either of those. It is refused in both places,
+  whether the denominator reached zero exactly or is merely subnormal so that the quotient
+  overflows. The comparison against one carries no finiteness test, so positive infinity
+  reaches it, while `nan` and negative infinity do not compare greater than or equal to one
+  and still fall through to the frozen-phase branch. In the wall velocity the sign the
+  underflowed denominator kept is what decides between the two, so where it is exactly zero
+  the quotient is formed rather than assumed, and that check runs before the zero-denominator
+  return that would otherwise give the runaway answer first; where it is subnormal the
+  quotient overflows on its own and the guard on the computed sound speeds tests positivity
+  alone, which lets positive infinity through to the refusal and keeps the other two out.
+
+  A refusal raised by the wall velocity carries the same two diagnostics as one raised by the
+  sound speed. That stage runs before the sound-speed stage in both backends, so without it a
+  default run would get its only refusal with neither of them, and with the least to say of
+  any refusal in this change.
+
+  The wall velocity itself barely moves, because the superluminal values were being handed to
+  a `find_vw` that saturates: over the same 155 evaluations, 152 are bit-identical, the largest
+  change is `1.0e-6` relative, and nothing is refused, since the superluminal values existed
+  only in the route that no longer runs.
+
+- **A sound speed of one or more is refused rather than replaced.** `c_s` sets the speed at
+  which the bubbles grow, `max(v_wall, c_s)`, the efficiency factors and the spectrum, and for
+  a runaway wall a superluminal value multiplies `(beta/H)_RH` by `c_s` while the spectrum
+  divides by `v_wall - c_s`. `errors.SuperluminalSoundSpeedError` now names the value and the
+  temperature, and suggests `GWconfig.sound_speed = "1/3"` for a run that wants the radiation
+  value. Nothing is substituted: which thermodynamics a model has is the user's choice, and a
+  number the model did not give would hide the fact that the potential, as evaluated, has no
+  sound speed there. A phase that has simply frozen out, where the ratio is zero over zero or
+  negative, is still reported as not-a-number as before. Both phases are refused: the
+  symmetric-phase value is what the hydrodynamic matching across the wall is solved with.
+
+  The refusal is not hypothetical. Over 366 evaluations spanning `g = 0.45` to `0.75` and
+  temperatures from `1e-1` to `1e-9` of the scale, the released version returns a number at
+  222 of them and **three of those are at or above the speed of light**: `c_s = 1.4387` at
+  `g = 0.455`, `1.4799` at `g = 0.470` and `1.0536` at `g = 0.710`, all at a temperature of
+  `1e-5` of the scale. With the numerics above it returns a number at all 366, none of them
+  reaches one, and they lie between `0.5677` and `0.7071`. Each half of that comparison was
+  computed by the version it describes, in its own source tree, through that version's own
+  `Hydrodynamics.calc_cs`. That scan is the conformal dark U(1) of
+  `models/TL_conformal_dark_u1.py` at `v = 0.1 GeV` and `y = 0.01`, with the sound speed taken
+  on the traced broken phase at fixed field value; percolation is not computed.
+
+  The error carries the value, the temperature, the phase it came from, CLI error code 18, and
+  the two diagnostics below, so the message says which of the two known mechanisms produced
+  the value rather than only that it was refused. The remedy it recommends,
+  `GWconfig.sound_speed = "1/3"`, is now accepted by both percolation backends; the
+  fixed-step one read only a bare number and the adaptive one only the label, so the
+  recommendation was rejected by one of the two. Both resolve the setting through
+  `hydrodynamics.resolve_configured_sound_speed`, which reads `"1/3"` as the massless value
+  `1/sqrt(3)` and anything else as `c_s` itself, strictly between zero and one.
+
+  On the shipped line scan of `examples/example_line.yaml`, 30 couplings from `g = 0.5` to `1.0`
+  at `v = 0.14 GeV`, nothing changes status: the same two points fail with the same error code and
+  the same 28 give a sound speed, none refused. Of the 79 shared columns 32 are bit-identical and
+  the rest move by at most `3.2e-4` relative, in `alpha` and `alpha_thetabar`; `c_s` by `2.4e-4`,
+  `betaH_RH` and `R_*` by `2.0e-4`, and the signal-to-noise ratios by about two parts in ten
+  thousand. The shifts are largest at the most supercooled surviving point, where the daisy term is
+  30 times the radiation, and fall away as that ratio does. The solver is deterministic: two runs
+  of the same code agree bit for bit on 82 of 83 files.
+
+- **Two diagnostics of whether the sound speed means anything.**
+  `WARNING:noisy_c_s` and `DIAG:c_s_step_change` say whether it survives a change of the
+  derivative step, because a value can be round-off and still be a speed, so no test on the
+  value itself can find it. The step is varied both ways, by a factor ten in each direction,
+  and the larger of the two changes is reported: a coarser step adds truncation error and a
+  finer one adds round-off, and only the second is the failure being looked for, so testing one
+  side alone would miss a value that breaks down as the step shrinks. The diagnostic does not
+  propagate the refusal above. Each step is evaluated on its own and a refused value is
+  compared like any other, so the three cases come apart: refused at one step and not at
+  another is noise, because the value stopped being a speed somewhere inside the step range
+  and no single step shows that; refused everywhere but moving is noise too; and refused
+  everywhere with the same value is not, because it is not a speed but it does not depend on
+  the step, and the refusal already says what is wrong with it. Catching the refusal around
+  the group rather than per step let one at the base step end the measurement before either
+  varied step was taken, and a constant superluminal value was then reported as maximally
+  step dependent.
+
+  Measured through `Hydrodynamics.sound_speed_is_step_dependent` on the traced broken phase,
+  at `g = 0.455`, `0.7` and `0.95` and six temperatures each: with the step rule above the
+  change in a healthy regime is `1.4e-7` to `9.9e-7`, a factor 50000 below the `0.05` alarm.
+  With the step rule these derivatives used to inherit it runs from `2.1e-4` to `2.5e-2`, so
+  at its worst a factor two below the alarm, close enough to raise it on a point with nothing
+  wrong with it. `WARNING:daisy_outside_validity` and `DIAG:daisy_over_radiation`
+  say whether the daisy resummation is being used where it does not apply. They report only
+  on `daisy = "ArnoldEspinosa"`; with `"Parwani"` or `"off"` there is no such term in the
+  potential, and both come back as a false flag beside a `nan`.
+
+  The second is a statement about the model rather than the arithmetic. The Arnold-Espinosa
+  term resums the bosonic zero Matsubara mode, which is justified where that mode is infrared
+  enhanced, `m << T`. Where `m >> T` a mode should be Boltzmann suppressed, and the one-loop
+  thermal integral is: it falls below what a double can represent. The daisy term does not, tending instead to
+  `-(T^3/8 pi) sum n_i c_i m_i`, a power law with no `exp(-m/T)` in it. On the conformal dark
+  U(1) it is 7% of the field-independent radiation at a temperature of `1e-1` of the scale,
+  thirteen times it at `1e-3` and ten million times it at `1e-9`, while the lightest mode runs
+  from `m/T = 1.3` to `1.3e8`. Where it dominates the free energy goes as `T^3` instead of
+  `T^4`, so the entropy goes as `T^2` and `c_s^2 = s/(T ds/dT)` tends to `1/2`. No free gas at
+  zero chemical potential does that: there `c_s^2 = 1/3` for massless species and masses only
+  lower it. A sound speed above
+  `1/sqrt(3)` in a cold, heavily supercooled phase is therefore the prescription and not the
+  plasma, and the physically expected value there is the `1/sqrt(3)` of the radiation that is
+  still relativistic. The flag is raised when the daisy term exceeds that radiation and the
+  lightest mode has `m/T > 1`. The lightest mode is taken over every boson that contributes to
+  the daisy term, which is every one with degrees of freedom, a mass squared that is not
+  negative, and a Debye mass. All three are needed. A massless mode with a Debye mass is the
+  lightest there is and counts: excluding it left a symmetric phase, where every
+  zero-temperature mass vanishes, with no modes at all, and the ratio was discarded along with
+  them in exactly the case a symmetric-phase refusal would want it. On the conformal dark U(1)
+  the symmetric phase now reports ratios of `0.005` to `0.01` where it reported `nan`. A mode
+  with no Debye mass does not count, however many degrees of freedom it has, because it adds
+  exactly nothing to the term being judged: the transverse gauge bosons are massless and
+  thermally uncorrected in every model here, and counting them pinned the lightest mass at zero
+  and left the flag unable to fire at all. Whether a mode has a Debye mass is asked at the
+  model's own scale, since it is a property of the mode and at the temperatures this diagnostic
+  exists for the difference of the two spectra has underflowed.
+
+  This is reported and not corrected. A resummation that is Boltzmann suppressed at low
+  temperature would remove the artefact and is the subject of planned follow-up work; it is a
+  change to the thermodynamics rather than a guard, and it belongs in a change of its own.
+
 - **A timed-out point no longer comes back as a number**: `g_eff_DS` and `h_eff_DS`
   caught `BaseException` around the phase evaluation and substituted the `T = 0`
   vev, which absorbed the run's own `Timeout` and turned a timed-out point into a

@@ -22,6 +22,7 @@ from transitionlistener import thermodynamics as td
 from transitionlistener import constants as cn
 from transitionlistener.helper_functions import derivative
 from transitionlistener import errors
+from transitionlistener.helper_functions import thermalDerivativeStep
 from transitionlistener.pathDeformation import bounceAction
 from transitionlistener.finiteT import Jb_spline as Jb
 from transitionlistener.finiteT import Jf_spline as Jf
@@ -1943,9 +1944,11 @@ def calcSoundSpeedSq(pot, X, T) -> float:
     -------
 
     """
-    dT = T*1e-3
-    dVdT = pot.dVdT(X, T, dT=dT, include_decoupled=False)
-    d2VdT2 = pot.d2VdT2(X, T, dT=dT, include_decoupled=False)
+    # The temperature-dependent part on its own; see the adaptive solver's copy for why the
+    # whole potential cannot be differenced here.
+    dT = thermalDerivativeStep(pot, T, X)
+    dVdT = pot.dV_thermal_dT(X, T, dT=dT)
+    d2VdT2 = pot.d2V_thermal_dT2(X, T, dT=dT)
     # At extreme supercooling both derivatives underflow to zero in the broken phase, so this
     # is 0/0: with plain floats that raises, with numpy scalars it warns. Return the
     # not-a-number and let the callers decide, as the adaptive solver's copy does.

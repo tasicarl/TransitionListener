@@ -14,6 +14,10 @@ Authors:
     Carlo Tasillo <carlo.tasillo@ific.uv.es>
 """
 
+import math
+
+from transitionlistener import constants
+
 # Terminal errors
 class NoModelError(Exception):
     """Raised when the model file is not found or cannot be loaded."""
@@ -76,6 +80,127 @@ class DeformationError(Exception):
     ):
         """Initialise the error with the convergence diagnostic message."""
         super().__init__(message)
+
+class SuperluminalSoundSpeedError(Exception):
+    """The effective potential gave a sound speed of one or more.
+
+    ``c_s^2 = (dV/dT)/(T d2V/dT2)`` sets the speed at which the bubbles grow,
+    ``max(v_wall, c_s)``, the efficiency factors and the spectrum. A value of one or more is
+    not a speed, so nothing downstream of it has a meaning: for a runaway wall it replaces
+    the wall velocity and multiplies ``(beta/H)_RH`` by ``c_s``, and the spectrum divides by
+    ``v_wall - c_s``. Rather than substitute a number the model did not give, the point is
+    refused and the computation that produced it is reported.
+
+    Which phase it came from is part of the report. Both are refused: the symmetric-phase
+    value is what the hydrodynamic matching across the wall is solved with, so a value of
+    one or more there is no more usable than in the broken phase.
+
+    ``step_change``, ``daisy_ratio`` and ``daisy_outside``, where the caller has them, say
+    which of the two known mechanisms produced it. Neither is a property of the physics.
+
+    A large ``step_change`` means the finite differences have lost their significant digits
+    and the number is round-off.
+
+    ``daisy_ratio`` is a size and ``daisy_outside`` is the verdict; the size alone does not
+    imply the verdict. Where the Arnold-Espinosa resummation is used outside its range of
+    validity, ``m << T``, the resummed term falls as a power of the temperature where the
+    mode it stands for should be Boltzmann suppressed, it comes to dominate the thermal
+    potential, and ``c_s^2`` drifts towards the ``1/2`` of a ``T^3`` potential rather than
+    the ``1/3`` of radiation. But a daisy term larger than the radiation is not by itself
+    that failure: at high temperature it legitimately exceeds the radiation while every mode
+    is still lighter than the temperature. ``daisy_outside`` is
+    :func:`generic_potential.daisy_outside_validity`, which requires both, and it is what the
+    message draws its conclusion from.
+    """
+
+    def __init__(self, c_s, T, message=None, phase="broken", step_change=None,
+                 daisy_ratio=None, daisy_outside=None, source="sound_speed"):
+        """Attach the CLI error code identifying a sound speed that is not a speed."""
+        self.c_s = c_s
+        self.T = T
+        self.phase = phase
+        self.step_change = step_change
+        self.daisy_ratio = daisy_ratio
+        self.daisy_outside = daisy_outside
+        self.source = source
+        if message is None:
+            # The remedy depends on which computation raised. `calcWallVelocityLTE` builds its
+            # own sound speed from the potential and never reads `GWconfig.sound_speed`, and
+            # it runs before the observables stage that does, so recommending that setting
+            # there sends the user back to the identical error.
+            if source == "wall_velocity":
+                remedy = (
+                    "this is the local-equilibrium wall-velocity matching, which computes "
+                    "its own sound speed and does not read GWconfig.sound_speed; set "
+                    "GWconfig.wall_velocity to 'c' or to a number in (0, 1] to skip the "
+                    "matching, or check the model."
+                )
+            else:
+                remedy = (
+                    "run with GWconfig.sound_speed = '1/3' to use the radiation value "
+                    "instead, or check the model."
+                )
+            message = (
+                f"The {phase}-phase sound speed came out as {c_s} at T = {T}, which is not "
+                "a speed. The effective potential, or the precision it is evaluated with, "
+                f"cannot support a sound speed here; {remedy}"
+            )
+            if step_change is not None:
+                if not math.isfinite(step_change):
+                    # `sound_speed_is_step_dependent` returns nan when one of the test steps
+                    # was itself not a speed. Saying nothing here would leave the case where
+                    # the step dependence is strongest as the one case with no statement
+                    # about it.
+                    message += (
+                        " The value is not a speed at one of the test steps either, so it "
+                        "depends on the derivative step as strongly as it can."
+                    )
+                elif step_change > constants.SOUND_SPEED_JUMP_TOLERANCE:
+                    message += (
+                        f" Changing the derivative step by a factor ten moves c_s by "
+                        f"{step_change:.3g} of itself, so the finite differences are losing "
+                        "their significant digits."
+                    )
+                else:
+                    message += (
+                        f" The value is stable under a factor-ten change of the derivative "
+                        f"step ({step_change:.3g}), so this is not a finite-difference "
+                        "artefact."
+                    )
+            if daisy_ratio is not None and math.isfinite(daisy_ratio):
+                size = (f" The daisy term is {daisy_ratio:.3g} times the radiation part of "
+                        "the thermal potential.")
+                # The verdict is `daisy_outside`, not the ratio. Being outside the range of
+                # the resummation needs a large ratio *and* heavy modes: at high temperature
+                # the daisy term legitimately exceeds the radiation while every mode still
+                # has m < T, and deciding from the ratio alone would call that a breakdown.
+                if daisy_outside is True:
+                    message += size + (
+                        " The Arnold-Espinosa resummation is only valid for m << T, and the "
+                        "lightest mode here is heavier than the temperature, so it is being "
+                        "used outside its range."
+                    )
+                elif daisy_outside is False and daisy_ratio > 1.0:
+                    # Outside validity needs a large ratio *and* heavy modes. With the ratio
+                    # already large, the verdict can only have been false because the modes
+                    # are light, and that is the one case where saying so is sound.
+                    message += size + (
+                        " The modes are light enough for the Arnold-Espinosa resummation to "
+                        "apply, so this is not a resummation artefact."
+                    )
+                elif daisy_outside is False:
+                    # Here the ratio is what made the verdict false, and it says nothing about
+                    # the masses: `daisy_outside_validity` returns false for heavy modes too
+                    # whenever the daisy term has not overtaken the radiation.
+                    message += size + (
+                        " It has not overtaken the radiation, so the Arnold-Espinosa "
+                        "resummation is not what is driving this."
+                    )
+                else:
+                    message += size
+        super().__init__(message)
+        self.errorcode = 18
+
 
 class PotentialError(Exception):
     """

@@ -172,7 +172,7 @@ class GWConf:
     dilution = False                   # If True, apply a dilution factor to the GW signal.
     equilibrium_DS = True              # Not read. Which radiation is in equilibrium with the potential is set by kin_coupled_* and kin_decoupled_* on the model.
     epsilon_turbulence = 0.1           # Energy fraction redirected into turbulence (0 disables).
-    sound_speed = "compute"            # Sound-speed strategy: "compute" (broken-phase cs) or "1/3" (bag value).
+    sound_speed = "compute"            # Sound-speed strategy: "compute" (broken-phase cs), "1/3" (bag value), or a float in (0, 1).
     coupled_hydrodynamics = True       # Couple the dark and visible sectors in the hydro solve.
     check_if_T0_global_min = False     # If True, require the T=0 minimum to be global (else just warn).
 
@@ -228,6 +228,12 @@ all_observables = {
     "WARNING:action_rescue_failed": R"$\mathrm{WARNING:} \mathrm{action\ rescue\ failed}$",
     "DIAG:action_rescue_attempts": R"$\mathrm{DIAG:} \mathrm{actions\ recomputed}$",
     "DIAG:runtime_s": R"$\mathrm{DIAG:} \mathrm{runtime\ [s]}$",
+    "WARNING:daisy_outside_validity":
+        R"$\mathrm{WARNING:} \mathrm{daisy\ outside\ validity}$",
+    "DIAG:daisy_over_radiation": R"$\mathrm{DIAG:} V_\mathrm{daisy}/V_\mathrm{rad}$",
+    "WARNING:noisy_c_s":
+        R"$\mathrm{WARNING:} c_\mathrm{s} \mathrm{\ step\ dependent}$",
+    "DIAG:c_s_step_change": R"$\mathrm{DIAG:} \Delta c_\mathrm{s}/c_\mathrm{s}$",
     "WARNING:entropy_scheme_sensitive":
         R"$\mathrm{WARNING:} \mathrm{entropy\ scheme\ matters}$",
     "DIAG:entropy_scheme_cs2_spread": R"$\mathrm{DIAG:} \Delta(3c_s^2)/3c_s^2$",

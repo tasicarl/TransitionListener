@@ -19,7 +19,8 @@ from transitionlistener.transitions import TransitionInfo
 from . import thermodynamics as td
 from . import constants as cn
 from . import errors
-from transitionlistener.hydrodynamics import Hydrodynamics, calc_kappas
+from transitionlistener.hydrodynamics import (Hydrodynamics, calc_kappas,
+                                              resolve_configured_sound_speed)
 from transitionlistener.bubbledynamics import (
     calcPercAndEvolve,
     calcAlphas,
@@ -424,6 +425,10 @@ class TransitionObservables:
         """Prepare reusable data structures for a single transition."""
         derived_params = {
             "WARNING:too_weak_to_compute_perc": False,
+            "WARNING:noisy_c_s": False,
+            "DIAG:c_s_step_change": float("nan"),
+            "WARNING:daisy_outside_validity": False,
+            "DIAG:daisy_over_radiation": float("nan"),
             "WARNING:no_perc_splines": False,
             "WARNING:false_vacuum_not_shrinking": False,
             "WARNING:betaH_small": False,
@@ -467,7 +472,22 @@ class TransitionObservables:
         derived = ctx.derived_params
         if GWconfig.wall_velocity == "LTE":
             hydr = Hydrodynamics(ctx.pot, ctx.phase_symmetric, ctx.phase_broken, ctx.verbose)
-            derived["v_wall"] = hydr.calcWallVelocityLTE(temperature)
+            try:
+                derived["v_wall"] = hydr.calcWallVelocityLTE(temperature)
+            except errors.SuperluminalSoundSpeedError as err:
+                # This stage runs before `_ensure_sound_speed`, so a refusal here is the first
+                # thing the user sees and would otherwise carry none of the diagnostics that
+                # the same refusal carries from `calc_cs`. They are measured now, on the phase
+                # the refusal names, and the error is re-raised with them.
+                symmetric = err.phase == "symmetric"
+                phase = ctx.phase_symmetric if symmetric else ctx.phase_broken
+                _, step_change = hydr.sound_speed_is_step_dependent(temperature, sym=symmetric)
+                daisy_outside, daisy_ratio = ctx.pot.daisy_outside_validity(
+                    phase.valAt(temperature), temperature)
+                raise errors.SuperluminalSoundSpeedError(
+                    err.c_s, err.T, phase=err.phase, step_change=step_change,
+                    daisy_ratio=daisy_ratio, daisy_outside=daisy_outside,
+                    source="wall_velocity") from err
         elif GWconfig.wall_velocity == "c":
             derived["v_wall"] = 1.0
         elif GWconfig.wall_velocity == "WallGo":
@@ -496,21 +516,50 @@ class TransitionObservables:
             print("Calculating sound speed...")
         if GWconfig.sound_speed == "compute":
             hydr = Hydrodynamics(ctx.pot, ctx.phase_symmetric, ctx.phase_broken, ctx.verbose)
-            c_sb = hydr.calc_cs(temperature, sym=False)
-            c_ss = hydr.calc_cs(temperature, sym=True)
+            # The diagnostics are taken first, because `calc_cs` refuses a value of one or
+            # more and these two are what say which mechanism produced it. A value can be
+            # round-off and still be a speed, so no test on the value finds that; ask whether
+            # it survives a change of the derivative step instead. And where the daisy
+            # resummation is used outside its own domain the plasma's thermodynamics, and
+            # with it this sound speed, is the prescription's rather than the model's.
+            noisy, change = hydr.sound_speed_is_step_dependent(temperature, sym=False)
+            outside, ratio = ctx.pot.daisy_outside_validity(
+                ctx.phase_broken.valAt(temperature), temperature)
+            derived["WARNING:noisy_c_s"] = bool(noisy)
+            derived["DIAG:c_s_step_change"] = float(change)
+            derived["WARNING:daisy_outside_validity"] = bool(outside)
+            derived["DIAG:daisy_over_radiation"] = float(ratio)
+            try:
+                c_sb = hydr.calc_cs(temperature, sym=False)
+                c_ss = hydr.calc_cs(temperature, sym=True)
+            except errors.SuperluminalSoundSpeedError as err:
+                # Re-raised rather than annotated in place, so the message carries the two
+                # diagnostics and the user is told why, not only that.
+                step_change, daisy_ratio, daisy_outside = change, ratio, outside
+                if err.phase == "symmetric":
+                    # The two above are the broken phase's, which is the one the columns
+                    # report. Where it is the symmetric phase that is not a speed, they are
+                    # measured there instead: the message draws a conclusion from them
+                    # ("not a finite-difference artefact", "within the range the resummation
+                    # is valid in"), and drawing it about a phase that was never looked at
+                    # would be a wrong statement rather than a missing one.
+                    _, step_change = hydr.sound_speed_is_step_dependent(temperature, sym=True)
+                    daisy_outside, daisy_ratio = ctx.pot.daisy_outside_validity(
+                        ctx.phase_symmetric.valAt(temperature), temperature)
+                raise errors.SuperluminalSoundSpeedError(
+                    err.c_s, err.T, phase=err.phase, step_change=step_change,
+                    daisy_ratio=daisy_ratio, daisy_outside=daisy_outside) from err
+            # `c_s` is what the expansion speed of the bubbles, max(v_wall, c_s), the
+            # efficiency factors and the spectrum are built from. `c_s_bro` repeats it and
+            # `c_s_sym` is the symmetric-phase value the wall matching uses.
             derived["c_s"] = c_sb
             derived["c_s_sym"] = c_ss
             derived["c_s_bro"] = c_sb
-        elif GWconfig.sound_speed == "1/3":
-            value = 1 / np.sqrt(3)
+        else:
+            value = resolve_configured_sound_speed(GWconfig.sound_speed)
             derived["c_s"] = value
             derived["c_s_sym"] = value
             derived["c_s_bro"] = value
-        else:
-            raise NotImplementedError(
-                "The GWconfig.sound_speed option is not implemented yet: "
-                + GWconfig.sound_speed
-            )
 
     def _compute_transition_strength(self, ctx: TransitionContext, temperature: float) -> float:
         """Return alpha_theta at the supplied milestone temperature."""

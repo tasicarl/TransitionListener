@@ -145,6 +145,68 @@ The most important controls are:
   4% by default, so a flagged point is one whose :math:`R_*` is uncertain at
   about the five per cent level from this modelling choice alone. Lower the
   threshold to see weaker cases.
+- ``gwConf.sound_speed``: ``"compute"`` (the default) takes the sound speed of
+  the plasma from the effective potential; ``"1/3"`` uses the massless value
+  :math:`1/\sqrt{3}`; a number strictly between zero and one is used as
+  :math:`c_s` itself. Both percolation solvers accept all three.
+
+  In ``"compute"`` mode a value of one or more is refused rather than replaced,
+  with CLI error code 18, for the symmetric phase as well as the broken one:
+  :math:`c_s` sets the speed at which the bubbles grow,
+  :math:`\max(v_\mathrm{wall}, c_s)`, and the spectrum divides by
+  :math:`v_\mathrm{wall} - c_s`, so a value that is not a speed has no meaning
+  downstream. Which thermodynamics a model has is the user's choice, so nothing
+  is substituted; set ``sound_speed`` to ``"1/3"`` or to a number to run such a
+  point anyway. A phase that has simply frozen out, where the ratio is zero over
+  zero or negative, is still reported as ``nan`` and is not an error.
+- ``WARNING:noisy_c_s`` and ``DIAG:c_s_step_change``: whether the computed sound
+  speed survives a change of the derivative step. A value can be round-off and
+  still lie between zero and one, so no test on the value itself finds it; the
+  step is varied by a factor ten in each direction and the larger relative change
+  is reported, with the warning raised above 5%. On a healthy point the change is
+  of order :math:`10^{-7}`. A value that is refused at one test step and not at
+  another is noisy, because it stopped being a speed somewhere inside the step
+  range and no single step shows that; one refused at every step is not, since it
+  does not depend on the step and the refusal itself already reports it. ``nan``
+  means the change could not be put as a ratio, which happens when the value does
+  not exist at one of the steps or is infinite at all of them.
+- ``WARNING:daisy_outside_validity`` and ``DIAG:daisy_over_radiation``: whether
+  the Arnold-Espinosa daisy resummation is being used where it does not apply.
+  That term resums the bosonic zero Matsubara mode, which is justified for
+  :math:`m \ll T`. For :math:`m \gg T` a mode should be Boltzmann suppressed,
+  and the one-loop thermal integral is; the daisy term is not, going instead as a
+  power of the temperature. Where it dominates, the free energy goes as
+  :math:`T^3` rather than :math:`T^4` and :math:`c_s^2` drifts towards
+  :math:`1/2` instead of the :math:`1/3` of radiation. The diagnostic is the
+  ratio of the daisy term to the field-independent radiation, and the warning is
+  raised when that exceeds one *and* the lightest mode has :math:`m/T > 1`; both
+  are needed, because at high temperature a large ratio is legitimate. This
+  reports a modelling choice, not an error, and nothing is corrected. It applies
+  only to ``daisy = "ArnoldEspinosa"``; with ``"Parwani"`` or ``"off"`` there is no
+  such term in the potential and both come back as a false flag beside a ``nan``.
+
+  The daisy term itself needs the thermal part of the boson masses,
+  :math:`\Pi`. Where a model writes its Debye masses in closed form it should
+  override ``generic_potential.debye_massSq``; otherwise the base class measures
+  them, by reading the :math:`T^2` coefficient off the model's own spectrum at a
+  temperature where the difference of the spectra still keeps its digits. That the
+  thermal part is quadratic is verified rather than assumed, and the base class
+  falls back to the difference of the two spectra wherever it is not. It is not,
+  for every model whose bosonic masses are eigenvalues of a mass matrix that mixes:
+  the entries of such a matrix go as :math:`T^2` but its eigenvalues do not. Of the
+  models shipped in ``models/``, the two dark :math:`U(1)` parameterisations, the
+  conformal dark :math:`U(1)` and the template get an exact :math:`\Pi`, while the
+  three 2HDM models and the dark flip-flop use the difference.
+
+  A model that rewrites the effective potential must override
+  ``generic_potential.V_thermal`` as well as ``Vtot`` and ``V1T_from_X``. It
+  returns the temperature-dependent part on its own, including the radiation bath
+  its ``include_decoupled`` argument selects, and the sound speed, the transition
+  strengths and the wall velocity are all taken from it. Overriding ``Vtot`` or
+  ``V1T_from_X`` without it raises :class:`errors.PotentialError`: those two
+  differ in whether they carry the bath and the daisy term, so neither can be used
+  to stand in for it, and reconstructing one from the mass spectrum would not be
+  the model's own.
 - ``percolationConf.n_action``: fixed ``TSYM`` support count for
   ``fixed_step_size`` runs.
 - ``percolation_n_action_min``, ``percolation_n_action_increment``,

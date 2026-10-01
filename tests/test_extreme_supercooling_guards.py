@@ -86,6 +86,14 @@ class _EmptyBrokenPhasePotential:
     def d2VdT2(self, X, T, dT=None, include_decoupled=True):
         return self._wrap(0.0 if self._is_broken(X) else -3.0 / T)
 
+    # `calcWallVelocityLTE` takes the enthalpy and the sound speeds from the thermal part, so
+    # a stand-in that answers only `dVdT`/`d2VdT2` would raise before reaching the guard.
+    def dV_thermal_dT(self, X, T, dT=None, include_decoupled=True):
+        return self.dVdT(X, T, dT=dT, include_decoupled=include_decoupled)
+
+    def d2V_thermal_dT2(self, X, T, dT=None, include_decoupled=True):
+        return self.d2VdT2(X, T, dT=dT, include_decoupled=include_decoupled)
+
     def Vtot(self, X, T, include_decoupled=True):
         return self._wrap(-0.25 if self._is_broken(X) else -1.0)
 
@@ -118,6 +126,15 @@ class SoundSpeedOutputTests(unittest.TestCase):
                     # so the ratio is negative and its square root does not exist either.
                     return self._wrap(0.0 if mode == "frozen" else -3.0 / T)
                 return self._wrap(-3.0 / T)
+
+            # `calc_cs` differentiates the temperature-dependent part of the potential, so a
+            # stand-in has to offer those derivatives. The values are the same: what does not
+            # depend on the temperature drops out of either.
+            def dV_thermal_dT(self, X, T, dT=None):
+                return self.dVdT(X, T, dT=dT)
+
+            def d2V_thermal_dT2(self, X, T, dT=None):
+                return self.d2VdT2(X, T, dT=dT)
 
         class Phase:
             def __init__(self, x):
@@ -187,6 +204,15 @@ class WallVelocityEntryPointTests(unittest.TestCase):
             def d2VdT2(self, X, T, dT=None, include_radiation=True, include_decoupled=True):
                 return 1.0e10 if self._is_broken(X) else -3.0 / T
 
+            # `calcWallVelocityLTE` takes the enthalpy and the two sound speeds from the
+            # thermal part now, so the stand-in has to answer there too or the test would be
+            # exercising an attribute error rather than the guard.
+            def dV_thermal_dT(self, X, T, dT=None, include_decoupled=True):
+                return self.dVdT(X, T, dT=dT, include_decoupled=include_decoupled)
+
+            def d2V_thermal_dT2(self, X, T, dT=None, include_decoupled=True):
+                return self.d2VdT2(X, T, dT=dT, include_decoupled=include_decoupled)
+
             def Vtot(self, X, T, include_decoupled=True):
                 return -0.25 if self._is_broken(X) else -1.0
 
@@ -215,6 +241,16 @@ class _FrozenPlasmaPotential:
         return 0.0
 
     def d2VdT2(self, X, T, dT=None, include_decoupled=True):
+        return 0.0
+
+    def V_thermal(self, X, T):
+        # Constant in T, so both thermal derivatives vanish, which is the point of the stub.
+        return 0.0
+
+    def dV_thermal_dT(self, X, T, dT=None):
+        return 0.0
+
+    def d2V_thermal_dT2(self, X, T, dT=None):
         return 0.0
 
 
@@ -392,7 +428,19 @@ class UnmockedEntryPointTests(unittest.TestCase):
             return real_d2VdT2(X, T, dT, include_radiation=include_radiation,
                                include_decoupled=include_decoupled)
 
+        # `calcSoundSpeedSq` reads the thermal part of the potential, not the whole of it, so
+        # freezing only `dVdT`/`d2VdT2` would leave the sound speed computable and the test
+        # would no longer be about a frozen phase. A phase that has frozen out has a thermal
+        # part with no temperature dependence left, so a constant is what to return.
+        real_V_thermal = pot.V_thermal
+
+        def frozen_V_thermal(X, T, include_decoupled=False):
+            if np.allclose(np.atleast_1d(X), low.valAt(T)):
+                return 0.0
+            return real_V_thermal(X, T, include_decoupled=include_decoupled)
+
         pot.dVdT, pot.d2VdT2 = frozen_dVdT, frozen_d2VdT2
+        pot.V_thermal = frozen_V_thermal
         with warnings.catch_warnings():
             warnings.simplefilter("error", RuntimeWarning)
             return module.calcAlphas(3.4e2, pot, high, low, verbose=False,
