@@ -1253,6 +1253,24 @@ def percIntegralODE(
             & (scale_factor > 0.0)
             & (T > 0.0)
         )
+        # Every factor can be positive and finite on its own while their product still
+        # underflows to exactly zero. The adaptive cold boundary walks T toward 0, so
+        # `H * T * 3 c_s^2` reaches the denormal range and then 0, and `-log(0)` is
+        # `+inf`. The floor clamp further down uses `np.maximum`, which removes `-inf`
+        # but leaves `+inf` untouched, so the value survives into the PCHIP interpolants
+        # and surfaces as a bare `ValueError: y must contain only finite values` with no
+        # typed error and no diagnostic. A sample whose denominator has underflowed
+        # carries no information, so mark it invalid here and let the existing
+        # floor-and-trim path drop it like any other unusable point.
+        with np.errstate(invalid="ignore", over="ignore", under="ignore"):
+            denominator = H * T * 3.0 * sound_speed_sq
+            representable = (
+                np.isfinite(denominator)
+                & (denominator > 0.0)
+                & np.isfinite(denominator * scale_factor)
+                & (denominator * scale_factor > 0.0)
+            )
+        valid = valid & representable
         log_gamma_source = np.full_like(T, -np.inf)
         if np.any(valid):
             log_gamma_source[valid] = (
