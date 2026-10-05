@@ -788,12 +788,17 @@ def _apply_dynamiczoomwindow_candidate_grid(
     from transitionlistener import bubbledynamics as bd
 
     old_grid = np.asarray(active_grid, dtype=float).copy()
+    # Settled rather than usable: a support point whose solve has already run does not
+    # consume the controller's new-action budget, and a solve that came back non-finite
+    # has still run. Counting those as pending held the whole budget for the rest of the
+    # run and closed every refinement path -- see tests/test_action_budget_accounting.py.
     cached_points = bd._transition_action_outdict_temperatures(
         outdict,
         phase_symmetric,
         phase_broken,
         tmin=tmin,
         tmax=tmax,
+        require_finite_action=False,
     )
     if cached_points.size > 0:
         free_support_bank = _temperature_grid(
@@ -1190,6 +1195,7 @@ def _initial_percolation_scan_dynamiczoomwindow(
             phase_broken,
             tmin=grid.tmin,
             tmax=grid.tmax,
+            require_finite_action=False,
         )
     )
     state = PercolationState(

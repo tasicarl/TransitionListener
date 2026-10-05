@@ -2134,8 +2134,19 @@ def _transition_action_outdict_temperatures(
     *,
     tmin: float | None = None,
     tmax: float | None = None,
+    require_finite_action: bool = True,
 ) -> np.ndarray:
-    """Return cached action temperatures that clearly belong to one transition."""
+    """Return cached action temperatures that clearly belong to one transition.
+
+    ``require_finite_action`` controls which question is being asked. The default asks
+    which temperatures carry an action that can be *used*, so entries whose solve
+    returned a non-finite value are dropped. Passing ``False`` asks instead which
+    temperatures have already been *handed to the solver*: a solve that ran and came
+    back non-finite is settled, its cost is sunk and asking again only re-reads the
+    cache. The controller's support budget needs the second question, because a
+    temperature counted as pending for the rest of the run holds budget that nothing
+    can ever release.
+    """
     if not isinstance(outdict, dict):
         return np.asarray([], dtype=float)
 
@@ -2175,11 +2186,15 @@ def _transition_action_outdict_temperatures(
         if temperature < lower - interval_tol or temperature > upper + interval_tol:
             continue
 
+        if "action" not in payload:
+            # No attempt has been recorded for this temperature at all, so it is
+            # neither usable nor settled.
+            continue
         try:
-            action = float(payload.get("action", np.nan))
+            action = float(payload["action"])
         except Exception:
             continue
-        if not np.isfinite(action):
+        if require_finite_action and not np.isfinite(action):
             continue
 
         high_vev = payload.get("high_vev")
