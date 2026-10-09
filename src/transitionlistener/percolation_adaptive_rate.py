@@ -203,8 +203,19 @@ def _refine_step1_rate_peak(
     if not (peak_value > left_neighbor and peak_value > right_neighbor and boundary_prominence > 1.0):
         return None, None, None
 
-    x = np.asarray(temps[::-1], dtype=float)
-    y = np.asarray(log_rate[::-1], dtype=float)
+    # The peak search above is NaN-aware on purpose: a support temperature whose bounce
+    # solve did not converge carries no rate. The interpolant has to drop the same
+    # samples, or SciPy rejects the array with a bare "`y` must contain only finite
+    # values" that reaches the caller as an untyped error -1. A NaN fails every comparison
+    # in the prominence test above, so it can never be the peak; `+inf` passes all of them,
+    # and `logGamma` returns `+inf` wherever the action vanishes, which is what a
+    # "no barrier" solve stores. `np.nanargmax` then lands on a sample that is dropped here,
+    # which is why the number of remaining nodes is checked rather than assumed.
+    usable = np.isfinite(temps) & np.isfinite(log_rate)
+    if int(np.count_nonzero(usable)) < 3:
+        return float(temps[peak_index]), peak_value, peak_index
+    x = np.asarray(temps[usable][::-1], dtype=float)
+    y = np.asarray(log_rate[usable][::-1], dtype=float)
     interpolant = interpolate.PchipInterpolator(x, y, extrapolate=False)
     lower = float(temps[peak_index + 1])
     upper = float(temps[peak_index - 1])

@@ -35,6 +35,7 @@ from transitionlistener.percolation_adaptive_rate import (
 )
 from transitionlistener.percolation_adaptive_gridbuilders import (
     _adaptive_cold_boundary,
+    _acceptance_jump_is_exempted_inert,
     _build_dynamiczoomwindow_anchor_remesh_grid,
     _build_dynamiczoomwindow_jump_grid,
     _build_dynamiczoomwindow_range_grid,
@@ -42,6 +43,8 @@ from transitionlistener.percolation_adaptive_gridbuilders import (
     _cached_promotion_bounds,
     _initial_temperature_grid,
     _raise_if_hot_head_underresolved,
+    _cold_walk_has_left_the_bounce_region,
+    _nucleation_is_dead,
     _raise_if_large_delta_p_underresolved,
     _build_rate_step_grid,
     _range_expand_batch_size,
@@ -309,8 +312,17 @@ def _estimate_dynamiczoomwindow_accuracy(
                 / max(abs(float(estimate["Tf"])), 1e-30),
             )
     if np.isfinite(float(estimate["RH"])):
+        # A single sample carries no information about its own convergence. This used to
+        # report 0.0 when there was no previous RH to compare against, so the very first
+        # estimate declared itself converged to zero per cent and acceptance passed on the
+        # spot -- which is why two accepted profiles were measured 27.6% apart at the 90th
+        # percentile while both claimed to meet acc_rh = 1%, with Tperc agreeing to under 1%.
+        #
+        # Tperc and Tf do not have this hole: each falls back to its own bracket width. RH
+        # has no bracket measure, so the honest value with nothing to compare against is
+        # "unknown", which must not satisfy the target.
         estimate["RH_uncertainty"] = (
-            0.0
+            math.inf
             if previous_RH is None
             or not np.isfinite(previous_RH)
             or not np.isfinite(float(estimate["RH"]))
@@ -404,8 +416,17 @@ def _try_dynamiczoomwindow_local_refinement(
     remaining_budget: int,
     vw: float,
     apply_candidate_grid,
+    try_anchor_remesh=None,
 ) -> tuple[bool, int]:
-    """Spend one refinement batch on the most local unresolved feature."""
+    """Spend one refinement batch on the most local unresolved feature.
+
+    ``try_anchor_remesh`` lets the caller offer the anchor mesh ahead of a jump repair
+    that exists only because an acceptance-fatal jump is exempt from the post-peak inert
+    veto. Such a repair is a last resort: at lambda3 = 5.8136778037 it took the slot the
+    remesh needed and the run was rejected at Delta P = 0.0578, while at
+    lambda3 = 5.8177725978 the same repair is the only thing that resolves the profile.
+    The rate and hot-shoulder repairs keep their priority either way.
+    """
     if _try_dynamiczoomwindow_rate_refinement(temperatures, actions, hubble, settings, apply_candidate_grid):
         return True, int(remaining_budget)
 
@@ -433,8 +454,17 @@ def _try_dynamiczoomwindow_local_refinement(
         hubble=hubble,
         vw=vw,
     )
-    if jump_grid is not None and apply_candidate_grid(jump_grid, "jump_refine"):
-        return True, int(remaining_budget)
+    if jump_grid is not None:
+        if (
+            try_anchor_remesh is not None
+            and _acceptance_jump_is_exempted_inert(
+                temperatures, probabilities, settings, actions=actions, hubble=hubble, vw=vw
+            )
+            and try_anchor_remesh()
+        ):
+            return True, int(remaining_budget)
+        if apply_candidate_grid(jump_grid, "jump_refine"):
+            return True, int(remaining_budget)
 
     return False, int(remaining_budget)
 
@@ -465,6 +495,49 @@ def _try_dynamiczoomwindow_completed_refinement(
     3. otherwise rebuild the next support batch from fixed probability anchors
        plus the largest remaining neighbouring ``Delta P`` violations.
     """
+    def _try_anchor_remesh() -> bool:
+        """Spend the next support batch on the anchor mesh, if it has work to do."""
+        if remaining_budget <= 0:
+            return False
+        grid, reason = _build_dynamiczoomwindow_anchor_remesh_grid(
+            temperatures,
+            probabilities,
+            settings,
+            max_new_points=min(int(settings.n_action_increment), int(remaining_budget)),
+            actions=actions,
+            hubble=hubble,
+            vw=vw,
+        )
+        if grid is None or reason is None:
+            return False
+        return bool(apply_candidate_grid(grid, "anchor_remesh"))
+
+    # At the iteration limit the run is otherwise indistinguishable from a converged one:
+    # both repair paths below are skipped, the accuracy estimate is taken on whatever grid
+    # happens to be in hand, and the caller is told "accept", with nothing in the output to
+    # say that the controller had simply stopped being allowed to refine. Which repairs
+    # were still outstanding is asked by running the same builders, in the same order, with
+    # an apply hook that records the offer and refuses it, so nothing is spent and the
+    # answer cannot drift out of step with the order actually used. It has to be asked
+    # rather than assumed: a profile that reaches the limit with nothing left to repair is
+    # converged, and claiming otherwise would warn on every such run.
+    outstanding_repairs: list[str] = []
+    if iterator >= settings.maxit:
+        def _record_offer_only(_grid, reason) -> bool:
+            outstanding_repairs.append(str(reason))
+            return False
+
+        _try_dynamiczoomwindow_local_refinement(
+            temperatures,
+            hubble,
+            probabilities,
+            actions,
+            settings,
+            remaining_budget=remaining_budget,
+            vw=vw,
+            apply_candidate_grid=_record_offer_only,
+        )
+
     if iterator < settings.maxit:
         refined, remaining_budget = _try_dynamiczoomwindow_local_refinement(
             temperatures,
@@ -475,6 +548,7 @@ def _try_dynamiczoomwindow_completed_refinement(
             remaining_budget=remaining_budget,
             vw=vw,
             apply_candidate_grid=apply_candidate_grid,
+            try_anchor_remesh=_try_anchor_remesh,
         )
         if refined:
             return True, None
@@ -492,6 +566,17 @@ def _try_dynamiczoomwindow_completed_refinement(
         if apply_candidate_grid(remesh_grid, "anchor_remesh"):
             return True, None
 
+    if iterator >= settings.maxit:
+        if remesh_grid is not None and remesh_reason is not None and remaining_budget > 0:
+            outstanding_repairs.append("anchor_remesh")
+        if outstanding_repairs:
+            print(
+                f"Warning: {stage} reached its limit of {int(settings.maxit)} support "
+                f"updates with {', '.join(outstanding_repairs)} still outstanding, so no "
+                "further refinement was attempted. The accuracy of the returned profile "
+                "is whatever the current grid gives."
+            )
+
     estimate = _estimate_dynamiczoomwindow_accuracy(
         temperatures,
         hubble,
@@ -504,10 +589,25 @@ def _try_dynamiczoomwindow_completed_refinement(
     if promote_cached_action_points("cached_action_points"):
         return True, estimate
     if previous_estimate is not None and _dynamiczoomwindow_accuracy_reached(estimate, settings):
+        estimate["targets_met"] = True
         return False, estimate
 
     if previous_estimate is not None or remaining_budget <= 0:
         print(_dynamiczoomwindow_accuracy_warning_message(stage, estimate, settings))
+    # Record which targets this profile actually met. Both branches above accept, so the
+    # targets never prevent acceptance -- by this point refinement has nothing left to try,
+    # and retrying would be futile. But the only trace of a missed target was a line printed
+    # to stdout, which no scan reads, so a profile that misses acc_rh is indistinguishable in
+    # the output from one that meets it. Measured: RH differs by a 90th percentile of 27.6%
+    # between two accepted profiles, both nominally held to acc_rh = 1%, while Tperc agrees
+    # to better than 1%. The verdict is carried on `PercolationState.accuracy_estimate` and
+    # reported by `PercolationDiagnostics`, so a caller that keeps the metadata can tell the
+    # two apart; marking such points in a scan table additionally needs an observable key,
+    # which this change does not add.
+    estimate["targets_met"] = bool(
+        previous_estimate is not None
+        and _dynamiczoomwindow_accuracy_reached(estimate, settings)
+    )
     return False, estimate
 
 
@@ -715,6 +815,12 @@ def _dynamiczoomwindow_range_targets(
     actions = np.asarray(actions, dtype=float)
     hubble = np.asarray(hubble, dtype=float)
     cold_tail_unresolved = bool(probabilities[-1] < settings.f_final)
+    # More cold *range* cannot resolve a tail whose bounce has stopped existing: every
+    # further point there returns a non-finite action, is dropped by the percolation
+    # integral and by the profile rebuild, and still costs a bounce solve. Stop expanding
+    # and leave the controller to refine where an action can still be computed.
+    if cold_tail_unresolved and _cold_walk_has_left_the_bounce_region(actions):
+        cold_tail_unresolved = False
 
     if (probabilities[0] > settings.f_start or hot_head_needs_support) and not cold_tail_unresolved:
         high = float(temperatures[0]) + (float(target_high) - float(temperatures[0])) * settings.rel_increment
@@ -866,11 +972,39 @@ def _promote_dynamiczoomwindow_cached_points(
         tmin=tmin,
         tmax=tmax,
     )
+    # A cached action is not automatically useful support. Below a completed transition the
+    # action saturates and S_3/T grows without bound, so the point has a finite action and
+    # a rate of exactly zero. Promoting it plants the active grid's cold boundary there and
+    # the rate-step refinement then fills the span with points that cannot matter.
+    #
+    # The test is confined to candidates colder than the grid already is, which is the
+    # situation that was measured, because S_3/T is just as large on the *hot* shoulder:
+    # the action diverges as T approaches the critical temperature from below, and the hot
+    # head is only accepted once log(Gamma/H^4) has fallen below zero, which needs a large
+    # S_3/T by construction. Across the 31 recorded edge-line profiles that carry one, the
+    # hottest retained support point sits at S_3/T between 478 and 509, within a factor two
+    # of the threshold.
+    # Applying the test there as well would let this function refuse exactly the hot-head
+    # support that `_raise_if_hot_head_underresolved` rejects the profile for lacking --
+    # the same self-contradiction as the post-peak jump veto, one promotion further on.
+    active_cold_edge = None
+    active_temperatures = _temperature_grid(active_grid)
+    if active_temperatures.size > 0:
+        active_cold_edge = float(active_temperatures[-1])
+
+    def _is_dead_cold_candidate(temperature: float) -> bool:
+        if active_cold_edge is None or temperature >= active_cold_edge:
+            return False
+        payload = outdict.get(temperature)
+        action = payload.get("action", float("nan")) if isinstance(payload, dict) else float("nan")
+        return _nucleation_is_dead(temperature, action)
+
     pending_points = np.asarray(
         [
             float(value)
             for value in _temperature_grid(cached_points)
             if not _temperature_present(support_bank, float(value))
+            and not _is_dead_cold_candidate(float(value))
         ],
         dtype=float,
     )
@@ -1348,6 +1482,16 @@ def _initial_percolation_scan_dynamiczoomwindow(
                 verbose=verbose,
             )
         )
+        # Keep the verdict with the profile. The controller returns the same "accept" whether
+        # or not the accuracy targets were met, so without this the only trace of a missed
+        # target was a line printed to stdout, which no scan reads.
+        #
+        # Only a verdict measured on the arrays that are being returned may be attributed to
+        # them. "accept" is the single decision whose estimate was taken on this iteration's
+        # profile; the "limit" and "range_expand" exits hand back the estimate of an earlier
+        # iteration, which may have been measured before a promotion or refinement rebuilt
+        # the grid. Those exits therefore record no verdict rather than a misattributed one.
+        state.accuracy_estimate = previous_estimate if decision == "accept" else None
         if decision == "retry":
             iterator += 1
             continue
@@ -1678,6 +1822,16 @@ def _refine_percolation_temperature_dynamiczoomwindow(
                 verbose=verbose,
             )
         )
+        # Keep the verdict with the profile. The controller returns the same "accept" whether
+        # or not the accuracy targets were met, so without this the only trace of a missed
+        # target was a line printed to stdout, which no scan reads.
+        #
+        # Only a verdict measured on the arrays that are being returned may be attributed to
+        # them. "accept" is the single decision whose estimate was taken on this iteration's
+        # profile; the "limit" and "range_expand" exits hand back the estimate of an earlier
+        # iteration, which may have been measured before a promotion or refinement rebuilt
+        # the grid. Those exits therefore record no verdict rather than a misattributed one.
+        state.accuracy_estimate = previous_estimate if decision == "accept" else None
         if decision == "retry":
             Tperc_prev = Tperc
             iterator += 1
@@ -1696,6 +1850,9 @@ def _refine_percolation_temperature_dynamiczoomwindow(
                 TSYM,
                 state.Pr,
                 settings,
+                remaining_budget=remaining_budget,
+                iterations_used=iterator,
+                max_iterations=settings.maxit,
                 stage="step 3",
                 outcome="successful",
             )
@@ -1715,6 +1872,9 @@ def _refine_percolation_temperature_dynamiczoomwindow(
                 TSYM,
                 state.Pr,
                 settings,
+                remaining_budget=remaining_budget,
+                iterations_used=iterator,
+                max_iterations=settings.maxit,
                 stage="step 3",
                 outcome="best-available unresolved-tail",
             )
@@ -1737,6 +1897,9 @@ def _refine_percolation_temperature_dynamiczoomwindow(
                     TSYM,
                     state.Pr,
                     settings,
+                    remaining_budget=remaining_budget,
+                    iterations_used=iterator,
+                    max_iterations=settings.maxit,
                     stage="step 3",
                     outcome="eternal-inflation",
                 )
@@ -1744,7 +1907,14 @@ def _refine_percolation_temperature_dynamiczoomwindow(
                     "The transition cannot completely finish because the true vacuum "
                     "fraction at the lowest evaluated temperature stays below f_final: "
                     f"P(Tmin) = {state.Pr[-1]:2.5g} < {settings.f_final:2.5g} at "
-                    f"Tmin = {TSYM[-1] * CF:2.5g} GeV."
+                    f"Tmin = {TSYM[-1] * CF:2.5g} GeV.",
+                    # The same four numbers `calcTf` attaches when it refuses for the same
+                    # reason. A consumer that reads them off the error must not have to know
+                    # which of the two places decided, and this one has them all in hand.
+                    Pint_max=float(state.Pr[-1]),
+                    Tperc=float(Tperc),
+                    Tlow=float(TSYM[-1]),
+                    f_final=float(settings.f_final),
                 )
 
         (
@@ -1785,6 +1955,9 @@ def _refine_percolation_temperature_dynamiczoomwindow(
                 TSYM,
                 state.Pr,
                 settings,
+                remaining_budget=remaining_budget,
+                iterations_used=iterator,
+                max_iterations=settings.maxit,
                 stage="step 3",
                 outcome="best-available unresolved-tail",
             )

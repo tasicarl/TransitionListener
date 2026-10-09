@@ -114,6 +114,14 @@ class PercolationState:
     cold_tail_last_integral: float | None = None
     cold_tail_last_log_gamma_h4: float | None = None
     cold_tail_post_peak_streak: int = 0
+    # The accuracy estimate the post-sweep controller took on the profile it accepted, kept
+    # so the verdict survives the solve. The controller accepts the profile either way -- by
+    # the time it estimates, refinement has nothing left to try, so retrying would be futile
+    # -- and the estimate used to be a loop-local that the solver dropped on return. A
+    # profile that missed acc_rh was then indistinguishable from one that met it. Left None
+    # when the controller stopped at its iteration limit, because the estimate it hands back
+    # there was measured on an earlier grid and does not describe the returned profile.
+    accuracy_estimate: dict | None = None
 
 
 def _finalize_percolation_state(
@@ -2215,6 +2223,14 @@ def _transition_action_outdict_temperatures(
     return _temperature_grid(temperatures)
 
 
+def _uncertainty_or_nan(value) -> float:
+    """One relative uncertainty for the diagnostics snapshot, or nan if it is not a number."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return math.nan
+
+
 @dataclass
 class PercolationDiagnostics:
     """Percolation diagnostics returned together with the final support bank.
@@ -2242,6 +2258,20 @@ class PercolationDiagnostics:
     action_jitter_rescue_attempts: int = 0
     action_jitter_rescue_success: bool = False
     action_jitter_rescue_temperatures: list[float] | None = None
+    # Whether the accepted profile met acc_tperc, acc_tfinal and acc_rh, with the three
+    # relative uncertainties behind that verdict. True or False is the verdict the controller
+    # formed on the profile it accepted -- False covers both "a target was missed" and "there
+    # was no second estimate to compare against", since an uncomparable estimate cannot
+    # certify anything. None means no verdict reached these diagnostics at all: the
+    # fixed_step_size backend, which has no such controller, and a profile the controller
+    # handed back at its iteration limit rather than accepting. The targets do not gate
+    # acceptance, so these fields are the only record of whether they were honoured, and they
+    # live on this object alone: no observable column is written from them, so only a caller
+    # that keeps the metadata from `calcPercAndEvolve(return_metadata=True)` sees them.
+    accuracy_targets_met: bool | None = None
+    accuracy_tperc_uncertainty: float = math.nan
+    accuracy_tfinal_uncertainty: float = math.nan
+    accuracy_rh_uncertainty: float = math.nan
 
     @classmethod
     def from_state(
@@ -2263,6 +2293,18 @@ class PercolationDiagnostics:
             support_bank_temperatures=[float(value) for value in support_bank.tolist()],
             action_temperatures=[float(value) for value in action_temperatures.tolist()],
         )
+        # `getattr` rather than attribute access, because the fixed_step_size solver has its
+        # own `PercolationState` without this field. The snapshot is taken after the solve has
+        # already succeeded, so nothing in it may raise: the estimate is typed
+        # `dict[str, float | None]`, and a None or a missing key is reported as nan instead of
+        # turning a completed percolation solve into a failed point.
+        estimate = getattr(state, "accuracy_estimate", None)
+        if isinstance(estimate, dict):
+            met = estimate.get("targets_met")
+            metadata.accuracy_targets_met = None if met is None else bool(met)
+            metadata.accuracy_tperc_uncertainty = _uncertainty_or_nan(estimate.get("Tperc_uncertainty"))
+            metadata.accuracy_tfinal_uncertainty = _uncertainty_or_nan(estimate.get("Tf_uncertainty"))
+            metadata.accuracy_rh_uncertainty = _uncertainty_or_nan(estimate.get("RH_uncertainty"))
         if jitter_diagnostic:
             max_residual = jitter_diagnostic.get("max_residual_oom", math.nan)
             metadata.action_jitter_max_residual_oom = (
@@ -2306,6 +2348,21 @@ class PercolationDiagnostics:
         return metadata
 
 
+# Decades below the in-band rate peak at which a sample can no longer corrupt an
+# observable, and is therefore not worth judging for smoothness. The grid builders have
+# their own floor at 1e3 decades, which is right for deciding where to *place* support --
+# being permissive there only costs a few wasted evaluations -- but far too loose for
+# deciding whether a wobble is an instability. Every observable (Tperc, Tf, RH) follows
+# from the integral of the rate, so a sample N decades below the peak shifts it by at most
+# ~1e-N up to polynomial volume factors; past N ~ 16 that is below double precision, so any
+# threshold above ~20 cannot mask a defect that is visible in a result. Measured on the
+# 2HDM edge line, every false rejection sat at 40.5 decades or deeper (max 688.5, 22 cases
+# across the coarse, refined and marginal lines), which bounds the useful window to roughly
+# [20, 40]. 30 sits in the middle, with 1.5x margin over the precision bound below and 1.35x
+# to the shallowest observed false positive above.
+_JITTER_DEAD_RATE_DECADES = 30.0
+
+
 def _action_rate_jitter_diagnostic(
     T: np.ndarray,
     H: np.ndarray,
@@ -2313,6 +2370,7 @@ def _action_rate_jitter_diagnostic(
     P: np.ndarray,
 ) -> dict[str, float | int | None]:
     """Measure non-smooth jumps in the active-band rate samples."""
+    from transitionlistener.percolation_adaptive_gridbuilders import _dead_rate_floor
     from transitionlistener.percolation_adaptive_rate import _log10_gamma_h4_array
 
     p_low = 0.01
@@ -2333,9 +2391,48 @@ def _action_rate_jitter_diagnostic(
         & (P >= p_low)
         & (P <= p_high)
     )
+    # P rises monotonically as T falls, so every sample colder than the one that reached
+    # p_low is inside the band whether or not its rate still matters. Fitting one quadratic
+    # in ln T across a dead tail that spans seven decades of temperature measures the fit's
+    # inadequacy, not the data's: at lambda3 = 5.8205024605 that produced a "residual" of
+    # 1.6e10 orders of magnitude and advised the user to increase the bounce precision for a
+    # sample at T = 1.4e-5 GeV. Samples whose rate has collapsed below the floor are
+    # excluded, so the diagnostic judges the band it can actually describe.
+    mask = mask & (log10_rate >= _dead_rate_floor(log10_rate))
+    # The floor above is the grid builders' and sits 1e3 decades down, which no sample on
+    # this line ever reached, so it excluded nothing and the gate still judged the dead tail.
+    # P rises past f_perc while the rate falls through hundreds of decades, so a sample can
+    # be well inside the probability band and still carry no weight at all: at
+    # lambda3 = 5.82015 the flagged point was 432 decades below the peak with P = 0.572,
+    # already past percolation, and its 34.6-decade "jump" is 8% of the range the quadratic
+    # has to span. Judge only the samples whose rate is still live.
+    band_idx = np.flatnonzero(mask)
+    dead_in_band = 0
+    if band_idx.size:
+        order = band_idx[np.argsort(-T[band_idx])]
+        rate_hot_to_cold = log10_rate[order]
+        live_floor = float(np.max(rate_hot_to_cold)) - _JITTER_DEAD_RATE_DECADES
+        # Liveness is decided by the warmest rate still to come at or below each sample --
+        # the running maximum over the cold-side suffix -- and not by the sample's own value.
+        # Judging a sample by its own rate lets a downward spike exempt itself: the defect
+        # pushes it below the floor, and the gate it should have tripped never sees it. Both
+        # signs occur here; at lambda3 = 5.82045 the flagged sample sat 41 decades *below*
+        # its own local fit. The suffix maximum is non-increasing towards the cold end, so
+        # this keeps a contiguous warm stretch, and a lone dropout stays in it as long as the
+        # samples just colder than it are still live.
+        suffix_max = np.maximum.accumulate(rate_hot_to_cold[::-1])[::-1]
+        dead = order[suffix_max < live_floor]
+        dead_in_band = int(dead.size)
+        if dead_in_band:
+            mask = mask.copy()
+            mask[dead] = False
     active_indices = np.flatnonzero(mask)
     if active_indices.size < 5:
-        return {"n_active": int(active_indices.size), "max_residual_oom": math.nan}
+        return {
+            "n_active": int(active_indices.size),
+            "max_residual_oom": math.nan,
+            "n_dead_rate_excluded": dead_in_band,
+        }
 
     x = np.log(T[active_indices])
     y = log10_rate[active_indices]
@@ -2344,17 +2441,34 @@ def _action_rate_jitter_diagnostic(
     y = y[order]
     indices = active_indices[order]
     if np.ptp(x) <= 1.0e-12:
-        return {"n_active": int(active_indices.size), "max_residual_oom": math.nan}
+        return {
+            "n_active": int(active_indices.size),
+            "max_residual_oom": math.nan,
+            "n_dead_rate_excluded": dead_in_band,
+        }
 
     degree = 2 if x.size >= 3 else 1
     try:
         coeff = np.polyfit(x, y, degree)
         smooth = np.polyval(coeff, x)
+    except errors.Timeout:
+        # The run's own deadline is delivered from a signal handler and can arrive
+        # anywhere, this fit included. Absorbing it here would let the solve continue
+        # past the time it was given, so only genuine fit failures are swallowed.
+        raise
     except Exception:
-        return {"n_active": int(active_indices.size), "max_residual_oom": math.nan}
+        return {
+            "n_active": int(active_indices.size),
+            "max_residual_oom": math.nan,
+            "n_dead_rate_excluded": dead_in_band,
+        }
     residual = y - smooth
     if residual.size == 0 or not np.any(np.isfinite(residual)):
-        return {"n_active": int(active_indices.size), "max_residual_oom": math.nan}
+        return {
+            "n_active": int(active_indices.size),
+            "max_residual_oom": math.nan,
+            "n_dead_rate_excluded": dead_in_band,
+        }
     local_idx = int(np.nanargmax(np.abs(residual)))
     source_idx = int(indices[local_idx])
     return {
@@ -2367,6 +2481,7 @@ def _action_rate_jitter_diagnostic(
         "log10_gamma_h4_smooth": float(smooth[local_idx]),
         "p_low": float(p_low),
         "p_high": float(p_high),
+        "n_dead_rate_excluded": dead_in_band,
     }
 
 
@@ -2468,6 +2583,7 @@ def _try_action_jitter_tunneltight_rescue(
         return diagnostic
     attempted_temperatures: list[float] = []
     attempted_keys: set[float] = set()
+    discarded_temperatures: list[float] = []
     original_tunneling = copy.deepcopy(pot.config.tracingConf.tunneling_params)
     # the same tightening as the betaH_S3 fit rescue, which keeps a stricter setting if the run
     # already asked for one
@@ -2505,7 +2621,9 @@ def _try_action_jitter_tunneltight_rescue(
                 )
         try:
             pot.config.tracingConf.tunneling_params = tight_tunneling
-            state.Sr[idx] = calcAction(pot, temperature, phase_symmetric, phase_broken, outdict)
+            state.Sr[idx] = calcAction(
+                pot, temperature, phase_symmetric, phase_broken, outdict,
+            )
         except Exception as exc:
             if old_key is not None and old_payload is not None:
                 outdict[old_key] = old_payload
@@ -2517,7 +2635,52 @@ def _try_action_jitter_tunneltight_rescue(
             pot.config.tracingConf.tunneling_params = original_tunneling
         diagnostic = _action_rate_jitter_diagnostic(state.TSYM, state.Hr, state.Sr, state.Pr)
 
+        # The retry has had its turn. If this same sample is still the worst offender and
+        # still outside the threshold, the solver cannot compute it consistently, and
+        # keeping it injects a rate feature that is orders of magnitude wrong into P(T).
+        # Discard it and let the profile stand on the samples that are trustworthy.
+        #
+        # Discarding is safe only because it is *checked*: a non-finite action is dropped
+        # from the percolation integral and from the support bank, and the gap it leaves is
+        # then judged by the ordinary Delta P and hot-head acceptance gates, which reject
+        # the profile if the gap is too wide to interpolate across. So this converts "one
+        # bad bounce solve fails the whole point" into "one bad bounce solve costs one
+        # support point, and the accuracy gates decide whether that is affordable".
+        still_worst = diagnostic.get("temperature")
+        residual_now = diagnostic.get("max_residual_oom")
+        if (
+            still_worst is not None
+            and round(float(still_worst), 12) == rounded_key
+            and residual_now is not None
+            and np.isfinite(float(residual_now))
+            and float(residual_now) > threshold
+        ):
+            discarded_temperatures.append(float(temperature))
+            state.Sr[idx] = np.nan
+            dead_key = _matching_outdict_key(outdict, temperature)
+            if dead_key is not None:
+                payload = outdict.get(dead_key)
+                if isinstance(payload, dict):
+                    payload["action"] = np.nan
+                    payload["trantype"] = 0
+            unstable = outdict.setdefault("_unstable_action_entries", [])
+            if isinstance(unstable, list):
+                unstable.append(
+                    {
+                        "T": float(temperature),
+                        "action": None,
+                        "reason": "action_rate_jitter_discarded_after_failed_retry",
+                        "max_residual_oom": float(residual_now),
+                    }
+                )
+            diagnostic = _action_rate_jitter_diagnostic(
+                state.TSYM, state.Hr, state.Sr, state.Pr
+            )
+
     diagnostic = dict(diagnostic)
+    diagnostic["rescue_discarded_temperatures"] = [
+        float(value) for value in discarded_temperatures
+    ]
     diagnostic["rescue_attempts"] = int(len(attempted_temperatures))
     diagnostic["rescue_temperatures"] = [float(value) for value in attempted_temperatures]
     residual = diagnostic.get("max_residual_oom")
@@ -2642,6 +2805,12 @@ def _fit_action_slope(T_samples, S_samples, T: float, n_points: int) -> float:
     return float(T * coeffs[1])
 
 
+# The rate-jitter rescue tightens the path-deformation convergence target by this factor
+# relative to whatever the run is using. A fixed absolute target cannot work: a model that
+# already declares that target gets no tightening and the rescue becomes a no-op.
+_JITTER_RESCUE_TIGHTEN_FACTOR = 5.0
+
+
 def _tight_tunneling_params(pot):
     """A copy of the tunneling parameters with the path deformation tightened.
 
@@ -2658,6 +2827,20 @@ def _tight_tunneling_params(pot):
             deform[name] = min(float(current), value)
         except (TypeError, ValueError):
             deform[name] = value
+    # `min(current, constant)` leaves a model that already asks for the constant with no
+    # tightening at all, which makes the rescue recompute the same action with the same
+    # settings. That is the state of `R2HDM_HighAcc_NAct100_Conv1_FRatio005`: it declares
+    # converge_0 = 1.0 and fRatioConv = 5e-3, exactly the two constants above, so every
+    # deformation parameter of the "tight" set is bit-identical to the run's and the
+    # rate-jitter rescue is a no-op. Tighten relative to whatever the run uses instead, so
+    # there is always real margin. Measured on the 2HDM edge line, halving fRatioConv from
+    # 1e-2 to 5e-3 took the action jitter from 0.78 to 0.28 rms in S_3/T, so a further
+    # factor buys a comparable amount; the cost is bounded because the rescue only
+    # recomputes the handful of outlier temperatures it targets.
+    try:
+        deform["fRatioConv"] = float(deform["fRatioConv"]) / _JITTER_RESCUE_TIGHTEN_FACTOR
+    except (KeyError, TypeError, ValueError):
+        pass
     tight["deformation_deform_params"] = deform
     return tight
 
@@ -3689,8 +3872,26 @@ def calcTf(Tperc, Tlow, Pint, pot, verbose=False):
     # Step 1: Check if the true vacuum fraction at Tlow is >= f_final
     if Pint(Tlow) < f_final:
         # It looks like the transition cannot completely finish
-        msg = "The transition cannot completely finish, Pint(Tlow) < f_final: " + str(Pint(Tlow)) + " < " + str(f_final)
-        raise errors.EternalInflationError(msg)
+        # Report the percolation temperature with the refusal. Pint(Tlow) here is routinely
+        # well above f_perc, i.e. the transition percolated and then stalled, so Tperc is
+        # already determined. The scan output records the error code alone, so the message is
+        # what survives, and without Tperc in it the only way to recover the number is to run
+        # the point again.
+        pint_max = float(Pint(Tlow))
+        msg = (
+            "The transition cannot completely finish, Pint(Tlow) < f_final: "
+            + str(pint_max) + " < " + str(f_final)
+            + ". The percolation temperature of this profile was already determined: "
+            + "Tperc = " + str(Tperc)
+            + ", and Pint reached " + str(pint_max) + " at Tlow = " + str(Tlow)
+            + " (both temperatures in the solver's internal units; multiply by the model's"
+            " conversionFactor for GeV), so the percolation observables are defined"
+            " while T_final is not."
+            " A transition stalling below f_final leaves a phase mixture, so Treh and the"
+            " spectrum are not ordinary predictions here."
+        )
+        raise errors.EternalInflationError(
+            msg, Pint_max=pint_max, Tperc=Tperc, Tlow=Tlow, f_final=f_final)
 
     # Step 2: Find Tf by solving Pint(Tf) = f_final
     try:

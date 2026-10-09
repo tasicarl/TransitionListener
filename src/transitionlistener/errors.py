@@ -398,12 +398,34 @@ class WrongHighTPhaseError(Exception):
 
 
 class EternalInflationError(Exception):
-    """Raised when the eternal-inflation criterion is fulfilled."""
+    """Raised when the eternal-inflation criterion is fulfilled.
 
-    def __init__(self, message="Eternal inflation criterion is fulfilled."):
+    ``calcTf`` also raises it when the true vacuum fraction never reaches ``f_final``, which
+    is a different statement and the far more common one on a strongly supercooled line: the
+    transition *percolated* and then stalled. Measured on the 2HDM edge line, all 14 such
+    points reached ``Pint`` between 0.3215 and 0.7640, every one above ``f_perc = 0.28957``,
+    so each had a well-defined percolation temperature at the moment it was refused.
+    ``Tperc``, ``Pint_max``, ``Tlow`` and ``f_final`` carry those numbers, because the
+    alternative is running the point again to recover what the solver already had.
+    ``Tperc`` and ``Tlow`` are in the solver's internal temperature units, as the raising
+    code holds them; multiply by the model's ``conversionFactor`` for GeV. All four default
+    to ``None``, so a bare ``raise EternalInflationError()`` keeps working and a consumer
+    must treat ``None`` as "not reported" rather than as a value.
+
+    A transition that stalls at ``Pint`` well below one leaves a mixture of phases, so
+    ``Tperc`` is meaningful there while ``Treh`` and the spectrum are not ordinary
+    predictions.
+    """
+
+    def __init__(self, message="Eternal inflation criterion is fulfilled.", *,
+                 Pint_max=None, Tperc=None, Tlow=None, f_final=None):
         """Attach the CLI error code identifying eternal-inflation issues."""
         super().__init__(message)
         self.errorcode = 15
+        self.Pint_max = Pint_max
+        self.Tperc = Tperc
+        self.Tlow = Tlow
+        self.f_final = f_final
 
 
 class Timeout(Exception):

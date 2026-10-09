@@ -245,10 +245,15 @@ class generic_potential():
         self.mass_spectrum: MassSpectrum | None = None
         self.derived_parameters = {}
 
-        self.setConfigParameters()
+        # Read the sentinel *before* the model gets to choose, so the multi-field
+        # auto-tighten below can tell "nobody asked for anything" from "the model asked
+        # for this". Captured after setConfigParameters() it already held the model's own
+        # value, the equality test always passed, and a model that deliberately declared a
+        # tighter fRatioConv had it replaced by the generic 1e-2.
         _pre_override_fRC = self.config.tracingConf.tunneling_params[
             "deformation_deform_params"
         ]["fRatioConv"]
+        self.setConfigParameters()
         args, dargs = runtime_options.apply_input_overrides(self, args, dargs)
         self.v_stable = self.config.tracingConf.internal_scale
         self.x_eps = self.config.tracingConf.tracing_field_accuracy

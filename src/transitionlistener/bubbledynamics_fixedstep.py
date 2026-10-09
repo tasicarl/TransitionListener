@@ -2236,8 +2236,26 @@ def calcTf(Tperc, Tlow, Pint, pot, verbose=False):
     # Step 1: Check if the true vacuum fraction at Tlow is >= f_final
     if Pint(Tlow) < f_final:
         # It looks like the transition cannot completely finish
-        msg = "The transition cannot completely finish, Pint(Tlow) < f_final: " + str(Pint(Tlow)) + " < " + str(f_final)
-        raise errors.EternalInflationError(msg)
+        # Report the percolation temperature with the refusal. Pint(Tlow) here is routinely
+        # well above f_perc, i.e. the transition percolated and then stalled, so Tperc is
+        # already determined. The scan output records the error code alone, so the message is
+        # what survives, and without Tperc in it the only way to recover the number is to run
+        # the point again.
+        pint_max = float(Pint(Tlow))
+        msg = (
+            "The transition cannot completely finish, Pint(Tlow) < f_final: "
+            + str(pint_max) + " < " + str(f_final)
+            + ". The percolation temperature of this profile was already determined: "
+            + "Tperc = " + str(Tperc)
+            + ", and Pint reached " + str(pint_max) + " at Tlow = " + str(Tlow)
+            + " (both temperatures in the solver's internal units; multiply by the model's"
+            " conversionFactor for GeV), so the percolation observables are defined"
+            " while T_final is not."
+            " A transition stalling below f_final leaves a phase mixture, so Treh and the"
+            " spectrum are not ordinary predictions here."
+        )
+        raise errors.EternalInflationError(
+            msg, Pint_max=pint_max, Tperc=Tperc, Tlow=Tlow, f_final=f_final)
 
     # Step 2: Find Tf by solving Pint(Tf) = f_final
     try:

@@ -95,11 +95,17 @@ def test_a_smooth_action_needs_no_rescue():
 def test_a_split_fit_triggers_the_rescue(monkeypatch):
     """The recomputed actions come back smooth, so the refit agrees and the value moves."""
     calls = {"n": 0, "tight": 0}
+    # The rescue used to clamp fRatioConv to 5e-3, which is also what the models declare,
+    # so it recomputed every action with bit-identical deformation settings and could only
+    # ever reproduce the numbers it was called to replace. It now tightens relative to
+    # whatever the run configured, so the test asks for stricter-than-configured.
+    configured = _Pot().config.tracingConf.tunneling_params[
+        "deformation_deform_params"]["fRatioConv"]
 
     def fake_action(pot, T, phase_sym, phase_bro, outdict):
         calls["n"] += 1
         deform = pot.config.tracingConf.tunneling_params["deformation_deform_params"]
-        if deform["converge_0"] == 1.0 and deform["fRatioConv"] == 5e-3:
+        if deform["converge_0"] == 1.0 and deform["fRatioConv"] < configured:
             calls["tight"] += 1
         return float(np.interp(T, T_SAMPLES, SMOOTH))
 
@@ -213,18 +219,25 @@ def test_the_runtime_is_recorded_where_a_scan_reads_it():
 
 
 def test_the_retry_never_loosens_a_stricter_setting():
-    """Tightening is the point; a run already asked for something stricter keeps it."""
+    """Tightening is the point, and it is measured against what the run actually asked for.
+
+    A clamp to a fixed target cannot tighten a run that already sits on the target: the
+    models declare fRatioConv = 5e-3 and the clamp target was 5e-3, so the rescue solved
+    every action again at identical settings. The path tightens relative to the configured
+    value instead. ``converge_0`` is still only clamped, never reduced below 1.0, because a
+    smaller value does not make the deformation more accurate.
+    """
     pot = _Pot()
     deform = pot.config.tracingConf.tunneling_params["deformation_deform_params"]
     deform["converge_0"], deform["fRatioConv"] = 0.5, 1e-3
     tightened = bd._tight_tunneling_params(pot)["deformation_deform_params"]
     assert tightened["converge_0"] == 0.5
-    assert tightened["fRatioConv"] == 1e-3
+    assert tightened["fRatioConv"] < 1e-3
 
     deform["converge_0"], deform["fRatioConv"] = 5.0, 2e-2
     tightened = bd._tight_tunneling_params(pot)["deformation_deform_params"]
     assert tightened["converge_0"] == 1.0
-    assert tightened["fRatioConv"] == 5e-3
+    assert tightened["fRatioConv"] < 5e-3
 
 
 def test_the_rescue_counter_starts_at_zero():

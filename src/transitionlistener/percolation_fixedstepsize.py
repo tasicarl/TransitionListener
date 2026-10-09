@@ -581,7 +581,14 @@ def _refine_percolation_temperature(
                                 "vacuum fraction at the lowest evaluated temperature Tmin = "
                                 f"{last_evaluated_tmin * CF:2.5g} GeV computed in step 3 "
                                 "of the percolation computation stays below f_final: "
-                                f"P(Tmin) = {state.Pr[-1]:2.5g} < {settings.f_final:2.5g}."
+                                f"P(Tmin) = {state.Pr[-1]:2.5g} < {settings.f_final:2.5g}.",
+                                # The same four numbers `calcTf` attaches when it refuses for
+                                # the same reason, so a consumer need not know which backend
+                                # or which of the two places decided.
+                                Pint_max=float(state.Pr[-1]),
+                                Tperc=float(Tperc),
+                                Tlow=float(last_evaluated_tmin),
+                                f_final=float(settings.f_final),
                             )
                         raise errors.PercolationError(
                             "The percolation computation reached the iteration limit before "
