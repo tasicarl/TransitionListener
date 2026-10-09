@@ -657,11 +657,53 @@ class Hydrodynamics():
             return vp * vm * al /(1 -(nu -1) * vp * vm) -(
                 1 -3* al -(ga2p / ga2m)**(nu /2) * psi) /(3*nu)
 
-        if func(upper_limit) < 0:
-            return upper_limit
-        sol = root_scalar(func, bracket =((1 - psiN) /3, upper_limit),
-                          rtol =1e-10, xtol =1e-10)
-        return sol.root
+        lower_limit = (1 - psiN) / 3
+        # Look for the crossing across the whole range rather than judging it from the top
+        # end alone. `func` is monotonic in the ordinary case, so testing `func(upper_limit)`
+        # answers "has the root been passed yet?" -- but it is not always monotonic, and
+        # `find_vw` calls this with `upper_limit = 100`, far outside the regime the matching
+        # conditions describe. Measured on the 2HDM line at lambda3 = 5.6868686869, where a
+        # one-point dip in the symmetric-phase sound speed leaves `func` positive at
+        # alN = 1 and negative from alN = 10: the early return then discarded a root the
+        # solver finds without trouble at alN = 0.06707, reported `max_al = 100`, and so
+        # turned `alN > max_al` false for every physical strength. The wall velocity came
+        # back as a hybrid 0.7475 instead of the runaway 1 of all its neighbours, which moved
+        # the LISA SNR by a factor of 17.
+        #
+        # `func < 0` is the side on which subsonic solutions exist, so the boundary is the
+        # first crossing up from below, which is also the root the bracketed solve returns
+        # where the function is monotonic. The answer is therefore unchanged in the ordinary
+        # case and recovered in the non-monotonic one.
+        grid = np.geomspace(max(lower_limit, 1e-12), upper_limit, 64)
+        values = []
+        for point in grid:
+            try:
+                values.append(float(func(point)))
+            except Exception:
+                values.append(np.nan)
+        # Record whether the residual crossed zero more than once. The method assumes it does
+        # not: `arxiv:2303.10171` brackets the wall velocity in [0, v_J] because the solution
+        # there is unique, and WallGo (`arxiv:2411.04970`) states the same assumption --
+        # `solveWall` "assumes pressure increases with v_w below v_J" -- while noting it can
+        # fail for strong transitions. Where it does fail the branch structure is not the one
+        # the method describes, so the point is marked rather than quietly trusted, which is
+        # also WallGo's practice: an outcome whose branch is ambiguous is flagged as uncertain
+        # rather than resolved silently.
+        finite = [v for v in values if np.isfinite(v)]
+        crossings = sum(1 for a, b in zip(finite, finite[1:]) if (a < 0.0) != (b < 0.0))
+        self.max_al_non_monotonic = bool(crossings > 1)
+        for index in range(len(grid) - 1):
+            low, high = values[index], values[index + 1]
+            if not (np.isfinite(low) and np.isfinite(high)):
+                continue
+            if low < 0.0 <= high:
+                sol = root_scalar(func, bracket=(grid[index], grid[index + 1]),
+                                  rtol=1e-10, xtol=1e-10)
+                return sol.root
+        # No crossing anywhere in the range: subsonic solutions survive to the top of the
+        # search, so the limit is at least `upper_limit` and the caller's comparison against
+        # it is the same statement it was before.
+        return upper_limit
 
     def find_vw(self, alN : float, cb2 : float, cs2 : float,
                 psiN : float) -> float:
