@@ -62,6 +62,9 @@ DERIVED_PREFERRED_ORDER = [
 WARNING_COLUMN_ORDER = [
     "WARNING:too_weak_to_compute_perc",
     "WARNING:no_perc_splines",
+    "WARNING:accuracy_targets_missed",
+    "WARNING:v_wall_branch_ambiguous",
+    "WARNING:v_wall_no_solution",
     "WARNING:betaH_small",
     "WARNING:betaH_very_small",
     "WARNING:betaH_mismatch",

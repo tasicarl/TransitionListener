@@ -429,6 +429,7 @@ class TransitionObservables:
             "DIAG:c_s_step_change": float("nan"),
             "WARNING:daisy_outside_validity": False,
             "DIAG:daisy_over_radiation": float("nan"),
+            "WARNING:v_wall_no_solution": False,
             "WARNING:no_perc_splines": False,
             "WARNING:false_vacuum_not_shrinking": False,
             "WARNING:betaH_small": False,
@@ -436,6 +437,11 @@ class TransitionObservables:
             "WARNING:betaH_mismatch": False,
             "WARNING:betaH_nonfinite": False,
             "WARNING:betaH_S3_fit_unstable": False,
+            "WARNING:v_wall_branch_ambiguous": False,
+            "WARNING:accuracy_targets_missed": False,
+            "DIAG:accuracy_tperc_uncertainty": float("nan"),
+            "DIAG:accuracy_tfinal_uncertainty": float("nan"),
+            "DIAG:accuracy_rh_uncertainty": float("nan"),
             "WARNING:action_rescue_attempted": False,
             "WARNING:action_rescue_failed": False,
             "DIAG:action_rescue_attempts": 0,
@@ -474,6 +480,24 @@ class TransitionObservables:
             hydr = Hydrodynamics(ctx.pot, ctx.phase_symmetric, ctx.phase_broken, ctx.verbose)
             try:
                 derived["v_wall"] = hydr.calcWallVelocityLTE(temperature)
+                # `find_vw` returns exactly 0 when alpha_N falls below the threshold where a
+                # wall solution exists at all -- a verdict of "no solution", not a slow wall.
+                # Downstream takes it as a wall velocity: all three kinetic energy fractions
+                # are proportional to it, so the spectrum is identically zero and the SNR comes
+                # out exactly 0.0, which reads as a real prediction of no signal. Measured at
+                # lambda3 = 5.5475 on the 2HDM line, where alpha = 0.0347 is the largest of its
+                # neighbours and betaH_RH = 318 the smallest, both of which should *raise* the
+                # SNR; the two points on either side give 1.83 and 0.058. The only trace was a
+                # `verbose` print. Nothing else accepts this value: the branch below refuses a
+                # user-supplied wall velocity unless 0 < vw <= 1.
+                derived["WARNING:v_wall_no_solution"] = (
+                    float(derived["v_wall"]) <= 0.0
+                )
+                # The branch test behind this verdict assumes the matching residual crosses
+                # zero once below the Jouguet velocity. Where it does not, the wall velocity
+                # is a choice among branches rather than a determination, so say so.
+                if getattr(hydr, "max_al_non_monotonic", False):
+                    derived["WARNING:v_wall_branch_ambiguous"] = True
             except errors.SuperluminalSoundSpeedError as err:
                 # This stage runs before `_ensure_sound_speed`, so a refusal here is the first
                 # thing the user sees and would otherwise carry none of the diagnostics that
@@ -838,6 +862,21 @@ class TransitionObservables:
                     "rescue_success": getattr(
                         percolation.metadata, "action_jitter_rescue_success", False),
                 })
+                # The accuracy verdict. `accuracy_targets_met` is tri-state: True, False,
+                # or None where the controller never reached a comparable second estimate
+                # (the "limit" exit, and the fixed-step backend, which does not form one).
+                # The warning fires only on a real miss, so None stays False here and is told
+                # apart by its uncertainties being nan.
+                met = getattr(percolation.metadata, "accuracy_targets_met", None)
+                if met is False:
+                    derived["WARNING:accuracy_targets_missed"] = True
+                for key, attribute in (
+                        ("DIAG:accuracy_tperc_uncertainty", "accuracy_tperc_uncertainty"),
+                        ("DIAG:accuracy_tfinal_uncertainty", "accuracy_tfinal_uncertainty"),
+                        ("DIAG:accuracy_rh_uncertainty", "accuracy_rh_uncertainty")):
+                    value = getattr(percolation.metadata, attribute, None)
+                    if value is not None:
+                        derived[key] = float(value)
                 metadata_tnuc = getattr(percolation.metadata, "spline_tnuc", None)
                 warning = getattr(percolation.metadata, "spline_tnuc_warning", None)
                 if warning is not None:
