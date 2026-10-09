@@ -1,10 +1,17 @@
 """A single RH sample cannot certify its own convergence.
 
-`_dynamiczoomwindow_accuracy_reached` accepts a profile when `RH_uncertainty <= acc_rh`,
-with `acc_rh = 1e-2`, i.e. a claim that RH is good to 1%. The uncertainty was reported as
-**0.0** whenever there was no previous RH to compare against, so the first estimate declared
-itself converged to zero per cent and acceptance passed immediately -- the 1% target was
-never tested.
+`_dynamiczoomwindow_accuracy_reached` reports a profile as having met its targets when
+`RH_uncertainty <= acc_rh`, with `acc_rh = 1e-2`, i.e. a claim that RH is good to 1%. The
+uncertainty was reported as **0.0** whenever there was no previous RH to compare against, so
+the first estimate declared itself converged to zero per cent and the 1% target was never
+tested.
+
+What this does *not* mean is that acceptance was short-circuited. Both exits of
+`_try_dynamiczoomwindow_completed_refinement` return `False`, which the caller reads as
+"accept", so the targets never prevented acceptance in the first place: they are advisory,
+and the profile is accepted either way because by that point refinement has nothing left to
+try. What was wrong is that an advisory target reported itself as met when it had not been
+measured.
 
 Measured consequence: across 37 couplings that two accepted profiles both resolve, RH differs
 by a median of 0.134% but a 90th percentile of 27.6% and a worst case of 95%, while Tperc

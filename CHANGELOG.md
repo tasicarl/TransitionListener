@@ -9,6 +9,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Four verdicts the solver formed but never reported are now observables.**
+  `WARNING:accuracy_targets_missed` and the three `DIAG:accuracy_*_uncertainty` values say
+  whether the accepted percolation profile met `acc_tperc`, `acc_tfinal` and `acc_rh`. Those
+  targets are advisory -- the controller accepts either way -- so this is the only record of
+  whether they were honoured; a profile whose `RH` missed its 1% target was previously
+  indistinguishable from one that met it, with a 90th-percentile spread of 27.6%. The warning
+  false with finite uncertainties means met, false with `nan` means never assessed, true means
+  missed. `WARNING:v_wall_no_solution` fires where `find_vw` returns exactly 0, which is a
+  verdict that no wall solution exists but which zeroes every kinetic energy fraction, so
+  `LISA_SNR` comes out exactly 0.0 and reads as a prediction of no signal; note that
+  `v_wall == 1` is the *normal* outcome on a supercooled line, so only the exact zero is a
+  non-solution. `WARNING:v_wall_branch_ambiguous` fires where the wall-velocity residual
+  crosses zero more than once, i.e. where the branch was chosen rather than determined.
+
+- **A refusal to complete reports the percolation temperature it had already determined.**
+  All 14 such points on the edge line reached `Pint` between 0.3215 and 0.7640, above
+  `f_perc`, so `Tperc` was in hand when the point was refused.
+
 - Four diagnostics of how a point was reached, rather than of what it is.
   `WARNING:action_rescue_attempted` says that actions were recomputed with the path
   deformation tightened, by either the rate-jitter rescue or the fit rescue above;
@@ -92,6 +110,64 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   it as a diagnostic of the expansion history, not as a prediction for an observable.
 
 ### Changed
+
+- **The action-rate jitter gate no longer judges a rate that has died.** It defines its band
+  by probability, `0.01 <= P <= 0.9`, but measures the smoothness of the rate, and under
+  strong supercooling `P` climbs past `f_perc` while `log10(Gamma/H^4)` falls through hundreds
+  of decades. One quadratic in `ln T` cannot describe that: with the exemption disabled a
+  perfectly smooth synthetic band is flagged with a 39.8-decade residual. All 22 rejections
+  measured on the 2HDM edge line sat 40.5 to 688.5 decades below the in-band rate peak, and 16
+  lay past percolation, where they cannot move `Tperc`, `RH` or `alpha`. Samples more than 30
+  decades below the peak are now excluded, with liveness taken from the cold-side running
+  maximum so that a downward spike cannot exempt itself.
+
+- **`percolation_maxit` is raised from 10 to 20.** Every point rejected for an unresolved
+  `Delta P` had reached the support-update limit with 112 to 119 action evaluations unspent.
+  This closes that class at about 2% more action solves. The setting is shared with the
+  fixed-step backend, where each iteration recomputes the whole profile and no `n_action_max`
+  bounds it, so a non-converging fixed-step run can spend up to twice the action solves and one
+  that previously stopped at iteration 10 can return a different `Tperc`.
+
+- **The hybrid wall-velocity limit is found by searching its range.** `Hydrodynamics.max_al`
+  returned its *search bound* when the matching residual had not crossed zero by the top of the
+  range, which is correct only while that residual is monotonic. Where it is not, the bound
+  entered `alN > max_al` as though it were a physical strength, the runaway branch was skipped,
+  and a wall that should run away was computed as a hybrid: `v_wall` came back 0.7475 and
+  0.9509 instead of 1 at two couplings, moving the LISA SNR by a factor of 17 at one of them.
+  The crossing is now sought across the range. **This departs from the reference implementation
+  of `arxiv:2303.10171`, from which the routine is taken verbatim**, rather than fixing a defect
+  in TransitionListener. Where the residual is monotonic the answer is unchanged, and 125 of 127
+  couplings on the 2HDM line are bit-identical.
+
+- **The path-deformation basis grows when the force ratio plateaus** above its target instead
+  of stopping there, about 2.5x faster on the 2HDM edge line.
+
+- **The parked path-seeding chain is removed.** It was disabled in place, leaving an
+  unreachable helper, a parameter no caller passed and a diagnostic that could only hold
+  `None`. Seeding was measured to return a non-finite action on the 2HDM.
+
+- **A model's declared path-deformation target now reaches the bounce solver.**
+  `generic_potential.__init__` tightens `fRatioConv` from the 1d default of 2e-2 to 1e-2 for
+  multi-field models, and guards that override with a sentinel so a value the model chose is
+  respected. The sentinel was read *after* `setConfigParameters()`, so it already held the
+  model's own value, the equality test always passed, and the model's choice was overwritten.
+  `models/TL_2HDM_BSMPT_highacc.py` declares `fRatioConv = 5e-3` and every run of it had been
+  using 1e-2. The two settings are not equivalent: at the 2HDM edge line
+  (lambda3 = 5.8164076664, T = 26.7116 GeV) they give `S_3/T` of 211.518 and 212.086, a
+  difference of 0.247 orders of magnitude in the nucleation rate, so results from that model
+  variant move. Models that make no choice of their own are unaffected and still get 1e-2.
+
+- **The rate-jitter rescue tightens the path deformation relative to what the run
+  configured**, rather than clamping it to a fixed target. The clamp was
+  `min(current, 5e-3)` for `fRatioConv` and `min(current, 1.0)` for `converge_0`, which are
+  exactly the values `R2HDM_HighAcc_NAct100_Conv1_FRatio005` declares: every deformation
+  parameter of the "tight" set was then bit-identical to the run's and the rescue recomputed
+  the outlier action with the settings that produced it. `fRatioConv` is now divided by 5
+  relative to the configured value, so there is always real margin, and a run that already
+  asks for something stricter still keeps it. The historical target remains a floor:
+  halving `fRatioConv` from 1e-2 to 5e-3 took the action jitter from 0.78 to 0.28 rms in
+  `S_3/T` on the 2HDM edge line, and the cost is bounded because the rescue only recomputes
+  the handful of outlier temperatures it targets.
 
 - **One entropy for the expansion history**: the time-temperature relation took
   the scale factor from the counted degrees of freedom and the sound speed from
@@ -192,6 +268,86 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   its default. All amplitudes rise by 0.7 %.
 
 ### Fixed
+
+- **The adaptive percolation controller no longer spends its budget below the transition,
+  and no longer refuses to repair a jump it then rejects the profile for.** Eight separate
+  faults, all found by instrumenting a 40-point 2HDM "edge line" scan on which 31 of 40
+  points resolved.
+
+  - A percolation sample whose `H * T * 3 c_s^2` has underflowed to exactly zero is marked
+    invalid. Every factor can be positive and finite while the product underflows, and
+    `-log(0)` is `+inf`, which the floor clamp's `np.maximum` removes for `-inf` but not for
+    `+inf`; it then reached the PCHIP interpolants as a bare
+    `ValueError: 'y' must contain only finite values` with no typed error and no diagnostic.
+    The bag-limit branch of the same integral does not share the exposure: on the grid that
+    makes one of 32 general-EOS denominators underflow, its `log(1/H)` transport term is
+    still finite at 667.7 and its source term never goes `+inf`, because `-S/T` dominates.
+  - `_refine_step1_rate_peak` drops non-finite samples before building its interpolant. Its
+    peak search is `np.nanargmax`, so it is written for an array that may carry them; ten
+    lines later it handed the same array to `PchipInterpolator`. Captured at
+    lambda3 = 5.8191375291 with 1 NaN among 79 samples.
+  - The step-1 scout hands step 2 the temperatures whose action came back *usable* as free
+    support, not every temperature it *probed*. The free bank is support that costs no new
+    action budget, so a failed cold probe handed over there plants the active grid's cold
+    boundary on it: traced from `[2.2235, 62.279]` to `[3.8032e-06, 68.772]` GeV against a
+    transition at 20-40 GeV, after which the rate-step refinement filled the span in one
+    step (29 to 75 points).
+  - A support point whose solve has already run no longer counts against the controller's
+    new-action budget when that solve returned non-finite. Its cost is sunk, and counting it
+    as pending held the whole budget for the rest of the run.
+  - The cold range expansion stops where the bounce stops existing. Below the transition the
+    symmetric phase is no longer metastable and every action there is non-finite; those
+    samples are dropped by the percolation integral and by the profile rebuild, yet each one
+    costs a bounce solve. 38-57% of all support points in every one of five recorded runs
+    were of that kind, in one contiguous run at the cold end.
+  - A cached action is no longer promoted into the active grid where `S_3/T` has run past
+    anything that can nucleate. The cold actions of a completed transition do not fail, they
+    saturate: measured at lambda3 = 5.8123128723 the action settles near 4357 and `S_3/T`
+    reaches 1.15e+09 at T = 3.8e-06 internal, so the point has a perfectly finite action and
+    a rate of exactly zero. The test is confined to candidates colder than the grid already
+    is, because `S_3/T` is just as large on the hot shoulder: across the 31 recorded
+    edge-line profiles the hottest retained support point sits between 478 and 509.
+  - The rate-step refinement no longer refines an interval whose colder end has collapsed
+    more than 1000 decades below the profile's own rate peak, and the rate-jitter diagnostic
+    excludes samples below that floor. A fall out of the live region exceeds any
+    `max_log10_rate_step`, so the refinement walked lambda3 = 5.8205024605 down to
+    T = 1.4e-5 GeV with `log10(Gamma/H^4) = -1.4e8`, whereupon one quadratic in `ln T`
+    fitted across seven decades of temperature reported a residual of 1.6e10 orders of
+    magnitude and advised raising the bounce precision for a sample at fourteen
+    microelectronvolts. The floor is relative to each profile's own peak, never absolute:
+    contributing samples reach `log10(Gamma/H^4) = -447` in absolute terms, and a strongly
+    supercooled model has its peak at very low temperature by construction.
+  - A `Delta P` jump that the acceptance test will reject is now repairable even past the
+    rate peak, where the post-peak inert veto used to decline it unconditionally. The two
+    rules contradicted each other: at lambda3 = 5.8177725978 the interval
+    [28.745, 30.453] GeV lies below the rate peak at 41.05 GeV, so the controller drove
+    max `Delta P` from 0.85 to 0.12, found nothing further it was permitted to do, and
+    accepted the profile with 119 action evaluations unspent, whereupon the gate rejected
+    it. "Post-peak" cannot excuse a coarse `P(T)` in any case, since `R_H` is sensitive to
+    `P(T)` above `Tperc` and about 97% of that interval lies inside its integration range.
+    Where a repair exists only by this exemption the anchor remesh is offered first and the
+    repair stays as the fallback, because at lambda3 = 5.8136778037 the repair otherwise
+    took the slot the remesh needed and the run ended one support update short at
+    `Delta P = 0.0578`.
+
+- **A retried action no longer starts from a neighbouring temperature's converged path.**
+  This entry described path seeding, which was added here and has since been removed: on the
+  2HDM the seeded solve returned a non-finite action, so the retry's only effect was to void
+  the sample it was meant to rescue. The helper, the `path_seed` plumbing through
+  `calcAction` and `bounceAction`, the re-sampling used to hand a cached path over, and the
+  seed diagnostic are all gone. The rate-jitter retry still tightens the path deformation
+  relative to what the run configured; it simply starts from the straight line between the
+  minima, as every other temperature does.
+
+- **A rejected profile says which resource ran out.** The unresolved-jump rejection asserted
+  that the controller "already spent its remaining support budget on local jump refinement",
+  which is frequently untrue and sends the reader to the wrong place: at
+  lambda3 = 5.8136778037 the point was rejected with 115 of its action evaluations still
+  unspent, having instead reached the support-update limit (`maxit`, then 10 and now 20).
+  The message now
+  reports whichever resource actually ran out, and says nothing about a cause when the caller
+  does not supply the numbers. Reaching the support-update limit with a repair still waiting
+  is reported as well, naming the repairs that were outstanding.
 
 - **The daisy term is evaluated without throwing away its significant digits, and the sound
   speed is taken from the thermal part of the potential.** Both are numerics: the same

@@ -17,10 +17,11 @@ its own 500-step limit, yet the force ratio sat on that floor, and the action at
 temperature varied by 3.9% between runs as a result. Raising the outer iteration count from
 20 to 60 moved the force ratio by nothing.
 
-So the basis grows instead of the step count, and because the improvement is **not
-monotonic** the loop keeps whichever basis achieved the lowest force ratio rather than
-whichever came last. With that, the measured point reaches `fRatio = 0.00354` -- under
-target for the first time -- in 7 outer iterations rather than exhausting 20, so it
+So the basis grows instead of the step count. The loop stops enlarging it once doing so
+stops helping, and returns the last solve rather than the best one: substituting the
+best-scoring output was tried and corrupted the profile, giving `P_max = 0` at three
+couplings, so it was removed. With that, the measured point reaches `fRatio = 0.00354` --
+under target for the first time -- in 7 outer iterations rather than exhausting 20, so it
 converges and costs less.
 
 Part of TransitionListener v2
