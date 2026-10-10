@@ -451,6 +451,40 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   bit-identical at every point and every error code is unchanged, while `RH` and `betaH_RH`
   move at 51 of the 1080 points that resolve, by at most 4.7e-04.
 
+- **The bounce action no longer dies where the barrier is small compared with the path.**
+  `pathDeformation` set several of its numerical scales to a fixed fraction of the distance
+  between the two minima, while the barrier is a feature whose width is set by the temperature,
+  so in a strongly supercooled model each scale eventually exceeded it. Reported from the
+  four-dimensional daisy-resummed rate of the conformal U(1), where the action came back
+  infinite below T_int = 0.146 at g = 0.54 with the solver calling the potential "stable, not
+  metastable" although the barrier was there. On the conformal dark U(1) ladder in `g` the
+  lowest coupling that percolates moves from 0.54 to 0.45, and the percolation temperature is
+  unchanged where the old code also resolved it, 7.2312e-04 against 7.2312e-04 at g = 0.56.
+  Against TL's own `SingleFieldInstanton` on the unsplined potential the action is now right to
+  1.3e-08 at T_int = 0.1 and 0.01, 4.2e-07 at 1e-3, 6.6e-08 at 1e-4, 2.6e-07 at 1e-5 and
+  5.9e-05 at 1e-6, where before it was infinite below T_int = 0.1.
+
+  - The path extension searches for the nearest minimum. It used `scipy.optimize.fmin` from
+    `x0 = 0`, whose initial simplex step is 2.5e-4 of the knot spacing whatever the problem
+    looks like. On a two-knot path that spacing is the whole path, so the end extension settled
+    a full knot out, at the mirror of the broken minimum, because the potential is even in the
+    field: the path ran from 1000 to -1000, connected two minima degenerate at -2.0220e+08, and
+    the solver reported no metastable end. A rise now has to clear the rounding of the
+    potential, since near an end it can be flat to machine precision over decades of the
+    distance, and an extension past the metastable end is refused if it would take the potential
+    to or below the other end, which is what destroys the metastability the bounce needs. An end
+    with no minimum within reach is left alone.
+
+  - The samples that build the potential spline are placed where the barrier is, but only where
+    the uniform grid is blind to it: fewer than two of them inside the barrier and at least a
+    thousand of them in total. Both bounds are measured. The overhang past each end shrinks with
+    them, and is the larger effect of the two: the potential is -2.0e+08 at the broken minimum
+    and -9.3e-17 at the symmetric one, and 0.2 of the path past the symmetric end it is
+    -2.4e+06, so one cubic spline through all of it is bent, just inside that end, towards a
+    value far above the barrier. A path whose barrier the uniform grid already carries keeps
+    exactly the samples it had, which is what leaves the 2HDM unchanged, to 2.0e-06 at T = 85.3
+    and 8.7e-06 at T = 48.8.
+
 - **The adaptive percolation controller no longer spends its budget below the transition,
   and no longer refuses to repair a jump it then rejects the profile for.** Eight separate
   faults, all found by instrumenting a 40-point 2HDM "edge line" scan on which 31 of 40
