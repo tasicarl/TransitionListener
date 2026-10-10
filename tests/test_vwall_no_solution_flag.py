@@ -16,19 +16,28 @@ import types
 import unittest
 
 
-def _run(returned_vw, wall_velocity="LTE"):
-    """Drive _ensure_wall_velocity with a stubbed hydrodynamics solver."""
-    from transitionlistener import transitionObservables as tobs
+def _run(returned_vw, wall_velocity="LTE", module=None, non_monotonic=None):
+    """Drive _ensure_wall_velocity with a stubbed hydrodynamics solver.
+
+    ``module`` selects the backend, because both carry this verdict and a flag added to
+    one of the two copies is dead code on the other's executing path. ``non_monotonic``
+    sets the attribute `max_al` leaves behind, or leaves it unset where it is None, which
+    is what every path of `calcWallVelocityLTE` that returns before reaching `max_al`
+    does.
+    """
+    if module is None:
+        from transitionlistener import transitionObservables as module
 
     class _StubHydro:
         def __init__(self, *a, **k):
-            pass
+            if non_monotonic is not None:
+                self.max_al_non_monotonic = non_monotonic
 
         def calcWallVelocityLTE(self, T):
             return returned_vw
 
-    original = tobs.Hydrodynamics
-    tobs.Hydrodynamics = _StubHydro
+    original = module.Hydrodynamics
+    module.Hydrodynamics = _StubHydro
     try:
         derived = {}
         ctx = types.SimpleNamespace(
@@ -37,10 +46,15 @@ def _run(returned_vw, wall_velocity="LTE"):
             GWconfig=types.SimpleNamespace(wall_velocity=wall_velocity),
             pot=None, phase_symmetric=None, phase_broken=None, verbose=False,
         )
-        tobs.TransitionObservables._ensure_wall_velocity(None, ctx, 100.0)
+        module.TransitionObservables._ensure_wall_velocity(None, ctx, 100.0)
         return derived
     finally:
-        tobs.Hydrodynamics = original
+        module.Hydrodynamics = original
+
+
+def _backends():
+    from transitionlistener import transitionObservables, transitionObservables_fixedstep
+    return (transitionObservables, transitionObservables_fixedstep)
 
 
 class VWallNoSolutionTests(unittest.TestCase):
@@ -79,6 +93,62 @@ class VWallNoSolutionTests(unittest.TestCase):
         from transitionlistener import config
         src = open(config.__file__).read()
         self.assertIn("WARNING:v_wall_no_solution", src)
+
+
+class BothBackendsCarryTheVerdictTests(unittest.TestCase):
+    """The same stub, through both observables modules.
+
+    `_ensure_wall_velocity` exists twice, and both copies call the same
+    `Hydrodynamics.calcWallVelocityLTE`. A verdict written in one copy only leaves the
+    other backend reporting the template default for a key that is registered for every
+    run, which reads as "no non-solution" rather than "not looked at".
+    """
+
+    def test_zero_is_flagged_on_both_backends(self):
+        for module in _backends():
+            with self.subTest(module=module.__name__):
+                self.assertIs(_run(0, module=module)["WARNING:v_wall_no_solution"], True)
+
+    def test_an_ordinary_wall_is_not_flagged_on_either_backend(self):
+        for module in _backends():
+            with self.subTest(module=module.__name__):
+                self.assertIs(_run(0.6, module=module)["WARNING:v_wall_no_solution"], False)
+
+
+class BranchAmbiguityReachesTheObservablesTests(unittest.TestCase):
+    """`max_al_non_monotonic` must become `WARNING:v_wall_branch_ambiguous`.
+
+    `tests/test_max_al_searches_the_range.py` shows that `max_al` sets the attribute on a
+    measured non-monotonic point. That is a different statement from the observable being
+    written: the attribute is read through `getattr(..., False)` in both backends, and a
+    read that is dropped leaves the flag permanently false with nothing to say so.
+    """
+
+    def test_a_non_monotonic_residual_is_reported_on_both_backends(self):
+        for module in _backends():
+            with self.subTest(module=module.__name__):
+                derived = _run(0.7475, module=module, non_monotonic=True)
+                self.assertIs(derived["WARNING:v_wall_branch_ambiguous"], True)
+
+    def test_a_monotonic_residual_is_not_reported_on_either_backend(self):
+        for module in _backends():
+            with self.subTest(module=module.__name__):
+                derived = _run(0.7475, module=module, non_monotonic=False)
+                self.assertNotIn("WARNING:v_wall_branch_ambiguous", derived)
+
+    def test_a_solver_that_never_reached_max_al_is_not_reported(self):
+        """Every early return of `calcWallVelocityLTE` leaves the attribute unset."""
+        for module in _backends():
+            with self.subTest(module=module.__name__):
+                derived = _run(1, module=module, non_monotonic=None)
+                self.assertNotIn("WARNING:v_wall_branch_ambiguous", derived)
+
+    def test_the_flag_is_registered_for_the_writer(self):
+        from transitionlistener import config
+        from transitionlistener.interface import samplers, output_schema
+        self.assertIn("WARNING:v_wall_branch_ambiguous", config.all_observables)
+        self.assertIn("WARNING:v_wall_branch_ambiguous", samplers.get_empty_result())
+        self.assertIn("WARNING:v_wall_branch_ambiguous", output_schema.WARNING_COLUMN_ORDER)
 
 
 if __name__ == "__main__":

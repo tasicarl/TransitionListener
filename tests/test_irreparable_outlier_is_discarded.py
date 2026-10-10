@@ -136,3 +136,34 @@ def test_the_discard_clears_the_diagnostic():
     assert residual is None or not np.isfinite(residual) or residual <= 1.0, (
         f"the residual still exceeds the threshold after the discard ({residual}), so the "
         "point would be rejected anyway and nothing was gained")
+
+
+def test_the_discard_reaches_the_diagnostics_snapshot():
+    """A dropped support point must leave a record a consumer can read.
+
+    `rescue_success` is measured on the profile that remains, so it is True after a
+    discard: voiding the sample is what removes the residual it was flagged for. The
+    observables therefore report "rescue attempted, not failed" for a profile that lost a
+    support point, and `_unstable_action_entries` in the action cache is not something any
+    consumer reads. The snapshot has to carry it.
+    """
+    T0, _H, S0, _P, bad = _profile()
+    stubborn = float(S0[bad])
+    _state, _outdict, diag, _T, _b = _run_rescue(lambda t: stubborn)
+    assert diag.get("rescue_discarded_temperatures"), "premise: nothing was discarded"
+    assert diag.get("rescue_success") is True, (
+        "premise: the discard is what clears the residual, so success reads True here")
+
+    T = np.array([90.0, 80.0, 70.0])
+    state = _State(T, np.full(3, 1e-16), np.array([150.0, 140.0, 130.0]),
+                   np.array([0.01, 0.3, 0.9]))
+    state.support_bank = T.copy()
+    state.action_temperatures = T.copy()
+    state.rebuild_count = 0
+    grid = bd.PercolationGrid(TSYM=T, Tstart=90.0, TpercApprox=80.0, tmin=70.0, tmax=90.0,
+                              TBROmin=70.0, TBROmax=90.0)
+    metadata = bd.PercolationDiagnostics.from_state(state, grid, diag, {})
+    assert metadata.action_jitter_rescue_discarded_temperatures == [
+        float(value) for value in diag["rescue_discarded_temperatures"]], (
+        "the discarded temperatures did not reach the diagnostics snapshot, so a support "
+        "point dropped from the profile leaves no record outside the solver")

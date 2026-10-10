@@ -229,8 +229,14 @@ all_observables = {
     # Whether the accepted percolation profile met acc_tperc, acc_tfinal and acc_rh. The
     # targets are advisory -- the controller accepts either way, because by then refinement
     # has nothing left to try -- so this is the only record of whether they were honoured.
-    # Warning false with finite uncertainties means met; warning false with nan means the
-    # controller never reached a comparable second estimate; warning true means missed.
+    # Warning false with finite uncertainties means the targets were met. Warning true means
+    # they could not be certified, which covers both a target genuinely missed and a profile
+    # the controller accepted without a comparable second estimate to measure convergence
+    # against; the three uncertainties say which, `DIAG:accuracy_rh_uncertainty` being inf
+    # where there was nothing to compare against, while Tperc and Tf fall back to their own
+    # bracket widths and stay finite.
+    # Warning false with nan means no verdict was formed at all: the fixed_step_size backend,
+    # which has no such controller, and the adaptive controller's iteration-limit exit.
     "WARNING:accuracy_targets_missed":
         R"$\mathrm{WARNING:}\ \mathrm{accuracy\ targets\ missed}$",
     "DIAG:accuracy_tperc_uncertainty": R"$\mathrm{DIAG:}\ \delta T_\mathrm{perc}/T_\mathrm{perc}$",

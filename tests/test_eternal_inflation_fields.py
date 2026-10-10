@@ -37,10 +37,6 @@ class EternalInflationFieldsTests(unittest.TestCase):
         self.assertIsNone(err.Tperc)
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
-
 class CalcTfPopulatesTheFieldsTests(unittest.TestCase):
     """The production raise sites must pass the numbers, not just be able to.
 
@@ -80,3 +76,7 @@ class CalcTfPopulatesTheFieldsTests(unittest.TestCase):
         err = self._call("bubbledynamics")
         self.assertIn("24.06", str(err))
         self.assertIn("0.7639687269359464", str(err))
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

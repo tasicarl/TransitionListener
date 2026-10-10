@@ -61,10 +61,6 @@ class MaxAlRangeSearchTests(unittest.TestCase):
         self.assertAlmostEqual(value, 0.05, places=9)
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
-
 class BranchAmbiguityIsFlaggedTests(unittest.TestCase):
     """A non-monotonic residual means the branch was chosen, not determined.
 
@@ -100,3 +96,63 @@ class BranchAmbiguityIsFlaggedTests(unittest.TestCase):
         self.assertIn("WARNING:v_wall_branch_ambiguous", config.all_observables)
         self.assertIn("WARNING:v_wall_branch_ambiguous", samplers.get_empty_result())
         self.assertIn("WARNING:v_wall_branch_ambiguous", output_schema.WARNING_COLUMN_ORDER)
+
+
+class DegenerateRangesAndGapsTests(unittest.TestCase):
+    """The grid the search builds has to exist, and a hole in it must not decide anything.
+
+    Two situations the measured fixtures above cannot reach. `psiN` arrives from
+    `w_broken / w_symmetric`, so it is one wherever the two enthalpies agree and the lower
+    end of the range is then exactly zero, which `numpy.geomspace` refuses. And a residual
+    that cannot be evaluated at some strengths leaves a hole: `find_vJ` takes a square root
+    of `3 alN (1 - c_b^2 + 3 c_b^2 alN)` and the matching conditions divide by quantities
+    that can vanish, so the hole is a real possibility rather than a hypothetical one. It
+    is produced here by making `find_vJ` refuse over a band of `alN`, because no
+    combination of the three physical arguments was found that produces one: a sweep of
+    2475 triples over `c_b^2`, `c_s^2` in [0.05, 1/3] and eleven values of `psiN` gave no
+    grid with both a non-finite residual and a crossing.
+    """
+
+    @staticmethod
+    def _refusing_band(hydro, low, high):
+        """Make the residual non-evaluable for `low < alN < high`."""
+        original = hydro.find_vJ
+
+        def find_vJ(alN, cb2):
+            if low < float(alN) < high:
+                raise ValueError("no Jouguet velocity here")
+            return original(alN, cb2)
+
+        hydro.find_vJ = find_vJ
+
+    def test_an_enthalpy_ratio_of_one_still_searches(self):
+        """psiN = 1 puts the lower end of the range at exactly zero."""
+        h = _hydro()
+        value = h.max_al(0.33, 0.33, 1.0, 100)
+        self.assertTrue(value == value and abs(value) < float("inf"),
+                        f"max_al returned {value} where the lower limit is zero")
+        self.assertIs(h.max_al_non_monotonic, False)
+
+    def test_a_hole_in_the_residual_does_not_move_the_root(self):
+        """The crossing is outside the hole, so the answer must be the measured one."""
+        h = _hydro()
+        self._refusing_band(h, 0.0175, 0.0215)
+        value = h.max_al(NEIGHBOUR["cb2"], NEIGHBOUR["cs2"], NEIGHBOUR["psiN"], 100)
+        self.assertAlmostEqual(value, 0.03088, places=4)
+
+    def test_a_hole_in_the_residual_is_not_counted_as_a_crossing(self):
+        """A gap is absence of information, not a sign change.
+
+        `nan < 0.0` is False, so a hole inside the negative stretch looks like two sign
+        changes to any test that does not drop it first, and this monotonic point would be
+        reported as branch-ambiguous on the strength of a missing sample.
+        """
+        h = _hydro()
+        self._refusing_band(h, 0.0175, 0.0215)
+        h.max_al(NEIGHBOUR["cb2"], NEIGHBOUR["cs2"], NEIGHBOUR["psiN"], 100)
+        self.assertIs(h.max_al_non_monotonic, False,
+                      "a gap in the residual was counted as non-monotonicity")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

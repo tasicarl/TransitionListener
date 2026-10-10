@@ -1266,22 +1266,6 @@ def _validate_tunneling_path(x0: np.ndarray, x1: np.ndarray, V_) -> None:
         )
 
 
-# A cached instanton path is sampled on the radial bounce profile's own grid, so its
-# arc-length spacing is wildly uneven: measured on four two-field test potentials, the
-# longest segment exceeds the shortest by factors of 7.7e+03, 1.8e+04, 6.9e+04 and
-# 7.0e+07. `_pathDeriv` differentiates with a constant-dx stencil, so on such a path the
-# end tangents are meaningless, and `SplinePath(extend_to_minima=True)` then extends each
-# end along one of them until the potential stops falling. Handing the cached points over
-# as they are therefore does not reseed the solve, it breaks it: on those same four
-# potentials the solve raised `InfiniteActionError` three times and "stable, not
-# metastable" once, every one of which `_execute_full_tunneling` turns into an infinite
-# action -- so the rescue would have replaced the outlier it targets by infinity.
-# Re-sampling the seed at equal arc-length intervals first is what makes it admissible:
-# the four actions are then reproduced to 2.7e-05, 1.8e-05, 1.4e-05 and 2.8e-06 relative.
-# 100 is the count with the smallest worst case of those tried; across the same four
-# potentials the largest relative error is 2.7e-05 at 100 points and 3.2e-05 at 50, against
-# 1.1e-04 at 200, 2.0e-04 at the paths' own 500-660 points, 1.1e-03 at 20 and 6.5e-04 at 11.
-# It is a re-sampling resolution, not a physics threshold.
 def _execute_full_tunneling(
     T,
     V_,

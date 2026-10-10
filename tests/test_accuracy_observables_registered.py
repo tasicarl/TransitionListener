@@ -11,8 +11,10 @@ there: absent from `config.all_observables`, from `samplers.get_empty_result()` 
 scan JSON, so only a caller passing `return_metadata=True` could see it.
 
 The tri-state survives without a tri-state column: warning false with finite uncertainties
-means the targets were met, warning false with nan means the controller never reached a
-comparable second estimate, warning true means they were missed.
+means the targets were met; warning true means they could not be certified, which covers a
+target genuinely missed as well as a profile accepted with no comparable second estimate to
+measure convergence against; warning false with nan means no verdict was formed at all, which
+is the fixed-step backend and the adaptive controller's iteration-limit exit.
 """
 import math
 import unittest

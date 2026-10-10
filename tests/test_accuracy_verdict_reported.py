@@ -9,7 +9,7 @@ The targets do not gate acceptance -- both exits of
 `_try_dynamiczoomwindow_completed_refinement` return False, which the caller reads as "accept"
 -- so these fields are the only record of whether they were honoured. A test that only checked
 "True propagates" would pass against a stub that hardcoded True, so the three states that must
-be distinguishable are checked separately: met, missed, and never assessed.
+be distinguishable are checked separately: met, not certified, and no verdict at all.
 """
 import math
 import unittest
@@ -48,13 +48,13 @@ class AccuracyVerdictTests(unittest.TestCase):
         self.assertIs(d.accuracy_targets_met, True)
 
     def test_targets_missed_is_reported_false_not_none(self):
-        """A profile that missed its targets must be distinguishable from one never judged."""
+        """An uncertified profile must be distinguishable from one that was never judged."""
         d = _build({"targets_met": False, "Tperc_uncertainty": 0.5,
                     "Tf_uncertainty": 0.5, "RH_uncertainty": 0.5})
         self.assertIs(d.accuracy_targets_met, False)
 
     def test_no_estimate_means_no_verdict(self):
-        """None means the controller never reached a comparable second estimate."""
+        """None means no verdict was formed at all, not that a target was missed."""
         d = _build(None)
         self.assertIsNone(d.accuracy_targets_met)
 
@@ -83,6 +83,81 @@ class AccuracyVerdictTests(unittest.TestCase):
                     "Tf_uncertainty": 0.0, "RH_uncertainty": 0.0})
         self.assertEqual(d.start_temperature, 90.0)
         self.assertEqual(d.final_active_support_points, 3)
+
+
+def _observables_context(metadata):
+    """A context carrying only the observable that gates the verdict block."""
+    import types
+    derived = {
+        "WARNING:accuracy_targets_missed": False,
+        "DIAG:accuracy_tperc_uncertainty": float("nan"),
+        "DIAG:accuracy_tfinal_uncertainty": float("nan"),
+        "DIAG:accuracy_rh_uncertainty": float("nan"),
+        "WARNING:action_rescue_attempted": False,
+        "WARNING:action_rescue_failed": False,
+        "DIAG:action_rescue_attempts": 0,
+    }
+    return types.SimpleNamespace(
+        derived_param_names={"Tnuc_SM_GeV"},
+        derived_params=derived,
+        pot=types.SimpleNamespace(conversionFactor=1.0),
+        tr=types.SimpleNamespace(Tnuc=42.0),
+        verbose=False,
+    ), derived
+
+
+def _populate(metadata):
+    """Drive the observables consumer, not the dataclass, with one metadata snapshot."""
+    import types
+    from transitionlistener import transitionObservables as tobs
+
+    ctx, derived = _observables_context(metadata)
+    percolation = types.SimpleNamespace(Tperc=40.0, metadata=metadata)
+    tobs.TransitionObservables._populate_temperature_observables(None, ctx, percolation)
+    return derived
+
+
+class AccuracyVerdictReachesTheObservablesTests(unittest.TestCase):
+    """The hop the dataclass tests above cannot see: metadata -> derived parameters.
+
+    `PercolationDiagnostics` carrying the verdict is not the same statement as the scan
+    table carrying it. Driving only `from_state` leaves
+    `_populate_temperature_observables` free to drop the verdict on the floor, which is
+    what it did before these four names were registered, and a test of the dataclass alone
+    cannot tell the difference.
+    """
+
+    def test_a_missed_verdict_raises_the_warning(self):
+        derived = _populate(_build({"targets_met": False, "Tperc_uncertainty": 0.011,
+                                    "Tf_uncertainty": 0.022, "RH_uncertainty": 0.276}))
+        self.assertIs(derived["WARNING:accuracy_targets_missed"], True)
+
+    def test_a_met_verdict_leaves_the_warning_down(self):
+        derived = _populate(_build({"targets_met": True, "Tperc_uncertainty": 1e-3,
+                                    "Tf_uncertainty": 1e-3, "RH_uncertainty": 1e-3}))
+        self.assertIs(derived["WARNING:accuracy_targets_missed"], False)
+
+    def test_no_verdict_leaves_the_warning_down_and_the_uncertainties_nan(self):
+        """The third state: false beside nan, which is what an unassessed point reads as."""
+        derived = _populate(_build(None))
+        self.assertIs(derived["WARNING:accuracy_targets_missed"], False)
+        for name in ("DIAG:accuracy_tperc_uncertainty", "DIAG:accuracy_tfinal_uncertainty",
+                     "DIAG:accuracy_rh_uncertainty"):
+            self.assertTrue(math.isnan(float(derived[name])), f"{name} = {derived[name]}")
+
+    def test_the_three_uncertainties_reach_the_columns(self):
+        """Without these the warning alone cannot separate 'met' from 'never judged'."""
+        derived = _populate(_build({"targets_met": False, "Tperc_uncertainty": 0.011,
+                                    "Tf_uncertainty": 0.022, "RH_uncertainty": 0.276}))
+        self.assertAlmostEqual(derived["DIAG:accuracy_tperc_uncertainty"], 0.011)
+        self.assertAlmostEqual(derived["DIAG:accuracy_tfinal_uncertainty"], 0.022)
+        self.assertAlmostEqual(derived["DIAG:accuracy_rh_uncertainty"], 0.276)
+
+    def test_a_metadata_object_without_the_fields_is_tolerated(self):
+        """An older metadata snapshot must not turn a solved point into a failed one."""
+        import types
+        derived = _populate(types.SimpleNamespace())
+        self.assertIs(derived["WARNING:accuracy_targets_missed"], False)
 
 
 if __name__ == "__main__":

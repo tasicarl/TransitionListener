@@ -2258,6 +2258,13 @@ class PercolationDiagnostics:
     action_jitter_rescue_attempts: int = 0
     action_jitter_rescue_success: bool = False
     action_jitter_rescue_temperatures: list[float] | None = None
+    # The temperatures whose action the rescue gave up on and voided. Separate from
+    # `action_jitter_rescue_success`, which is measured on the profile that remains and is
+    # therefore True after a discard: voiding the offending sample is exactly what removes
+    # the residual it was flagged for. Without this list the only record of a support point
+    # dropped from the profile is the `_unstable_action_entries` note in the action cache,
+    # which no consumer reads.
+    action_jitter_rescue_discarded_temperatures: list[float] | None = None
     # Whether the accepted profile met acc_tperc, acc_tfinal and acc_rh, with the three
     # relative uncertainties behind that verdict. True or False is the verdict the controller
     # formed on the profile it accepted -- False covers both "a target was missed" and "there
@@ -2265,9 +2272,10 @@ class PercolationDiagnostics:
     # certify anything. None means no verdict reached these diagnostics at all: the
     # fixed_step_size backend, which has no such controller, and a profile the controller
     # handed back at its iteration limit rather than accepting. The targets do not gate
-    # acceptance, so these fields are the only record of whether they were honoured, and they
-    # live on this object alone: no observable column is written from them, so only a caller
-    # that keeps the metadata from `calcPercAndEvolve(return_metadata=True)` sees them.
+    # acceptance, so these fields are the only record of whether they were honoured.
+    # `transitionObservables` reads them into the `WARNING:accuracy_targets_missed` and
+    # `DIAG:accuracy_*_uncertainty` columns; a caller that keeps the metadata from
+    # `calcPercAndEvolve(return_metadata=True)` reads them here directly.
     accuracy_targets_met: bool | None = None
     accuracy_tperc_uncertainty: float = math.nan
     accuracy_tfinal_uncertainty: float = math.nan
@@ -2334,6 +2342,10 @@ class PercolationDiagnostics:
             metadata.action_jitter_rescue_success = bool(jitter_diagnostic.get("rescue_success", False))
             metadata.action_jitter_rescue_temperatures = [
                 float(value) for value in (jitter_diagnostic.get("rescue_temperatures") or [])
+            ]
+            metadata.action_jitter_rescue_discarded_temperatures = [
+                float(value)
+                for value in (jitter_diagnostic.get("rescue_discarded_temperatures") or [])
             ]
 
         if tnuc_estimate.get("Tnuc") is not None:
@@ -2805,9 +2817,9 @@ def _fit_action_slope(T_samples, S_samples, T: float, n_points: int) -> float:
     return float(T * coeffs[1])
 
 
-# The rate-jitter rescue tightens the path-deformation convergence target by this factor
-# relative to whatever the run is using. A fixed absolute target cannot work: a model that
-# already declares that target gets no tightening and the rescue becomes a no-op.
+# The rate-jitter rescue divides the path-deformation convergence target by this factor,
+# after the historical absolute cap. A fixed absolute target on its own cannot work: a model
+# that already declares that target gets no tightening and the rescue becomes a no-op.
 _JITTER_RESCUE_TIGHTEN_FACTOR = 5.0
 
 
@@ -2832,8 +2844,11 @@ def _tight_tunneling_params(pot):
     # settings. That is the state of `R2HDM_HighAcc_NAct100_Conv1_FRatio005`: it declares
     # converge_0 = 1.0 and fRatioConv = 5e-3, exactly the two constants above, so every
     # deformation parameter of the "tight" set is bit-identical to the run's and the
-    # rate-jitter rescue is a no-op. Tighten relative to whatever the run uses instead, so
-    # there is always real margin. Measured on the 2HDM edge line, halving fRatioConv from
+    # rate-jitter rescue is a no-op. Divide by a further factor instead, so there is always
+    # real margin: with the cap above, the tight target is 1e-3 for any run at or above 5e-3,
+    # a factor 10 below the multi-field default of 1e-2, and one fifth of the configured
+    # value below that. `converge_0` keeps the plain clamp, so the margin comes from
+    # `fRatioConv` alone. Measured on the 2HDM edge line, halving fRatioConv from
     # 1e-2 to 5e-3 took the action jitter from 0.78 to 0.28 rms in S_3/T, so a further
     # factor buys a comparable amount; the cost is bounded because the rescue only
     # recomputes the handful of outlier temperatures it targets.

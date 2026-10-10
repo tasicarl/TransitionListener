@@ -15,12 +15,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   targets are advisory -- the controller accepts either way -- so this is the only record of
   whether they were honoured; a profile whose `RH` missed its 1% target was previously
   indistinguishable from one that met it, with a 90th-percentile spread of 27.6%. The warning
-  false with finite uncertainties means met, false with `nan` means never assessed, true means
-  missed. `WARNING:v_wall_no_solution` fires where `find_vw` returns exactly 0, which is a
-  verdict that no wall solution exists but which zeroes every kinetic energy fraction, so
-  `LISA_SNR` comes out exactly 0.0 and reads as a prediction of no signal; note that
-  `v_wall == 1` is the *normal* outcome on a supercooled line, so only the exact zero is a
-  non-solution. `WARNING:v_wall_branch_ambiguous` fires where the wall-velocity residual
+  false with finite uncertainties means the targets were met; true means they could not be
+  certified, which covers a target genuinely missed as well as a profile accepted with no
+  comparable second estimate to measure convergence against; false with `nan` means no verdict
+  was formed at all, which is the fixed step size backend and the adaptive controller's
+  iteration-limit exit. `WARNING:v_wall_no_solution` fires where `find_vw` returns exactly
+  0, which is a verdict that no wall solution exists but which zeroes every kinetic energy
+  fraction, so `LISA_SNR` comes out exactly 0.0 and reads as a prediction of no signal; note
+  that `v_wall == 1` is the *normal* outcome on a supercooled line, so only the exact zero
+  is a non-solution. `WARNING:v_wall_branch_ambiguous` fires where the wall-velocity residual
   crosses zero more than once, i.e. where the branch was chosen rather than determined.
 
 - **A refusal to complete reports the percolation temperature it had already determined.**
@@ -142,9 +145,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 - **The path-deformation basis grows when the force ratio plateaus** above its target instead
   of stopping there, about 2.5x faster on the 2HDM edge line.
 
-- **The parked path-seeding chain is removed.** It was disabled in place, leaving an
-  unreachable helper, a parameter no caller passed and a diagnostic that could only hold
-  `None`. Seeding was measured to return a non-finite action on the 2HDM.
+- **A retried action starts from the straight line between the minima**, as every other
+  temperature does. Seeding a retry from a neighbouring temperature's converged path was
+  measured to return a non-finite action on the 2HDM, so the retry would have voided the
+  sample it was meant to rescue; the idea is not part of the solver. The rate-jitter retry
+  still tightens the path deformation relative to what the run configured, as above.
 
 - **A model's declared path-deformation target now reaches the bounce solver.**
   `generic_potential.__init__` tightens `fRatioConv` from the 1d default of 2e-2 to 1e-2 for
@@ -157,17 +162,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   difference of 0.247 orders of magnitude in the nucleation rate, so results from that model
   variant move. Models that make no choice of their own are unaffected and still get 1e-2.
 
-- **The rate-jitter rescue tightens the path deformation relative to what the run
-  configured**, rather than clamping it to a fixed target. The clamp was
+- **The rate-jitter rescue always has real margin over what the run configured**, instead
+  of only clamping to a fixed target a model may already declare. The clamp was
   `min(current, 5e-3)` for `fRatioConv` and `min(current, 1.0)` for `converge_0`, which are
   exactly the values `R2HDM_HighAcc_NAct100_Conv1_FRatio005` declares: every deformation
   parameter of the "tight" set was then bit-identical to the run's and the rescue recomputed
-  the outlier action with the settings that produced it. `fRatioConv` is now divided by 5
-  relative to the configured value, so there is always real margin, and a run that already
-  asks for something stricter still keeps it. The historical target remains a floor:
-  halving `fRatioConv` from 1e-2 to 5e-3 took the action jitter from 0.78 to 0.28 rms in
-  `S_3/T` on the 2HDM edge line, and the cost is bounded because the rescue only recomputes
-  the handful of outlier temperatures it targets.
+  the outlier action with the settings that produced it. `fRatioConv` is now divided by a
+  further factor 5 after the historical cap of 5e-3, so there is always real margin and a
+  run that already asks for something stricter still keeps it. Measured against the
+  configured value, the tight target is 1e-3 for any run at or above 5e-3 -- a factor 10
+  below the multi-field default of 1e-2 and a factor 20 below the 1d default of 2e-2 -- and
+  one fifth of the configured value below that. `converge_0` keeps the plain
+  `min(current, 1.0)` clamp, so the margin comes from `fRatioConv` alone. Halving
+  `fRatioConv` from 1e-2 to 5e-3 took the action jitter from 0.78 to 0.28 rms in `S_3/T` on
+  the 2HDM edge line, and the cost is bounded because the rescue only recomputes the handful
+  of outlier temperatures it targets.
 
 - **One entropy for the expansion history**: the time-temperature relation took
   the scale factor from the counted degrees of freedom and the sound speed from
@@ -329,15 +338,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
     repair stays as the fallback, because at lambda3 = 5.8136778037 the repair otherwise
     took the slot the remesh needed and the run ended one support update short at
     `Delta P = 0.0578`.
-
-- **A retried action no longer starts from a neighbouring temperature's converged path.**
-  This entry described path seeding, which was added here and has since been removed: on the
-  2HDM the seeded solve returned a non-finite action, so the retry's only effect was to void
-  the sample it was meant to rescue. The helper, the `path_seed` plumbing through
-  `calcAction` and `bounceAction`, the re-sampling used to hand a cached path over, and the
-  seed diagnostic are all gone. The rate-jitter retry still tightens the path deformation
-  relative to what the run configured; it simply starts from the straight line between the
-  minima, as every other temperature does.
 
 - **A rejected profile says which resource ran out.** The unresolved-jump rejection asserted
   that the controller "already spent its remaining support budget on local jump refinement",

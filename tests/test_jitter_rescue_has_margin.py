@@ -13,7 +13,9 @@ with 1e-2, so the rescue happened to have a factor-2 margin (worth 0.247 orders 
 magnitude in the rate at the measured outlier, already too small against a 1.45 oom
 residual). Fixing that ordering removed the margin entirely.
 
-So the tightening has to be relative to whatever the run uses. Measured justification:
+So the tightening cannot be an absolute target alone; a further division is applied after
+the historical cap, which makes the tight target 1e-3 for any run at or above 5e-3 and one
+fifth of the configured value below that. Measured justification:
 halving ``fRatioConv`` from 1e-2 to 5e-3 took the action jitter from 0.78 to 0.28 rms in
 ``S_3/T`` on the 2HDM edge line, so a further factor buys a comparable reduction, and the
 cost is bounded because the rescue only recomputes the outlier temperatures it targets.
@@ -74,7 +76,7 @@ class JitterRescueMarginTests(unittest.TestCase):
         self.assertLess(float(tight["fRatioConv"]), float(run["fRatioConv"]))
 
     def test_a_loose_model_is_still_brought_to_at_least_the_old_target(self):
-        """Control: the historical behaviour is a floor, never loosened."""
+        """Control: the historical 5e-3 is still a cap, so a loose run is brought under it."""
         pot = fake_pot(converge_0=5.0, fRatioConv=2.0e-2)
         tight = deform_of(pot)
         self.assertLessEqual(float(tight["fRatioConv"]), 5.0e-3)

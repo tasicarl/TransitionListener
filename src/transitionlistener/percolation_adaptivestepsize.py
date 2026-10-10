@@ -600,10 +600,11 @@ def _try_dynamiczoomwindow_completed_refinement(
     # to stdout, which no scan reads, so a profile that misses acc_rh is indistinguishable in
     # the output from one that meets it. Measured: RH differs by a 90th percentile of 27.6%
     # between two accepted profiles, both nominally held to acc_rh = 1%, while Tperc agrees
-    # to better than 1%. The verdict is carried on `PercolationState.accuracy_estimate` and
-    # reported by `PercolationDiagnostics`, so a caller that keeps the metadata can tell the
-    # two apart; marking such points in a scan table additionally needs an observable key,
-    # which this change does not add.
+    # to better than 1%. The verdict is carried on `PercolationState.accuracy_estimate`,
+    # reported by `PercolationDiagnostics`, and written to the scan table as
+    # `WARNING:accuracy_targets_missed` beside the three `DIAG:accuracy_*_uncertainty`
+    # columns. False here means "not certified": either a target was missed, or there was no
+    # comparable second estimate, and a single estimate cannot certify anything.
     estimate["targets_met"] = bool(
         previous_estimate is not None
         and _dynamiczoomwindow_accuracy_reached(estimate, settings)

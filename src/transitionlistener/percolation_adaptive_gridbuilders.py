@@ -1264,7 +1264,7 @@ def _build_dynamiczoomwindow_unresolved_jump_grid(
     if jump_interval is None:
         return None
     jump_high, jump_low, _, _, delta_p = jump_interval
-    # OPTION 2: an interval selected by the *acceptance* criterion is fatal, so it must be
+    # An interval selected by the *acceptance* criterion is fatal, so it must be
     # repairable even when it lies past the rate peak. The inert veto used to apply here
     # unconditionally, which put the solver in direct self-contradiction: at
     # lambda3 = 5.8177725978 the interval [28.745, 30.453] GeV (rate peak at 41.05 GeV)
