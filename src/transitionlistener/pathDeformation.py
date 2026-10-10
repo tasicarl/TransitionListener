@@ -686,6 +686,115 @@ def _pathDeriv(phi):
     return dphi
 
 
+#: The path extension cannot be longer than this many knots: beyond it the spline
+#: refuses the path, in the size guard inside ``SplinePath.__init__``.
+_MAX_EXTENSION_KNOTS = 20000
+
+
+def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> float:
+    """Distance to the first local minimum of ``V`` walking outward from ``p0`` along ``dp0``.
+
+    The path is extended past each end until it reaches a minimum. ``scipy.optimize.fmin`` was
+    used for that, and it starts from ``x0 = 0`` with an initial simplex step of 2.5e-4 whatever
+    the problem looks like. That step is in units of the knot index, so in field units it is
+    2.5e-4 times the spacing between the first two knots, and for a path whose ends are far
+    apart it is large. On the conformal U(1) at g = 0.54 with the minima 1000 field units apart,
+    the two-knot initial path has a knot spacing of the whole path, and the end extension
+    settles a full knot out, at field -1000. That potential is even in the field, so this is the
+    mirror of the broken minimum: the extended path runs from 1000 to -1000, is 2000 long
+    instead of 1000, and connects two degenerate minima. The solver compares its ends, finds
+    them equal, and reports "stable, not metastable", which comes back as an infinite action.
+
+    So the search walks outward instead of starting with a step of its own choosing, and two
+    things bound it.
+
+    ``floor`` is the potential at the opposite end of the path, passed when extending the
+    metastable end. Tunnelling needs that end to stay the higher of the two, so an extension
+    that would take it to or below the other end is the one that destroys the problem being
+    solved, and the walk stops there. This is what separates the mirror minimum above, which is
+    exactly degenerate with the broken minimum and is refused, from a real minimum a little way
+    past the end, which is kept: on the 2HDM benchmark at T = 36.56 the potential at the end is
+    -2.4347e+07, there is a genuine minimum 11.01 knots out at -2.4348e+07, and the broken
+    minimum is far below at -6.79e+07, so the extension is allowed and the action stays at the
+    converged 143.69.
+
+    The other bound is the rounding of ``V`` itself. Near a path end the potential can be flat
+    to machine precision over many decades of ``x``: at that same 2HDM end the potential is
+    -2.4e+07, so consecutive probes differ by rounding alone, about 5e-9, for ``x`` below 1e-4
+    knots. Taking the first such rise for a minimum stopped the search at x = 4e-10 and lost the
+    real one at 11.01, which moved the action to 119.21 against the converged 143.69. A rise
+    only counts when it clears that noise.
+    """
+
+    def value(x: float) -> float:
+        # A potential handed to the path solver need not be defined arbitrarily far along the
+        # tangent, so a probe that cannot be evaluated is treated as a wall rather than an
+        # error: the walk stops at it and the end is left where it is.
+        try:
+            return float(np.squeeze(V(p0 + (sign * x) * dp0)))
+        except Exception:
+            return np.inf
+
+    def signed(x: float) -> float:
+        return -abs(x) if sign < 0 else abs(x)
+
+    def clears_the_floor(x: float) -> bool:
+        """Is the potential at `x` still above the other end of the path?
+
+        A degenerate mirror minimum only touches the other end's value, it does not go below
+        it, so this is a margin rather than a comparison. The margin is relative because the
+        two values are the same number to every digit in that case, while a minimum that is
+        genuinely allowed sits orders of magnitude above: -2.4348e+07 against -6.79e+07 on the
+        2HDM benchmark.
+        """
+        if floor is None:
+            return True
+        return value(x) > floor + 1e-9 * abs(floor)
+
+    # Geometric, so that a minimum arbitrarily close to the end is resolved, and reaching as far
+    # as the size guard in `SplinePath` allows, so one many knots out is still found the way the
+    # old unbounded search could find it. Evaluated in one call rather than point by point: the
+    # potential here is the real one, the spline does not exist yet, and a few hundred scalar
+    # calls to it per path end is the kind of cost that the spline exists to avoid.
+    ladder = np.concatenate([[0.0], np.geomspace(1e-10, float(_MAX_EXTENSION_KNOTS), 300)])
+    try:
+        probes = np.asanyarray(
+            V(np.asanyarray(p0)[np.newaxis, :] + (sign * ladder)[:, np.newaxis]
+              * np.asanyarray(dp0)[np.newaxis, :]), dtype=float).reshape(-1)
+        if probes.size != ladder.size:
+            raise ValueError("the potential did not broadcast over the ladder")
+    except Exception:
+        probes = np.array([value(float(x)) for x in ladder])
+
+    here = float(probes[0])
+    if not np.isfinite(here):
+        return 0.0
+    best_x, best_v, previous_x = 0.0, here, 0.0
+    for x, current in zip(ladder[1:], probes[1:]):
+        current = float(current)
+        if not np.isfinite(current):
+            break
+        noise = 8.0 * np.finfo(float).eps * max(abs(current), abs(best_v), np.finfo(float).tiny)
+        if current > best_v + noise:
+            if best_x == 0.0:
+                return 0.0                      # the end is already a minimum
+            found = optimize.minimize_scalar(
+                value, bounds=(previous_x, float(x)), method="bounded",
+                options={"xatol": 1e-10},
+            )
+            at = float(found.x) if found.success else best_x
+            if not clears_the_floor(at):
+                return 0.0      # extending there would leave no metastable end to tunnel from
+            return signed(at)
+        if current < best_v:
+            previous_x, best_x, best_v = best_x, float(x), current
+    # The walk ended without passing a minimum: it ran into a wall, hit the floor, or is still
+    # falling at the far end of the ladder. In none of those cases is there a minimum to extend
+    # to within reach, so the end is left where it is, which is what the old search did too on
+    # a potential that keeps falling.
+    return 0.0
+
+
 class SplinePath(object):
     """
     Fit a spline to a path in field space, and find the potential on that path.
@@ -752,13 +861,13 @@ class SplinePath(object):
         dpts = _pathDeriv(pts)
         # 2. Extend the path
         if extend_to_minima:
-            def V_lin(x, p0, dp0, V): return V(p0+x*dp0)
             # extend at the front of the path
-            xmin = optimize.fmin(V_lin, 0.0, args=(pts[0], dpts[0], V),
-                                 xtol=1e-6, disp=0)[0] # Setting xtol to 1e-12 was okay, too
+            # The front is the absolute minimum, which extending can only lower, so it
+            # needs no floor: metastability is not at stake there.
+            xmin = _extension_minimum(V, pts[0], dpts[0], -1.0)
             if xmin > 0.0: xmin = 0.0
             nx = np.ceil(abs(xmin)-.5) + 1
-            if nx > 20000:
+            if nx > _MAX_EXTENSION_KNOTS:
                 raise errors.SplineError(
                     "Maximum allowed size exceeded while extending the tunnelling path towards the minimum."
                 )
@@ -778,11 +887,11 @@ class SplinePath(object):
             pts = np.concatenate([pt_ext, pts_rest], axis=0)
             
             # extend at the end of the path
-            xmin = optimize.fmin(V_lin, 0.0, args=(pts[-1], dpts[-1], V),
-                                 xtol=1e-6, disp=0)[0] # Setting xtol to 1e-12 was okay, too
+            xmin = _extension_minimum(V, pts[-1], dpts[-1], +1.0,
+                                      floor=float(np.squeeze(V(pts[0]))))
             if xmin < 0.0: xmin = 0.0
             nx = np.ceil(abs(xmin)-.5) + 1
-            if nx > 20000:
+            if nx > _MAX_EXTENSION_KNOTS:
                 raise errors.SplineError(
                     "Maximum allowed size exceeded while extending the tunnelling path towards the second minimum."
                 )

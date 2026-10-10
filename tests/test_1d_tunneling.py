@@ -38,7 +38,11 @@ class test1DPotential(unittest.TestCase):
                 [x1,x0], V_, dV_, callback_data=T,
                 **fullTunneling_params)
 
-        self.assertAlmostEqual(tobj.action, 2388.1300739752196, places=5)
+        # 2388.130073975295 before the path extension searched for the nearest minimum
+        # instead of starting from a fixed step. The two differ in the eighth significant
+        # figure, 5e-9 relative, which is the extension landing a little differently on a path
+        # whose ends are already minima; the sampling of V does not change this number at all.
+        self.assertAlmostEqual(tobj.action, 2388.130062021543, places=5)
 
 
 if __name__ == "__main__":
