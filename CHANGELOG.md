@@ -278,6 +278,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The bubble nucleation rate no longer grows above the temperatures whose action was
+  computed.** The percolation result's action spline returned the action of the hottest
+  temperature that had one for everything above it. Holding the action constant while the
+  temperature rises lets `S3/T` fall, and the rate goes as `exp(-S3/T)`, so the rate grew
+  towards high temperature where the barrier grows and it has to vanish. It is now infinite
+  there, which is the limit and is what the estimator's own spline in
+  `percolation_adaptivestepsize` already returned, so the two agree. The upper limit of the
+  mean-bubble-separation integral is likewise the hottest temperature whose action is known
+  rather than the hottest in the support, since a temperature whose solve failed carries no
+  integrand.
+
+  The two only differ where an action solve fails at the hot end of the support, which was one
+  coupling of the 333 resolved across the validation scans: the 2HDM benchmark at
+  `lambda3 = 5.7727298627`, where the solve failed at T = 57.18 GeV while the hottest computed
+  action was at 49.28 GeV. The action was held at 7441.88, `S3/T` fell from 151.0 to 130.2 over
+  that stretch, a factor `exp(20.8)` in the rate, and the integrand of the bubble-number
+  integral peaked at the hot end with 99% of its weight there instead of at the percolation
+  temperature. The bubble number density came out 7338 times too large, which put the mean
+  bubble separation 19 times too low at `RH = 0.002352` against 0.044533 and 0.046287 at the
+  neighbouring couplings, `betaH_RH` at 1883 against 99.4 and 95.7, and the LISA signal-to-noise
+  ratio at 7.8 against 23.9 and 26.5. With the fix that coupling gives `RH = 0.045670` and
+  `betaH_RH = 96.95`. Where no solve fails the two rules agree and nothing moves.
+
 - **The adaptive percolation controller no longer spends its budget below the transition,
   and no longer refuses to repair a jump it then rejects the profile for.** Eight separate
   faults, all found by instrumenting a 40-point 2HDM "edge line" scan on which 31 of 40

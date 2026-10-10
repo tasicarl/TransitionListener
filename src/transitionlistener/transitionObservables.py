@@ -656,7 +656,18 @@ class TransitionObservables:
                 TSYM,
                 S,
                 fill_low=float(finite_s[-1]),
-                fill_high=float(finite_s[0]),
+                # Above the hottest temperature whose action was computed there is no
+                # nucleation, not a constant action. Holding the action constant lets S/T fall
+                # as T rises, so the rate *grows* towards high temperature, which is backwards:
+                # the barrier grows there and the rate has to vanish. Measured on the 2HDM at
+                # lambda3 = 5.7727298627, where the action solve failed at the hot end of the
+                # support: the action was held at its value at T = 49.28, S3/T fell from 151.0
+                # to 130.2 by T = 57.18, and the bubble number density came out 7338 times too
+                # large, which put the mean bubble separation 19 times too low and
+                # betaH_RH at 1883 against 99 and 96 at the neighbouring couplings. An infinite
+                # action gives a rate of zero there, which is the limit, and is what the
+                # estimator's own spline in `percolation_adaptivestepsize` already returns.
+                fill_high=np.inf,
             )
         except Exception as err:
             if core_spline_error is None:
@@ -1020,7 +1031,22 @@ class TransitionObservables:
                 # with numerical noise of its own. The integrand is exponentially
                 # suppressed above Tnuc, and the percolation support still sets
                 # the upper bound.
-                support_tmax = float(np.nanmax(percolation.TSYM))
+                # The upper limit is the hottest temperature whose action is known, not the
+                # hottest in the support: a temperature whose solve failed carries no
+                # integrand, and taking it as the bound integrates over a stretch the action
+                # spline has no data for. They differ only where a solve failed at the hot
+                # end, which was one coupling of the 333 resolved across the validation scans.
+                # The guard above establishes TSYM, not S, and the two need not line up, so
+                # anything unusable here falls back to the bound this used before.
+                support_t = np.asarray(percolation.TSYM, dtype=float)
+                support_s = (np.asarray(percolation.S, dtype=float)
+                             if percolation.S is not None else None)
+                if support_s is not None and support_s.shape == support_t.shape:
+                    known = np.isfinite(support_t) & np.isfinite(support_s)
+                else:
+                    known = np.isfinite(support_t)
+                support_tmax = (float(np.nanmax(support_t[known])) if known.any()
+                                else float(np.nanmax(support_t)))
                 tmax_rh = support_tmax
                 tcrit = getattr(ctx.tr, "Tcrit", None)
                 if (
