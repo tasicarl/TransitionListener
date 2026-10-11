@@ -23,65 +23,87 @@ One coupling of the 333 resolved across the five validation scans was affected.
 
 The estimator's own spline in `percolation_adaptivestepsize` already returns an infinite action
 above its data, so this makes the two agree.
+
+These tests call `build_action_spline` and `hottest_known_action_temperature`, which is what
+`TransitionObservables._compute_percolation` calls, so reverting either rule in the shipped
+module fails tests here rather than leaving them green against a copy of the logic.
 """
 import unittest
 
 import numpy as np
 
 from transitionlistener import bubbledynamics as bd
-from transitionlistener.transitionObservables import _BoundedPchipInterpolator
+from transitionlistener.transitionObservables import (
+    _BoundedPchipInterpolator,
+    build_action_spline,
+    hottest_known_action_temperature,
+)
 
 
-# the measured profile at the affected coupling, reduced to what the claim needs
+# The measured profile at the affected coupling, reduced to what the claim needs. The support
+# runs hot to cold, as `PercolationResult.TSYM` does, and the hottest row is the failed solve.
+FAILED_SOLVE_T = 57.1813
 HOTTEST_COMPUTED_T = 49.2843
 HOTTEST_COMPUTED_S = 7441.8771
-FAILED_SOLVE_T = 57.1813
+COLDEST_T, COLDEST_S = 47.5670, 6964.0
 
-
-def _action_spline(fill_high):
-    """The percolation result's action spline, with the fill above the data chosen."""
-    T = np.array([47.5670, 48.4000, HOTTEST_COMPUTED_T])
-    S = np.array([6964.0, 7200.0, HOTTEST_COMPUTED_S])
-    return _BoundedPchipInterpolator(T, S, fill_low=float(S[0]), fill_high=fill_high)
+SUPPORT_T = np.array([FAILED_SOLVE_T, HOTTEST_COMPUTED_T, 48.4000, COLDEST_T])
+SUPPORT_S = np.array([np.nan, HOTTEST_COMPUTED_S, 7200.0, COLDEST_S])
 
 
 class TheRateDoesNotGrowAboveTheComputedActions(unittest.TestCase):
     def test_the_action_is_infinite_above_the_computed_range(self):
-        spline = _action_spline(np.inf)
+        """The shipped rule. Reverting `fill_high` in the module fails this."""
+        spline = build_action_spline(SUPPORT_T, SUPPORT_S)
         self.assertTrue(np.isinf(float(spline(FAILED_SOLVE_T))),
                         "the action above the computed range is finite, so the rate is not zero")
 
     def test_the_rate_vanishes_there(self):
         """Gamma reports an infinite action as not-a-number, which every integrand maps to zero."""
-        spline = _action_spline(np.inf)
+        spline = build_action_spline(SUPPORT_T, SUPPORT_S)
         rate = bd.Gamma(np.array([FAILED_SOLVE_T]), np.array([float(spline(FAILED_SOLVE_T))]))
         self.assertFalse(np.isfinite(rate[0]),
                          "the rate above the computed range is a finite number")
         self.assertEqual(float(np.nan_to_num(rate)[0]), 0.0,
                          "the integrands take a non-finite rate as zero, and this one does not")
 
-    def test_holding_the_action_constant_makes_the_rate_grow(self):
-        """Mutation check: the rule this replaced raises the rate where it must fall."""
-        spline = _action_spline(HOTTEST_COMPUTED_S)
-        s_hot = float(spline(FAILED_SOLVE_T))
-        self.assertAlmostEqual(s_hot, HOTTEST_COMPUTED_S, places=6,
-                               msg="the mutation did not reinstate the constant action")
-        cold = HOTTEST_COMPUTED_S / HOTTEST_COMPUTED_T
-        hot = s_hot / FAILED_SOLVE_T
-        self.assertLess(hot, cold,
-                        f"S3/T does not fall with the constant action: {hot} against {cold}")
-        self.assertGreater(
-            bd.Gamma(np.array([FAILED_SOLVE_T]), np.array([s_hot]))[0],
-            bd.Gamma(np.array([HOTTEST_COMPUTED_T]), np.array([HOTTEST_COMPUTED_S]))[0],
-            "the rate does not grow under the replaced rule, so this test proves nothing")
+    def test_the_cold_fill_is_still_the_coldest_computed_action(self):
+        """The change is about the hot side; the cold fill must keep its own convention.
+
+        The support runs hot to cold, so the coldest computed action is the last finite entry.
+        Taking the first instead would fill below the range with the hottest action.
+        """
+        spline = build_action_spline(SUPPORT_T, SUPPORT_S)
+        self.assertAlmostEqual(float(spline(COLDEST_T - 5.0)), COLDEST_S, places=6)
+        self.assertNotAlmostEqual(COLDEST_S, HOTTEST_COMPUTED_S, places=6,
+                                  msg="the two fills coincide here, so this test proves nothing")
 
     def test_the_spline_is_unchanged_inside_the_computed_range(self):
         """The fill is about the outside; the interpolation itself must not move."""
         inside = np.array([47.8, 48.4, 49.0])
-        a = _action_spline(np.inf)(inside)
-        b = _action_spline(HOTTEST_COMPUTED_S)(inside)
-        self.assertTrue(np.allclose(a, b, rtol=0, atol=0),
+        held = _BoundedPchipInterpolator(SUPPORT_T, SUPPORT_S,
+                                         fill_low=COLDEST_S, fill_high=HOTTEST_COMPUTED_S)
+        self.assertTrue(np.allclose(build_action_spline(SUPPORT_T, SUPPORT_S)(inside),
+                                    held(inside), rtol=0, atol=0),
                         "the fill above the range changed the values inside it")
+
+    def test_holding_the_action_constant_makes_the_rate_grow(self):
+        """Why the replaced rule was wrong: it raises the rate where the rate must fall.
+
+        This builds the old behaviour explicitly rather than calling the module, because the
+        module no longer offers it. It is the justification for the rule, not a test of it.
+        """
+        held = _BoundedPchipInterpolator(SUPPORT_T, SUPPORT_S,
+                                         fill_low=COLDEST_S, fill_high=HOTTEST_COMPUTED_S)
+        s_hot = float(held(FAILED_SOLVE_T))
+        self.assertAlmostEqual(s_hot, HOTTEST_COMPUTED_S, places=6,
+                               msg="the old rule was not reconstructed")
+        self.assertLess(s_hot / FAILED_SOLVE_T, HOTTEST_COMPUTED_S / HOTTEST_COMPUTED_T,
+                        "S3/T does not fall with the constant action")
+        self.assertGreater(
+            bd.Gamma(np.array([FAILED_SOLVE_T]), np.array([s_hot]))[0],
+            bd.Gamma(np.array([HOTTEST_COMPUTED_T]), np.array([HOTTEST_COMPUTED_S]))[0],
+            "the rate does not grow under the replaced rule, so this test proves nothing")
 
 
 class TheBubbleNumberIntegralStopsWhereTheActionIsKnown(unittest.TestCase):
@@ -92,22 +114,10 @@ class TheBubbleNumberIntegralStopsWhereTheActionIsKnown(unittest.TestCase):
     data for. The two differ only where a solve failed at the hot end.
     """
 
-    @staticmethod
-    def _bound(support_T, support_S):
-        """What the observables now use as the upper limit of the bubble-number integral."""
-        t = np.asarray(support_T, dtype=float)
-        s = np.asarray(support_S, dtype=float) if support_S is not None else None
-        if s is not None and s.shape == t.shape:
-            known = np.isfinite(t) & np.isfinite(s)
-        else:
-            known = np.isfinite(t)
-        return float(np.nanmax(t[known])) if known.any() else float(np.nanmax(t))
-
     def test_a_failed_solve_at_the_hot_end_does_not_set_the_bound(self):
-        T = np.array([FAILED_SOLVE_T, HOTTEST_COMPUTED_T, 47.5670])
-        S = np.array([np.nan, HOTTEST_COMPUTED_S, 6964.0])
-        self.assertAlmostEqual(self._bound(T, S), HOTTEST_COMPUTED_T, places=6)
-        self.assertGreater(float(np.nanmax(T)), self._bound(T, S),
+        bound = hottest_known_action_temperature(SUPPORT_T, SUPPORT_S)
+        self.assertAlmostEqual(bound, HOTTEST_COMPUTED_T, places=6)
+        self.assertGreater(float(np.nanmax(SUPPORT_T)), bound,
                            "the support's hottest temperature is not above the new bound, so "
                            "this coupling does not exercise the rule")
 
@@ -115,12 +125,12 @@ class TheBubbleNumberIntegralStopsWhereTheActionIsKnown(unittest.TestCase):
         """Where every solve succeeded the bound is the one it always was."""
         T = np.array([61.291, 55.0, 47.567])
         S = np.array([9000.0, 8000.0, 6964.0])
-        self.assertEqual(self._bound(T, S), float(np.nanmax(T)))
+        self.assertEqual(hottest_known_action_temperature(T, S), float(np.nanmax(T)))
 
     def test_a_support_with_no_action_at_all_still_gives_a_bound(self):
         T = np.array([61.291, 55.0, 47.567])
-        S = np.array([np.nan, np.nan, np.nan])
-        self.assertEqual(self._bound(T, S), float(np.nanmax(T)))
+        self.assertEqual(hottest_known_action_temperature(T, np.array([np.nan] * 3)),
+                         float(np.nanmax(T)))
 
     def test_it_falls_back_where_the_actions_are_not_usable(self):
         """The guard above this code establishes the temperatures, not the actions.
@@ -132,7 +142,7 @@ class TheBubbleNumberIntegralStopsWhereTheActionIsKnown(unittest.TestCase):
         T = np.array([61.291, 55.0, 47.567])
         for label, S in (("absent", None), ("a different length", np.array([1.0, 2.0]))):
             with self.subTest(actions=label):
-                self.assertEqual(self._bound(T, S), float(np.nanmax(T)))
+                self.assertEqual(hottest_known_action_temperature(T, S), float(np.nanmax(T)))
 
 
 if __name__ == "__main__":

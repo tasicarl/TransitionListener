@@ -210,6 +210,51 @@ class _BoundedPchipInterpolator:
         return out
 
 
+def build_action_spline(TSYM, S):
+    """The percolation action spline, bounded so the rate vanishes above the computed range.
+
+    Above the hottest temperature whose action was computed there is no nucleation, not a
+    constant action. Holding the action constant lets S/T fall as T rises, so the rate *grows*
+    towards high temperature, which is backwards: the barrier grows there and the rate has to
+    vanish. Measured on the 2HDM at lambda3 = 5.7727298627, where the action solve failed at
+    the hot end of the support: the action was held at its value at T = 49.28, S3/T fell from
+    151.0 to 130.2 by T = 57.18, and the bubble number density came out 7338 times too large,
+    which put the mean bubble separation 19 times too low and betaH_RH at 1883 against 99 and
+    96 at the neighbouring couplings. An infinite action gives a rate of zero there, which is
+    the limit, and is what the estimator's own spline in `percolation_adaptivestepsize`
+    already returns.
+    """
+    S = np.asarray(S, dtype=float)
+    finite_s = S[np.isfinite(S)]
+    return _BoundedPchipInterpolator(
+        TSYM,
+        S,
+        fill_low=float(finite_s[-1]),
+        fill_high=np.inf,
+    )
+
+
+def hottest_known_action_temperature(support_T, support_S):
+    """The upper limit of the bubble-number integral: the hottest temperature with an action.
+
+    Not the hottest in the support. A temperature whose solve failed carries no integrand, and
+    taking it as the bound integrates over a stretch the action spline has no data for. The two
+    differ only where a solve failed at the hot end, which was one coupling of the 333 resolved
+    across the validation scans.
+
+    The caller's guard establishes the temperatures, not the actions, and `PercolationResult.S`
+    is optional and need not line up with `TSYM`, so anything unusable here falls back to the
+    bound this used before rather than raising.
+    """
+    t = np.asarray(support_T, dtype=float)
+    s = np.asarray(support_S, dtype=float) if support_S is not None else None
+    if s is not None and s.shape == t.shape:
+        known = np.isfinite(t) & np.isfinite(s)
+    else:
+        known = np.isfinite(t)
+    return float(np.nanmax(t[known])) if known.any() else float(np.nanmax(t))
+
+
 @dataclass
 class TransitionObservableInfo:
     """Collection of transition observable data."""
@@ -651,24 +696,7 @@ class TransitionObservables:
             core_spline_error = err
 
         try:
-            finite_s = S[np.isfinite(S)]
-            Sint = _BoundedPchipInterpolator(
-                TSYM,
-                S,
-                fill_low=float(finite_s[-1]),
-                # Above the hottest temperature whose action was computed there is no
-                # nucleation, not a constant action. Holding the action constant lets S/T fall
-                # as T rises, so the rate *grows* towards high temperature, which is backwards:
-                # the barrier grows there and the rate has to vanish. Measured on the 2HDM at
-                # lambda3 = 5.7727298627, where the action solve failed at the hot end of the
-                # support: the action was held at its value at T = 49.28, S3/T fell from 151.0
-                # to 130.2 by T = 57.18, and the bubble number density came out 7338 times too
-                # large, which put the mean bubble separation 19 times too low and
-                # betaH_RH at 1883 against 99 and 96 at the neighbouring couplings. An infinite
-                # action gives a rate of zero there, which is the limit, and is what the
-                # estimator's own spline in `percolation_adaptivestepsize` already returns.
-                fill_high=np.inf,
-            )
+            Sint = build_action_spline(TSYM, S)
         except Exception as err:
             if core_spline_error is None:
                 core_spline_error = err
@@ -1031,22 +1059,8 @@ class TransitionObservables:
                 # with numerical noise of its own. The integrand is exponentially
                 # suppressed above Tnuc, and the percolation support still sets
                 # the upper bound.
-                # The upper limit is the hottest temperature whose action is known, not the
-                # hottest in the support: a temperature whose solve failed carries no
-                # integrand, and taking it as the bound integrates over a stretch the action
-                # spline has no data for. They differ only where a solve failed at the hot
-                # end, which was one coupling of the 333 resolved across the validation scans.
-                # The guard above establishes TSYM, not S, and the two need not line up, so
-                # anything unusable here falls back to the bound this used before.
-                support_t = np.asarray(percolation.TSYM, dtype=float)
-                support_s = (np.asarray(percolation.S, dtype=float)
-                             if percolation.S is not None else None)
-                if support_s is not None and support_s.shape == support_t.shape:
-                    known = np.isfinite(support_t) & np.isfinite(support_s)
-                else:
-                    known = np.isfinite(support_t)
-                support_tmax = (float(np.nanmax(support_t[known])) if known.any()
-                                else float(np.nanmax(support_t)))
+                support_tmax = hottest_known_action_temperature(
+                    percolation.TSYM, percolation.S)
                 tmax_rh = support_tmax
                 tcrit = getattr(ctx.tr, "Tcrit", None)
                 if (
