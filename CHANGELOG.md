@@ -298,8 +298,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   temperature. The bubble number density came out 7338 times too large, which put the mean
   bubble separation 19 times too low at `RH = 0.002352` against 0.044533 and 0.046287 at the
   neighbouring couplings, `betaH_RH` at 1883 against 99.4 and 95.7, and the LISA signal-to-noise
-  ratio at 7.8 against 23.9 and 26.5. With the fix that coupling gives `RH = 0.045670` and
-  `betaH_RH = 96.95`. Where no solve fails the two rules agree and nothing moves.
+  ratio at 7.8 against 23.9 and 26.5. With the fix that coupling gives `RH = 0.045396` and
+  `betaH_RH = 97.53`, between its neighbours at 99.42 and 95.65, and the LISA
+  signal-to-noise ratio 25.18 between 23.92 and 26.49. Where no solve fails the two rules
+  agree and nothing moves: the four U(1) scans behind figures 4, 12 and 13 are
+  bit-identical in every observable but `RH` and `betaH_RH`, which move at 51 points of
+  1080 by at most 4.7e-04, with every error code unchanged.
 
 - **The adaptive percolation controller no longer spends its budget below the transition,
   and no longer refuses to repair a jump it then rejects the profile for.** Eight separate
