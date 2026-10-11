@@ -2301,11 +2301,12 @@ class PercolationDiagnostics:
             support_bank_temperatures=[float(value) for value in support_bank.tolist()],
             action_temperatures=[float(value) for value in action_temperatures.tolist()],
         )
-        # `getattr` rather than attribute access, because the fixed_step_size solver has its
-        # own `PercolationState` without this field. The snapshot is taken after the solve has
-        # already succeeded, so nothing in it may raise: the estimate is typed
-        # `dict[str, float | None]`, and a None or a missing key is reported as nan instead of
-        # turning a completed percolation solve into a failed point.
+        # `getattr` rather than attribute access: the fixed_step_size solver has its own
+        # `PercolationState` without this field, and although that one never reaches this
+        # function today, the snapshot is taken after the solve has already succeeded and
+        # so nothing in it may raise. The estimate is typed `dict[str, float | None]`, and a
+        # None or a missing key is reported as nan rather than turning a completed
+        # percolation solve into a failed point.
         estimate = getattr(state, "accuracy_estimate", None)
         if isinstance(estimate, dict):
             met = estimate.get("targets_met")
@@ -2360,18 +2361,28 @@ class PercolationDiagnostics:
         return metadata
 
 
-# Decades below the in-band rate peak at which a sample can no longer corrupt an
-# observable, and is therefore not worth judging for smoothness. The grid builders have
-# their own floor at 1e3 decades, which is right for deciding where to *place* support --
-# being permissive there only costs a few wasted evaluations -- but far too loose for
-# deciding whether a wobble is an instability. Every observable (Tperc, Tf, RH) follows
-# from the integral of the rate, so a sample N decades below the peak shifts it by at most
-# ~1e-N up to polynomial volume factors; past N ~ 16 that is below double precision, so any
-# threshold above ~20 cannot mask a defect that is visible in a result. Measured on the
-# 2HDM edge line, every false rejection sat at 40.5 decades or deeper (max 688.5, 22 cases
-# across the coarse, refined and marginal lines), which bounds the useful window to roughly
-# [20, 40]. 30 sits in the middle, with 1.5x margin over the precision bound below and 1.35x
-# to the shallowest observed false positive above.
+# Decades below the in-band rate peak beyond which a sample is no longer judged for
+# smoothness. This answers a different question from the grid builders' floor at 1e3
+# decades: that one decides where to *place* support, where being permissive costs only a
+# few wasted evaluations, while this one decides whether a wobble is evidence of an
+# unstable bounce solve, and one quadratic in ln T cannot describe a range of hundreds of
+# decades at all.
+#
+# Both ends of the window are measured, not argued from precision. Above about 40 the gate
+# goes back to firing on the cases it was written for: every false rejection sat at 40.5
+# decades or deeper (max 688.5, 22 cases across the coarse, refined and marginal 2HDM
+# lines). Below about 20 the window starves the fit, which needs five active samples for
+# its quadratic: at 30 decades one of the 83 measured profiles already has only two
+# support points inside the window, and narrowing it moves more profiles into the
+# "unassessable" state, which measures nothing. 30 sits between the two, with 1.35x margin
+# to the shallowest observed false positive.
+#
+# Note what this does *not* claim: that a sample below the floor cannot matter at all. The
+# grid builders' comment records contributing intervals -- worth more than a millionth of
+# the percolation integral -- as deep as 448 decades below a profile's own peak, with a
+# median of 34, so depth alone does not bound a sample's weight. What the floor says is
+# that below it the gate cannot tell a bad solve from its own inability to fit, so it
+# reports the exclusion in `n_dead_rate_excluded` rather than a verdict.
 _JITTER_DEAD_RATE_DECADES = 30.0
 
 
@@ -2382,7 +2393,6 @@ def _action_rate_jitter_diagnostic(
     P: np.ndarray,
 ) -> dict[str, float | int | None]:
     """Measure non-smooth jumps in the active-band rate samples."""
-    from transitionlistener.percolation_adaptive_gridbuilders import _dead_rate_floor
     from transitionlistener.percolation_adaptive_rate import _log10_gamma_h4_array
 
     p_low = 0.01
@@ -2408,16 +2418,17 @@ def _action_rate_jitter_diagnostic(
     # in ln T across a dead tail that spans seven decades of temperature measures the fit's
     # inadequacy, not the data's: at lambda3 = 5.8205024605 that produced a "residual" of
     # 1.6e10 orders of magnitude and advised the user to increase the bounce precision for a
-    # sample at T = 1.4e-5 GeV. Samples whose rate has collapsed below the floor are
-    # excluded, so the diagnostic judges the band it can actually describe.
-    mask = mask & (log10_rate >= _dead_rate_floor(log10_rate))
-    # The floor above is the grid builders' and sits 1e3 decades down, which no sample on
-    # this line ever reached, so it excluded nothing and the gate still judged the dead tail.
-    # P rises past f_perc while the rate falls through hundreds of decades, so a sample can
-    # be well inside the probability band and still carry no weight at all: at
-    # lambda3 = 5.82015 the flagged point was 432 decades below the peak with P = 0.572,
-    # already past percolation, and its 34.6-decade "jump" is 8% of the range the quadratic
-    # has to span. Judge only the samples whose rate is still live.
+    # sample at T = 1.4e-5 GeV.
+    #
+    # The grid builders' floor, 1e3 decades below the peak, is far too loose to use here: it
+    # is sized for deciding where to *place* support, where being permissive costs only a few
+    # wasted evaluations, and no sample on the measured line ever reached it, so applying it
+    # excluded nothing and the gate still judged the dead tail. P rises past f_perc while the
+    # rate falls through hundreds of decades, so a sample can be well inside the probability
+    # band and still carry no weight at all: at lambda3 = 5.82015 the flagged point was 432
+    # decades below the peak with P = 0.572, already past percolation, and its 34.6-decade
+    # "jump" is 8% of the range the quadratic has to span. Judge only the samples whose rate
+    # is still live, with the threshold measured for this gate.
     band_idx = np.flatnonzero(mask)
     dead_in_band = 0
     if band_idx.size:
@@ -2633,9 +2644,7 @@ def _try_action_jitter_tunneltight_rescue(
                 )
         try:
             pot.config.tracingConf.tunneling_params = tight_tunneling
-            state.Sr[idx] = calcAction(
-                pot, temperature, phase_symmetric, phase_broken, outdict,
-            )
+            state.Sr[idx] = calcAction(pot, temperature, phase_symmetric, phase_broken, outdict)
         except Exception as exc:
             if old_key is not None and old_payload is not None:
                 outdict[old_key] = old_payload

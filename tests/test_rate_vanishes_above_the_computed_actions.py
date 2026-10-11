@@ -13,7 +13,7 @@ at T = 49.28:
 
   * the action was held at 7441.88, so S3/T fell from 151.0 at T = 49.28 to 130.2 at T = 57.18,
     which is a factor exp(20.8) = 1.1e9 in the rate;
-  * the bubble number density came out 7338 times too large, 2.3063e-36 against 3.1421e-40;
+  * the bubble number density came out 7340 times too large, 2.3063e-36 against 3.1421e-40;
   * the mean bubble separation came out 19 times too small, RH = 0.002352 where the neighbouring
     couplings give 0.044533 and 0.046287;
   * `betaH_RH` was 1883 against 99.4 and 95.7 at those neighbours, and the LISA signal-to-noise
@@ -24,15 +24,23 @@ One coupling of the 333 resolved across the five validation scans was affected.
 The estimator's own spline in `percolation_adaptivestepsize` already returns an infinite action
 above its data, so this makes the two agree.
 
-These tests call `build_action_spline` and `hottest_known_action_temperature`, which is what
-`TransitionObservables._compute_percolation` calls, so reverting either rule in the shipped
-module fails tests here rather than leaving them green against a copy of the logic.
+These tests call `build_action_spline` and `hottest_known_action_temperature`, the two shipped
+functions that carry the rules, so reverting either rule inside them fails tests here rather
+than leaving them green against a copy of the logic.
+
+Calling them is not the same statement as the observables using them, and the two are called
+from different methods: `build_action_spline` from `_compute_percolation` and
+`hottest_known_action_temperature` from `_compute_beta_and_separation`. Replacing either call
+with the expression it replaced left every test in this file green, so `TheObservablesUseTheseRules`
+below drives both methods and asserts the rule on what they produce.
 """
+import types
 import unittest
 
 import numpy as np
 
 from transitionlistener import bubbledynamics as bd
+from transitionlistener import transitionObservables as tobs
 from transitionlistener.transitionObservables import (
     _BoundedPchipInterpolator,
     build_action_spline,
@@ -143,6 +151,85 @@ class TheBubbleNumberIntegralStopsWhereTheActionIsKnown(unittest.TestCase):
         for label, S in (("absent", None), ("a different length", np.array([1.0, 2.0]))):
             with self.subTest(actions=label):
                 self.assertEqual(hottest_known_action_temperature(T, S), float(np.nanmax(T)))
+
+
+def _percolation_conf():
+    """The two settings the methods below read, in their bag-limit form.
+
+    `bag` keeps `expansion_interpolants` and `percolation_sound_speed_sq` off the potential,
+    which is `None` here, and the entropy-scheme comparison is switched off for the same
+    reason. Neither touches the two rules under test.
+    """
+    return types.SimpleNamespace(time_temperature_mode="bag", entropy_definition=None,
+                                 entropy_scheme_diagnostic=False)
+
+
+class TheObservablesUseTheseRules(unittest.TestCase):
+    """Both rules must reach the shipped methods, not only exist beside them.
+
+    The tests above pass against a `_compute_percolation` that builds the spline inline with
+    the old fill, and against a `_compute_beta_and_separation` that bounds the integral with
+    the support's hottest temperature. Both replacements were measured and left this file,
+    and the whole suite, green. These two drive the methods themselves.
+    """
+
+    def test_the_percolation_result_carries_the_bounded_spline(self):
+        """`_compute_percolation` must build its action spline with `build_action_spline`."""
+        original = tobs.calcPercAndEvolve
+        tobs.calcPercAndEvolve = lambda *a, **k: (
+            48.0, SUPPORT_T, np.full(SUPPORT_T.size, 1.0e-16),
+            np.array([0.001, 0.01, 0.3, 0.95]), SUPPORT_T / 2.0, SUPPORT_S,
+            types.SimpleNamespace())
+        try:
+            ctx = types.SimpleNamespace(
+                outdict={}, Tnuc=48.0, phase_symmetric=None, phase_broken=None, pot=None,
+                derived_params={}, verbose=False, derived_param_names=set(),
+                PercolationConf=_percolation_conf(), tr=types.SimpleNamespace(Tcrit=None))
+            result = tobs.TransitionObservables._compute_percolation(None, ctx, 1.0e-3, 100)
+        finally:
+            tobs.calcPercAndEvolve = original
+        self.assertFalse(ctx.derived_params.get("WARNING:no_perc_splines", False),
+                         "the splines failed to build, so this test asserts nothing")
+        self.assertTrue(
+            np.isinf(float(result.Sint(FAILED_SOLVE_T))),
+            "the percolation result's action spline is finite above the computed range, so "
+            "the rate it gives there grows instead of vanishing",
+        )
+        self.assertAlmostEqual(float(result.Sint(COLDEST_T - 5.0)), COLDEST_S, places=6,
+                               msg="the cold fill is not the coldest computed action")
+
+    def test_the_separation_integral_stops_at_the_hottest_known_action(self):
+        """`_compute_beta_and_separation` must bound the integral with the same rule."""
+        recorded = {}
+
+        def record_bound(Tperc, Tmax, Sint, Pint, Hint, **kwargs):
+            recorded["Tmax"] = float(Tmax)
+            return 1.0
+
+        percolation = types.SimpleNamespace(
+            Tperc=48.0, TSYM=SUPPORT_T, S=SUPPORT_S,
+            Sint=lambda x: np.full(np.shape(x), 7000.0), Pint=None,
+            Hint=lambda x: 1.0e-16, coolingInt=None, logEntropyInt=None, metadata=None)
+        ctx = types.SimpleNamespace(
+            derived_params={}, pot=None, verbose=False, outdict={}, phase_symmetric=None,
+            phase_broken=None, derived_param_names={"RH"},
+            PercolationConf=_percolation_conf(), tr=types.SimpleNamespace(Tcrit=None))
+        observables = tobs.TransitionObservables.__new__(tobs.TransitionObservables)
+        original = tobs.calcMeanBubbleSeparation
+        tobs.calcMeanBubbleSeparation = record_bound
+        try:
+            observables._compute_beta_and_separation(ctx, percolation, COLDEST_T, FAILED_SOLVE_T)
+        finally:
+            tobs.calcMeanBubbleSeparation = original
+        self.assertIn("Tmax", recorded, "the separation integral was never reached")
+        self.assertAlmostEqual(
+            recorded["Tmax"], HOTTEST_COMPUTED_T, places=6,
+            msg=f"the integral ran up to {recorded.get('Tmax')} rather than the hottest "
+                "temperature whose action was computed",
+        )
+        self.assertGreater(float(np.nanmax(SUPPORT_T)), recorded["Tmax"],
+                           "the support's hottest temperature is not above the bound, so "
+                           "this fixture does not exercise the rule")
 
 
 if __name__ == "__main__":

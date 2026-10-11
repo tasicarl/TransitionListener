@@ -2,9 +2,10 @@
 
 `calcTf` raises EternalInflationError when Pint never reaches f_final. On a strongly
 supercooled line that routinely happens *after* percolation -- all 14 such points on the
-2HDM edge line reached Pint between 0.3215 and 0.7640, above f_perc = 0.28957 -- so Tperc
-is determined at the moment the point is refused. The scan output records only the error
-code, so the message is the surviving record.
+2HDM marginal line, the 29-point zoom at the no-percolation edge, reached Pint between
+0.3215 and 0.7640, above f_perc = 0.28957 -- so Tperc is determined at the moment the point
+is refused. The scan output records only the error code, so the message is the surviving
+record.
 """
 import unittest
 
@@ -76,6 +77,58 @@ class CalcTfPopulatesTheFieldsTests(unittest.TestCase):
         err = self._call("bubbledynamics")
         self.assertIn("24.06", str(err))
         self.assertIn("0.7639687269359464", str(err))
+
+
+class EverySolverRefusalCarriesTheNumbersTests(unittest.TestCase):
+    """`calcTf` is not the only place that refuses for this reason.
+
+    Both percolation backends refuse inside step 3 as well, before `calcTf` is ever reached,
+    and those two raise sites were added with the same four keywords. Dropping them from
+    either one left the two tests above green, because they drive `calcTf` alone. Driving
+    step 3 needs a real profile and a Tperc solve, so the raise sites are read instead: a
+    consumer must not have to know which of the four decided.
+    """
+
+    MODULES = ("bubbledynamics", "bubbledynamics_fixedstep",
+               "percolation_adaptivestepsize", "percolation_fixedstepsize")
+    REQUIRED = {"Pint_max", "Tperc", "Tlow", "f_final"}
+
+    @staticmethod
+    def _raise_sites(module_name):
+        import ast
+        import importlib
+
+        module = importlib.import_module(f"transitionlistener.{module_name}")
+        tree = ast.parse(open(module.__file__).read(), module.__file__)
+        sites = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Raise) or not isinstance(node.exc, ast.Call):
+                continue
+            function = node.exc.func
+            name = (function.attr if isinstance(function, ast.Attribute)
+                    else getattr(function, "id", None))
+            if name == "EternalInflationError":
+                sites.append((node.lineno, {kw.arg for kw in node.exc.keywords}))
+        return sites
+
+    def test_all_four_are_found(self):
+        """Premise: the check below has something to check in each module."""
+        for module_name in self.MODULES:
+            with self.subTest(module=module_name):
+                self.assertEqual(
+                    len(self._raise_sites(module_name)), 1,
+                    f"expected exactly one EternalInflationError raise in {module_name}")
+
+    def test_each_one_reports_the_numbers_it_already_had(self):
+        for module_name in self.MODULES:
+            for lineno, keywords in self._raise_sites(module_name):
+                with self.subTest(module=module_name, line=lineno):
+                    self.assertTrue(
+                        self.REQUIRED <= keywords,
+                        f"{module_name}:{lineno} refuses without "
+                        f"{sorted(self.REQUIRED - keywords)}, so recovering those numbers "
+                        "needs the point run again",
+                    )
 
 
 if __name__ == "__main__":

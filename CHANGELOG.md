@@ -27,8 +27,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   crosses zero more than once, i.e. where the branch was chosen rather than determined.
 
 - **A refusal to complete reports the percolation temperature it had already determined.**
-  All 14 such points on the edge line reached `Pint` between 0.3215 and 0.7640, above
-  `f_perc`, so `Tperc` was in hand when the point was refused.
+  All 14 such points on the 2HDM marginal line, the 29-point zoom at the no-percolation
+  edge, reached `Pint` between 0.3215 and 0.7640, above `f_perc = 0.28957`, so `Tperc` was
+  in hand when the point was refused.
 
 - Four diagnostics of how a point was reached, rather than of what it is.
   `WARNING:action_rescue_attempted` says that actions were recomputed with the path
@@ -119,10 +120,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   strong supercooling `P` climbs past `f_perc` while `log10(Gamma/H^4)` falls through hundreds
   of decades. One quadratic in `ln T` cannot describe that: with the exemption disabled a
   perfectly smooth synthetic band is flagged with a 39.8-decade residual. All 22 rejections
-  measured on the 2HDM edge line sat 40.5 to 688.5 decades below the in-band rate peak, and 16
-  lay past percolation, where they cannot move `Tperc`, `RH` or `alpha`. Samples more than 30
-  decades below the peak are now excluded, with liveness taken from the cold-side running
-  maximum so that a downward spike cannot exempt itself.
+  measured across the coarse, refined and marginal 2HDM lines sat 40.5 to 688.5 decades below
+  the in-band rate peak, and 16 lay past percolation, where they cannot move `Tperc`, `RH` or
+  `alpha`. Samples more than 30 decades below the peak are now excluded, with liveness
+  taken from the cold-side running maximum so that a downward spike cannot exempt itself.
 
 - **`percolation_maxit` is raised from 10 to 20.** Every point rejected for an unresolved
   `Delta P` had reached the support-update limit with 112 to 119 action evaluations unspent.
@@ -136,11 +137,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   range, which is correct only while that residual is monotonic. Where it is not, the bound
   entered `alN > max_al` as though it were a physical strength, the runaway branch was skipped,
   and a wall that should run away was computed as a hybrid: `v_wall` came back 0.7475 and
-  0.9509 instead of 1 at two couplings, moving the LISA SNR by a factor of 17 at one of them.
+  0.9509 instead of 1 at two couplings, taking the LISA SNR at the first of them from 0.8076
+  to 11.269, a factor 14.
   The crossing is now sought across the range. **This departs from the reference implementation
   of `arxiv:2303.10171`, from which the routine is taken verbatim**, rather than fixing a defect
   in TransitionListener. Where the residual is monotonic the answer is unchanged, and 125 of 127
-  couplings on the 2HDM line are bit-identical.
+  couplings on the 2HDM line are bit-identical. Where it never goes negative there is no subsonic
+  branch to bound at all: the old code then handed `root_scalar` a bracket with equal signs at
+  both ends and raised a bare `ValueError: f(a) and f(b) must have different signs`, which
+  nothing upstream types, so the point was reported as error -1. That happens for 189 of 2475
+  triples swept over `c_b^2`, `c_s^2` in [0.05, 1/3] and eleven values of `psi_N`, 96 of them
+  with `psi_N` strictly below one. The search bound is reported there instead, which leaves the
+  subsonic-against-runaway verdict to `find_vw`'s own `shooting(v_J) < 0` test.
 
 - **The path-deformation basis grows when the force ratio plateaus** above its target instead
   of stopping there, about 2.5x faster on the 2HDM edge line.
@@ -287,7 +295,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `percolation_adaptivestepsize` already returned, so the two agree. The upper limit of the
   mean-bubble-separation integral is likewise the hottest temperature whose action is known
   rather than the hottest in the support, since a temperature whose solve failed carries no
-  integrand.
+  integrand. Only the adaptive backend is affected: the fixed step size backend builds its
+  action spline over the finite-action temperatures with `fill_value = (-inf, +inf)`, so it
+  already returned an infinite action above its data and its bubble-number integrand is
+  identically zero there.
 
   The two only differ where an action solve fails at the hot end of the support, which was one
   coupling of the 333 resolved across the validation scans: the 2HDM benchmark at
@@ -295,15 +306,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   action was at 49.28 GeV. The action was held at 7441.88, `S3/T` fell from 151.0 to 130.2 over
   that stretch, a factor `exp(20.8)` in the rate, and the integrand of the bubble-number
   integral peaked at the hot end with 99% of its weight there instead of at the percolation
-  temperature. The bubble number density came out 7338 times too large, which put the mean
+  temperature. The bubble number density came out 7340 times too large, which put the mean
   bubble separation 19 times too low at `RH = 0.002352` against 0.044533 and 0.046287 at the
   neighbouring couplings, `betaH_RH` at 1883 against 99.4 and 95.7, and the LISA signal-to-noise
   ratio at 7.8 against 23.9 and 26.5. With the fix that coupling gives `RH = 0.045396` and
   `betaH_RH = 97.53`, between its neighbours at 99.42 and 95.65, and the LISA
   signal-to-noise ratio 25.18 between 23.92 and 26.49. Where no solve fails the two rules
-  agree and nothing moves: the four U(1) scans behind figures 4, 12 and 13 are
-  bit-identical in every observable but `RH` and `betaH_RH`, which move at 51 points of
-  1080 by at most 4.7e-04, with every error code unchanged.
+  agree and nothing moves: over the four U(1) scans behind figures 4, 12 and 13, 1082 points
+  in all, `Tcrit`, `Tnuc`, `Tperc`, `Treh`, `alpha`, `betaH_S3`, `c_s` and `v_wall` are
+  bit-identical at every point and every error code is unchanged, while `RH` and `betaH_RH`
+  move at 51 of the 1080 points that resolve, by at most 4.7e-04.
 
 - **The adaptive percolation controller no longer spends its budget below the transition,
   and no longer refuses to repair a jump it then rejects the profile for.** Eight separate
@@ -344,8 +356,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
     is, because `S_3/T` is just as large on the hot shoulder: across the 31 recorded
     edge-line profiles the hottest retained support point sits between 478 and 509.
   - The rate-step refinement no longer refines an interval whose colder end has collapsed
-    more than 1000 decades below the profile's own rate peak, and the rate-jitter diagnostic
-    excludes samples below that floor. A fall out of the live region exceeds any
+    more than 1000 decades below the profile's own rate peak. That floor is sized for
+    deciding where to *place* support, where being permissive costs only a few wasted
+    evaluations; the rate-jitter gate judges smoothness instead and carries its own, much
+    tighter floor of 30 decades, under *Changed* above. A fall out of the live region exceeds any
     `max_log10_rate_step`, so the refinement walked lambda3 = 5.8205024605 down to
     T = 1.4e-5 GeV with `log10(Gamma/H^4) = -1.4e8`, whereupon one quadratic in `ln T`
     fitted across seven decades of temperature reported a residual of 1.6e10 orders of

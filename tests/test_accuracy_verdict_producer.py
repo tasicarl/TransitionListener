@@ -16,8 +16,6 @@ import numpy as np
 def _call(estimate, *, previous=None, acc=1e-2):
     """Run the producer with the accuracy estimate stubbed to a known dict."""
     from transitionlistener import percolation_adaptivestepsize as ad
-    import types
-
     from transitionlistener import config
     settings = config.PercolationConf()
     settings.acc_tperc = settings.acc_tfinal = settings.acc_rh = acc

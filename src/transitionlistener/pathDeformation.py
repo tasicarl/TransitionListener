@@ -1218,24 +1218,28 @@ def fullTunneling(
             break
         # 5. If the force ratio has stopped improving while still above target, the basis
         #    cannot express the remaining correction. Enlarge it instead of taking more
-        #    steps that cannot help.
-        force_ratio = _compute_force_ratio(iter_output.pts, iter_output.dphi, dV, settings)
-        if (
-            np.isfinite(force_ratio)
-            and force_ratio > convergence_target
-            and force_ratio > _PLATEAU_IMPROVEMENT * previous_force_ratio
-            and basis_doublings < _MAX_BASIS_DOUBLINGS
-        ):
-            basis_size = int(settings.deformation_init_params.get("nb", _DEFAULT_BASIS_SIZE))
-            settings.deformation_init_params["nb"] = 2 * basis_size
-            basis_doublings += 1
-            previous_force_ratio = np.inf      # the new basis starts its own descent
-            if settings.verbose:
-                print(f"Path deformation plateaued at fRatio = {force_ratio:.5g} above the "
-                      f"target {convergence_target:.5g}; enlarging the spline basis to "
-                      f"nb = {2 * basis_size}.")
-        else:
-            previous_force_ratio = force_ratio
+        #    steps that cannot help. Measuring the force ratio costs one more deformation
+        #    object and one more force evaluation per iteration, so it is measured only
+        #    while a doubling is still allowed: past the cap the value could no longer
+        #    change any decision, `previous_force_ratio` is never read again, and every
+        #    bounce solve of every temperature would pay for it.
+        if basis_doublings < _MAX_BASIS_DOUBLINGS:
+            force_ratio = _compute_force_ratio(iter_output.pts, iter_output.dphi, dV, settings)
+            if (
+                np.isfinite(force_ratio)
+                and force_ratio > convergence_target
+                and force_ratio > _PLATEAU_IMPROVEMENT * previous_force_ratio
+            ):
+                basis_size = int(settings.deformation_init_params.get("nb", _DEFAULT_BASIS_SIZE))
+                settings.deformation_init_params["nb"] = 2 * basis_size
+                basis_doublings += 1
+                previous_force_ratio = np.inf      # the new basis starts its own descent
+                if settings.verbose:
+                    print(f"Path deformation plateaued at fRatio = {force_ratio:.5g} above the "
+                          f"target {convergence_target:.5g}; enlarging the spline basis to "
+                          f"nb = {2 * basis_size}.")
+            else:
+                previous_force_ratio = force_ratio
     else:
         if settings.verbose:
             print("Reached maxiter in fullTunneling. No convergence.")

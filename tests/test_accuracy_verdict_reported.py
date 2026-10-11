@@ -85,6 +85,72 @@ class AccuracyVerdictTests(unittest.TestCase):
         self.assertEqual(d.final_active_support_points, 3)
 
 
+class TheControllerAttachesTheVerdictToTheProfile(unittest.TestCase):
+    """The hop before the dataclass: the solver has to put the estimate on the state.
+
+    `PercolationDiagnostics.from_state` reading `state.accuracy_estimate` is only half the
+    path. Nothing above wrote it until the controller loops were changed to, and replacing
+    both assignments with a plain `None` left this file, and the whole suite, green. This
+    drives step 2's loop with the profile sweep and the controller stubbed, so the decision
+    and the estimate are the ones the test chooses and the assignment is the only thing
+    under test.
+    """
+
+    @staticmethod
+    def _run(decision, estimate):
+        import types
+        from transitionlistener import bubbledynamics as bd
+        from transitionlistener import percolation_adaptivestepsize as adaptive
+
+        T = np.array([90.0, 80.0, 70.0])
+        grid = bd.PercolationGrid(TSYM=T, Tstart=90.0, TpercApprox=80.0, tmin=70.0,
+                                  tmax=90.0, TBROmin=70.0, TBROmax=90.0,
+                                  free_support_bank=T.copy())
+        settings = types.SimpleNamespace(n_action_max=60, maxit=20)
+        saved = (adaptive._compute_step2_profile,
+                 adaptive._dynamiczoomwindow_post_sweep_controller)
+        adaptive._compute_step2_profile = lambda *a, **k: None
+        adaptive._dynamiczoomwindow_post_sweep_controller = (
+            lambda *a, **k: (decision, estimate, 0, False))
+        try:
+            return adaptive._initial_percolation_scan_dynamiczoomwindow(
+                grid, settings, {}, None, None, None, 1.0, 1.0, False)
+        finally:
+            (adaptive._compute_step2_profile,
+             adaptive._dynamiczoomwindow_post_sweep_controller) = saved
+
+    def test_an_accepted_profile_carries_its_own_estimate(self):
+        estimate = {"targets_met": False, "RH_uncertainty": 0.276}
+        state = self._run("accept", estimate)
+        self.assertEqual(state.accuracy_estimate, estimate,
+                         "the controller's verdict did not reach the returned profile, so "
+                         "nothing downstream can report it")
+
+    def test_the_iteration_limit_exit_records_no_verdict(self):
+        """Its estimate was measured on an earlier grid, so it must not be attributed here."""
+        state = self._run("limit", {"targets_met": True, "RH_uncertainty": 1e-3})
+        self.assertIsNone(state.accuracy_estimate)
+
+    def test_step_three_carries_the_same_assignment(self):
+        """The twin. Step 3 has its own copy of this loop and its own copy of the line.
+
+        Driving step 3 needs a real profile and a Tperc solve, which this file cannot
+        afford, so the two copies are compared instead: a change to one of them that does
+        not reach the other is the recurring defect in this code base.
+        """
+        import inspect
+        from transitionlistener import percolation_adaptivestepsize as adaptive
+
+        line = 'state.accuracy_estimate = previous_estimate if decision == "accept" else None'
+        for function in (adaptive._initial_percolation_scan_dynamiczoomwindow,
+                         adaptive._refine_percolation_temperature_dynamiczoomwindow):
+            with self.subTest(function=function.__name__):
+                self.assertTrue(
+                    line in inspect.getsource(function),
+                    f"{function.__name__} does not attach the accuracy estimate to the "
+                    "profile it returns, so one of the two controller loops drops it")
+
+
 def _observables_context(metadata):
     """A context carrying only the observable that gates the verdict block."""
     import types

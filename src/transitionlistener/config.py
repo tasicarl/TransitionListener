@@ -250,7 +250,7 @@ all_observables = {
     "WARNING:v_wall_branch_ambiguous":
         R"$\mathrm{WARNING:}\ v_\mathrm{wall} \mathrm{\ branch\ ambiguous}$",
     "WARNING:v_wall_no_solution":
-        R"$\mathrm{WARNING:} v_\mathrm{wall} \mathrm{\ has\ no\ solution}$",
+        R"$\mathrm{WARNING:}\ v_\mathrm{wall} \mathrm{\ has\ no\ solution}$",
     "WARNING:betaH_small": R"$\mathrm{WARNING:} (\beta/H)_{RH} \mathrm{\ too\ small}$",
     "WARNING:betaH_very_small": R"$\mathrm{WARNING:} (\beta/H)_{RH} \mathrm{\ very\ small}$",
     "WARNING:betaH_mismatch": R"$\mathrm{WARNING:} (\beta/H)_{S_3} \mathrm{\ vs\ } (\beta/H)_{RH} \mathrm{\ mismatch}$",

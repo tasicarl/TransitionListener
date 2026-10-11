@@ -25,7 +25,6 @@ Documentation: https://tasillo.de/TransitionListener/
 
 from __future__ import annotations
 
-import types
 import unittest
 
 import sys
@@ -77,6 +76,32 @@ class ExemptedRepairOrderingTests(unittest.TestCase):
             "a jump that is not post-peak was reported as exempted, which would hand the "
             "remesh priority over repairs that the veto never blocked",
         )
+
+    def test_a_post_peak_jump_the_generic_criterion_selected_is_not_exempted(self):
+        """Control: only an acceptance-fatal jump yields its turn to the remesh.
+
+        A post-peak jump selected by the historical criterion is still vetoed as inert, so
+        there is no repair for the remesh to preempt and the predicate must say so. Without
+        the strict-mode test the predicate reports every post-peak jump as exempted, which
+        hands the remesh priority over repairs the veto never blocked. The profile is the
+        control of ``test_fatal_jump_is_always_repairable``: ``P`` above 0.2 everywhere, so
+        the strict region does not apply, with the final jump past the generic threshold.
+        """
+        P = np.clip(self.P + 0.25, 0.0, 1.0)
+        P[-1] = 0.95
+        _interval, _threshold, mode = gridbuilders._preferred_probability_jump_interval(
+            self.T, P, self.settings, for_acceptance=True)
+        self.assertNotEqual(mode, "strict P<0.2",
+                            "the control must exercise the non-strict path")
+        self.assertTrue(
+            gridbuilders._rate_interval_is_post_peak_inert(
+                self.T, self.S, self.H, _interval[0], _interval[1], self.settings, vw=1.0),
+            "the control jump must be post-peak, or the strict test is not what decides")
+        self.assertFalse(
+            gridbuilders._acceptance_jump_is_exempted_inert(
+                self.T, P, self.settings, actions=self.S, hubble=self.H, vw=1.0),
+            "a post-peak jump that the acceptance test does not reject on was reported as "
+            "exempted, so the remesh would outrank repairs the veto never blocked")
 
     def test_a_profile_without_a_fatal_jump_is_not_exempted(self):
         """Control: no acceptance-fatal jump means nothing to exempt."""

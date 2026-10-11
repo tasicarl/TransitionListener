@@ -10,7 +10,8 @@ symmetric-phase sound speed leaves cs2 at 0.30116 instead of ~0.334: `func` is p
 alN = 1 and negative from alN = 10, so the early return fired, `max_al` came back as the
 search bound 100, `alN > max_al` was false for every physical strength, and the wall velocity
 was computed as a hybrid 0.7475 instead of the runaway 1 that all its neighbours get. That
-moved the LISA SNR from ~0.7 to 11.27, a visible spike in the paper figure.
+moved the LISA SNR from 0.8076 to 11.269, a factor 14 and a visible spike in the paper
+figure.
 
 The inputs below are the measured ones, so these are the real numbers, not a construction.
 """
@@ -59,6 +60,27 @@ class MaxAlRangeSearchTests(unittest.TestCase):
         h = _hydro()
         value = h.max_al(SPIKE["cb2"], SPIKE["cs2"], SPIKE["psiN"], 0.05)
         self.assertAlmostEqual(value, 0.05, places=9)
+
+    def test_a_range_with_no_subsonic_branch_reports_the_bound_instead_of_raising(self):
+        """The other no-crossing case, where the old code died with an untyped error.
+
+        With the broken phase softer than the symmetric one the residual can stay positive
+        across the whole range, so there is no subsonic branch to bound. The old code then
+        handed `root_scalar` a bracket with equal signs at both ends and raised a bare
+        `ValueError: f(a) and f(b) must have different signs`, which nothing upstream types,
+        so the point was reported as error -1. Of 2475 triples swept over `c_b^2`, `c_s^2`
+        in [0.05, 1/3] and eleven values of `psi_N`, 189 behaved that way, 96 of them with
+        `psi_N` strictly below one; this is one of those 96.
+
+        Reporting the bound leaves the verdict to `find_vw`, which still decides between the
+        subsonic solve and the runaway branch on its own `shooting(v_J) < 0` test. The
+        branch flag stays down, because no crossing is absence of a subsonic branch rather
+        than a residual with more than one.
+        """
+        h = _hydro()
+        value = h.max_al(0.05, 0.131, 0.905, 100)
+        self.assertAlmostEqual(value, 100.0, places=9)
+        self.assertIs(h.max_al_non_monotonic, False)
 
 
 class BranchAmbiguityIsFlaggedTests(unittest.TestCase):

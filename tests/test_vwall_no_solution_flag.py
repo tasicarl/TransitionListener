@@ -7,10 +7,10 @@ real prediction of no signal. Measured at lambda3 = 5.5475 on the 2HDM line: alp
 the largest of its neighbours, and betaH_RH = 318, the smallest, both of which should *raise*
 the SNR; the points at +-0.00025 give 1.83 and 0.058.
 
-The trap this test guards: v_wall == 1 is the *normal* outcome on a supercooled line -- 125 of
-126 resolved points, via the documented runaway branches -- so an implementation that flagged
-"unusual" wall velocities, or anything outside (0, 1), would fire on almost every point. Only
-the zero is a non-solution.
+The trap this test guards: v_wall == 1 is the *normal* outcome on a supercooled line -- all 127
+resolved points of the 2HDM broad line, via the documented runaway branches -- so an
+implementation that flagged "unusual" wall velocities, or anything outside (0, 1), would fire on
+almost every point. Only the zero is a non-solution.
 """
 import types
 import unittest

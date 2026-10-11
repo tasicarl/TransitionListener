@@ -218,11 +218,17 @@ def build_action_spline(TSYM, S):
     towards high temperature, which is backwards: the barrier grows there and the rate has to
     vanish. Measured on the 2HDM at lambda3 = 5.7727298627, where the action solve failed at
     the hot end of the support: the action was held at its value at T = 49.28, S3/T fell from
-    151.0 to 130.2 by T = 57.18, and the bubble number density came out 7338 times too large,
+    151.0 to 130.2 by T = 57.18, and the bubble number density came out 7340 times too large,
     which put the mean bubble separation 19 times too low and betaH_RH at 1883 against 99 and
     96 at the neighbouring couplings. An infinite action gives a rate of zero there, which is
     the limit, and is what the estimator's own spline in `percolation_adaptivestepsize`
     already returns.
+
+    There is deliberately no `_fixedstep` twin of this. That backend builds its own `Sint` as
+    an `interp1d` over the finite-action temperatures with `fill_value=(-inf, +inf)`, so it
+    already returns an infinite action above its data, and its bubble-number integral runs to
+    the hottest support temperature only because the integrand is identically zero above the
+    last computed action.
     """
     S = np.asarray(S, dtype=float)
     finite_s = S[np.isfinite(S)]

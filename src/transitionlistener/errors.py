@@ -402,8 +402,9 @@ class EternalInflationError(Exception):
 
     ``calcTf`` also raises it when the true vacuum fraction never reaches ``f_final``, which
     is a different statement and the far more common one on a strongly supercooled line: the
-    transition *percolated* and then stalled. Measured on the 2HDM edge line, all 14 such
-    points reached ``Pint`` between 0.3215 and 0.7640, every one above ``f_perc = 0.28957``,
+    transition *percolated* and then stalled. Measured on the 2HDM marginal line, the 29-point
+    zoom at the no-percolation edge from ``lambda3 = 5.8193`` to 5.8222, all 14 such points
+    reached ``Pint`` between 0.3215 and 0.7640, every one above ``f_perc = 0.28957``,
     so each had a well-defined percolation temperature at the moment it was refused.
     ``Tperc``, ``Pint_max``, ``Tlow`` and ``f_final`` carry those numbers, because the
     alternative is running the point again to recover what the solver already had.

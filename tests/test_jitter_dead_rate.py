@@ -1,6 +1,6 @@
 """Change 25: the action-rate jitter gate must not judge a dead rate.
 
-Reproduces the measured situation at lambda3 = 5.82015 on the 2HDM edge line: the rate
+Reproduces the measured situation at lambda3 = 5.82015 on the 2HDM marginal line: the rate
 falls through ~430 decades across the probability band while P climbs past f_perc, and a
 ~35-decade wobble sits deep in that tail, 432 decades below the rate peak and already past
 percolation. The old gate called that an instability and rejected the whole point.
@@ -19,7 +19,10 @@ def _arrays(wobble_decades, wobble_at_index, n=40, span_decades=430.0, grading=3
     on the 2HDM edge line, a 30-decade live window holds 8 to 99 cached support points
     (median 62 of ~150), so a uniform grid would misrepresent the geometry the gate sees:
     at ~11 decades per sample the live window holds 3 points and the gate cannot fit its
-    quadratic at all, which is a state worth testing but is not the common one.
+    quadratic at all, which is a state worth testing but is not the common one. That state
+    does occur off the edge line -- one of the 83 profiles recorded across all the lines
+    holds only two -- which is what `test_unassessable_band_is_reported_not_called_clean`
+    covers.
     """
     T = np.linspace(40.0, 3.0, n)
     H = np.full(n, 1.0e-16)
@@ -88,11 +91,54 @@ class JitterDeadRateTests(unittest.TestCase):
             "an unassessable band is indistinguishable from a clean one",
         )
 
-    def test_threshold_is_inside_the_derived_window(self):
-        """Above ~20 decades it cannot mask a defect; below ~40 it catches the measured
-        false positives. The constant must stay in that window."""
+    def test_threshold_is_inside_the_measured_window(self):
+        """Both ends are measurements, and the constant must stay between them.
+
+        Above about 40 decades the gate goes back to firing on the cases it was written
+        for: the shallowest of the 22 false rejections sat at 40.5. Below about 20 the
+        window starves the quadratic, which needs five active samples; at 30 one of the 83
+        measured profiles already has only two inside it.
+        """
         self.assertGreaterEqual(self.bd._JITTER_DEAD_RATE_DECADES, 20.0)
         self.assertLessEqual(self.bd._JITTER_DEAD_RATE_DECADES, 40.0)
+
+    def test_the_runs_own_deadline_is_not_absorbed_by_the_fit(self):
+        """The quadratic's `except Exception` must not swallow `errors.Timeout`.
+
+        The deadline is raised from a SIGALRM handler, so it can arrive inside `np.polyfit`
+        like anywhere else. Absorbed here it would be reported as "the fit failed, residual
+        nan" and the solve would carry on past the time it was given.
+        """
+        from transitionlistener import errors
+
+        T, H, S, P = _arrays(0.0, wobble_at_index=0, span_decades=20.0)
+        original = np.polyfit
+
+        def timing_out(*args, **kwargs):
+            raise errors.Timeout("deadline reached inside the jitter fit")
+
+        np.polyfit = timing_out
+        try:
+            with self.assertRaises(errors.Timeout):
+                self.diag(T, H, S, P)
+        finally:
+            np.polyfit = original
+
+    def test_an_ordinary_fit_failure_is_still_absorbed(self):
+        """Control: a genuine solver failure must not turn a computed point into a crash."""
+        T, H, S, P = _arrays(0.0, wobble_at_index=0, span_decades=20.0)
+        original = np.polyfit
+
+        def failing(*args, **kwargs):
+            raise np.linalg.LinAlgError("SVD did not converge")
+
+        np.polyfit = failing
+        try:
+            out = self.diag(T, H, S, P)
+        finally:
+            np.polyfit = original
+        self.assertTrue(math.isnan(out["max_residual_oom"]),
+                        "a failed fit must report no residual rather than a number")
 
 
 if __name__ == "__main__":

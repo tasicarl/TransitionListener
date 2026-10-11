@@ -82,3 +82,41 @@ def test_no_claim_is_made_when_the_caller_does_not_know():
     for phrase in ("unspent", "fully spent", "support updates",
                    "already spent its remaining support budget"):
         assert phrase not in message, f"the message asserted {phrase!r} without evidence"
+
+
+def _rejection_call_sites():
+    """Every call to the rejection in the adaptive solver, with the keywords it passes."""
+    import ast
+
+    from transitionlistener import percolation_adaptivestepsize as adaptive
+
+    tree = ast.parse(open(adaptive.__file__).read(), adaptive.__file__)
+    sites = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = (node.func.attr if isinstance(node.func, ast.Attribute)
+                else getattr(node.func, "id", None))
+        if name == "_raise_if_large_delta_p_underresolved":
+            sites.append((node.lineno, {kw.arg for kw in node.keywords}))
+    return sites
+
+
+def test_the_solver_supplies_the_numbers_at_every_rejection():
+    """The message can only name the resource the caller tells it about.
+
+    `_resource_note` falls silent without the three numbers, which is the right default for
+    a caller that does not have them -- and which also means a solver call site that stops
+    passing them silently loses the whole diagnosis, with the tests above still green
+    because they call the rejection directly. The four step-3 exits all have the numbers in
+    hand, so all four must pass them. Driving step 3 needs a real profile and a Tperc solve,
+    so the call sites are read instead.
+    """
+    sites = _rejection_call_sites()
+    assert len(sites) == 4, f"expected four rejection call sites, found {len(sites)}"
+    required = {"remaining_budget", "iterations_used", "max_iterations"}
+    for lineno, keywords in sites:
+        missing = sorted(required - keywords)
+        assert not missing, (
+            f"percolation_adaptivestepsize.py:{lineno} rejects without {missing}, so the "
+            "message says nothing about which resource ran out")

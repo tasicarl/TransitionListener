@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import types
 import unittest
-from unittest import mock
 
 import numpy as np
 
@@ -73,6 +72,24 @@ class SettledActionRunTests(unittest.TestCase):
         """Only a *trailing* run matters; a hole in the middle is not the edge."""
         actions = [250.0, np.nan, np.nan, np.nan, 150.0, 140.0]
         self.assertFalse(gridbuilders._cold_walk_has_left_the_bounce_region(actions))
+
+    def test_the_run_length_is_the_one_the_constant_names(self):
+        """The boundary itself: two trailing failures are tolerated, three are the edge.
+
+        ``_COLD_WALK_MAX_FAILED_ACTIONS`` is the whole criterion, so the step either side
+        of it is checked rather than only a single failure against a long run.
+        """
+        base = [250.0, 210.0, 170.0, 150.0]
+        for trailing in range(gridbuilders._COLD_WALK_MAX_FAILED_ACTIONS + 2):
+            with self.subTest(trailing=trailing):
+                self.assertEqual(
+                    gridbuilders._cold_walk_has_left_the_bounce_region(
+                        base + [np.nan] * trailing),
+                    trailing >= gridbuilders._COLD_WALK_MAX_FAILED_ACTIONS,
+                )
+        self.assertEqual(gridbuilders._COLD_WALK_MAX_FAILED_ACTIONS, 3,
+                         "the tolerated run length moved; a transition lying just below a "
+                         "single bad solve has to stay reachable")
 
 
 # hot -> cold, the order both walks work in
@@ -129,8 +146,8 @@ class Step23ColdExpansionTests(unittest.TestCase):
 # The step-1 scout is deliberately NOT unit-tested here. A stubbed driver was written
 # and then discarded: it passed before the guard existed, because the stub let the hot
 # branch consume the extension budget and produced only one cold probe, so the test
-# could not fail. A test that cannot fail is worse than no test. The scout's share of
-# the waste is being measured with an instrumented run instead; see PLAN_NEXT.md.
+# could not fail. A test that cannot fail is worse than no test. What the scout hands on
+# to step 2 is covered instead, in tests/test_scout_free_bank_is_usable.py.
 
 
 if __name__ == "__main__":

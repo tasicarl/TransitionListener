@@ -667,8 +667,8 @@ class Hydrodynamics():
         # alN = 1 and negative from alN = 10: the early return then discarded a root the
         # solver finds without trouble at alN = 0.06707, reported `max_al = 100`, and so
         # turned `alN > max_al` false for every physical strength. The wall velocity came
-        # back as a hybrid 0.7475 instead of the runaway 1 of all its neighbours, which moved
-        # the LISA SNR by a factor of 17.
+        # back as a hybrid 0.7475 instead of the runaway 1 of all its neighbours, which took
+        # the LISA SNR from 0.8076 to 11.269, a factor 14, on the same model configuration.
         #
         # `func < 0` is the side on which subsonic solutions exist, so the boundary is the
         # first crossing up from below, which is also the root the bracketed solve returns
@@ -700,9 +700,20 @@ class Hydrodynamics():
                 sol = root_scalar(func, bracket=(grid[index], grid[index + 1]),
                                   rtol=1e-10, xtol=1e-10)
                 return sol.root
-        # No crossing anywhere in the range: subsonic solutions survive to the top of the
-        # search, so the limit is at least `upper_limit` and the caller's comparison against
-        # it is the same statement it was before.
+        # No crossing anywhere in the range, which is two situations and both report the
+        # bound. Where the residual stays negative, subsonic solutions survive to the top of
+        # the search, the limit is at least `upper_limit`, and the caller's comparison
+        # against it is the same statement the early return made.
+        #
+        # Where it stays positive there is no subsonic branch anywhere in the range. The old
+        # code reached `root_scalar` with equal signs at both ends of the bracket there and
+        # raised a bare `ValueError: f(a) and f(b) must have different signs`, which nothing
+        # upstream types, so the point was reported as error -1. It is not a rare corner: of
+        # 2475 triples swept over c_b^2, c_s^2 in [0.05, 1/3] and eleven values of psi_N,
+        # 189 behaved that way, 96 of them with psi_N strictly below one, all with the
+        # broken phase softer than the symmetric one. Reporting the bound leaves the verdict
+        # to `find_vw`, whose own `shooting(v_J) < 0` test then decides between the subsonic
+        # solve and the runaway branch, instead of ending the point in an untyped error.
         return upper_limit
 
     def find_vw(self, alN : float, cb2 : float, cs2 : float,

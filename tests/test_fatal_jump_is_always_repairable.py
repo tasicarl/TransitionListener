@@ -1,8 +1,9 @@
 """A jump the acceptance test will reject must be repairable.
 
 ``_raise_if_large_delta_p_underresolved`` rejects a profile whose neighbouring ``Delta P``
-exceeds the strict threshold in the ``P < 0.2`` region. ``_build_dynamiczoomwindow_unresolved_jump_grid``
-builds the support that repairs such a jump - but it used to return ``None`` for any
+exceeds the strict threshold in the ``P < 0.2`` region.
+``_build_dynamiczoomwindow_unresolved_jump_grid`` builds the support that repairs such a
+jump - but it used to return ``None`` for any
 interval that ``_rate_interval_is_post_peak_inert`` declared inert, i.e. any interval
 colder than the nucleation-rate peak.
 
