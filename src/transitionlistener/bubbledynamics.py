@@ -157,7 +157,7 @@ def _finalize_percolation_state(
                 np.isclose(
                     previous,
                     float(value),
-                    atol=1e-10 * max(np.max(np.abs(previous)), abs(float(value)), 1.0),
+                    atol=1e-10 * max(np.max(np.abs(previous)), abs(float(value))),
                     rtol=0.0,
                 )
             )
@@ -447,7 +447,9 @@ def _temperature_grid(
     unique = [float(ordered[0])]
     for candidate in ordered[1:]:
         candidate = float(candidate)
-        scale = max(abs(unique[-1]), abs(candidate), 1.0)
+        # relative to the two temperatures: a floor of one in the model's internal units
+        # merged distinct temperatures of a strongly supercooled transition
+        scale = max(abs(unique[-1]), abs(candidate))
         if not math.isclose(unique[-1], candidate, abs_tol=1e-10 * scale, rel_tol=0.0):
             unique.append(candidate)
     return np.asarray(unique, dtype=float)

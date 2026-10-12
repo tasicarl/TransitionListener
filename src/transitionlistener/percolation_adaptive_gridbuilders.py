@@ -124,7 +124,7 @@ def _highest_tsym_with_tb_root(
 
     low = tmin
     high = tmax
-    scale = max(abs(tmin), abs(tmax), abs(TBROmin), abs(TBROmax), 1.0)
+    scale = max(abs(tmin), abs(tmax), abs(TBROmin), abs(TBROmax))
     tol = 1e-8 * scale
     for _ in range(80):
         if abs(high - low) <= tol:

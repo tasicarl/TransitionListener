@@ -52,13 +52,19 @@ def _temperature_tolerance(
     values: np.ndarray | list[float] | tuple[float, ...] | None,
     candidate: float,
 ) -> float:
-    """Return the absolute tolerance used when deduplicating temperature samples."""
+    """Return the absolute tolerance used when deduplicating temperature samples.
+
+    Relative to the temperatures involved, with no absolute floor. Temperatures are in the
+    model's internal units, and a strongly supercooled transition happens at internal
+    temperatures far below one: with a floor of one, the tolerance was 1e-6 absolute, which at
+    an internal temperature of 6e-6 is a sixth of the temperature, so every refinement point
+    inside a jump of P(T) counted as already present and was dropped.
+    """
     candidate = float(candidate)
     values_arr = np.asarray([] if values is None else values, dtype=float)
     scale = max(
         abs(candidate),
         np.max(np.abs(values_arr)) if values_arr.size else 0.0,
-        1.0,
     )
     return 1e-6 * scale
 
@@ -123,7 +129,7 @@ def _probability_at(temperature: float, temperatures: np.ndarray, probabilities:
     if temps.size < 2:
         return None
     temperature = float(temperature)
-    scale = max(np.max(np.abs(temps)), abs(temperature), 1.0)
+    scale = max(np.max(np.abs(temps)), abs(temperature))
     matches = np.flatnonzero(np.isclose(temps, temperature, atol=1e-10 * scale, rtol=0.0))
     if matches.size:
         value = float(probs[int(matches[0])])
@@ -227,7 +233,7 @@ def _refine_step1_rate_peak(
             lambda value: -float(interpolant(float(value))),
             bounds=(lower, upper),
             method="bounded",
-            options={"xatol": max(1e-10 * max(abs(lower), abs(upper), 1.0), 1e-14)},
+            options={"xatol": max(1e-10 * max(abs(lower), abs(upper)), 1e-14)},
         )
     except Exception:
         optimum = None
@@ -729,7 +735,7 @@ def _build_step1_hot_rate_anchor_grid(
 
     candidate = np.asarray([], dtype=float)
     current_hot = float(active[0])
-    scale = max(np.max(np.abs(active)), np.max(np.abs(temps)), 1.0)
+    scale = max(np.max(np.abs(active)), np.max(np.abs(temps)))
     atol = 1e-10 * scale
     hot_probability = float(probs[0]) if np.isfinite(probs[0]) else None
     hot_log_rate = float(log_rate[0]) if np.isfinite(log_rate[0]) else None
@@ -986,7 +992,7 @@ def _rate_interval_is_post_peak_inert(
     if not (np.isfinite(high) and np.isfinite(low) and high > low):
         return False
 
-    scale = max(np.max(np.abs(temps)), abs(high), abs(low), 1.0)
+    scale = max(np.max(np.abs(temps)), abs(high), abs(low))
     atol = _temperature_tolerance(temps, high) + _temperature_tolerance(temps, low) + 1.0e-12 * scale
     high_matches = np.flatnonzero(np.isclose(temps, high, rtol=0.0, atol=atol))
     low_matches = np.flatnonzero(np.isclose(temps, low, rtol=0.0, atol=atol))
