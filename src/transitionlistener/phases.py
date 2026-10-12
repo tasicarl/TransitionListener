@@ -76,8 +76,10 @@ class PhaseInfo:
         A unique identifier for the phase (usually an int).
     X, T, dXdT : array_like
         The minima and its derivative at different temperatures.
-    tck : tuple
-        Spline knots and coefficients, used in `interpolate.splev`.
+    interpolator : scipy.interpolate.PchipInterpolator
+        The minima against temperature. It is shape preserving: between two traced
+        temperatures each field component stays between the two values traced there.
+        Past the ends of the trace it extrapolates, as the B-spline it replaced did.
     low_trans : set
         Phases (identified by keys) which are joined by a second-order
         transition to this phase.
@@ -118,10 +120,7 @@ class PhaseInfo:
         self.dXdT = dXdT
         self.Tmax = T[-1]
         self.Tmin = T[0]
-        # Make the spline:
-        k = 3 if len(T) > 3 else 1
-        tck, u = interpolate.splprep(X.T, u=T, s=0, k=k)
-        self.tck = tck
+        self.interpolator = self._build_interpolator(T, X)
         # Make default connections
         self.low_trans = set()
         self.high_trans = set()
@@ -131,34 +130,73 @@ class PhaseInfo:
         # by symmetry transformations of the potential
         self.mirrorPhase = None
 
+    @staticmethod
+    def _build_interpolator(T: np.ndarray, X: np.ndarray) -> interpolate.PchipInterpolator:
+        """Interpolate the traced minima against temperature without overshooting them.
+
+        A phase is a curve of minima that the tracer has already found; between two traced
+        temperatures the field value has to stay in the range the trace establishes. An
+        interpolating cubic does not guarantee that. The traced temperatures are not evenly
+        spaced -- the tracer clusters them where it takes small steps and leaves gaps where it
+        takes large ones -- and a cubic through spacing ratios of that size oscillates.
+
+        The failure mode is a displaced phase rather than a slightly wrong one. The bounce
+        solver reads the phase through `valAt`, so an excursion is handed to it as the point it
+        tunnels from; starting from a displaced symmetric phase shortens the path and lowers the
+        barrier, and the action comes out too small over the temperatures either side.
+
+        A shape preserving interpolator cannot leave the data's range: between two traced
+        temperatures each field component stays between the two values traced there, so the
+        largest field value anywhere is the largest traced one. A trace that exhibits the
+        excursion is the fixture of `tests/test_phase_interpolation_does_not_overshoot.py`,
+        which compares the two interpolations on it directly.
+
+        Outside the traced range it extrapolates, as `splev` on this spline also did.
+        `bubbledynamics` reads a raise from `valAt` as a phase that cannot be evaluated at that
+        temperature, and clamps its stencils rather than range-checking them, so a refusal here
+        would be taken for a missing phase and a NaN would pass that test unnoticed. Shape
+        preservation says nothing about the extrapolation: it is a statement about the interval
+        between two nodes.
+        """
+        T = np.asarray(T, dtype=float)
+        X = np.asarray(X, dtype=float)
+        if T.size < 2:
+            raise ValueError("A phase needs at least two traced temperatures to interpolate.")
+        # Short traces need no special case. `PchipInterpolator` reduces to the straight line
+        # between two nodes, which is what the old code also did by dropping to `k = 1`; on
+        # three it gives a cubic where the old code gave two straight segments, and that cubic
+        # is shape preserving too, so it stays within the three traced values.
+        return interpolate.PchipInterpolator(T, X, axis=0, extrapolate=True)
+
     def valAt(self, T: float | np.ndarray, deriv: int = 0) -> np.ndarray:
-        """Find the minimum at the value `T` using a spline.
+        """Find the minimum at the value `T` from the interpolated trace.
 
         Parameters
         ----------
         T : float | np.ndarray
-            The temperature at which to eval the minimum
+            The temperature at which to eval the minimum. Outside the traced range the
+            interpolation is extrapolated rather than refused.
         deriv : int
-            If deriv > 0, instead return the derivative of the minimum with
-            respect to `T`. Can return up to the third derivative for cubic
-            splines (when ``len(X) > 3``) or first derivative for linear
-            splines.
+            If deriv > 0, return that derivative of the minimum with respect to `T`
+            instead of its value. The interpolant is a piecewise cubic whatever the
+            length of the trace, so every order is available; the second and third jump
+            at the traced temperatures, and orders above the third are zero.
 
         Returns
         -------
         np.ndarray :
-            The minimum at the temperature `T`."""
-        T = np.asanyarray(T).T
-        y = interpolate.splev(T, self.tck, der=deriv)
-        return np.asanyarray(y).T
+            The minimum at the temperature `T`: one field vector for a scalar `T`, and
+            otherwise the shape of `T` with the field components as the last axis."""
+        T = np.asanyarray(T)
+        y = self.interpolator(T) if deriv == 0 else self.interpolator.derivative(deriv)(T)
+        return np.asanyarray(y)
 
     def replaceTrace(self, X: np.ndarray, dXdT: np.ndarray) -> None:
         """Replace the minima and their derivatives at the traced temperatures and
-        rebuild the spline. The temperatures, the key and the links are kept."""
+        rebuild the interpolation. The temperatures, the key and the links are kept."""
         self.X = np.asarray(X, dtype=float)
         self.dXdT = np.asarray(dXdT, dtype=float)
-        k = 3 if len(self.T) > 3 else 1
-        self.tck, _ = interpolate.splprep(self.X.T, u=self.T, s=0, k=k)
+        self.interpolator = self._build_interpolator(self.T, self.X)
 
     def addLinkFrom(self, other_phase) -> None:
         """Add a link from `other_phase` to this phase, checking to see if there

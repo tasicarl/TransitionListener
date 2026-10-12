@@ -2674,17 +2674,18 @@ def _try_action_jitter_tunneltight_rescue(
         #
         # That is tolerated rather than hidden, because the alternatives measured on the 2HDM
         # line are worse. Re-deriving the profile from the reduced support and re-running the
-        # gates moved one coupling's `betaH_RH` from 81.5 to 354, against 78.0 and 30.0 at its
-        # neighbours; refusing the point instead costs the two couplings that discard at all,
-        # one of which is the only point the branch newly resolves on the broad line.
+        # gates leaves the coupling's `betaH_RH` far from the trend its neighbours set, and
+        # refusing the point instead costs every coupling that discards at all.
         #
-        # Both of those couplings are sick for a reason outside this file: the traced
-        # symmetric phase is interpolated with an overshooting cubic, so the bounce tunnels
-        # from a displaced point and returns an action about 4.7 low in S3/T, and it is that
-        # step which trips the gate above. With a shape-preserving phase interpolation the
-        # coupling gives `betaH_RH` = 53.4 and `betaH_S3` = -118.6, in line with its
-        # neighbours. The discard is a bandage over that, and the state it leaves is the
-        # price; the fix belongs in the phase tracing.
+        # The couplings that reached the discard were sick for a reason outside this file: the
+        # traced symmetric phase was interpolated with an overshooting cubic, so the bounce
+        # tunnelled from a displaced point and returned too small an action, and it was that
+        # step which tripped the gate above. `PhaseInfo._build_interpolator` now interpolates
+        # the trace with a shape-preserving `PchipInterpolator`, which removes that cause. The
+        # discard stays, because nothing stops another model from tripping the gate for a
+        # reason of its own, and the state it leaves is still the price; whether it fires at a
+        # given point is not visible in the output, because
+        # `action_jitter_rescue_discarded_temperatures` has no consumer.
         still_worst = diagnostic.get("temperature")
         residual_now = diagnostic.get("max_residual_oom")
         if (

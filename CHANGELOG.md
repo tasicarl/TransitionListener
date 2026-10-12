@@ -299,6 +299,52 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A phase no longer leaves the range of its own traced minima between two traced
+  temperatures.** `PhaseInfo` interpolated the trace with `splprep(..., s=0, k=3)`, an
+  interpolating cubic. The tracer does not space its temperatures evenly -- it clusters them
+  where it steps small and leaves gaps where it steps large -- and a cubic through spacing
+  ratios of that size oscillates between the nodes. The minima are now interpolated with
+  `PchipInterpolator`, which is shape preserving: between two traced temperatures each field
+  component stays between the two values traced there. It still passes through every traced
+  node, so this is not smoothing, and past the ends of the trace it still extrapolates rather
+  than refusing: two places in `bubbledynamics` read a raise from `valAt` as a phase that
+  cannot be evaluated at that temperature, and clamp their stencils for that reason, so a
+  refusal there would be taken for a missing phase.
+
+  The bounce solver reads the phase through `valAt`, so an overshoot is handed to it as a field
+  value the tracer never found: the solver then tunnels from a displaced point rather than from
+  the one the tracer established, a shorter path over a lower barrier, and returns too small an
+  action over the temperatures either side of the excursion. With the shape-preserving
+  interpolation there is no excursion: the largest field value between two traced temperatures
+  is the largest of the two. A trace that exhibits the excursion is the fixture of
+  `tests/test_phase_interpolation_does_not_overshoot.py`, where the two interpolations are
+  compared on it directly. That trace comes from a development model outside this repository
+  and is kept as recorded data, not as something reproducible from the models shipped here.
+
+  A displaced action is what produces the steps the rate-jitter gate flags, so removing the
+  overshoot removes one cause of them. The comment at the action discard added in the
+  percolation work named this overshoot as the reason couplings reached it and said the fix
+  belonged in the phase tracing; it is updated to say the fix has landed, and the discard is
+  kept for any other model that trips the gate.
+
+  This changes results. Where the trace is evenly spaced the two interpolations agree closely;
+  the difference grows where the tracer left a cluster next to a gap, which on a supercooled
+  line is the stretch nearest the end of the transition. Per-model figures are not quoted here:
+  the campaign behind them loaded its potential from a development checkout rather than from
+  this repository, so its numbers describe a different model. A re-validation against the models
+  shipped here is running, and measured figures will be added when it lands.
+
+  Both solvers are affected: `phases.py` has no fixed-step twin, and
+  `transitionObservables.py` and `transitionObservables_fixedstep.py` both read this one
+  `PhaseInfo`. `PhaseInfo.tck` is replaced by `PhaseInfo.interpolator`; it was read nowhere
+  outside `phases.py`, and of the 114 `valAt` call sites in `src` exactly one passes `deriv`,
+  which the new interpolator supports. `valAt` keeps its signature and the shape it returns
+  for a scalar, one- or two-dimensional `T`; its `deriv` argument now accepts any order rather
+  than at most three, returning zero above the third. A trace carrying a non-finite
+  temperature or field value is refused when the phase is built, where the B-spline accepted it
+  and returned `nan` at every temperature of the affected component; scanning turns that into
+  an error for the point rather than `nan` observables.
+
 - **The bubble nucleation rate no longer grows above the temperatures whose action was
   computed.** The percolation result's action spline returned the action of the hottest
   temperature that had one for everything above it. Holding the action constant while the
