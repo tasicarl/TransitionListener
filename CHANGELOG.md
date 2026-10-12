@@ -299,6 +299,65 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A phase no longer leaves the range of its own traced minima between two traced
+  temperatures.** `PhaseInfo` interpolated the trace with `splprep(..., s=0, k=3)`, an
+  interpolating cubic. The tracer does not space its temperatures evenly -- it clusters them
+  where it steps small and leaves gaps where it steps large -- and a cubic through spacing
+  ratios of that size oscillates between the nodes. The minima are now interpolated with
+  `PchipInterpolator`, which is shape preserving: between two traced temperatures each field
+  component stays between the two values traced there. It still passes through every traced
+  node, so this is not smoothing, and past the ends of the trace it still extrapolates rather
+  than refusing: two places in `bubbledynamics` read a raise from `valAt` as a phase that
+  cannot be evaluated at that temperature, and clamp their stencils for that reason, so a
+  refusal there would be taken for a missing phase.
+
+  The bounce solver reads the phase through `valAt`, so an overshoot is handed to it as a field
+  value the tracer never found. Measured on the 2HDM benchmark at `lambda3 = 5.8123128723`,
+  where the symmetric phase has 63 nodes whose spacings cover five decades, `2.5e-4` GeV inside
+  the clusters against tens of GeV across the gaps: every node lies within `0.118` GeV of the
+  origin, and the cubic returned up to `15.5` GeV at `T = 38.56` GeV. The solver then tunnelled
+  from that displaced point rather than from the origin, a shorter path over a lower barrier,
+  and returned an action about `4.7` lower in `S_3/T` -- a nucleation rate about two decades too
+  high -- over the temperatures either side of the excursion. With the shape-preserving
+  interpolation there is no excursion at all on those nodes: the largest field value anywhere
+  between them is the largest traced one, `0.118` GeV. The nodes of that stretch of the trace
+  are the fixture of `tests/test_phase_interpolation_does_not_overshoot.py`, so the two
+  interpolations can be compared on them without running the benchmark.
+
+  The displaced action is what produced the steps that the rate-jitter gate flagged on that
+  line, and the gate's rescue now succeeds where it used to fail: over the 40 couplings of the
+  edge scan `WARNING:action_rescue_failed` is raised at one instead of three, and at
+  `lambda3 = 5.8123128723` it goes from true to false while `DIAG:action_rescue_attempts` falls
+  from 22 to 13. The comment at the action discard added in the percolation work named this
+  overshoot as the reason two couplings reached it and said the fix belonged in the phase
+  tracing; it is updated to say that the fix has landed, and the discard is kept for any
+  other model that trips the gate. That coupling's `(beta/H)_{R_H}` moves from 81.5 to 53.4 and
+  its `(beta/H)_{S_3}` from -115.1 to -118.6, and `WARNING:betaH_S3_fit_unstable` is no longer
+  raised there. The first now lies between its two neighbouring couplings, 81.5 and 27.6, where
+  before it sat above both of theirs, 78.0 and 30.0; the second stays above both of its
+  neighbours either way, -125.9 and -173.8 here, but moves from 13.5 to 7.3 away from the
+  nearer one.
+
+  This changes results, by very little almost everywhere and by a lot where the trace is
+  sparse. Over the 330 points of the 2HDM `lambda3` campaign that have a finite
+  `(beta/H)_{R_H}` both before and after, its median change is 0.01% and its 90th percentile
+  1.0%; at `lambda3 = 5.7727298627` no observable moves by more than 0.46% and most by less
+  than 0.02%. Nineteen of those points move by more than 4% and twelve by more than 8%, and
+  every one of them lies between `lambda3 = 5.8106` and `5.8191`, the end of the transition
+  line where the trace is sparsest and the overshoot was largest; the largest are 34.5% at
+  `lambda3 = 5.8123128723` and 66% on the refined grid over that same stretch.
+
+  Both solvers are affected: `phases.py` has no fixed-step twin, and
+  `transitionObservables.py` and `transitionObservables_fixedstep.py` both read this one
+  `PhaseInfo`. `PhaseInfo.tck` is replaced by `PhaseInfo.interpolator`; it was read nowhere
+  outside `phases.py`, and of the 114 `valAt` call sites in `src` exactly one passes `deriv`,
+  which the new interpolator supports. `valAt` keeps its signature and the shape it returns
+  for a scalar, one- or two-dimensional `T`; its `deriv` argument now accepts any order rather
+  than at most three, returning zero above the third. A trace carrying a non-finite
+  temperature or field value is refused when the phase is built, where the B-spline accepted it
+  and returned `nan` at every temperature of the affected component; scanning turns that into
+  an error for the point rather than `nan` observables.
+
 - **The bubble nucleation rate no longer grows above the temperatures whose action was
   computed.** The percolation result's action spline returned the action of the hottest
   temperature that had one for everything above it. Holding the action constant while the

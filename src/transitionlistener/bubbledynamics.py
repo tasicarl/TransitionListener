@@ -2678,13 +2678,17 @@ def _try_action_jitter_tunneltight_rescue(
         # neighbours; refusing the point instead costs the two couplings that discard at all,
         # one of which is the only point the branch newly resolves on the broad line.
         #
-        # Both of those couplings are sick for a reason outside this file: the traced
-        # symmetric phase is interpolated with an overshooting cubic, so the bounce tunnels
-        # from a displaced point and returns an action about 4.7 low in S3/T, and it is that
-        # step which trips the gate above. With a shape-preserving phase interpolation the
-        # coupling gives `betaH_RH` = 53.4 and `betaH_S3` = -118.6, in line with its
-        # neighbours. The discard is a bandage over that, and the state it leaves is the
-        # price; the fix belongs in the phase tracing.
+        # Both of those couplings were sick for a reason outside this file: the traced
+        # symmetric phase was interpolated with an overshooting cubic, so the bounce tunnelled
+        # from a displaced point and returned an action about 4.7 low in S3/T, and it was that
+        # step which tripped the gate above. `PhaseInfo._build_interpolator` now interpolates
+        # the trace with a shape-preserving `PchipInterpolator`: over the 40 couplings of that
+        # edge scan the rescue fails at one instead of three, and the coupling above gives
+        # `betaH_RH` = 53.4, between its neighbours' 81.5 and 27.6, where it used to sit above
+        # both of them. The discard stays, because nothing stops another model from tripping
+        # the gate for a reason of its own, and the state it leaves is still the price;
+        # whether it fires at a given point is not visible in the output, because
+        # `action_jitter_rescue_discarded_temperatures` has no consumer.
         still_worst = diagnostic.get("temperature")
         residual_now = diagnostic.get("max_residual_oom")
         if (
