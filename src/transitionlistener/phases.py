@@ -140,19 +140,16 @@ class PhaseInfo:
         spaced -- the tracer clusters them where it takes small steps and leaves gaps where it
         takes large ones -- and a cubic through spacing ratios of that size oscillates.
 
-        Measured on the 2HDM benchmark at lambda3 = 5.8123128723, where the symmetric phase has
-        63 nodes whose spacings cover five decades, 2.5e-4 GeV inside the clusters against tens
-        of GeV across the gaps: every node lies within 0.118 GeV of the origin, and
-        `splprep(..., s=0, k=3)` reaches 15.5 GeV at T = 38.56. The bounce solver reads the
-        phase through `valAt`, so it was handed a symmetric phase displaced by up to 15 GeV and
-        tunnelled from there -- a shorter path over a lower barrier -- returning an action
-        4.7 low in S3/T at the temperatures either side of the excursion.
+        The failure mode is a displaced phase rather than a slightly wrong one. The bounce
+        solver reads the phase through `valAt`, so an excursion is handed to it as the point it
+        tunnels from; starting from a displaced symmetric phase shortens the path and lowers the
+        barrier, and the action comes out too small over the temperatures either side.
 
         A shape preserving interpolator cannot leave the data's range: between two traced
-        temperatures each field component stays between the two values traced there, so on the
-        same nodes the largest field value anywhere is the largest traced one, 0.118 GeV. Those
-        nodes are the fixture of `tests/test_phase_interpolation_does_not_overshoot.py`, where
-        the two interpolations can be compared without running the benchmark.
+        temperatures each field component stays between the two values traced there, so the
+        largest field value anywhere is the largest traced one. A trace that exhibits the
+        excursion is the fixture of `tests/test_phase_interpolation_does_not_overshoot.py`,
+        which compares the two interpolations on it directly.
 
         Outside the traced range it extrapolates, as `splev` on this spline also did.
         `bubbledynamics` reads a raise from `valAt` as a phase that cannot be evaluated at that

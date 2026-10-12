@@ -6,14 +6,21 @@ tracer never found. An interpolating cubic overshoots between unevenly spaced no
 tracer's nodes are very unevenly spaced: it clusters them where it steps small and leaves gaps
 where it steps large.
 
-The fixture below is the symmetric phase the tracer leaves on the 2HDM benchmark at
-lambda3 = 5.8123128723, reduced to the 19 nodes between 26 and 69 GeV and rounded to the
-0.1 MeV the measurement printed. On the full 63-node trace, whose spacings run from
-2.5e-4 GeV inside the clusters to tens of GeV across the gaps, `splprep(..., s=0, k=3)` reaches
-15.47 GeV at T = 38.5575; on these 19 rounded nodes it reaches 10.85 GeV at T = 38.56 and
-68.59 GeV at T = 29.66. Either way no node is further than 0.118 GeV from the origin, and the
-bounce tunnelled from the displaced point, over a shorter path and a lower barrier, returning an
-action 4.7 low in S3/T.
+WHERE THE FIXTURE COMES FROM, because it cannot be regenerated from this repository. It is a
+symmetric phase recorded while tracing a 2HDM point with a *development* model whose potential
+differs from the one shipped here: `models/TL_2HDM.py` in that checkout predates the
+transverse-photon fix in `mA2`. With this repository's own models the symmetric phase of that
+benchmark is projected to exactly zero at every node, which no interpolation can overshoot, so
+running the benchmark here will not reproduce these numbers. The nodes are therefore kept as
+recorded data, which is all this test needs: the claim under test is a property of interpolating
+an unevenly spaced trace, not of any model.
+
+The 19 nodes below span 26 to 69 GeV and are rounded to the 0.1 MeV the measurement printed.
+Their spacings run from 2.0e-4 GeV inside the cluster at 38.79 to 17.2 GeV across the gap above
+51 GeV, and no node is further than 0.118 GeV from the origin. Through them
+`splprep(..., s=0, k=3)` reaches 10.85 GeV at T = 38.56 and 68.59 GeV at T = 29.66. A phase
+displaced that far makes the bounce tunnel from the wrong point, over a shorter path and a lower
+barrier, and return too small an action.
 
 These tests drive `PhaseInfo` itself, not a local copy of the interpolation.
 """

@@ -312,40 +312,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   refusal there would be taken for a missing phase.
 
   The bounce solver reads the phase through `valAt`, so an overshoot is handed to it as a field
-  value the tracer never found. Measured on the 2HDM benchmark at `lambda3 = 5.8123128723`,
-  where the symmetric phase has 63 nodes whose spacings cover five decades, `2.5e-4` GeV inside
-  the clusters against tens of GeV across the gaps: every node lies within `0.118` GeV of the
-  origin, and the cubic returned up to `15.5` GeV at `T = 38.56` GeV. The solver then tunnelled
-  from that displaced point rather than from the origin, a shorter path over a lower barrier,
-  and returned an action about `4.7` lower in `S_3/T` -- a nucleation rate about two decades too
-  high -- over the temperatures either side of the excursion. With the shape-preserving
-  interpolation there is no excursion at all on those nodes: the largest field value anywhere
-  between them is the largest traced one, `0.118` GeV. The nodes of that stretch of the trace
-  are the fixture of `tests/test_phase_interpolation_does_not_overshoot.py`, so the two
-  interpolations can be compared on them without running the benchmark.
+  value the tracer never found: the solver then tunnels from a displaced point rather than from
+  the one the tracer established, a shorter path over a lower barrier, and returns too small an
+  action over the temperatures either side of the excursion. With the shape-preserving
+  interpolation there is no excursion: the largest field value between two traced temperatures
+  is the largest of the two. A trace that exhibits the excursion is the fixture of
+  `tests/test_phase_interpolation_does_not_overshoot.py`, where the two interpolations are
+  compared on it directly. That trace comes from a development model outside this repository
+  and is kept as recorded data, not as something reproducible from the models shipped here.
 
-  The displaced action is what produced the steps that the rate-jitter gate flagged on that
-  line, and the gate's rescue now succeeds where it used to fail: over the 40 couplings of the
-  edge scan `WARNING:action_rescue_failed` is raised at one instead of three, and at
-  `lambda3 = 5.8123128723` it goes from true to false while `DIAG:action_rescue_attempts` falls
-  from 22 to 13. The comment at the action discard added in the percolation work named this
-  overshoot as the reason two couplings reached it and said the fix belonged in the phase
-  tracing; it is updated to say that the fix has landed, and the discard is kept for any
-  other model that trips the gate. That coupling's `(beta/H)_{R_H}` moves from 81.5 to 53.4 and
-  its `(beta/H)_{S_3}` from -115.1 to -118.6, and `WARNING:betaH_S3_fit_unstable` is no longer
-  raised there. The first now lies between its two neighbouring couplings, 81.5 and 27.6, where
-  before it sat above both of theirs, 78.0 and 30.0; the second stays above both of its
-  neighbours either way, -125.9 and -173.8 here, but moves from 13.5 to 7.3 away from the
-  nearer one.
+  A displaced action is what produces the steps the rate-jitter gate flags, so removing the
+  overshoot removes one cause of them. The comment at the action discard added in the
+  percolation work named this overshoot as the reason couplings reached it and said the fix
+  belonged in the phase tracing; it is updated to say the fix has landed, and the discard is
+  kept for any other model that trips the gate.
 
-  This changes results, by very little almost everywhere and by a lot where the trace is
-  sparse. Over the 330 points of the 2HDM `lambda3` campaign that have a finite
-  `(beta/H)_{R_H}` both before and after, its median change is 0.01% and its 90th percentile
-  1.0%; at `lambda3 = 5.7727298627` no observable moves by more than 0.46% and most by less
-  than 0.02%. Nineteen of those points move by more than 4% and twelve by more than 8%, and
-  every one of them lies between `lambda3 = 5.8106` and `5.8191`, the end of the transition
-  line where the trace is sparsest and the overshoot was largest; the largest are 34.5% at
-  `lambda3 = 5.8123128723` and 66% on the refined grid over that same stretch.
+  This changes results. Where the trace is evenly spaced the two interpolations agree closely;
+  the difference grows where the tracer left a cluster next to a gap, which on a supercooled
+  line is the stretch nearest the end of the transition. Per-model figures are not quoted here:
+  the campaign behind them loaded its potential from a development checkout rather than from
+  this repository, so its numbers describe a different model. A re-validation against the models
+  shipped here is running, and measured figures will be added when it lands.
 
   Both solvers are affected: `phases.py` has no fixed-step twin, and
   `transitionObservables.py` and `transitionObservables_fixedstep.py` both read this one
