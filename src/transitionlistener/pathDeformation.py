@@ -1039,6 +1039,28 @@ def _deform_path(
     return TunnelingOutputs(path, tobj, profile1D, phi, dphi, pts, deform_obj, converged)
 
 
+# Measured at lambda3 = 5.8205024605, T = 15.202392 GeV, where the force ratio floors at
+# 0.00855 against a target of 0.005:
+#
+#   nb    fRatio     S_3/T
+#   10    0.00855   286.43   <- the sample the jitter gate rejects on
+#   20    0.00799   299.92
+#   40    0.00581   299.62   <- on the smooth curve its neighbours occupy
+#   80    0.09998   300.78   <- the deformation is destabilised, 17x worse
+#
+# Enlarging the basis both lowers the force ratio and moves the action by +13.2 onto the
+# curve, so the low outlier was an under-resolved path rather than a second branch. But the
+# improvement is not monotonic: at nb = 80 the force ratio is an order of magnitude worse
+# than at nb = 10, and at T = 16.33 GeV the action collapsed by 34. So the loop stops
+# enlarging as soon as enlarging stops helping, and the cap below keeps the default basis
+# at or under nb = 40, short of the size that was measured to destabilise it. The returned
+# path is still the last iteration's, exactly as before this change; nothing here selects
+# among the iterations.
+_PLATEAU_IMPROVEMENT = 0.9      # less than 10% better than the previous iteration is a plateau
+_MAX_BASIS_DOUBLINGS = 2        # nb 10 -> 40; 80 was measured to destabilise the deformation
+_DEFAULT_BASIS_SIZE = 10        # Deformation_Spline's own default when nb is unset
+
+
 def _should_stop(iter_output: TunnelingOutputs) -> bool:
     """Check if the deformation converged after a single, small adjustment."""
     return iter_output.converged and iter_output.deform_obj.num_steps < 2
@@ -1163,6 +1185,11 @@ def fullTunneling(
     pts = np.asanyarray(path_pts)
     saved_steps = []
     last_output: TunnelingOutputs | None = None
+    convergence_target = float(
+        settings.deformation_deform_params.get("fRatioConv", 0.02)
+    )
+    previous_force_ratio = np.inf
+    basis_doublings = 0
 
     for _ in range(1, maxiter + 1):
         # 1. Fit the spline to the path.
@@ -1189,6 +1216,30 @@ def fullTunneling(
         # 4. Check whether the deformation has converged.
         if _should_stop(iter_output):
             break
+        # 5. If the force ratio has stopped improving while still above target, the basis
+        #    cannot express the remaining correction. Enlarge it instead of taking more
+        #    steps that cannot help. Measuring the force ratio costs one more deformation
+        #    object and one more force evaluation per iteration, so it is measured only
+        #    while a doubling is still allowed: past the cap the value could no longer
+        #    change any decision, `previous_force_ratio` is never read again, and every
+        #    bounce solve of every temperature would pay for it.
+        if basis_doublings < _MAX_BASIS_DOUBLINGS:
+            force_ratio = _compute_force_ratio(iter_output.pts, iter_output.dphi, dV, settings)
+            if (
+                np.isfinite(force_ratio)
+                and force_ratio > convergence_target
+                and force_ratio > _PLATEAU_IMPROVEMENT * previous_force_ratio
+            ):
+                basis_size = int(settings.deformation_init_params.get("nb", _DEFAULT_BASIS_SIZE))
+                settings.deformation_init_params["nb"] = 2 * basis_size
+                basis_doublings += 1
+                previous_force_ratio = np.inf      # the new basis starts its own descent
+                if settings.verbose:
+                    print(f"Path deformation plateaued at fRatio = {force_ratio:.5g} above the "
+                          f"target {convergence_target:.5g}; enlarging the spline basis to "
+                          f"nb = {2 * basis_size}.")
+            else:
+                previous_force_ratio = force_ratio
     else:
         if settings.verbose:
             print("Reached maxiter in fullTunneling. No convergence.")
@@ -1229,8 +1280,12 @@ def _execute_full_tunneling(
     conversionFactor,
 ):
     """Try to compute the instanton and translate known failure modes."""
+    # The straight line between the two minima. Each temperature is solved independently;
+    # seeding a retry from a neighbouring temperature's converged path was measured to
+    # return a non-finite action on the 2HDM and is not part of the solver.
+    initial_path = [tdict["low_vev"], tdict["high_vev"]]
     try:
-        result = fullTunneling([tdict['low_vev'], tdict['high_vev']], V_, dV_, callback_data=T, verbose=verbose, **settings)
+        result = fullTunneling(initial_path, V_, dV_, callback_data=T, verbose=verbose, **settings)
         return {
             'instanton': result,
             'action': result.action,

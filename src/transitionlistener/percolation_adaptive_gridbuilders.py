@@ -328,6 +328,104 @@ def _scout_needs_hot_extension(profile: _Step1ApproxProfile | None, settings) ->
     return profile.window_high is None
 
 
+# Nucleation needs Gamma of order H^4, which on the 2HDM edge line is S_3/T of about 154:
+# the 4 ln(T/H) term of ln(Gamma/H^4) is 149 there and the 1.5 ln(S_3/2 pi T) prefactor adds
+# about 5. By S_3/T of 500 the rate is already far past that: across the 31 recorded
+# profiles the hottest support point the controller retains sits at S_3/T between 478 and
+# 509, with log10(Gamma/H^4) between -141 and -154. The threshold sits at 1e3: twice that
+# measured maximum, and five times the tightest live band measured anywhere (the conformal
+# dark U(1) ladder still nucleates at g = 0.54 with S_3/T ~ 140-200).
+#
+# It was 1e4, which measurement showed to be far too loose. Instrumenting a run's live
+# action solves at lambda3 = 5.8177725978: 34 of 75 (45%) fell between S_3/T of 500 and
+# 1e4, about 29 minutes of a 64-minute run, computing actions whose rate is identically
+# zero. Moving to 1e3 blocks 21 of those 75 (28%, ~18 min) while keeping the margin above.
+_NUCLEATION_DEAD_S_OVER_T = 1.0e3
+
+# How far below a profile's **own** rate peak the nucleation rate must fall before further
+# support there is pointless. Measured rather than chosen. Taking "still contributing" to
+# mean an interval whose increment of the percolation integral exceeds a millionth of the
+# whole, over the part of the profile where P is still below f_final = 0.99 and 1 - P is
+# therefore still resolved, the deepest contributing sample across the 31 recorded profiles
+# sits 448 decades below that profile's peak (median 34). The runaway this guards against
+# sits 1.4e8 decades below it: at lambda3 = 5.8205024605 the rate-step refinement walked to
+# T = 1.4e-5 GeV with log10(Gamma/H^4) = -1.4e8. Anything between about 500 and a million
+# separates those two, so the value is not delicate; 1000 leaves a factor 2.2 of headroom
+# over the deepest contributing sample observed and still catches the pathology by five
+# orders of magnitude.
+#
+# The depth is relative to the peak, never absolute: contributing samples reach
+# log10(Gamma/H^4) = -447 in absolute terms, and a strongly supercooled model has its peak
+# at very low temperature by construction. An absolute floor would truncate exactly the
+# models TL exists to study.
+_DEAD_RATE_DECADES_BELOW_PEAK = 1.0e3
+
+
+def _dead_rate_floor(log10_rate: np.ndarray) -> float:
+    """The rate below which a profile's cold tail can no longer change ``P``."""
+
+    finite = np.asarray(log10_rate, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    if finite.size == 0:
+        return -np.inf
+    return float(np.max(finite)) - _DEAD_RATE_DECADES_BELOW_PEAK
+
+
+def _nucleation_is_dead(temperature: float, action: float) -> bool:
+    """True when ``S_3/T`` is too large for a bubble to nucleate at any Hubble rate.
+
+    The cold actions of a completed transition do not fail - they *saturate*. Measured on
+    the 2HDM edge line with the full action cache: the action settles at its
+    zero-temperature value near 4357 and ``S_3/T`` runs up to 1.15e+09 by
+    T = 3.8e-06 (internal). Such a point has a perfectly finite action, so it is promoted
+    into the active grid as a legitimate cached temperature, the grid's cold boundary
+    lands there, and the rate-step refinement then fills six orders of magnitude in
+    temperature with support that cannot influence ``P`` or the rate peak.
+
+    Guarding on action finiteness cannot catch this, which is why two earlier attempts
+    produced bit-identical runs.
+    """
+    try:
+        T = float(temperature)
+        S = float(action)
+    except (TypeError, ValueError):
+        return False
+    if not (np.isfinite(T) and np.isfinite(S)) or T <= 0.0:
+        return False
+    return bool(S / T > _NUCLEATION_DEAD_S_OVER_T)
+
+
+_COLD_WALK_MAX_FAILED_ACTIONS = 3
+
+
+def _cold_walk_has_left_the_bounce_region(actions) -> bool:
+    """True when the coldest support points no longer have a computable bounce.
+
+    Below the transition the symmetric phase stops being metastable, so the bounce stops
+    existing and every action there comes back non-finite. Those samples are dropped by
+    the percolation integral and by the profile rebuild, so they tell the controller
+    nothing, yet each one costs a bounce solve. Measured on the 2HDM edge line, 38-57% of
+    all support points in every one of five dumps had no computable action, in a single
+    contiguous run at the cold end: at lambda3 = 5.8109479409, 75 finite-action points
+    from 76.4 down to 25.4 GeV followed by 56 non-finite ones down to 3.8e-06 GeV.
+
+    The test is deliberately a *trailing* run rather than a count: a hole in the middle
+    of the grid is a solver hiccup, not the edge of the bounce region. It also requires
+    some finite action to exist, so a grid that has not started yet is never mistaken for
+    one that has run past the edge, and tolerates
+    ``_COLD_WALK_MAX_FAILED_ACTIONS - 1`` isolated failures so that a transition lying
+    just below one bad solve is still found.
+    """
+    values = np.asarray(actions, dtype=float)
+    if values.size == 0:
+        return False
+    finite = np.isfinite(values)
+    if not np.any(finite):
+        return False
+    trailing = int(values.size - 1 - int(np.max(np.flatnonzero(finite))))
+    return trailing >= int(_COLD_WALK_MAX_FAILED_ACTIONS)
+
+
 def _scout_needs_cold_extension(profile: _Step1ApproxProfile | None, settings) -> bool:
     """Decide whether the approximate step-1 profile must be extended to colder temperatures."""
     if profile is None:
@@ -685,7 +783,12 @@ def _initial_temperature_grid(
                 tmax=tmax,
                 TBROmin=phase_broken.Tmin,
                 TBROmax=phase_broken.Tmax,
-                free_support_bank=scout_profile.sampled_temperatures.copy(),
+                # Usable, not merely probed: the free bank is support that costs no new
+                # action budget, so step 2 activates it freely. A temperature whose solve
+                # returned non-finite is a dead end, and handing it over plants the active
+                # grid's cold boundary there -- traced to 3.8032e-06 GeV against a
+                # transition at 20-40 GeV, after which rate_step_refine filled the span.
+                free_support_bank=scout_profile.temperatures.copy(),
             )
 
     if verbose:
@@ -742,7 +845,7 @@ def _initial_temperature_grid(
         tmax=tmax,
         TBROmin=phase_broken.Tmin,
         TBROmax=phase_broken.Tmax,
-        free_support_bank=None if scout_profile is None else scout_profile.sampled_temperatures.copy(),
+        free_support_bank=None if scout_profile is None else scout_profile.temperatures.copy(),
     )
 
 
@@ -811,7 +914,21 @@ def _build_rate_step_grid(
     # than bringing them together.
     neighbours = np.isfinite(log10_rate[:-1]) & np.isfinite(log10_rate[1:])
     steps = np.where(neighbours, np.abs(np.diff(log10_rate)), np.nan)
-    offending = np.flatnonzero(np.isfinite(steps) & (steps > threshold))
+    # A step of many decades means an unresolved *rise* only while the rate is still
+    # live. Once the rate has collapsed far below the peak every neighbouring pair
+    # differs by more than any threshold, because log10(Gamma/H^4) is plunging towards
+    # -1e8, and refining there manufactures support in a region that cannot change P by
+    # any amount. That runaway is what walked lambda3 = 5.8205024605 down to
+    # T = 1.4e-5 GeV and then had the jitter fit reject it for "non-smooth bounce data".
+    # The arrays run hot to cold, so log10_rate[1:] is each interval's colder end. An
+    # unresolved *rise* has its colder end higher, so it stays live and is still refined;
+    # a fall out of the live region has its colder end below the floor, and refining it
+    # only manufactures more support further down a tail that cannot change P. Testing the
+    # warmer end instead keeps every interval that merely straddles the floor, which lets
+    # the refinement walk into the tail one interval at a time - the runaway itself.
+    floor = _dead_rate_floor(log10_rate)
+    interval_is_live = log10_rate[1:] >= floor
+    offending = np.flatnonzero(np.isfinite(steps) & (steps > threshold) & interval_is_live)
     if offending.size == 0:
         return None
     # Refine every offending interval in the same rebuild, worst first, with enough
@@ -951,6 +1068,53 @@ def _preferred_probability_jump_interval(
     return generic_interval, generic_threshold, "generic"
 
 
+def _jump_mode_is_strict(threshold_mode: str) -> bool:
+    """Was this jump selected by the strict criterion rather than the historical one?
+
+    The strict mode is labelled from ``_STRICT_JUMP_P_MAX`` and
+    ``_STRICT_JUMP_APPLY_GLOBALLY`` above, both of which exist to be moved in threshold
+    studies. Testing the rendered string against ``"strict P<0.2"`` would stop matching as
+    soon as either is changed, and the post-peak exemption below would then silently revert
+    to the self-contradiction it was written to remove, with nothing failing to say so.
+    """
+    return str(threshold_mode) != "generic"
+
+
+def _resource_note(
+    remaining_budget: int | None,
+    iterations_used: int | None,
+    max_iterations: int | None,
+) -> str:
+    """Say which resource the controller actually ran out of, if the caller knows.
+
+    The message used to assert that the support budget had been spent on jump refinement.
+    That is often untrue and it sent the reader to the wrong place: at
+    lambda3 = 5.8136778037 the run was rejected with 115 of its action evaluations still
+    unspent, having instead reached the iteration limit of support updates, which was
+    maxit = 10 when that point was measured and is 20 now.
+    """
+
+    if remaining_budget is None:
+        return ""
+    budget = int(remaining_budget)
+    at_iteration_limit = (
+        iterations_used is not None
+        and max_iterations is not None
+        and int(iterations_used) >= int(max_iterations)
+    )
+    if budget <= 0:
+        return ", with its support budget fully spent"
+    if at_iteration_limit:
+        return (
+            f", having reached the limit of {int(max_iterations)} support updates with "
+            f"{budget} action evaluations still unspent"
+        )
+    return (
+        f", with {budget} action evaluations still unspent and no further refinement "
+        "available"
+    )
+
+
 def _raise_if_large_delta_p_underresolved(
     temperatures: np.ndarray,
     probabilities: np.ndarray,
@@ -958,6 +1122,9 @@ def _raise_if_large_delta_p_underresolved(
     *,
     stage: str,
     outcome: str,
+    remaining_budget: int | None = None,
+    iterations_used: int | None = None,
+    max_iterations: int | None = None,
 ) -> None:
     """Reject a final profile when the remaining neighbouring jump is too large.
 
@@ -985,10 +1152,10 @@ def _raise_if_large_delta_p_underresolved(
         f"P = {probability_high:2.5g} -> {probability_low:2.5g} "
         f"(Delta P = {delta_p:2.5g} > {threshold:2.5g}). "
         f"{stage} cannot accept the {outcome} profile because this jump remained "
-        "after the controller already spent its remaining support budget on local "
-        f"jump refinement ({threshold_mode} criterion). This indicates a "
-        "non-smooth or unstable bounce/action input in that interval, so the "
-        "transition profile is not trustworthy."
+        f"after refinement finished ({threshold_mode} criterion)"
+        f"{_resource_note(remaining_budget, iterations_used, max_iterations)}. "
+        "This indicates a non-smooth or unstable bounce/action input in that "
+        "interval, so the transition profile is not trustworthy."
     )
 
 
@@ -1027,6 +1194,49 @@ def _raise_if_hot_head_underresolved(
     )
 
 
+def _acceptance_jump_is_exempted_inert(
+    temperatures: np.ndarray,
+    probabilities: np.ndarray,
+    settings,
+    *,
+    actions: np.ndarray | None = None,
+    hubble: np.ndarray | None = None,
+    vw: float = 1.0,
+) -> bool:
+    """Is the fatal jump interval one that only the inert exemption makes refinable?
+
+    A jump past the rate peak cannot usually be repaired by more support -- the action
+    there is dead -- so the inert veto skips it. An interval selected by the *acceptance*
+    criterion is exempt, because leaving it unrepaired is fatal. Such an exempted repair
+    must not preempt the anchor remesh: at lambda3 = 5.8136778037 the direct repair took
+    the refinement slot the remesh needed and the run ended one support update short at
+    Delta P = 0.0578, while at lambda3 = 5.8177725978 the same repair is the only thing
+    that resolves the profile. The caller uses this to try the remesh first and fall back
+    to the direct repair, so both cases are served.
+    """
+
+    jump_interval, _, threshold_mode = _preferred_probability_jump_interval(
+        temperatures,
+        probabilities,
+        settings,
+        for_acceptance=True,
+    )
+    if jump_interval is None or not _jump_mode_is_strict(threshold_mode):
+        return False
+    jump_high, jump_low, _, _, _ = jump_interval
+    return bool(
+        _rate_interval_is_post_peak_inert(
+            temperatures,
+            actions,
+            hubble,
+            jump_high,
+            jump_low,
+            settings,
+            vw=vw,
+        )
+    )
+
+
 def _build_dynamiczoomwindow_unresolved_jump_grid(
     temperatures: np.ndarray,
     probabilities: np.ndarray,
@@ -1054,7 +1264,15 @@ def _build_dynamiczoomwindow_unresolved_jump_grid(
     if jump_interval is None:
         return None
     jump_high, jump_low, _, _, delta_p = jump_interval
-    if _rate_interval_is_post_peak_inert(
+    # An interval selected by the *acceptance* criterion is fatal, so it must be
+    # repairable even when it lies past the rate peak. The inert veto used to apply here
+    # unconditionally, which put the solver in direct self-contradiction: at
+    # lambda3 = 5.8177725978 the interval [28.745, 30.453] GeV (rate peak at 41.05 GeV)
+    # was declared inert and unrefinable by this function and simultaneously fatal by
+    # _raise_if_large_delta_p_underresolved, so the controller accepted with 119 budget
+    # unspent and the gate then rejected the point. Keep the veto only where the jump is
+    # not acceptance-fatal.
+    if not _jump_mode_is_strict(threshold_mode) and _rate_interval_is_post_peak_inert(
         temperatures,
         actions,
         hubble,

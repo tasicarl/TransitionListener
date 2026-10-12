@@ -238,12 +238,18 @@ class TransitionObservables:
             "DIAG:c_s_step_change": float("nan"),
             "WARNING:daisy_outside_validity": False,
             "DIAG:daisy_over_radiation": float("nan"),
+            "WARNING:v_wall_no_solution": False,
             "WARNING:no_perc_splines": False,
             "WARNING:false_vacuum_not_shrinking": False,
             "WARNING:betaH_small": False,
             # This backend keeps the spline-slope estimate of betaH_S3 on its
             # regular temperature grid, so the fit stability check does not apply.
             "WARNING:betaH_S3_fit_unstable": False,
+            "WARNING:v_wall_branch_ambiguous": False,
+            "WARNING:accuracy_targets_missed": False,
+            "DIAG:accuracy_tperc_uncertainty": float("nan"),
+            "DIAG:accuracy_tfinal_uncertainty": float("nan"),
+            "DIAG:accuracy_rh_uncertainty": float("nan"),
             "WARNING:action_rescue_attempted": False,
             "WARNING:action_rescue_failed": False,
             "DIAG:action_rescue_attempts": 0,
@@ -280,6 +286,20 @@ class TransitionObservables:
             hydr = Hydrodynamics(ctx.pot, ctx.phase_symmetric, ctx.phase_broken, ctx.verbose)
             try:
                 derived["v_wall"] = hydr.calcWallVelocityLTE(T)
+                # Same verdict as in the adaptive backend, which carries the measurement:
+                # `find_vw` returns exactly 0 for "no wall solution exists", every kinetic
+                # energy fraction is proportional to the wall velocity, and the SNR then comes
+                # out as a hard 0.0 that reads like a real prediction of no signal. This
+                # backend calls the same solver, so it needs the same flag; a key registered
+                # for every run must not be left to the writer on one of the two backends.
+                derived["WARNING:v_wall_no_solution"] = (
+                    float(derived["v_wall"]) <= 0.0
+                )
+                # The branch test behind this verdict assumes the matching residual crosses
+                # zero once below the Jouguet velocity. Where it does not, the wall velocity
+                # is a choice among branches rather than a determination, so say so.
+                if getattr(hydr, "max_al_non_monotonic", False):
+                    derived["WARNING:v_wall_branch_ambiguous"] = True
             except errors.SuperluminalSoundSpeedError as err:
                 # This stage runs before `_ensure_sound_speed`, so a refusal here is the first
                 # thing the user sees and would otherwise carry none of the diagnostics that

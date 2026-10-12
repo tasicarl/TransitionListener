@@ -101,7 +101,14 @@ class PercolationConf:
 
     # Iteration controls shared by both percolation passes.
     weight = 1 / 1.5                      # Fraction of support points spent between Tnuc and Tperc (fixed_step_size mode).
-    maxit = 10                            # Max iterations per percolation pass (step 2 and step 3 each).
+    # Raised from 10. On the 2HDM edge line every point that failed with an unresolved
+    # percolation profile reported reaching this support-update limit with 112-119 of its
+    # action evaluations still unspent, so the iteration count, not the action budget, was
+    # what stopped the refinement; the measured cost of the extra iterations on that line is
+    # about 2% more action solves, because the budget they spend was already there. Note the
+    # setting is shared with the fixed_step_size backend, where it caps the step-2 and step-3
+    # range-adjustment iterations instead, each of which recomputes the whole profile.
+    maxit = 20                            # Max iterations per percolation pass (step 2 and step 3 each).
     rel_increment = 0.10                  # Relative T-range growth when the initial range is too small.
     max_boundary_ratio = 0.45             # Max share of T-range allowed on plateaus where P_true = 0 or 1.
 
@@ -219,6 +226,31 @@ all_observables = {
     "xi_crit": R"$\xi_{\mathrm{c}}$",
     "WARNING:too_weak_to_compute_perc": R"$\mathrm{WARNING:} \mathrm{too\ weak\ to\ compute\ perc}$",
     "WARNING:no_perc_splines": R"$\mathrm{WARNING:} \mathrm{no\ perc\ splines}$",
+    # Whether the accepted percolation profile met acc_tperc, acc_tfinal and acc_rh. The
+    # targets are advisory -- the controller accepts either way, because by then refinement
+    # has nothing left to try -- so this is the only record of whether they were honoured.
+    # Warning false with finite uncertainties means the targets were met. Warning true means
+    # they could not be certified, which covers both a target genuinely missed and a profile
+    # the controller accepted without a comparable second estimate to measure convergence
+    # against; the three uncertainties say which, `DIAG:accuracy_rh_uncertainty` being inf
+    # where there was nothing to compare against, while Tperc and Tf fall back to their own
+    # bracket widths and stay finite.
+    # Warning false with nan means no verdict was formed at all: the fixed_step_size backend,
+    # which has no such controller, and the adaptive controller's iteration-limit exit.
+    "WARNING:accuracy_targets_missed":
+        R"$\mathrm{WARNING:}\ \mathrm{accuracy\ targets\ missed}$",
+    "DIAG:accuracy_tperc_uncertainty": R"$\mathrm{DIAG:}\ \delta T_\mathrm{perc}/T_\mathrm{perc}$",
+    "DIAG:accuracy_tfinal_uncertainty": R"$\mathrm{DIAG:}\ \delta T_\mathrm{f}/T_\mathrm{f}$",
+    "DIAG:accuracy_rh_uncertainty": R"$\mathrm{DIAG:}\ \delta R_\mathrm{H}/R_\mathrm{H}$",
+    # The wall-velocity branch test assumes the matching residual of `arxiv:2303.10171`
+    # crosses zero once below the Jouguet velocity; WallGo (`arxiv:2411.04970`) makes the same
+    # assumption and notes it can fail for strong transitions. Where it fails the velocity is a
+    # choice among branches, and WallGo's practice is to flag such an outcome rather than
+    # resolve it silently.
+    "WARNING:v_wall_branch_ambiguous":
+        R"$\mathrm{WARNING:}\ v_\mathrm{wall} \mathrm{\ branch\ ambiguous}$",
+    "WARNING:v_wall_no_solution":
+        R"$\mathrm{WARNING:}\ v_\mathrm{wall} \mathrm{\ has\ no\ solution}$",
     "WARNING:betaH_small": R"$\mathrm{WARNING:} (\beta/H)_{RH} \mathrm{\ too\ small}$",
     "WARNING:betaH_very_small": R"$\mathrm{WARNING:} (\beta/H)_{RH} \mathrm{\ very\ small}$",
     "WARNING:betaH_mismatch": R"$\mathrm{WARNING:} (\beta/H)_{S_3} \mathrm{\ vs\ } (\beta/H)_{RH} \mathrm{\ mismatch}$",
