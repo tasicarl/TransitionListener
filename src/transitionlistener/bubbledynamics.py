@@ -2661,12 +2661,30 @@ def _try_action_jitter_tunneltight_rescue(
         # keeping it injects a rate feature that is orders of magnitude wrong into P(T).
         # Discard it and let the profile stand on the samples that are trustworthy.
         #
-        # Discarding is safe only because it is *checked*: a non-finite action is dropped
-        # from the percolation integral and from the support bank, and the gap it leaves is
-        # then judged by the ordinary Delta P and hot-head acceptance gates, which reject
-        # the profile if the gap is too wide to interpolate across. So this converts "one
-        # bad bounce solve fails the whole point" into "one bad bounce solve costs one
-        # support point, and the accuracy gates decide whether that is affordable".
+        # What the discard does and does not do. The non-finite action is dropped by the
+        # action interpolants built from the returned `Sr`, so the rate feature it carried no
+        # longer reaches `R_*`, `betaH_RH`, `betaH_S3`, the spline nucleation-temperature
+        # estimate or the jitter diagnostic itself. What it does not do is re-derive the
+        # profile, and the percolation integral has already run with the sample in it: this
+        # is called from `_raise_if_action_rate_jitter_unresolved`, which runs after
+        # `_refine_percolation_temperature` and `_finalize_percolation_state`, so `Pr`, `Tb`,
+        # `Tperc` and the support bank still describe the profile that included it, and the
+        # Delta P and hot-head acceptance gates are not run again on what remains. The
+        # returned `Sr` and `Pr` therefore describe slightly different supports.
+        #
+        # That is tolerated rather than hidden, because the alternatives measured on the 2HDM
+        # line are worse. Re-deriving the profile from the reduced support and re-running the
+        # gates moved one coupling's `betaH_RH` from 81.5 to 354, against 78.0 and 30.0 at its
+        # neighbours; refusing the point instead costs the two couplings that discard at all,
+        # one of which is the only point the branch newly resolves on the broad line.
+        #
+        # Both of those couplings are sick for a reason outside this file: the traced
+        # symmetric phase is interpolated with an overshooting cubic, so the bounce tunnels
+        # from a displaced point and returns an action about 4.7 low in S3/T, and it is that
+        # step which trips the gate above. With a shape-preserving phase interpolation the
+        # coupling gives `betaH_RH` = 53.4 and `betaH_S3` = -118.6, in line with its
+        # neighbours. The discard is a bandage over that, and the state it leaves is the
+        # price; the fix belongs in the phase tracing.
         still_worst = diagnostic.get("temperature")
         residual_now = diagnostic.get("max_residual_oom")
         if (

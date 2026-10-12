@@ -679,6 +679,11 @@ class Hydrodynamics():
         for point in grid:
             try:
                 values.append(float(func(point)))
+            except errors.Timeout:
+                # The deadline is the run's, not this residual's. `Timeout` is raised from a
+                # signal handler and subclasses `Exception`, so absorbing it here would turn
+                # the expiry into a hole and let the search keep sampling past its own limit.
+                raise
             except Exception:
                 values.append(np.nan)
         # Record whether the residual crossed zero more than once. The method assumes it does
@@ -689,8 +694,18 @@ class Hydrodynamics():
         # the method describes, so the point is marked rather than quietly trusted, which is
         # also WallGo's practice: an outcome whose branch is ambiguous is flagged as uncertain
         # rather than resolved silently.
-        finite = [v for v in values if np.isfinite(v)]
-        crossings = sum(1 for a, b in zip(finite, finite[1:]) if (a < 0.0) != (b < 0.0))
+        # Count sign changes between *adjacent* finite samples, which is the same pairing
+        # the bracketed search below uses. Dropping the holes first and comparing what is
+        # left would pair samples that are not neighbours: a hole between a negative and a
+        # positive residual would then read as a crossing although no bracket spans the
+        # missing interval, and a monotonic point could be called ambiguous on the strength
+        # of two samples that never touch. A hole inside a same-sign stretch is unaffected
+        # either way, which is what the compression was there for.
+        crossings = sum(
+            1
+            for low, high in zip(values, values[1:])
+            if np.isfinite(low) and np.isfinite(high) and (low < 0.0) != (high < 0.0)
+        )
         self.max_al_non_monotonic = bool(crossings > 1)
         for index in range(len(grid) - 1):
             low, high = values[index], values[index + 1]
@@ -708,10 +723,14 @@ class Hydrodynamics():
         # Where it stays positive there is no subsonic branch anywhere in the range. The old
         # code reached `root_scalar` with equal signs at both ends of the bracket there and
         # raised a bare `ValueError: f(a) and f(b) must have different signs`, which nothing
-        # upstream types, so the point was reported as error -1. It is not a rare corner: of
-        # 2475 triples swept over c_b^2, c_s^2 in [0.05, 1/3] and eleven values of psi_N,
-        # 189 behaved that way, 96 of them with psi_N strictly below one, all with the
-        # broken phase softer than the symmetric one. Reporting the bound leaves the verdict
+        # upstream types, so the point was reported as error -1. It is not a rare corner.
+        # Sweeping 15 x 15 x 11 triples with c_b^2 and c_s^2 in [0.05, 1/3] and psi_N in
+        # [0.9, 1.1], and calling a triple affected when the residual is finite and
+        # non-negative at both ends of the old bracket -- the condition under which
+        # `root_scalar` raised -- 895 of the 2475 are affected, 227 of them with psi_N below
+        # one, i.e. with the broken phase softer than the symmetric one. The count is
+        # sensitive to the psi_N window, so the window is quoted with it. Reporting the
+        # bound leaves the verdict
         # to `find_vw`, whose own `shooting(v_J) < 0` test then decides between the subsonic
         # solve and the runaway branch, instead of ending the point in an untyped error.
         return upper_limit

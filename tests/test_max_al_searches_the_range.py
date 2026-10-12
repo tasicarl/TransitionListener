@@ -17,6 +17,8 @@ The inputs below are the measured ones, so these are the real numbers, not a con
 """
 import unittest
 
+from transitionlistener import errors
+
 
 SPIKE = dict(cb2=0.3255800, cs2=0.3011600, psiN=0.9525040)   # lambda3 = 5.6868686869
 NEIGHBOUR = dict(cb2=0.3253300, cs2=0.3300800, psiN=0.9523320)  # lambda3 = 5.6843434343
@@ -68,9 +70,10 @@ class MaxAlRangeSearchTests(unittest.TestCase):
         across the whole range, so there is no subsonic branch to bound. The old code then
         handed `root_scalar` a bracket with equal signs at both ends and raised a bare
         `ValueError: f(a) and f(b) must have different signs`, which nothing upstream types,
-        so the point was reported as error -1. Of 2475 triples swept over `c_b^2`, `c_s^2`
-        in [0.05, 1/3] and eleven values of `psi_N`, 189 behaved that way, 96 of them with
-        `psi_N` strictly below one; this is one of those 96.
+        so the point was reported as error -1. Sweeping 15 x 15 x 11 triples with `c_b^2`
+        and `c_s^2` in [0.05, 1/3] and `psi_N` in [0.9, 1.1], 895 of the 2475 have a finite
+        non-negative residual at both ends of the old bracket, which is the condition that
+        made `root_scalar` raise; 227 of those have `psi_N` below one, and this is one.
 
         Reporting the bound leaves the verdict to `find_vw`, which still decides between the
         subsonic solve and the runaway branch on its own `shooting(v_J) < 0` test. The
@@ -129,8 +132,9 @@ class DegenerateRangesAndGapsTests(unittest.TestCase):
     that cannot be evaluated at some strengths leaves a hole: `find_vJ` takes a square root
     of `3 alN (1 - c_b^2 + 3 c_b^2 alN)` and the matching conditions divide by quantities
     that can vanish, so the hole is a real possibility rather than a hypothetical one. It
-    is produced here by making `find_vJ` refuse over a band of `alN`, because no
-    combination of the three physical arguments was found that produces one: a sweep of
+    is produced here by making `find_vJ` refuse, over a band of `alN` or on one chosen
+    evaluation, because no combination of the three physical arguments was found that
+    produces one: a sweep of
     2475 triples over `c_b^2`, `c_s^2` in [0.05, 1/3] and eleven values of `psiN` gave no
     grid with both a non-finite residual and a crossing.
     """
@@ -143,6 +147,20 @@ class DegenerateRangesAndGapsTests(unittest.TestCase):
         def find_vJ(alN, cb2):
             if low < float(alN) < high:
                 raise ValueError("no Jouguet velocity here")
+            return original(alN, cb2)
+
+        hydro.find_vJ = find_vJ
+
+    @staticmethod
+    def _failing_sample(hydro, call, error):
+        """Make the `call`-th evaluation of the residual raise `error`."""
+        original = hydro.find_vJ
+        state = {"calls": 0}
+
+        def find_vJ(alN, cb2):
+            state["calls"] += 1
+            if state["calls"] == call:
+                raise error
             return original(alN, cb2)
 
         hydro.find_vJ = find_vJ
@@ -174,6 +192,63 @@ class DegenerateRangesAndGapsTests(unittest.TestCase):
         h.max_al(NEIGHBOUR["cb2"], NEIGHBOUR["cs2"], NEIGHBOUR["psiN"], 100)
         self.assertIs(h.max_al_non_monotonic, False,
                       "a gap in the residual was counted as non-monotonicity")
+
+    def test_a_hole_between_opposite_signs_is_not_counted_as_a_crossing(self):
+        """The other hole: one that separates a negative residual from a positive one.
+
+        The SPIKE residual changes sign exactly twice on the search grid, between
+        alN = 0.0635 and 0.0730 and between alN = 6.216 and 7.142, which is why it is
+        flagged. Refusing the band around the second one removes both of its samples, so no
+        bracket spans that stretch any more and the search in `max_al` would not use it.
+        Dropping the holes and comparing what is left instead makes the surviving `+` at
+        alN = 5.42 and `-` at alN = 8.20 neighbours, and the point stays flagged on the
+        strength of two samples that never touch. The count has to agree with the search.
+
+        The first crossing is untouched, so the root must still be the measured one.
+        """
+        h = _hydro()
+        self._refusing_band(h, 6.0, 7.5)
+        value = h.max_al(SPIKE["cb2"], SPIKE["cs2"], SPIKE["psiN"], 100)
+        self.assertAlmostEqual(value, 0.06707, places=4,
+                               msg="the hole moved the root it does not span")
+        self.assertIs(h.max_al_non_monotonic, False,
+                      "a hole between opposite signs was counted as a crossing")
+
+    def test_the_same_point_is_flagged_when_that_crossing_is_visible(self):
+        """Without the hole the second crossing is real evidence, so the flag must fire.
+
+        Otherwise the test above would pass on a flag that is never set at all.
+        """
+        h = _hydro()
+        h.max_al(SPIKE["cb2"], SPIKE["cs2"], SPIKE["psiN"], 100)
+        self.assertIs(h.max_al_non_monotonic, True)
+
+    def test_a_timeout_while_sampling_is_not_turned_into_a_hole(self):
+        """`errors.Timeout` subclasses `Exception`, so the blanket handler would absorb it."""
+        h = _hydro()
+        self._failing_sample(h, 5, errors.Timeout("deadline reached while sampling"))
+        with self.assertRaises(errors.Timeout):
+            h.max_al(NEIGHBOUR["cb2"], NEIGHBOUR["cs2"], NEIGHBOUR["psiN"], 100)
+
+    def test_an_ordinary_failure_at_the_same_sample_is_absorbed(self):
+        """The counterpart: same sample, a numerical failure instead of a deadline.
+
+        That one is absorbed, and the sample it costs is the lower end of the only bracket
+        NEIGHBOUR has: alN = 0.027689, against the crossing at 0.030878. No bracket spans
+        the crossing any more, so the search reports its bound and leaves the verdict to
+        `find_vw` and its own `shooting(v_J) < 0` test. Nothing reaches the caller.
+
+        This is also what an absorbed deadline would return, and why absorbing one is worse
+        than leaving a hole: `max_al = 100` is not a missing answer but a wrong one, and
+        `alN > max_al` is then false for every physical strength -- the measured failure in
+        this file's opening paragraph, reached a second way.
+        """
+        h = _hydro()
+        self._failing_sample(h, 5, ValueError("no Jouguet velocity here"))
+        value = h.max_al(NEIGHBOUR["cb2"], NEIGHBOUR["cs2"], NEIGHBOUR["psiN"], 100)
+        self.assertEqual(float(value), 100.0,
+                         "an ordinary failure at the bracket did not fall back to the bound")
+        self.assertIs(h.max_al_non_monotonic, False)
 
 
 if __name__ == "__main__":

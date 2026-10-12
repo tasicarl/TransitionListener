@@ -24,7 +24,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   fraction, so `LISA_SNR` comes out exactly 0.0 and reads as a prediction of no signal; note
   that `v_wall == 1` is the *normal* outcome on a supercooled line, so only the exact zero
   is a non-solution. `WARNING:v_wall_branch_ambiguous` fires where the wall-velocity residual
-  crosses zero more than once, i.e. where the branch was chosen rather than determined.
+  changes sign more than once between adjacent samples of the search grid, i.e. where the
+  branch was chosen rather than determined.
 
 - **A refusal to complete reports the percolation temperature it had already determined.**
   All 14 such points on the 2HDM marginal line, the 29-point zoom at the no-percolation
@@ -145,10 +146,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   couplings on the 2HDM line are bit-identical. Where it never goes negative there is no subsonic
   branch to bound at all: the old code then handed `root_scalar` a bracket with equal signs at
   both ends and raised a bare `ValueError: f(a) and f(b) must have different signs`, which
-  nothing upstream types, so the point was reported as error -1. That happens for 189 of 2475
-  triples swept over `c_b^2`, `c_s^2` in [0.05, 1/3] and eleven values of `psi_N`, 96 of them
-  with `psi_N` strictly below one. The search bound is reported there instead, which leaves the
+  nothing upstream types, so the point was reported as error -1. Sweeping 15 x 15 x 11 triples
+  with `c_b^2` and `c_s^2` in [0.05, 1/3] and `psi_N` in [0.9, 1.1], 895 of the 2475 have a
+  finite non-negative residual at both ends of the old bracket, the condition that made
+  `root_scalar` raise, 227 of them with `psi_N` below one; the count depends on the `psi_N`
+  window, which is why it is quoted. The search bound is reported there instead, which leaves the
   subsonic-against-runaway verdict to `find_vw`'s own `shooting(v_J) < 0` test.
+  A strength at which the residual cannot be evaluated leaves a hole in the grid, which the
+  search skips; the run's own `Timeout` is re-raised rather than absorbed into one, so a point
+  whose deadline expires inside the search is reported as a timeout instead of sampling on
+  past it. The sign changes behind `WARNING:v_wall_branch_ambiguous` are counted between
+  adjacent samples only, so a hole cannot read as a crossing that the bracketed search itself
+  would refuse. That count reaches nothing but the flag, and over 2475 triples swept with
+  `c_b^2`, `c_s^2` in [0.05, 1/3] and `psi_N` in [0.9, 1.1], fifteen, fifteen and eleven
+  values, the limit is bit-identical under either counting and the flag, raised on 105 of
+  them, changes on none: the two differ only where a hole falls on a crossing, and no triple
+  in that sweep leaves a hole on a grid that has one.
 
 - **The path-deformation basis grows when the force ratio plateaus** above its target instead
   of stopping there, about 2.5x faster on the 2HDM edge line.
