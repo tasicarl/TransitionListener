@@ -457,9 +457,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   so in a strongly supercooled model each scale eventually exceeded it. Reported from the
   four-dimensional daisy-resummed rate of the conformal U(1), where the action came back
   infinite below T_int = 0.146 at g = 0.54 with the solver calling the potential "stable, not
-  metastable" although the barrier was there. On the conformal dark U(1) ladder in `g` the
-  lowest coupling that percolates moves from 0.54 to 0.45, and the percolation temperature is
-  unchanged where the old code also resolved it, 7.2312e-04 against 7.2312e-04 at g = 0.56.
+  metastable" although the barrier was there. On the conformal dark U(1) ladder in `g`
+  (`y = 0.01`, `v = 0.14 GeV`), against `main` at b31e178, the lowest coupling that percolates
+  moves from 0.54 to 0.42: twelve couplings gain a percolation, 0.53 from "incomplete" and 0.52
+  down to 0.42 from "no percolation". Two more change one failure for another, g = 0.38 and 0.36
+  from "no percolation" to an unresolved jump in P(T), and g = 0.40 does not percolate on
+  either side. Where the old code also resolved it the percolation
+  temperature is unchanged, by 1.8e-06 to 2.4e-04 per cent over g = 0.54 to 0.62, the one
+  exception being -0.074 per cent at g = 0.55.
   Against TL's own `SingleFieldInstanton` on the unsplined potential the action is now right to
   1.3e-08 at T_int = 0.1 and 0.01, 4.2e-07 at 1e-3, 6.6e-08 at 1e-4, 2.6e-07 at 1e-5 and
   5.9e-05 at 1e-6, where before it was infinite below T_int = 0.1. Those figures measure the
