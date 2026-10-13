@@ -747,14 +747,23 @@ def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> f
         """Is the potential at `x` still above the other end of the path?
 
         A degenerate mirror minimum only touches the other end's value, it does not go below
-        it, so this is a margin rather than a comparison. The margin is relative because the
-        two values are the same number to every digit in that case, while a minimum that is
-        genuinely allowed sits orders of magnitude above: -2.4348e+07 against -6.79e+07 on the
-        2HDM benchmark.
+        it, so this is a margin rather than a comparison: the two are the same number to every
+        digit in that case, while a minimum that is genuinely allowed sits far above, -2.4348e+07
+        against -6.79e+07 on the 2HDM benchmark.
+
+        The margin is the rounding of the two values and nothing more, the same rule the walk
+        above uses for a rise. A margin of a fixed relative size instead -- 1e-9 of the floor,
+        as this was -- is not a property of the potential at all: the bounce depends only on
+        differences of ``V``, so adding a constant to it must not change which paths are
+        extended, and a margin proportional to ``|floor|`` changes with that constant. It also
+        refuses minima that are genuinely metastable: an end 500 above a floor of -1e12 would
+        have had to clear 1000.
         """
         if floor is None:
             return True
-        return value(x) > floor + 1e-9 * abs(floor)
+        here = value(x)
+        noise = 8.0 * np.finfo(float).eps * max(abs(here), abs(floor), np.finfo(float).tiny)
+        return here > floor + noise
 
     # Geometric, so that a minimum arbitrarily close to the end is resolved, and reaching as far
     # as the size guard in `SplinePath` allows, so one many knots out is still found the way the
@@ -773,7 +782,14 @@ def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> f
         # potential the run has already been told to stop evaluating.
         raise
     except Exception:
-        probes = np.array([value(float(x)) for x in ladder])
+        # The search below stops at the first non-finite probe, so the fallback stops filling
+        # there too rather than evaluating a restricted-domain potential 300 more times.
+        scalar = []
+        for x in ladder:
+            scalar.append(value(float(x)))
+            if not np.isfinite(scalar[-1]):
+                break
+        probes = np.array(scalar)
 
     here = float(probes[0])
     if not np.isfinite(here):

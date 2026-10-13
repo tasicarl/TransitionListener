@@ -366,6 +366,37 @@ class ExtendingMustNotDestroyTheMetastability(unittest.TestCase):
         self.assertAlmostEqual(found, 11.0, delta=0.5,
                                msg=f"a minimum far above the other end was refused: {found}")
 
+    def test_adding_a_constant_to_the_potential_changes_nothing(self):
+        """The bounce depends only on differences of V, so the verdict must not move with it.
+
+        The clearance above the floor is held fixed at 500 and only the zero of ``V`` moves.
+        Nothing physical changes, so the extension must not either. The margin this replaces
+        was 1e-9 of the floor, which is not a property of the potential: at a floor of -1e9 it
+        asked for 1, and at -1.001e12 for 1001, so the same configuration was extended before
+        the shift and refused after it.
+        """
+        above, distance = 500.0, 7.0
+        for floor in (-1.0e9, -1.0e10, -1.0e11, -1.0e12):
+            with self.subTest(floor=floor):
+                V = self._even_potential(abs(floor) - above, distance)
+                found = pd._extension_minimum(V, np.array([0.0]), np.array([1.0]), +1.0,
+                                              floor=floor)
+                self.assertAlmostEqual(
+                    found, distance, delta=0.5,
+                    msg=f"with the same clearance of {above:g} above a floor of {floor:g} the "
+                        f"extension came out as {found}, so the verdict moved with the zero "
+                        f"of the potential")
+
+    def test_a_near_degenerate_minimum_above_a_deep_floor_is_kept(self):
+        """500 above a floor of -1e12 is metastable; the old margin asked for 1000."""
+        floor = -1.0e12
+        above = 500.0
+        V = self._even_potential(abs(floor) - above, 7.0)
+        found = pd._extension_minimum(V, np.array([0.0]), np.array([1.0]), +1.0, floor=floor)
+        self.assertAlmostEqual(found, 7.0, delta=0.5,
+                               msg=f"a minimum {above:g} above a floor of {floor:g} was "
+                                   f"refused: {found}")
+
 
 class TheRunsDeadlineSurvivesThePathExtension(unittest.TestCase):
     """A timeout raised inside the extension must not come back as a verdict.
