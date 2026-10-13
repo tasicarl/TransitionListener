@@ -164,7 +164,12 @@ class TwoFieldPathWithASmallBarrier(unittest.TestCase):
         V, dV = self._potential(length, barrier)
         ends = [np.array([length, 0.0]), np.array([0.0, 0.0])]
 
-        def fixed_step(Vf, p0, dp0, sign):
+        def fixed_step(Vf, p0, dp0, sign, floor=None):
+            # `floor` is accepted and ignored on purpose. The real `_extension_minimum` takes
+            # it as a keyword for the metastable end, and a double without it raises a
+            # `TypeError` that `_fit_spline_path` turns into a `SplineError` -- which this
+            # test's `assertRaises` would accept, so it would pass without ever running the
+            # old search. The failure has to come from the search, not from the signature.
             def V_lin(x, a, b, c):
                 return c(a + x * b)
             x = optimize.fmin(V_lin, 0.0, args=(p0, dp0, Vf), xtol=1e-6, disp=0)[0]
@@ -360,6 +365,74 @@ class ExtendingMustNotDestroyTheMetastability(unittest.TestCase):
                                       floor=-6.79e7)
         self.assertAlmostEqual(found, 11.0, delta=0.5,
                                msg=f"a minimum far above the other end was refused: {found}")
+
+
+class TheRunsDeadlineSurvivesThePathExtension(unittest.TestCase):
+    """A timeout raised inside the extension must not come back as a verdict.
+
+    `errors.Timeout` is raised from a POSIX alarm handler, so it lands wherever the run happens
+    to be, including inside the potential calls this search makes. It subclasses `Exception`,
+    so every broad handler on the way out is a place where a timed-out point can be turned into
+    a finished one: the probes would read it as an impassable wall and pick an extension from
+    wherever the alarm fell, and `_fit_spline_path` would turn it into a `SplineError`, which
+    `bounceAction` reports as no tunnelling with an infinite action.
+    """
+
+    def test_the_scalar_probe_does_not_read_a_timeout_as_a_wall(self):
+        """The scalar probe is only reached once the vectorised one has failed.
+
+        A potential that simply raises the deadline is caught by the vectorised guard and never
+        reaches the scalar path, so such a test passes with the scalar guard removed. This one
+        refuses to broadcast -- an ordinary failure, which is what engages the fallback -- and
+        raises the deadline on the scalar calls that follow.
+        """
+        def V(p):
+            if np.ndim(p) > 1:
+                raise ValueError("this potential does not broadcast")
+            raise errors.Timeout("deadline during a scalar probe")
+
+        with self.assertRaises(errors.Timeout):
+            pd._extension_minimum(V, np.array([0.0]), np.array([1.0]), +1.0)
+
+    def test_the_vectorised_probe_does_not_fall_back_to_scalar_probes(self):
+        calls = []
+
+        def V(p):
+            calls.append(np.shape(p))
+            raise errors.Timeout("deadline during the vectorised probe")
+
+        with self.assertRaises(errors.Timeout):
+            pd._extension_minimum(V, np.array([0.0]), np.array([1.0]), +1.0)
+        self.assertEqual(len(calls), 1,
+                         "the deadline was answered with further evaluations of the potential "
+                         f"instead of being re-raised: {len(calls)} calls")
+
+    def test_a_timeout_is_not_turned_into_a_spline_failure(self):
+        """`_fit_spline_path`'s broad handler must let the deadline past.
+
+        Without this the exception reaching `bounceAction` is a `SplineError`, which it reports
+        as no tunnelling and an infinite action -- a timed-out point with a physics verdict.
+        """
+        def V(p):
+            raise errors.Timeout("deadline while fitting the spline")
+
+        def dV(p):
+            return np.zeros_like(np.asanyarray(p, dtype=float))
+
+        settings = pd._build_tunneling_settings(
+            200, pd.tunneling1D.SingleFieldInstanton, {}, {},
+            pd.Deformation_Spline, {}, {}, False, False, None, None)
+        pts = np.array([[1.0, 0.0], [0.5, 0.0], [0.0, 0.0]])
+        with self.assertRaises(errors.Timeout):
+            pd._fit_spline_path(pts, settings, V, dV, False)
+
+    def test_an_ordinary_failure_is_still_absorbed(self):
+        """The control: a probe that cannot be evaluated is still a wall, not an error."""
+        def V(p):
+            raise ValueError("this potential is not defined out here")
+
+        self.assertEqual(
+            pd._extension_minimum(V, np.array([0.0]), np.array([1.0]), +1.0), 0.0)
 
 
 if __name__ == "__main__":

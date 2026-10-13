@@ -1173,6 +1173,12 @@ def _fit_spline_path(pts, settings: TunnelingSettings, V, dV, verbose):
         if verbose:
             print(err.args[0])
         raise errors.SplineError(err.args[0])
+    except errors.Timeout:
+        # The probes inside the path extension re-raise the run's deadline rather than reading
+        # it as a wall, and it has to survive this handler too: turned into a `SplineError` it
+        # reaches `bounceAction`, which treats that as no tunnelling and returns an infinite
+        # action, so a timed-out point would come back as a finished one with a verdict.
+        raise
     except Exception as err:
         msg = err.args[0]
         if msg == "Maximum allowed size exceeded":
