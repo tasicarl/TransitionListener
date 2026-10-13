@@ -137,6 +137,8 @@ def _finalize_percolation_state(
     duplicate-free temperature grids so the diagnostics layer can report them
     consistently.
     """
+    from transitionlistener.percolation_adaptive_rate import _temperatures_match
+
     state.support_bank = _temperature_grid(state.support_bank if state.support_bank is not None else state.TSYM)
     if state.free_support_bank is not None:
         state.action_temperatures = _temperature_grid(
@@ -153,14 +155,7 @@ def _finalize_percolation_state(
         [
             float(value)
             for value in current
-            if not np.any(
-                np.isclose(
-                    previous,
-                    float(value),
-                    atol=1e-10 * max(np.max(np.abs(previous)), abs(float(value))),
-                    rtol=0.0,
-                )
-            )
+            if not np.any(_temperatures_match(previous, float(value), relative=1e-10))
         ],
         dtype=float,
     )
@@ -2176,10 +2171,14 @@ def _transition_action_outdict_temperatures(
 
     lower = -math.inf if tmin is None else float(min(tmin, tmax))
     upper = math.inf if tmax is None else float(max(tmin, tmax))
+    # Relative to the requested window, without a floor of one: the floor made this 1e-10
+    # absolute, which for a window at an internal temperature of 1e-9 reaches a tenth of the
+    # way below it and admits cached actions from outside the window the caller asked for.
+    # That needs a window below about internal 1e-8, colder than anything shipped here
+    # reaches, so this is the same expression made safe rather than a defect observed.
     scale = max(
         abs(lower) if np.isfinite(lower) else 0.0,
         abs(upper) if np.isfinite(upper) else 0.0,
-        1.0,
     )
     interval_tol = 1e-10 * scale
 

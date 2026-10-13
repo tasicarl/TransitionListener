@@ -48,25 +48,43 @@ def _temperature_midpoint(high: float, low: float) -> float | None:
     return 0.5 * (high + low)
 
 
-def _temperature_tolerance(
+def _temperatures_match(
     values: np.ndarray | list[float] | tuple[float, ...] | None,
     candidate: float,
-) -> float:
-    """Return the absolute tolerance used when deduplicating temperature samples.
+    relative: float = 1e-6,
+) -> np.ndarray:
+    """Elementwise ``|v - candidate| <= relative * max(|v|, |candidate|)``.
 
-    Relative to the temperatures involved, with no absolute floor. Temperatures are in the
-    model's internal units, and a strongly supercooled transition happens at internal
-    temperatures far below one: with a floor of one, the tolerance was 1e-6 absolute, which at
-    an internal temperature of 6e-6 is a sixth of the temperature, so every refinement point
-    inside a jump of P(T) counted as already present and was dropped.
+    Relative to the two temperatures compared, with no absolute floor, and pairwise, so each
+    entry is judged against its own size rather than against the largest temperature in the
+    array. Temperatures are in the model's internal units, where the stable minimum sits at
+    ``v_stable``, so an internal temperature is ``v_stable`` times ``T/v`` and falls below one
+    wherever the transition is supercooled by more than ``1/v_stable`` - 4e-3 for the 2HDM,
+    1e-3 for the models built on ``internal_scale = 1000``. Both of the forms this replaces
+    were then a large fraction of the temperature they were applied to.
+
+    An absolute floor of one made the presence tolerance 1e-6 absolute, which is larger than
+    the temperature itself wherever the support reaches below internal 1e-6. Scaling by the
+    array's maximum instead makes it a large fraction of the cold end whenever the support
+    spans decades: on the 144-point support of the 2HDM point at ``lambda3 = 5.8197``, which
+    reached internal 2.4e-13 while its hot end stayed at 76.2, the tolerance was 7.6e-5 and 26
+    of the 143 adjacent pairs of its own support points fell inside it - 22 of them more than
+    a tenth apart, the median one 172 per cent apart, and the three coldest 110 per cent apart
+    each. The rule here merges four of the same 143, all of them duplicates to nine digits.
+    Either way, every refinement point proposed inside the rise of P(T) counts as already
+    present and is dropped, the controller finds nothing to add with
+    most of its budget unspent, and the acceptance gate then rejects the profile the
+    controller accepted.
+
+    ``max(|v|, |candidate|)`` rather than ``|candidate|`` alone is deliberate but makes no
+    measurable difference: writing ``v = candidate (1 + d)``, the two disagree only for ``d``
+    in ``(relative, relative / (1 - relative)]``, a window of relative width ``relative**2``.
     """
-    candidate = float(candidate)
     values_arr = np.asarray([] if values is None else values, dtype=float)
-    scale = max(
-        abs(candidate),
-        np.max(np.abs(values_arr)) if values_arr.size else 0.0,
-    )
-    return 1e-6 * scale
+    if values_arr.size == 0:
+        return np.zeros(0, dtype=bool)
+    c = float(candidate)
+    return np.abs(values_arr - c) <= relative * np.maximum(np.abs(values_arr), abs(c))
 
 
 def _temperature_present(
@@ -74,10 +92,7 @@ def _temperature_present(
     candidate: float,
 ) -> bool:
     """Return whether ``candidate`` is already represented inside ``values``."""
-    values_arr = np.asarray([] if values is None else values, dtype=float)
-    if values_arr.size == 0:
-        return False
-    return bool(np.any(np.isclose(values_arr, float(candidate), atol=_temperature_tolerance(values_arr, candidate), rtol=0.0)))
+    return bool(np.any(_temperatures_match(values, candidate)))
 
 
 def _find_value_crossing(
@@ -129,8 +144,7 @@ def _probability_at(temperature: float, temperatures: np.ndarray, probabilities:
     if temps.size < 2:
         return None
     temperature = float(temperature)
-    scale = max(np.max(np.abs(temps)), abs(temperature))
-    matches = np.flatnonzero(np.isclose(temps, temperature, atol=1e-10 * scale, rtol=0.0))
+    matches = np.flatnonzero(_temperatures_match(temps, temperature, relative=1e-10))
     if matches.size:
         value = float(probs[int(matches[0])])
         return value if np.isfinite(value) else None
@@ -735,6 +749,20 @@ def _build_step1_hot_rate_anchor_grid(
 
     candidate = np.asarray([], dtype=float)
     current_hot = float(active[0])
+    # Only the floor of one is dropped here; the array maximum is left in place, unlike in the
+    # presence and deduplication checks, and it is the one site in this change where that is a
+    # deliberate decision rather than a no-op. ``atol`` is compared against one temperature
+    # only, ``current_hot``, which is ``active[0]`` and therefore ``max|active|`` itself, so
+    # the first term of the maximum is the temperature in question and needs no floor. The
+    # second term can raise it: this function exists to carry anchors from the scout profile
+    # into the active window, so ``temps`` reaches hotter than ``active`` by construction, and
+    # ``atol`` is ``1e-10`` times that ratio in units of ``current_hot``. The ratio is the
+    # distance between the scout's hot end and the window's, which none of the recorded runs
+    # reports, so its size is not quoted here. The direction is to admit candidates slightly
+    # hotter than ``current_hot``, and the tests reach this function only through a profile
+    # whose rate never crosses a ``HOT_RATE_ANCHORS`` level, so nothing here pins it: it is
+    # left as it was and listed as the first scale to tighten, with a test, in a change of its
+    # own.
     scale = max(np.max(np.abs(active)), np.max(np.abs(temps)))
     atol = 1e-10 * scale
     hot_probability = float(probs[0]) if np.isfinite(probs[0]) else None
@@ -992,14 +1020,34 @@ def _rate_interval_is_post_peak_inert(
     if not (np.isfinite(high) and np.isfinite(low) and high > low):
         return False
 
-    scale = max(np.max(np.abs(temps)), abs(high), abs(low))
-    atol = _temperature_tolerance(temps, high) + _temperature_tolerance(temps, low) + 1.0e-12 * scale
-    high_matches = np.flatnonzero(np.isclose(temps, high, rtol=0.0, atol=atol))
-    low_matches = np.flatnonzero(np.isclose(temps, low, rtol=0.0, atol=atol))
+    # ``_largest_probability_jump_interval`` returns two entries of ``temps`` itself, so both
+    # endpoints are looked up relative to their own size and the closest entry wins. An
+    # absolute tolerance scaled by the hottest support point was larger than the gaps at the
+    # cold end of a supercooled support: on the 144-point 2HDM support spanning internal
+    # 2.4e-13 to 76.2 it resolved 28 of the 143 adjacent pairs to the wrong indices, 26 of
+    # them to ``high_index >= low_index``, which returned "not inert" for an interval whose
+    # rate it never looked at.
+    #
+    # ``relative`` is 2e-6 rather than the 1e-6 of ``_temperature_present`` because the
+    # tolerance it replaces was the sum of the presence tolerances of the two endpoints. The
+    # width is therefore the one this lookup already had; only its scale changed. Both values
+    # answer the same question - is this the support point the caller named - so the wider one
+    # is kept here only to leave the acceptance behaviour of a warm support untouched.
+    #
+    # Taking the closest entry rather than the first makes the width of this window inert on
+    # every path that reaches here: all three callers hand over two entries of ``temps``
+    # itself, either an adjacent pair from a loop over the array or the endpoints
+    # ``_largest_probability_jump_interval`` read off it, so the matching entry is at distance
+    # zero and wins any argmin. No test can therefore separate this tolerance from the one it
+    # replaces, and none here tries to; what the tests pin is the index selection. The scale is
+    # made relative anyway, because an endpoint that has been through arithmetic would be
+    # looked up against the hottest support point instead of against itself.
+    high_matches = np.flatnonzero(_temperatures_match(temps, high, relative=2.0e-6))
+    low_matches = np.flatnonzero(_temperatures_match(temps, low, relative=2.0e-6))
     if high_matches.size == 0 or low_matches.size == 0:
         return False
-    high_index = int(high_matches[0])
-    low_index = int(low_matches[0])
+    high_index = int(high_matches[int(np.argmin(np.abs(temps[high_matches] - high)))])
+    low_index = int(low_matches[int(np.argmin(np.abs(temps[low_matches] - low)))])
     if high_index >= low_index:
         return False
 
