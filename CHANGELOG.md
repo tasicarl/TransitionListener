@@ -462,7 +462,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   unchanged where the old code also resolved it, 7.2312e-04 against 7.2312e-04 at g = 0.56.
   Against TL's own `SingleFieldInstanton` on the unsplined potential the action is now right to
   1.3e-08 at T_int = 0.1 and 0.01, 4.2e-07 at 1e-3, 6.6e-08 at 1e-4, 2.6e-07 at 1e-5 and
-  5.9e-05 at 1e-6, where before it was infinite below T_int = 0.1.
+  5.9e-05 at 1e-6, where before it was infinite below T_int = 0.1. Those figures measure the
+  path and the spline, not the whole solve: the reference carries the same shooting tolerances
+  as the solver under test, `tunneling_findProfile_params` `phitol = xtol = 1e-10`, and those
+  are themselves fractions of the distance between the minima. Against a bounce converged with
+  tolerances relative to its own profile, the action is biased low and smoothly so below about
+  T_int = 1e-2: at g = 0.46, 131.713 against 131.899 at T_int = 1e-4 and 96.76 against 102.854
+  at 1e-6. That fourth scale is not touched here, so the numbers above should be read as the
+  accuracy of the path construction at a fixed shooting tolerance, and the action below
+  T_int = 1e-2 is not yet converged.
 
   - The path extension searches for the nearest minimum. It used `scipy.optimize.fmin` from
     `x0 = 0`, whose initial simplex step is 2.5e-4 of the knot spacing whatever the problem
