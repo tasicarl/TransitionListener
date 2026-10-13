@@ -299,6 +299,81 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Two temperatures are compared relative to their own size, not to an absolute floor of one
+  and not to the hottest point of the support.** The adaptive percolation decides whether a
+  proposed temperature is already present in the support, whether two samples are duplicates,
+  and which support point an interval endpoint refers to. Every one of those comparisons used
+  an absolute tolerance built either as `1e-6 * max(..., 1.0)` or as `1e-6 * max|support|`.
+  Temperatures are in the model's internal units, where the stable minimum sits at `v_stable`
+  and a `conversionFactor` converts to GeV, so an internal temperature is `v_stable` times
+  `T/v` and falls below one wherever the transition is supercooled by more than `1/v_stable`:
+  4e-3 for the 2HDM, 1e-3 for the models built on `internal_scale = 1000`. Both tolerance forms
+  then become a large fraction of the temperature they are applied to.
+
+  The floor of one made the presence tolerance 1e-6 in absolute terms, larger than the
+  temperature itself below internal 1e-6. The support maximum is worse, and worse on models
+  that are not extreme: it only needs the support to span decades, which it does whenever the
+  bank reaches up to the critical temperature while the transition happens far below it. The
+  2HDM reaches both regimes. On the 144-point support of the point at `lambda3 = 5.8197`,
+  which reached internal 2.4e-13 while its hot end stayed at 76.2 -- the 2HDM's
+  `conversionFactor` is one, so those are GeV too -- 32 points sat below internal one, the
+  presence tolerance was 7.6e-5, and 26 of the 143 adjacent pairs of the support's own points
+  fell inside it: 22 of them more than a tenth apart, the median one 172 per cent apart, and
+  the three coldest 110 per cent apart each. The rule that replaces it merges four of the same
+  143, all duplicates to nine digits. A 200-point log-spaced support from internal 1e-12 to
+  1e-1 has 125 of its 199 adjacent pairs inside the old tolerance and none inside the new one.
+  Either way, every point the jump refinement proposed inside a rise of `P(T)`
+  counted as already present and was dropped, the controller found nothing to add with most of
+  its budget unspent, and the acceptance gate then rejected the profile the controller had
+  accepted.
+
+  Each comparison is now `|a - b| <= relative * max(|a|, |b|)`, through one helper
+  `_temperatures_match`, with `relative` 1e-6 for presence and 1e-10 for deduplication. The new
+  tolerance is never larger than either of the old ones, so points can only be separated, never
+  merged: the change can add support points and action evaluations, never remove them. It is
+  bit-identical wherever every temperature involved is at least one, which is where the floor
+  never acted; it is not identical on a support that spans decades, whatever its absolute
+  scale, which is the case it exists for. The 2HDM points that percolate are on the safe side
+  of the old boundary and do not move: on the support of the point at `lambda3 = 5.8106060606`,
+  which spans internal 2.2 to 76.2, the old rule merges three adjacent pairs and the new rule
+  merges the same three, and the campaign reproduces that point's observables unchanged. It is
+  the points that fail to percolate whose supports reach far below one, and there the two rules
+  part: 25, 28 and 26 of their adjacent pairs merged under the old rule against 5, 5 and 4
+  under the new one. Across the four dark U(1) regression datasets of the validation scans,
+  internal `Tperc` runs from 0.21 to 162 against an internal `Tcrit` of 84 to 316, so the floor
+  of one is nearly inert there -- 22 of their 1080 points fall below internal one -- while the
+  old presence tolerance still reached 5e-5 to 1.5e-3 of the cold end; a refinement step
+  coarser than that is unaffected, and the jump refinement's steps are of order a per cent.
+
+  Two further absolute floors are removed for the same reason, and both are latent rather than
+  active: the dead band around the step-1 startup centre, which at an internal window of 1e-9
+  stops `_count_high` and `_count_low` from seeing points that are there and makes the fill
+  loops spend action budget replacing them, and the window that collects cached actions, which
+  at an internal window of 1e-9 reaches a tenth of the way below it and admits actions from
+  outside it. Both are 1e-10 absolute, so they need an internal window below about 1e-8 to
+  matter, which is colder than any model shipped here reaches; they are removed because the
+  expression is the same one and the next supercooled point is where it would be found. The
+  lookup that turns
+  the endpoints of a probability jump back into support indices took the first match of an
+  absolute tolerance scaled by the hottest support point; on the 144-point support above it
+  resolved 28 of the 143 adjacent pairs to at least one wrong index, 26 of them to
+  `high_index >= low_index`, which returned "not inert" -- the verdict that vetoes the repair of
+  the jump -- without reading a rate. It now matches relative to each endpoint and takes the
+  closest support point.
+
+  A fixed-step scan is untouched by all of this. `percolation_algorithm_mode="fixed_step_size"`
+  selects `transitionObservables_fixedstep`, which calls `calcPercAndEvolve` from
+  `bubbledynamics_fixedstep`, and that module contains none of the changed names: not
+  `_temperature_grid`, not `_finalize_percolation_state`, not the presence rule, the window
+  tolerances or the interval-endpoint lookup.
+
+  Those last two do reach the other fixed-step solver. `bubbledynamics.calcPercAndEvolve` runs
+  `percolation_fixedstepsize` when it is handed a fixed-step configuration, and there
+  `_temperature_grid` builds the support bank and `_finalize_percolation_state` applies the
+  1e-10 deduplication afterwards. That path is reached from the adaptive observables module, not
+  from a fixed-step scan, and both functions can only keep temperatures the old rule merged, and
+  only where a temperature below one in internal units is involved.
+
 - **A phase no longer leaves the range of its own traced minima between two traced
   temperatures.** `PhaseInfo` interpolated the trace with `splprep(..., s=0, k=3)`, an
   interpolating cubic. The tracer does not space its temperatures evenly -- it clusters them

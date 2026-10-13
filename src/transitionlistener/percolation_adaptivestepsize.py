@@ -32,6 +32,7 @@ from transitionlistener.percolation_adaptive_rate import (
     _find_value_crossing,
     _hot_head_underresolved,
     _temperature_present,
+    _temperatures_match,
 )
 from transitionlistener.percolation_adaptive_gridbuilders import (
     _adaptive_cold_boundary,
@@ -65,8 +66,7 @@ def _controller_added_support_points(
         return int(bank.size)
     count = 0
     for value in bank:
-        scale = max(np.max(np.abs(free_bank)), abs(float(value)), 1.0)
-        if not np.any(np.isclose(free_bank, float(value), atol=1e-10 * scale, rtol=0.0)):
+        if not np.any(_temperatures_match(free_bank, float(value), relative=1e-10)):
             count += 1
     return int(count)
 
@@ -1018,7 +1018,7 @@ def _promote_dynamiczoomwindow_cached_points(
     ):
         high = float(max(promotion_high, promotion_low))
         low = float(min(promotion_high, promotion_low))
-        scale = max(abs(high), abs(low), 1.0)
+        scale = max(abs(high), abs(low))
         atol = 1e-10 * scale
         pending_points = np.asarray(
             [

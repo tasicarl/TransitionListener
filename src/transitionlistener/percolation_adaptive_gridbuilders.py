@@ -124,7 +124,7 @@ def _highest_tsym_with_tb_root(
 
     low = tmin
     high = tmax
-    scale = max(abs(tmin), abs(tmax), abs(TBROmin), abs(TBROmax), 1.0)
+    scale = max(abs(tmin), abs(tmax), abs(TBROmin), abs(TBROmax))
     tol = 1e-8 * scale
     for _ in range(80):
         if abs(high - low) <= tol:
@@ -626,11 +626,16 @@ def _build_step1_active_grid(
         return None
 
     temperatures = _temperature_grid(profile.temperatures)
+    # Relative to the window, without a floor of one: the floor made this 1e-10 absolute, and
+    # the dead band it opens around ``startup_center`` is then a tenth of an internal
+    # temperature of 1e-9, so ``_count_high`` and ``_count_low`` below stop counting points
+    # that are there and the fill loops spend action budget replacing them. That needs a
+    # window below about internal 1e-8, which no model shipped here reaches; the expression is
+    # the one the presence tolerance had, and this is where it would be found next.
     scale = max(
         abs(float(profile.window_high)),
         abs(float(profile.window_low)),
         abs(float(profile.startup_center)),
-        1.0,
     )
     atol = 1e-10 * scale
     active = np.asarray(
