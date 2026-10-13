@@ -758,6 +758,17 @@ def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> f
         extended, and a margin proportional to ``|floor|`` changes with that constant. It also
         refuses minima that are genuinely metastable: an end 500 above a floor of -1e12 would
         have had to clear 1000.
+
+        What this cannot do is recover a gap the two values no longer carry. At a floor of
+        -1e12 the spacing of doubles is 1.2e-4, so a gap of 1e-3 is eight of them and the
+        margin, fifteen, refuses it, while the same gap at a floor of zero is accepted. That is
+        not the rule changing its mind: it is the offset having thrown the information away
+        before the comparison sees it, and a potential evaluated by summing terms is good to
+        several of those spacings at best. The answer when the gap is inside the rounding is to
+        leave the end where it is, which is what this returns and what the old search did on a
+        potential it could not read. Nothing shipped here is near that limit -- the 2HDM
+        compares -2.4348e+07 against -6.79e+07, a gap of 0.6 of the value against a margin of
+        1e-15 of it.
         """
         if floor is None:
             return True
@@ -910,7 +921,12 @@ def _clustered_V_samples(L: float, n_samples: int) -> np.ndarray:
     action at temperatures the uniform grid resolves.
     """
     n_uniform = max(2, n_samples // 2)
-    n_end = max(2, (n_samples - n_uniform) // 2)
+    # The two end grids meet at L/2, so `np.unique` drops one of that pair and the grid comes
+    # out one knot short of `n_samples`. That one knot decides whether the grid is judged at
+    # all: `_barrier_is_resolved` returns True without looking at anything below
+    # `_V_SAMPLE_MIN_FOR_CLUSTERING` in-path knots, so at the configured 1000 samples a
+    # 999-knot replacement was accepted whatever it carried. Ask for the knot back.
+    n_end = max(2, (n_samples - n_uniform + 1) // 2 + 1)
     uniform = np.linspace(0.0, L, n_uniform)
     # the ends themselves are in `uniform`, so these only fill in the approach to them
     approach = np.geomspace(_V_SAMPLE_END_FLOOR * L, 0.5 * L, n_end)

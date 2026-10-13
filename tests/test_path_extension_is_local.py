@@ -387,6 +387,50 @@ class ExtendingMustNotDestroyTheMetastability(unittest.TestCase):
                         f"extension came out as {found}, so the verdict moved with the zero "
                         f"of the potential")
 
+    @staticmethod
+    def _minimum_at(target, distance, rise):
+        """A well whose lowest value is exactly `target`, reached at `distance`.
+
+        Walking outward from zero the potential falls to `target` and then rises by `rise`,
+        which is the shape the extension search is looking for. Unlike `_even_potential` the
+        depth and the value at the minimum are set separately, so the gap above a floor can be
+        chosen directly.
+        """
+        def V(p):
+            x = np.asanyarray(p, dtype=float)
+            x = x[..., 0] if x.ndim and x.shape[-1] == 1 else x
+            return target + rise * (np.abs(x) / distance - 1.0) ** 2
+        return V
+
+    def test_a_gap_inside_the_rounding_is_refused_and_that_is_the_limit(self):
+        """Where the offset-independence stops, recorded rather than rediscovered.
+
+        The margin is the rounding of the two values compared, so a gap smaller than that
+        rounding cannot be told from zero. At a floor of -1e12 the spacing of doubles is 1.2e-4
+        and the margin is fifteen of them, so a gap of 1e-3 -- eight spacings, and inside the
+        error of any potential that was computed rather than written down -- is refused, while
+        the same gap at a floor of zero is accepted. Refusing is the safe answer and the one
+        the old search also gave on a potential it could not read, but the threshold is worth
+        pinning: a change that moved it would show up here.
+        """
+        distance = 7.0
+        for floor, gap, extended in ((0.0, 1.0e-3, True),
+                                     (-1.0e12, 1.0e-3, False),
+                                     (-1.0e12, 1.0e-1, True)):
+            with self.subTest(floor=floor, gap=gap):
+                rise = max(1.0, 1.0e-6 * abs(floor))
+                V = self._minimum_at(floor + gap, distance, rise)
+                found = pd._extension_minimum(V, np.array([0.0]), np.array([1.0]), +1.0,
+                                              floor=floor)
+                if extended:
+                    self.assertGreater(found, 0.0,
+                                       f"a gap of {gap:g} above a floor of {floor:g} was "
+                                       f"refused, so the threshold has moved")
+                else:
+                    self.assertEqual(found, 0.0,
+                                     f"a gap of {gap:g} above a floor of {floor:g} is inside "
+                                     f"the rounding of those values and was accepted anyway")
+
     def test_a_near_degenerate_minimum_above_a_deep_floor_is_kept(self):
         """500 above a floor of -1e12 is metastable; the old margin asked for 1000."""
         floor = -1.0e12

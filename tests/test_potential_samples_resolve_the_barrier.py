@@ -123,5 +123,82 @@ class TheClusteredGrid(unittest.TestCase):
                         f"the largest gap along the path is {gaps.max()}")
 
 
+class TheReplacementIsJudgedBeforeItIsUsed(unittest.TestCase):
+    """A replacement grid that does not resolve the barrier either must not be adopted.
+
+    `_barrier_is_resolved` answers True without looking at anything on a grid with fewer than
+    `_V_SAMPLE_MIN_FOR_CLUSTERING` in-path knots, because below that there are not enough knots
+    for the re-placed spacing to be worth building. The clustered grid used to come out one
+    knot under that threshold at the configured 1000 samples -- the two end grids meet at L/2
+    and `np.unique` drops one of the pair -- so the check that is supposed to keep an
+    inadequate replacement out of the spline accepted every one of them.
+    """
+
+    L = 1000.0
+
+    def test_the_clustered_grid_carries_the_knots_it_was_asked_for(self):
+        for n_samples in (pd._V_SAMPLE_MIN_FOR_CLUSTERING, 1001, 2000, 10000):
+            with self.subTest(n_samples=n_samples):
+                x = pd._clustered_V_samples(self.L, n_samples)
+                n_in = int(np.count_nonzero((x >= 0.0) & (x <= self.L)))
+                self.assertGreaterEqual(
+                    n_in, n_samples,
+                    f"the clustered grid has {n_in} in-path knots against the {n_samples} "
+                    f"asked for, so `_barrier_is_resolved` judges it without looking")
+
+    def test_a_clustered_grid_that_misses_the_barrier_is_not_resolved(self):
+        """The safeguard itself: the count must be able to say no at the default setting."""
+        x = pd._clustered_V_samples(self.L, pd._V_SAMPLE_MIN_FOR_CLUSTERING)
+        y = np.where((x > 0.4999 * self.L) & (x < 0.5001 * self.L), 1.0, -1.0)
+        self.assertLess(int(np.count_nonzero((x > 0.4999 * self.L) & (x < 0.5001 * self.L))),
+                        pd._V_SAMPLE_MIN_IN_BARRIER,
+                        "this grid does carry the barrier, so it is the wrong fixture")
+        self.assertFalse(pd._barrier_is_resolved(x, y, self.L),
+                         "a clustered grid with no samples in the barrier was accepted")
+
+
+class SplinePathChoosesTheGrid(unittest.TestCase):
+    """`SplinePath` must actually reach the clustered branch, and keep the barrier when it does.
+
+    The two-field `fullTunneling` case in the other file runs 200000 samples over a path of
+    length 1000, so its barrier of width 0.12 already holds thousands of uniform samples and
+    never exercises this. The fixture here is sized the other way round: the barrier is narrow
+    enough that the uniform grid carries fewer than two samples inside it.
+    """
+
+    @staticmethod
+    def _potential(length, barrier_at, barrier_width, height):
+        """Flat, with one narrow bump near one end and a deep minimum at the far end."""
+        def V(p):
+            q = np.asanyarray(p, dtype=float)
+            x = q[..., 0] if q.ndim and q.shape[-1] >= 1 else q
+            bump = height * np.exp(-0.5 * ((x - barrier_at) / barrier_width) ** 2)
+            return -1.0e3 * (x / length) + bump
+        return V
+
+    def test_the_uniform_grid_really_is_blind_to_this_barrier(self):
+        """The fixture check: without it the test below would pass for the wrong reason."""
+        L, n = 1000.0, pd._V_SAMPLE_MIN_FOR_CLUSTERING
+        V = self._potential(L, 0.5, 0.02, 5.0e2)
+        x = pd._uniform_V_samples(L, n)
+        y = V(x[:, np.newaxis])
+        self.assertFalse(pd._barrier_is_resolved(x, y, L),
+                         "the uniform grid already resolves this barrier")
+
+    def test_the_clustered_grid_is_selected_and_keeps_the_barrier(self):
+        L, n = 1000.0, pd._V_SAMPLE_MIN_FOR_CLUSTERING
+        V = self._potential(L, 0.5, 0.02, 5.0e2)
+        x = pd._clustered_V_samples(L, n)
+        y = V(x[:, np.newaxis])
+        self.assertTrue(pd._barrier_is_resolved(x, y, L),
+                        "the clustered grid does not resolve the barrier either, so this "
+                        "fixture cannot show that the branch is taken")
+        path = pd.SplinePath(np.array([[0.0], [L]]), V, V_spline_samples=n, extend_to_minima=False)
+        top = max(float(path.V(t)) for t in np.linspace(0.3, 0.7, 401))
+        self.assertGreater(top, 2.0e2,
+                           f"the spline the path uses flattened the barrier to {top}, so the "
+                           f"clustered grid was not the one it kept")
+
+
 if __name__ == "__main__":
     unittest.main()
