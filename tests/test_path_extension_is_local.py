@@ -180,8 +180,6 @@ class TwoFieldPathWithASmallBarrier(unittest.TestCase):
             pd._extension_minimum = original
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class WhenThereIsNoMinimumToExtendTo(unittest.TestCase):
@@ -362,3 +360,7 @@ class ExtendingMustNotDestroyTheMetastability(unittest.TestCase):
                                       floor=-6.79e7)
         self.assertAlmostEqual(found, 11.0, delta=0.5,
                                msg=f"a minimum far above the other end was refused: {found}")
+
+
+if __name__ == "__main__":
+    unittest.main()

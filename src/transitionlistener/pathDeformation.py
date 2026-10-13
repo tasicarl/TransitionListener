@@ -732,6 +732,11 @@ def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> f
         # error: the walk stops at it and the end is left where it is.
         try:
             return float(np.squeeze(V(p0 + (sign * x) * dp0)))
+        except errors.Timeout:
+            # The run's own deadline is raised from a POSIX alarm handler, so it can land
+            # inside any call to `V`. Treating it as an impassable wall would turn an aborted
+            # point into a finished one, with an extension chosen from wherever the alarm fell.
+            raise
         except Exception:
             return np.inf
 
@@ -763,6 +768,10 @@ def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> f
               * np.asanyarray(dp0)[np.newaxis, :]), dtype=float).reshape(-1)
         if probes.size != ladder.size:
             raise ValueError("the potential did not broadcast over the ladder")
+    except errors.Timeout:
+        # As above, and here the cost of absorbing it is 301 further scalar evaluations of a
+        # potential the run has already been told to stop evaluating.
+        raise
     except Exception:
         probes = np.array([value(float(x)) for x in ladder])
 
@@ -1032,11 +1041,23 @@ class SplinePath(object):
             if not _barrier_is_resolved(x, y, self.L):
                 # The barrier is narrower than this grid can carry, so place the samples where
                 # it is. One more evaluation of the potential, and only for such a path.
-                x = _clustered_V_samples(self.L, V_spline_samples)
-                y = self.V(x)
-                if verbose:
-                    print("The potential samples did not resolve the barrier; re-placed them "
-                          "towards the ends of the path.")
+                x_clustered = _clustered_V_samples(self.L, V_spline_samples)
+                y_clustered = self.V(x_clustered)
+                # The re-placed grid approaches the ends geometrically, which is where the
+                # barrier goes as the temperature falls, and halves the uniform samples to pay
+                # for it. Around the middle of the path it is therefore the coarser of the two,
+                # so a narrow barrier sitting there would be missed by the replacement as well
+                # as by the original. The values are already in hand, so the same count decides
+                # whether to keep it; a grid that does not resolve the barrier either is not
+                # worth the spacing ratios it costs, and the uniform grid is kept instead.
+                if _barrier_is_resolved(x_clustered, y_clustered, self.L):
+                    x, y = x_clustered, y_clustered
+                    if verbose:
+                        print("The potential samples did not resolve the barrier; re-placed "
+                              "them towards the ends of the path.")
+                elif verbose:
+                    print("Neither the uniform nor the re-placed potential samples resolve "
+                          "the barrier; keeping the uniform ones.")
             self._V_tck = interpolate.splrep(x, y, s=0)
 
     def V(self, x):
