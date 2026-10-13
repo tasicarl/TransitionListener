@@ -361,15 +361,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   the jump -- without reading a rate. It now matches relative to each endpoint and takes the
   closest support point.
 
-  The `fixed_step_size` backend keeps its own copies of the percolation scan and refinement, so
-  the presence rule, the two window tolerances and the interval-endpoint lookup do not reach it.
-  Two pieces are shared and do: `_temperature_grid` is imported from `bubbledynamics` and builds
-  that backend's support bank, and `_finalize_percolation_state` runs after either backend, so
-  the 1e-10 deduplication rule is now the same on both. Both can only keep temperatures the old
-  rule merged, and only where a temperature below one in internal units is involved, which the
-  fixed-step grid reaches only in a traced range that extends that far: its initial grid is a
-  `numpy.linspace` over the traced range, so it cannot resolve a strongly supercooled transition
-  in the first place.
+  A fixed-step scan is untouched by all of this. `percolation_algorithm_mode="fixed_step_size"`
+  selects `transitionObservables_fixedstep`, which calls `calcPercAndEvolve` from
+  `bubbledynamics_fixedstep`, and that module contains none of the changed names: not
+  `_temperature_grid`, not `_finalize_percolation_state`, not the presence rule, the window
+  tolerances or the interval-endpoint lookup.
+
+  Those last two do reach the other fixed-step solver. `bubbledynamics.calcPercAndEvolve` runs
+  `percolation_fixedstepsize` when it is handed a fixed-step configuration, and there
+  `_temperature_grid` builds the support bank and `_finalize_percolation_state` applies the
+  1e-10 deduplication afterwards. That path is reached from the adaptive observables module, not
+  from a fixed-step scan, and both functions can only keep temperatures the old rule merged, and
+  only where a temperature below one in internal units is involved.
 
 - **A phase no longer leaves the range of its own traced minima between two traced
   temperatures.** `PhaseInfo` interpolated the trace with `splprep(..., s=0, k=3)`, an
