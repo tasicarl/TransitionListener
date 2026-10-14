@@ -748,15 +748,26 @@ class SingleFieldInstanton:
         # --
         # Set the phi parameters
         delta_phi = self.phi_metaMin - self.phi_absMin
-        epsabs = abs(np.array([delta_phi, delta_phi/self.rscale])*phitol)
         epsfrac = np.array([1,1]) * phitol
         delta_phi_cutoff = thinCutoff * delta_phi
             # The sign for delta_phi_cutoff doesn't matter
         # --
-        integration_args = (dr0, epsfrac, epsabs, drmin, rmax)
         rf = None
         while True:
             delta_phi0 = np.exp(-x)*delta_phi
+            # `epsabs` is the absolute error the profile integration is held to, and it has to
+            # be a fraction of the field range that integration covers. That range is the
+            # bounce's own excursion, `|phi(0) - phi_metaMin| = |delta_phi0 - delta_phi|`, and
+            # not the gap between the minima: on the conformal U(1) at g = 0.46 the gap is 1000
+            # internal units at every temperature while the excursion is about 4.3 T, so
+            # `phitol |delta_phi|` is 1.6e-7 of the integrated feature at T_int = 0.1 and 2.4e-2
+            # of it at 1e-6. The action then comes out low, smoothly rather than noisily. Where
+            # the bounce does cover a sizeable part of the gap the two agree, which is every
+            # transition that is not strongly supercooled.
+            excursion = abs(delta_phi0 - delta_phi)
+            phi_scale = max(excursion, abs(delta_phi) * np.finfo(float).eps)
+            epsabs = abs(np.array([phi_scale, phi_scale/self.rscale])*phitol)
+            integration_args = (dr0, epsfrac, epsabs, drmin, rmax)
 
             # The below part is new and tries to avoid
             # the problem of having a too small dV
