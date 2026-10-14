@@ -299,6 +299,38 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The shooting bisection converges to a fraction of the `x` it brackets, not to an absolute
+  window.** `findProfile` varies `x`, where the trial profile starts at
+  `phi(0) = phi_absMin + exp(-x) delta_phi`, so for a small excursion `x` is the fraction of the
+  gap between the minima that the bounce covers,
+  `|phi(0) - phi_metaMin| / |delta_phi| = |exp(-x) - 1| ~ x`. On a supercooled transition that
+  fraction shrinks with the temperature while an absolute `xtol` does not, so the loop delivered
+  `x` to a relative precision of `xtol / x`: on the shipped conformal dark U(1) at g = 0.46,
+  y = 0.01, v_GeV = 0.14 that runs from 1.6e-07 at T_int = 0.1 to 2.3e-02 at 1e-6, and at
+  `findProfile`'s signature default of `xtol = 1e-4` the first bisection step already satisfies
+  the test whatever `x` is. The window is now `xtol * max(|x|, |xmin|)`, with `xmin` present so
+  the test is defined before `x` has been bracketed from below.
+
+  Measured against a bounce solved a second way, the reflected construction described in the
+  entry below, S3/T at g = 0.46 goes from +0.005, +0.063, +0.722 and +11.4 per cent at
+  T_int = 1e-4, 1e-5, 1e-6 and 1e-7 to +0.000, +0.000, +0.004 and +2.0. At the two couplings
+  that decide where the model percolates, at the temperature where they percolate, it
+  reproduces the converged action to all six figures printed: 129.656 at g = 0.43 and 120.819
+  at 0.44, against 129.761 and 120.921 without it.
+
+  No verdict changes. The 22-coupling ladder is identical point for point, 17 of 22 with the
+  lowest at g = 0.44, and `T_perc` moves by a median of 0.0001 per cent over the 17 that
+  percolate, by 2.76 per cent at g = 0.44. Three couplings of the 2HDM `edge` grid move by at
+  most 0.081 per cent in `(beta/H)_RH` and 0.0014 in `T_perc`, with no error-code change.
+
+  `tests/test_1d_tunneling.py::test_action_calculation` re-pins from 2388.030513420128 to
+  2388.601280038287. That call takes the signature defaults, and at `xtol = 1e-4` this change
+  moves the answer most, because 1e-4 is five orders above the `x` that configuration needs.
+  Looser is not closer: at the model's own 10000 spline samples the distances from a converged
+  2384.3235 are 0.4248 before the previous entry's change, 0.0390 after it, and 0.6498 here. At
+  the configured `xtol = 1e-10` this code is the closest of the three, 2388.1790354 against
+  2388.1789449 and 2388.1788707, which is what the test pins.
+
 - **The bounce profile is integrated, and judged to have arrived, on the scale of the bounce
   and not of the gap between the minima.** `findProfile` holds the profile integration to an
   absolute error `epsabs`, and that was `phitol` times `delta_phi`, the distance between the two

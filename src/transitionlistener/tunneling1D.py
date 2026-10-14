@@ -865,8 +865,16 @@ class SingleFieldInstanton:
             elif ctype == "overshoot":  # x is too high
                 xmax = x
                 x = .5*(xmin+xmax)
-            # Check if we've reached xtol
-            if (xmax-xmin) < xtol:
+            # Check if we've reached xtol, as a fraction of the `x` the bracket holds rather
+            # than as an absolute window. `x` is the fraction of the gap between the minima that
+            # the bounce covers, `|phi(0) - phi_metaMin| / |delta_phi| = |exp(-x) - 1| ~ x`, so
+            # it shrinks with the supercooling while an absolute `xtol` does not: on the shipped
+            # conformal dark U(1) at g = 0.46, y = 0.01, v_GeV = 0.14, `xtol/x` runs from
+            # 1.6e-07 at T_int = 0.1 to 2.3e-02 at 1e-6, and at `findProfile`'s signature
+            # default of 1e-4 the first bisection step already satisfies the test whatever `x`
+            # is. `xmin` enters so the test is defined on the first iteration, before `x` has
+            # been bracketed from below.
+            if (xmax-xmin) < xtol * max(abs(x), abs(xmin)):
                 break
 
         # Integrate a second time, this time getting the points along the way
