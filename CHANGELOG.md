@@ -347,15 +347,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   where `T_perc` falls from 37 to 20 GeV over `lambda3` of 0.004 and the spectrum is a steep
   function of it.
 
-  8 of the 97 points change verdict. Both grids run smoothly enough in `lambda3` to say which
-  arm sits on the sequence at each one, and `main` is the outlier at five of them: at
-  `lambda3 = 5.8184550635` it returns `T_perc = 41.012` GeV and `(beta/H)_RH = 2058.3` between
-  neighbours at 27.240 GeV, 4.9706 and 29.098 GeV, 5.6775, where this code returns 26.845 GeV
-  and 4.5467, and it spends 11200 s doing it. At three it is this code that leaves the
-  sequence, `lambda3 = 5.7918389018`, `5.812995338` and `5.8167488993`, and the first of those
-  is understood: see the cold-walk note under the limitation below. Any statement that quotes a
-  single `edge` or `refined` point of this benchmark has to be re-read against this branch
-  rather than against `main`.
+  8 of the 97 points change verdict: `edge 5.7918389018`, and on `refined` 5.8099242424,
+  5.812995338, 5.8157252007, 5.8167488993, 5.819478762, 5.8225498575 and 5.8314219116. Four are
+  points `main` resolves and this code does not, three the reverse, and the last fails on both
+  with only the code changing from 10 to 8. Which arm is right at each one is not established
+  here: seven of the eight sit at the cold end, where each arm's own scatter against a local fit
+  through its neighbours has a 90th percentile of 3 to 4 per cent in `T_perc`, against 0.003 per
+  cent warm of 37.5 GeV, and the sign of that residual changes with the choice of fit at five of
+  the six points where the test can be made.
+
+  The largest move does not rest on the neighbours. At `refined lambda3 = 5.8184550635`, `main`
+  returns `T_perc = 41.012` GeV and `(beta/H)_RH = 2058.3` against 26.845 GeV and 4.5467 here.
+  `main` placed 53 of its 197 support points inside 41.00 to 41.10 GeV, a window of
+  `dT/T = 2.16e-03`, and across it its own `S3/T` runs from 106.39 to 151.40; its recorded
+  `(beta/H)_S3` of -67.4 allows 0.15 units over a window that narrow, and 45.0 units is `e^45`
+  in the nucleation rate. This code has one support point there, at `S3/T = 150.04`. Any
+  statement that quotes a single `edge` or `refined` point of this benchmark has to be re-read
+  against this branch rather than against `main`.
 
   Measured against a bounce solved a second way -- the false vacuum at the origin,
   `V(phi) - V(0)` of the unsplined potential, a wall at 30 times the escape point, and the
