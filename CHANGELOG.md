@@ -338,16 +338,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   and it is not nothing. On the g = 0.7, y = 0.24 configuration at T = 15 that
   `tests/test_1d_tunneling.py` uses, where `T/v` is 0.015 and the wall is thick, the two rules
   differ by 3.1e-08 relative at the configured `phitol = 1e-10`. On the 2HDM benchmark's
-  supercooled grids, at `T/v` of 0.15 to 0.18, they differ by more. No verdict changes: over the
-  pairs measured there are no error-code flips, and the percolation temperature moves by a
-  median of 0.002 per cent and at most 0.93. `(beta/H)_RH` moves by a median of 0.05 per cent,
-  in both directions, which is a tolerance change shifting an answer that was already close
-  rather than a bias -- but its largest move is 12.8 per cent, at the one coupling where
-  `(beta/H)_RH` is 6.3. That is the small-`beta/H` corner of the marginal line, where `alpha`
-  and the spectrum are steep functions of `T_perc`, so a `T_perc` move of under one per cent
-  appears there as a large one; the same sensitivity is documented for the phase-interpolation
-  change. Any statement that quotes a single `edge` or `refined` point of this benchmark has to
-  be re-read against this branch rather than against `main`.
+  supercooled grids, 97 couplings of the `edge` and `refined` lines at `T/v` of 0.082 to 0.182,
+  they differ by more. Over the 72 pairs that complete on both arms the percolation temperature
+  moves by a median of 0.0039 per cent, with a 90th percentile of 0.40 and a largest move of
+  34.5; `(beta/H)_RH` by a median of 0.17 per cent with a largest of 99.8; `alpha` by a median
+  of 0.016 per cent with a largest of 462. The median is the no-op this change was expected to
+  be and the tail is not, and the tail is the marginal line, the cold end of the `refined` grid,
+  where `T_perc` falls from 37 to 20 GeV over `lambda3` of 0.004 and the spectrum is a steep
+  function of it.
+
+  8 of the 97 points change verdict. Both grids run smoothly enough in `lambda3` to say which
+  arm sits on the sequence at each one, and `main` is the outlier at five of them: at
+  `lambda3 = 5.8184550635` it returns `T_perc = 41.012` GeV and `(beta/H)_RH = 2058.3` between
+  neighbours at 27.240 GeV, 4.9706 and 29.098 GeV, 5.6775, where this code returns 26.845 GeV
+  and 4.5467, and it spends 11200 s doing it. At three it is this code that leaves the
+  sequence, `lambda3 = 5.7918389018`, `5.812995338` and `5.8167488993`, and the first of those
+  is understood: see the cold-walk note under the limitation below. Any statement that quotes a
+  single `edge` or `refined` point of this benchmark has to be re-read against this branch
+  rather than against `main`.
 
   Measured against a bounce solved a second way -- the false vacuum at the origin,
   `V(phi) - V(0)` of the unsplined potential, a wall at 30 times the escape point, and the
