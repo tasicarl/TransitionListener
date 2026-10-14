@@ -797,10 +797,12 @@ class SingleFieldInstanton:
             # converged 102.46 and 92.42. Tied to the bounce, `3*epsabs/excursion` is
             # `3*phitol` at every temperature.
             #
-            # Where the bounce covers a sizeable part of the gap the two rules agree, which is
-            # every transition that is not strongly supercooled: on the g = 0.7, y = 0.24
+            # Where the bounce covers a sizeable part of the gap the two rules are expected to
+            # agree, and the two configurations measured so far do: on the g = 0.7, y = 0.24
             # configuration at T = 15 that `tests/test_1d_tunneling.py` uses they differ by
-            # 3.1e-08 relative at the configured `phitol = 1e-10`.
+            # 3.1e-08 relative at the configured `phitol = 1e-10`, and on
+            # `examples/example_point.yaml` the observables are identical to five figures. Away
+            # from the supercooled line that is the whole of the evidence.
             excursion = abs(delta_phi0 - delta_phi)
             # The floor keeps `epsabs` strictly positive, which `rkqs` needs: handed a zero
             # absolute tolerance it shrinks the step by the largest factor it is allowed on
