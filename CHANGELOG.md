@@ -377,7 +377,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   moves by -5e-05 per cent at g = 0.62 and -47 per cent at g = 0.44, the coupling now at the
   boundary.
 
-  It costs time, because tighter tolerances mean smaller integration steps on the same solves.
+  It takes longer, because tighter tolerances mean smaller integration steps on the same solves.
   How much depends on how supercooled the transition is: 2.3 per cent over the 2HDM pairs, at
   T/v around 0.15, and 28.6 per cent on `examples/example_point.yaml`, the conformal dark U(1)
   at g = 0.7, v_GeV = 0.1, y = 0.01, which takes 143.04 s at d66a774 and 183.92 s here on one
