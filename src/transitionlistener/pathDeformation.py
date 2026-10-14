@@ -686,6 +686,258 @@ def _pathDeriv(phi):
     return dphi
 
 
+#: The path extension cannot be longer than this many knots: beyond it the spline
+#: refuses the path, in the size guard inside ``SplinePath.__init__``.
+_MAX_EXTENSION_KNOTS = 20000
+
+
+def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> float:
+    """Distance to the first local minimum of ``V`` walking outward from ``p0`` along ``dp0``.
+
+    The path is extended past each end until it reaches a minimum. ``scipy.optimize.fmin`` was
+    used for that, and it starts from ``x0 = 0`` with an initial simplex step of 2.5e-4 whatever
+    the problem looks like. That step is in units of the knot index, so in field units it is
+    2.5e-4 times the spacing between the first two knots, and for a path whose ends are far
+    apart it is large. On the conformal U(1) at g = 0.54 with the minima 1000 field units apart,
+    the two-knot initial path has a knot spacing of the whole path, and the end extension
+    settles a full knot out, at field -1000. That potential is even in the field, so this is the
+    mirror of the broken minimum: the extended path runs from 1000 to -1000, is 2000 long
+    instead of 1000, and connects two degenerate minima. The solver compares its ends, finds
+    them equal, and reports "stable, not metastable", which comes back as an infinite action.
+
+    So the search walks outward instead of starting with a step of its own choosing, and two
+    things bound it.
+
+    ``floor`` is the potential at the opposite end of the path, passed when extending the
+    metastable end. Tunnelling needs that end to stay the higher of the two, so an extension
+    that would take it to or below the other end is the one that destroys the problem being
+    solved, and the walk stops there. This is what separates the mirror minimum above, which is
+    exactly degenerate with the broken minimum and is refused, from a real minimum a little way
+    past the end, which is kept: on the 2HDM benchmark at T = 36.56 the potential at the end is
+    -2.4347e+07, there is a genuine minimum 11.01 knots out at -2.4348e+07, and the broken
+    minimum is far below at -6.79e+07, so the extension is allowed and the action stays at the
+    converged 143.69.
+
+    The other bound is the rounding of ``V`` itself. Near a path end the potential can be flat
+    to machine precision over many decades of ``x``: at that same 2HDM end the potential is
+    -2.4e+07, so consecutive probes differ by rounding alone, about 5e-9, for ``x`` below 1e-4
+    knots. Taking the first such rise for a minimum stopped the search at x = 4e-10 and lost the
+    real one at 11.01, which moved the action to 119.21 against the converged 143.69. A rise
+    only counts when it clears that noise.
+    """
+
+    def value(x: float) -> float:
+        # A potential handed to the path solver need not be defined arbitrarily far along the
+        # tangent, so a probe that cannot be evaluated is treated as a wall rather than an
+        # error: the walk stops at it and the end is left where it is.
+        try:
+            return float(np.squeeze(V(p0 + (sign * x) * dp0)))
+        except errors.Timeout:
+            # The run's own deadline is raised from a POSIX alarm handler, so it can land
+            # inside any call to `V`. Treating it as an impassable wall would turn an aborted
+            # point into a finished one, with an extension chosen from wherever the alarm fell.
+            raise
+        except Exception:
+            return np.inf
+
+    def signed(x: float) -> float:
+        return -abs(x) if sign < 0 else abs(x)
+
+    def clears_the_floor(x: float) -> bool:
+        """Is the potential at `x` still above the other end of the path?
+
+        A degenerate mirror minimum only touches the other end's value, it does not go below
+        it, so this is a margin rather than a comparison: the two are the same number to every
+        digit in that case, while a minimum that is genuinely allowed sits far above, -2.4348e+07
+        against -6.79e+07 on the 2HDM benchmark.
+
+        The margin is the rounding of the two values and nothing more, the same rule the walk
+        above uses for a rise. A margin of a fixed relative size instead -- 1e-9 of the floor,
+        as this was -- is not a property of the potential at all: the bounce depends only on
+        differences of ``V``, so adding a constant to it must not change which paths are
+        extended, and a margin proportional to ``|floor|`` changes with that constant. It also
+        refuses minima that are genuinely metastable: an end 500 above a floor of -1e12 would
+        have had to clear 1000.
+
+        What this cannot do is recover a gap the two values no longer carry. At a floor of
+        -1e12 the spacing of doubles is 1.2e-4, so a gap of 1e-3 is eight of them and the
+        margin, fifteen, refuses it, while the same gap at a floor of zero is accepted. That is
+        not the rule changing its mind: it is the offset having thrown the information away
+        before the comparison sees it, and a potential evaluated by summing terms is good to
+        several of those spacings at best. The answer when the gap is inside the rounding is to
+        leave the end where it is, which is what this returns and what the old search did on a
+        potential it could not read. Nothing shipped here is near that limit -- the 2HDM
+        compares -2.4348e+07 against -6.79e+07, a gap of 0.6 of the value against a margin of
+        1e-15 of it.
+        """
+        if floor is None:
+            return True
+        here = value(x)
+        noise = 8.0 * np.finfo(float).eps * max(abs(here), abs(floor), np.finfo(float).tiny)
+        return here > floor + noise
+
+    # Geometric, so that a minimum arbitrarily close to the end is resolved, and reaching as far
+    # as the size guard in `SplinePath` allows, so one many knots out is still found the way the
+    # old unbounded search could find it. Evaluated in one call rather than point by point: the
+    # potential here is the real one, the spline does not exist yet, and a few hundred scalar
+    # calls to it per path end is the kind of cost that the spline exists to avoid.
+    ladder = np.concatenate([[0.0], np.geomspace(1e-10, float(_MAX_EXTENSION_KNOTS), 300)])
+    try:
+        probes = np.asanyarray(
+            V(np.asanyarray(p0)[np.newaxis, :] + (sign * ladder)[:, np.newaxis]
+              * np.asanyarray(dp0)[np.newaxis, :]), dtype=float).reshape(-1)
+        if probes.size != ladder.size:
+            raise ValueError("the potential did not broadcast over the ladder")
+    except errors.Timeout:
+        # As above, and here the cost of absorbing it is 301 further scalar evaluations of a
+        # potential the run has already been told to stop evaluating.
+        raise
+    except Exception:
+        # The search below stops at the first non-finite probe, so the fallback stops filling
+        # there too rather than evaluating a restricted-domain potential 300 more times.
+        scalar = []
+        for x in ladder:
+            scalar.append(value(float(x)))
+            if not np.isfinite(scalar[-1]):
+                break
+        probes = np.array(scalar)
+
+    here = float(probes[0])
+    if not np.isfinite(here):
+        return 0.0
+    best_x, best_v, previous_x = 0.0, here, 0.0
+    for x, current in zip(ladder[1:], probes[1:]):
+        current = float(current)
+        if not np.isfinite(current):
+            break
+        noise = 8.0 * np.finfo(float).eps * max(abs(current), abs(best_v), np.finfo(float).tiny)
+        if current > best_v + noise:
+            if best_x == 0.0:
+                return 0.0                      # the end is already a minimum
+            found = optimize.minimize_scalar(
+                value, bounds=(previous_x, float(x)), method="bounded",
+                options={"xatol": 1e-10},
+            )
+            at = float(found.x) if found.success else best_x
+            if not clears_the_floor(at):
+                return 0.0      # extending there would leave no metastable end to tunnel from
+            return signed(at)
+        if current < best_v:
+            previous_x, best_x, best_v = best_x, float(x), current
+    # The walk ended without passing a minimum: it ran into a wall, hit the floor, or is still
+    # falling at the far end of the ladder. In none of those cases is there a minimum to extend
+    # to within reach, so the end is left where it is, which is what the old search did too on
+    # a potential that keeps falling.
+    return 0.0
+
+
+#: Closest approach to a path end, as a fraction of the path length, of the extra samples used
+#: when the barrier is too narrow for the uniform grid. It bounds how narrow a barrier the
+#: potential spline can resolve.
+_V_SAMPLE_END_FLOOR = 1e-10
+
+#: How many samples must fall inside the barrier for the uniform grid to be kept. Below this
+#: the grid is effectively blind to the barrier and the samples are re-placed; see
+#: `_barrier_is_resolved`.
+_V_SAMPLE_MIN_IN_BARRIER = 2
+
+#: Fewest samples for which re-placing them is worth doing. The re-placed grid spans spacing
+#: ratios of about 1e-9, and an interpolating cubic spline needs enough knots to carry that:
+#: with `fullTunneling`'s own default of 100 samples the action came back as 1.3e+11.
+_V_SAMPLE_MIN_FOR_CLUSTERING = 1000
+
+#: How far past each path end the re-placed samples reach, counted in samples at the local
+#: spacing. The spline needs a margin because the solver probes a little outside the minima.
+_V_SAMPLE_OVERHANG_STEPS = 20
+
+
+def _uniform_V_samples(L: float, n_samples: int) -> np.ndarray:
+    """Evenly spaced samples along the path, with the 20% overhang past each end.
+
+    This is what the potential spline has always been built on, and it is kept unchanged for
+    every path whose barrier it resolves.
+    """
+    x = np.linspace(0, L, n_samples)
+    # extend 20% beyond this so that we more accurately model the path end points
+    x_ext = np.arange(x[1], L * .2, x[1])
+    return np.concatenate([-x_ext[::-1], x, L + x_ext])
+
+
+def _barrier_is_resolved(x: np.ndarray, y: np.ndarray, L: float) -> bool:
+    """Do enough of the sampled values fall inside the barrier to represent it?
+
+    The barrier is the region between the two minima where the potential rises above the higher
+    of them. Counting the samples in it is a direct measure of whether the grid can carry it,
+    and it needs no second evaluation of the potential: the values are already in hand.
+
+    Measured counts, which is what the threshold is set from:
+
+    * conformal U(1) at g = 0.54 with 10000 samples, so a spacing of 0.1 on a path of 1000:
+      1 sample inside the barrier at T_int = 0.1, and 0 at 0.01 and below;
+    * the 2HDM benchmark, whose barrier spans a generic part of a path 240 to 247 units long and
+      stands 3.8e+06 to 1.5e+07 above the minima: 400 to 760 at every temperature;
+    * `fullTunneling`'s own default of 100 samples on that same conformal path at T_int = 15: 2.
+
+    The threshold sits below that last one deliberately. A grid of 100 knots cannot carry the
+    re-placed spacing, so the sample count is checked as well, and the two together mean a path
+    is only re-sampled when its grid is blind to the barrier and has the knots to do better.
+    """
+    inside = (x >= 0.0) & (x <= L)
+    n_inside = int(np.count_nonzero(inside))
+    if n_inside < 3:
+        return True
+    if n_inside < _V_SAMPLE_MIN_FOR_CLUSTERING:
+        return True         # too few knots for the re-placed grid to be worth building
+    ys = np.asarray(y, dtype=float)[inside]
+    if not np.all(np.isfinite(ys)):
+        return True                     # a judgement cannot be made, so nothing is changed
+    level = max(float(ys[0]), float(ys[-1]))
+    return int(np.count_nonzero(ys[1:-1] > level)) >= _V_SAMPLE_MIN_IN_BARRIER
+
+
+def _clustered_V_samples(L: float, n_samples: int) -> np.ndarray:
+    """Samples for a barrier too narrow for the uniform grid to carry.
+
+    Both the spacing of the uniform samples and how far they reach past the ends are fixed
+    fractions of the path length, while the barrier is a feature whose width is set by the
+    temperature. In a strongly supercooled model it is a vanishing fraction of the path, so the
+    uniform grid misses it and the action is wrong: measured on the conformal U(1) at g = 0.54,
+    too high by 1.1e-2 relative where the spacing is 0.86 barrier widths, 6.6e-2 at 1.67 and
+    65% at 4.3.
+
+    So the samples approach the ends geometrically, which is where the barrier goes as the
+    temperature falls: the barrier top moves towards the metastable minimum, and so does the
+    escape point. The overhang has to shrink with them. Leaving it at 0.2 L is what dominates
+    the error once the grid is clustered, because the potential is -2.0e+08 at the broken
+    minimum and -9.3e-17 at the symmetric one, and 0.2 L past the symmetric end it is -2.4e+06:
+    one cubic spline through all of that is bent, just inside the end, towards a value some 24
+    orders of magnitude above the barrier it has to resolve. With the overhang counted in
+    samples at the local spacing instead, the action at T_int = 1e-4 goes from 98.40 to 79.97724
+    against a true 79.97725, and at 1e-5 from 583.8 to 69.468 against 69.465.
+
+    This grid is used only where the uniform one cannot see the barrier at all. It is not a
+    better grid in general: its spacing ratios reach 1e-9, which an interpolating cubic spline
+    does not take well on a potential with the 2HDM's curvature, where it returns an infinite
+    action at temperatures the uniform grid resolves.
+    """
+    n_uniform = max(2, n_samples // 2)
+    # The two end grids meet at L/2, so `np.unique` drops one of that pair and the grid comes
+    # out one knot short of `n_samples`. That one knot decides whether the grid is judged at
+    # all: `_barrier_is_resolved` returns True without looking at anything below
+    # `_V_SAMPLE_MIN_FOR_CLUSTERING` in-path knots, so at the configured 1000 samples a
+    # 999-knot replacement was accepted whatever it carried. Ask for the knot back.
+    n_end = max(2, (n_samples - n_uniform + 1) // 2 + 1)
+    uniform = np.linspace(0.0, L, n_uniform)
+    # the ends themselves are in `uniform`, so these only fill in the approach to them
+    approach = np.geomspace(_V_SAMPLE_END_FLOOR * L, 0.5 * L, n_end)
+    x = np.unique(np.concatenate([uniform, approach, L - approach]))
+
+    steps = np.arange(1, _V_SAMPLE_OVERHANG_STEPS + 1)
+    before = x[0] - (x[1] - x[0]) * steps[::-1]
+    after = x[-1] + (x[-1] - x[-2]) * steps
+    return np.concatenate([before, x, after])
+
+
 class SplinePath(object):
     """
     Fit a spline to a path in field space, and find the potential on that path.
@@ -752,13 +1004,13 @@ class SplinePath(object):
         dpts = _pathDeriv(pts)
         # 2. Extend the path
         if extend_to_minima:
-            def V_lin(x, p0, dp0, V): return V(p0+x*dp0)
             # extend at the front of the path
-            xmin = optimize.fmin(V_lin, 0.0, args=(pts[0], dpts[0], V),
-                                 xtol=1e-6, disp=0)[0] # Setting xtol to 1e-12 was okay, too
+            # The front is the absolute minimum, which extending can only lower, so it
+            # needs no floor: metastability is not at stake there.
+            xmin = _extension_minimum(V, pts[0], dpts[0], -1.0)
             if xmin > 0.0: xmin = 0.0
             nx = np.ceil(abs(xmin)-.5) + 1
-            if nx > 20000:
+            if nx > _MAX_EXTENSION_KNOTS:
                 raise errors.SplineError(
                     "Maximum allowed size exceeded while extending the tunnelling path towards the minimum."
                 )
@@ -778,11 +1030,11 @@ class SplinePath(object):
             pts = np.concatenate([pt_ext, pts_rest], axis=0)
             
             # extend at the end of the path
-            xmin = optimize.fmin(V_lin, 0.0, args=(pts[-1], dpts[-1], V),
-                                 xtol=1e-6, disp=0)[0] # Setting xtol to 1e-12 was okay, too
+            xmin = _extension_minimum(V, pts[-1], dpts[-1], +1.0,
+                                      floor=float(np.squeeze(V(pts[0]))))
             if xmin < 0.0: xmin = 0.0
             nx = np.ceil(abs(xmin)-.5) + 1
-            if nx > 20000:
+            if nx > _MAX_EXTENSION_KNOTS:
                 raise errors.SplineError(
                     "Maximum allowed size exceeded while extending the tunnelling path towards the second minimum."
                 )
@@ -816,14 +1068,29 @@ class SplinePath(object):
         self._dV = dV
         self._V_tck = None
         if V_spline_samples is not None:
-            x = np.linspace(0,self.L,V_spline_samples)
-            # extend 20% beyond this so that we more accurately model the
-            # path end points
-            x_ext = np.arange(x[1], self.L*.2, x[1])
-            x = np.append(-x_ext[::-1], x)
-            x = np.append(x, self.L+x_ext)
+            x = _uniform_V_samples(self.L, V_spline_samples)
             y = self.V(x)
-            self._V_tck = interpolate.splrep(x,y,s=0)
+            if not _barrier_is_resolved(x, y, self.L):
+                # The barrier is narrower than this grid can carry, so place the samples where
+                # it is. One more evaluation of the potential, and only for such a path.
+                x_clustered = _clustered_V_samples(self.L, V_spline_samples)
+                y_clustered = self.V(x_clustered)
+                # The re-placed grid approaches the ends geometrically, which is where the
+                # barrier goes as the temperature falls, and halves the uniform samples to pay
+                # for it. Around the middle of the path it is therefore the coarser of the two,
+                # so a narrow barrier sitting there would be missed by the replacement as well
+                # as by the original. The values are already in hand, so the same count decides
+                # whether to keep it; a grid that does not resolve the barrier either is not
+                # worth the spacing ratios it costs, and the uniform grid is kept instead.
+                if _barrier_is_resolved(x_clustered, y_clustered, self.L):
+                    x, y = x_clustered, y_clustered
+                    if verbose:
+                        print("The potential samples did not resolve the barrier; re-placed "
+                              "them towards the ends of the path.")
+                elif verbose:
+                    print("Neither the uniform nor the re-placed potential samples resolve "
+                          "the barrier; keeping the uniform ones.")
+            self._V_tck = interpolate.splrep(x, y, s=0)
 
     def V(self, x):
         """The potential as a function of the distance `x` along the path."""
@@ -938,6 +1205,12 @@ def _fit_spline_path(pts, settings: TunnelingSettings, V, dV, verbose):
         if verbose:
             print(err.args[0])
         raise errors.SplineError(err.args[0])
+    except errors.Timeout:
+        # The probes inside the path extension re-raise the run's deadline rather than reading
+        # it as a wall, and it has to survive this handler too: turned into a `SplineError` it
+        # reaches `bounceAction`, which treats that as no tunnelling and returns an infinite
+        # action, so a timed-out point would come back as a finished one with a verdict.
+        raise
     except Exception as err:
         msg = err.args[0]
         if msg == "Maximum allowed size exceeded":
