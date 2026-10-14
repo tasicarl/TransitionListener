@@ -343,9 +343,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   moves by a median of 0.0039 per cent, with a 90th percentile of 0.40 and a largest move of
   34.5; `(beta/H)_RH` by a median of 0.17 per cent with a largest of 99.8; `alpha` by a median
   of 0.016 per cent with a largest of 462. The median is the no-op this change was expected to
-  be and the tail is not, and the tail is the marginal line, the cold end of the `refined` grid,
-  where `T_perc` falls from 37 to 20 GeV over `lambda3` of 0.004 and the spectrum is a steep
-  function of it.
+  be and the tail is not, and the tail is at the cold end of the two grids that were measured,
+  `edge` and `refined`, where `T_perc` falls from 37.136 GeV to 20.0 GeV over `lambda3` of
+  0.0061 and the spectrum is a steep function of it. The benchmark's `marginal` grid and its two
+  `broad` grids are not in this campaign.
 
   8 of the 97 points change verdict: `edge 5.7918389018`, and on `refined` 5.8099242424,
   5.812995338, 5.8157252007, 5.8167488993, 5.819478762, 5.8225498575 and 5.8314219116. Four are

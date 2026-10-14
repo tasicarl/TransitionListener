@@ -85,6 +85,15 @@ class test1DPotential(unittest.TestCase):
         self.assertLess(
             abs(actions[1e-14] - actions[1e-12]), 1e-3,
             f"the action is still moving between 1e-12 and 1e-14: {actions}")
+        # The three assertions above hold under either rule, since both converge to the same
+        # bounce, so on their own they are not evidence for this change. At the configured
+        # tolerance the two do differ, by 7.4e-05 absolute: 2388.1789449 when `epsabs` is a
+        # fraction of the bounce's own excursion and 2388.1788707 when it is a fraction of the
+        # gap between the minima. A window of 3e-05 holds the first and excludes the second.
+        self.assertAlmostEqual(
+            actions[1e-10], 2388.1789449, delta=3e-5,
+            msg=f"at the configured phitol = xtol = 1e-10 the action is {actions[1e-10]}, "
+                f"which is not what this code gives; a fraction of the gap gives 2388.1788707")
 
 
 if __name__ == "__main__":

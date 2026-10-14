@@ -32,23 +32,32 @@ from transitionlistener import tunneling1D
 
 
 def _two_minima(gap, barrier_at, height):
-    """A false vacuum at 0, a barrier near the origin, and a deep minimum at `gap`.
+    """A false vacuum at 0, a barrier at `barrier_at`, and a deep minimum at `gap`.
 
-    `V` is a quartic whose derivative vanishes at 0, `barrier_at` and `gap`, so the shape near
-    the origin -- which is all the bounce sees -- is held fixed while `gap` moves the far
-    minimum. Depth is set by `height` so the bounce stays thick-walled.
+    `dV` vanishes at 0, `barrier_at` and `gap`, and is divided by `gap` so that what the bounce
+    sees does not move with the far minimum. Written out,
+
+        dV = height * x * (barrier_at - (1 + barrier_at/gap) * x + x**2/gap)
+
+    the curvature at the false vacuum is `height * barrier_at` whatever `gap` is, and the only
+    `gap` dependence near the origin is the `barrier_at/gap` correction to the cubic term:
+    between `gap = 50` and `gap = 500` at `barrier_at = 1` that is 2 per cent against 0.2 per
+    cent. Without the division the curvature would be `height * barrier_at * gap` and a tenfold
+    more distant minimum would make the local potential ten times stiffer, so a comparison
+    across `gap` would be comparing two different bounces. Depth is set by `height` so the
+    bounce stays thick-walled.
     """
     def V(p):
         x = np.asanyarray(p, dtype=float)
         x = x[..., 0] if x.ndim and x.shape[-1] == 1 else x
-        return height * (0.25 * x**4
-                         - (barrier_at + gap) / 3.0 * x**3
-                         + barrier_at * gap / 2.0 * x**2)
+        return height * (0.25 * x**4 / gap
+                         - (1.0 + barrier_at / gap) / 3.0 * x**3
+                         + barrier_at / 2.0 * x**2)
 
     def dV(p):
         x = np.asanyarray(p, dtype=float)
         x = x[..., 0] if x.ndim and x.shape[-1] == 1 else x
-        return height * x * (x - barrier_at) * (x - gap)
+        return height * x * (x - barrier_at) * (x - gap) / gap
     return V, dV
 
 
