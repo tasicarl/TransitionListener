@@ -46,10 +46,17 @@ class test1DPotential(unittest.TestCase):
         # 2388.030513420128 since `epsabs` became a fraction of the bounce's own field
         # excursion rather than of the gap between the minima. This call takes `findProfile`'s
         # signature defaults, `phitol = xtol = 1e-4`, which no TransitionListener run uses --
-        # the configured value is 1e-10 -- and at 1e-4 the two differ by 4e-5 relative. The
-        # test below says which of them is closer to the answer: both converge to 2388.179 as
-        # the tolerance is tightened, and at the configured 1e-10 this code gives 2388.1789
-        # against 2388.1729 before.
+        # the configured value is 1e-10 -- and at 1e-4 the two rules differ by 4.2e-05
+        # relative. Neither number is the bounce at that tolerance: what stops the shooting
+        # loop is the bracket `(xmax - xmin) < xtol`, and which rule lands closer to the
+        # converged value depends on the potential spline, which this call leaves at
+        # `fullTunneling`'s default of 100 samples. Here the old rule is 3 times closer
+        # (2388.1301 and 2388.0305 against a converged 2388.1790); with the model's own
+        # configured 10000 samples the new rule is 11 times closer (2384.7482 and 2384.3625
+        # against a converged 2384.3235). At the configured phitol = xtol = 1e-10 the two
+        # agree to 3.1e-08 relative, 2388.1789449 here against 2388.1788707 before. This
+        # configuration is not strongly supercooled, which is the case the change is for; the
+        # test below pins the value both rules walk towards.
         self.assertAlmostEqual(tobj.action, 2388.030513420128, places=5)
 
     def test_the_action_converges_as_the_tolerance_is_tightened(self):
@@ -57,8 +64,9 @@ class test1DPotential(unittest.TestCase):
 
         A single action at one tolerance says nothing about whether it is right. The bounce has
         a value the solver is approaching, and the test of the solver is that tightening its
-        tolerances walks towards that value and stays there. 2388.179 is where this
-        configuration settles, and it is reached from 1e-12 onwards.
+        tolerances walks towards that value and stays there. This configuration settles on
+        2388.1790, reached monotonically: 2388.17719 at phitol = xtol = 1e-8, 2388.17894 at
+        1e-10, 2388.17903 at 1e-12 and 2388.17908 at 1e-14.
         """
         pot = potential.specific_potential({"g": 0.7, "y": 0.24, "v_GeV": 1000}, verbose=False)
         T = 15

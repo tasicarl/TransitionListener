@@ -299,6 +299,102 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The bounce profile is integrated, and judged to have arrived, on the scale of the bounce
+  and not of the gap between the minima.** `findProfile` holds the profile integration to an
+  absolute error `epsabs`, and that was `phitol` times `delta_phi`, the distance between the two
+  minima. The field range the integration covers is the bounce's own excursion,
+  `|phi(0) - phi_metaMin|`, which on a supercooled transition is a few `T` while the minima stay
+  `v` apart. On the classically conformal dark U(1) at g = 0.46, y = 0.01, v = 0.14 GeV -- the
+  configuration every number in this entry is measured at -- the gap is 1000 internal units at
+  every temperature while the excursion is 4.3 to 6.1 T, so `phitol |delta_phi|` is 1.6e-07 of
+  the integrated feature at T_int = 0.1 and 2.4e-02 of it at 1e-6. `epsabs` is now computed
+  inside the shooting loop from the current trial bounce.
+
+  `integrateProfile` spends `epsabs` on two different jobs, and both were mis-scaled. Besides
+  controlling the Runge-Kutta step it is the radius in `abs(y - [phi_metaMin, 0]) < 3*epsabs`
+  inside which a trial profile counts as having reached the false vacuum, and that verdict ends
+  the shooting loop. Tied to the gap, that radius was a fixed absolute distance while the bounce
+  shrank with the temperature, so `3 phitol |delta_phi| / excursion` grew to above one by
+  T_int = 1e-7: an acceptance radius wider than the whole bounce. The first trial was then
+  declared converged with the profile having barely moved.
+
+  Changing one without the other does not work, and makes things worse at some temperature.
+  Giving the bounce's scale to the Runge-Kutta step alone, with the acceptance radius left on
+  the gap, takes S3/T at T_int = 1e-6 from 96.45 to 91.10 -- further from the converged 102.46,
+  because a better-integrated profile still stops at the same too-wide radius -- and still
+  returns zero at 1e-7. Giving it to the acceptance radius alone returns 96.93 at 1e-6 and
+  636.3 at 1e-7. Only the two together give 103.20 and 102.93. Tied to the bounce,
+  `3*epsabs/excursion` is `3*phitol` at every temperature.
+
+  One consequence is worth stating: that acceptance test now never fires. It asks for
+  `3*phitol` of the excursion in `phi` *and* in `dphi`, which a shooting method that stops on
+  its own bracket does not reach, so the loop ends on `(xmax - xmin) < xtol` at every
+  temperature measured. Replacing the test with `False` leaves the conformal action identical to
+  the last digit at T_int = 0.1, 1e-4, 1e-6 and 1e-7 and leaves the whole test suite unchanged.
+  It was only ever reached because it was scaled to the gap, and when it was reached it was
+  wrong.
+
+  How far this reaches a transition that is not supercooled depends on how thick its wall is,
+  and it is not nothing. On the g = 0.7, y = 0.24 configuration at T = 15 that
+  `tests/test_1d_tunneling.py` uses, where `T/v` is 0.015 and the wall is thick, the two rules
+  differ by 3.1e-08 relative at the configured `phitol = 1e-10`. On the 2HDM benchmark's
+  supercooled grids, at `T/v` of 0.15 to 0.18, they differ by more. No verdict changes: over the
+  pairs measured there are no error-code flips, and the percolation temperature moves by a
+  median of 0.002 per cent and at most 0.93. `(beta/H)_RH` moves by a median of 0.05 per cent,
+  in both directions, which is a tolerance change shifting an answer that was already close
+  rather than a bias -- but its largest move is 12.8 per cent, at the one coupling where
+  `(beta/H)_RH` is 6.3. That is the small-`beta/H` corner of the marginal line, where `alpha`
+  and the spectrum are steep functions of `T_perc`, so a `T_perc` move of under one per cent
+  appears there as a large one; the same sensitivity is documented for the phase-interpolation
+  change. Any statement that quotes a single `edge` or `refined` point of this benchmark has to
+  be re-read against this branch rather than against `main`.
+
+  Measured against a bounce solved a second way -- the false vacuum at the origin,
+  `V(phi) - V(0)` of the unsplined potential, a wall at 30 times the escape point, and the
+  problem reflected so that the minima handed to the solver are the bounce's own scale rather
+  than `v`, which is a construction that cannot carry this defect -- S3/T at g = 0.46, y = 0.01
+  was low by 0.003, 0.021, 0.144, 0.794 and 5.865 per cent at T_int = 1e-2, 1e-3, 1e-4, 1e-5 and
+  1e-6. It is now +0.000, +0.000, +0.005, +0.063 and +0.722 per cent at the same five
+  temperatures, and the collapse at 1e-7 is gone. At T_int = 1e-1 both rules sit 0.55 per cent
+  above that reference, the same offset on each, which is the path spline against the unsplined
+  potential and not these tolerances.
+
+  What is left of the 0.722 per cent at T_int = 1e-6 is not `epsabs`. With the loop no longer
+  ending on `3*epsabs` what stops it is the shooting bracket `(xmax - xmin) < xtol`, which is
+  absolute in `x` while `x` itself is 4.3e-09 there, so `xtol = 1e-10` resolves the escape
+  point to 2.3 per cent only. Judging that bracket relative to the `x` it contains, at the same
+  `xtol`, gives 102.465 against the reference's 102.461: +0.004 per cent in place of +0.722,
+  and the same verdict at every coupling of the ladder. That is a separate change and is not
+  made here.
+
+  **This reduces the couplings at which the conformal dark U(1) percolates, from a lowest
+  g = 0.42 to 0.44**, and that is the correction rather than a regression: at the temperature
+  those couplings percolate, internal 1.8e-6, the action was 7.45 per cent low at g = 0.44,
+  S3/T 111.823 against the reflected reference's 120.819, and 7.90 per cent low at g = 0.43,
+  119.415 against 129.656. Since `Gamma ~ exp(-S3/T)` at `S3/T` of 120 to 130, that
+  understatement raised the nucleation rate by 8.1e+03 and 2.8e+04 respectively. This code
+  reproduces that reference to 0.08 per cent at both couplings, 120.921 and 129.761. `Tperc`
+  moves by -5e-05 per cent at g = 0.62 and -47 per cent at g = 0.44, the coupling now at the
+  boundary.
+
+  Not addressed: below about T_int = 1e-8 the action is wrong by orders of magnitude on both
+  sides of this change. At g = 0.44 and T_int = 1e-8 both return S3/T = 5.6e+08 against 96.50
+  from the reflected reference above. The potential's own geometry there is no different from
+  the temperatures where the solve works: the barrier ends 1.36 T from the false vacuum at
+  T_int = 1e-8 against 1.49 T at 1e-6, measured from V(phi) - V(0) alone, with no solver and no
+  tolerance in it. So this is a failure of the solve rather than a regime where the bounce has
+  grown out of reach, and it is not diagnosed here. Nothing below T_int ~ 1e-7 should be read as
+  converged, and the percolation of a model whose transition completes that cold is not
+  established here.
+
+- **A timeout raised inside the initial-condition root find is no longer read as a wall too
+  thin to integrate.** `errors.Timeout` comes from a POSIX alarm handler, so it lands wherever
+  the run happens to be, `scipy.optimize.brentq` included, and it subclasses `Exception`. The
+  handler around that root find in `SingleFieldInstanton.initialConditions` turned it into a
+  `TunnelingError`, which `pathDeformation._find_profile` turns into an `InfiniteActionError`
+  and `bounceAction` reports as no tunnelling: a timed-out point came back as a finished one
+  with a verdict. It is re-raised, as it already was in the path extension and the spline fit.
+
 - **Two temperatures are compared relative to their own size, not to an absolute floor of one
   and not to the hottest point of the support.** The adaptive percolation decides whether a
   proposed temperature is already present in the support, whether two samples are duplicates,
