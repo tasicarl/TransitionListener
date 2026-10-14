@@ -808,7 +808,8 @@ class SingleFieldInstanton:
             # `IntegrationError`. It bites only for `x` below 1.7e-16, where `1 - exp(-x)`
             # falls under the machine epsilon, and the bisection below cannot produce such an
             # `x`: its smallest is `0.5*xmin = 5*xtol`, so 5e-10 at the configured tolerance.
-            # An `xguess` that small would reach it, and no caller passes one.
+            # The one way in is an `xguess` below that, which a model's
+            # `tunneling_findProfile_params` is free to set; nothing in this repository does.
             phi_scale = max(excursion, abs(delta_phi) * np.finfo(float).eps)
             epsabs = abs(np.array([phi_scale, phi_scale/self.rscale])*phitol)
             integration_args = (dr0, epsfrac, epsabs, drmin, rmax)
