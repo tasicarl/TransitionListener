@@ -379,13 +379,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
   Not addressed: below about T_int = 1e-8 the action is wrong by orders of magnitude on both
   sides of this change. At g = 0.44 and T_int = 1e-8 both return S3/T = 5.6e+08 against 96.50
-  from the reflected reference above. The potential's own geometry there is no different from
-  the temperatures where the solve works: the barrier ends 1.36 T from the false vacuum at
-  T_int = 1e-8 against 1.49 T at 1e-6, measured from V(phi) - V(0) alone, with no solver and no
-  tolerance in it. So this is a failure of the solve rather than a regime where the bounce has
-  grown out of reach, and it is not diagnosed here. Nothing below T_int ~ 1e-7 should be read as
-  converged, and the percolation of a model whose transition completes that cold is not
-  established here.
+  from the reflected reference above, and the solver has lost the bounce rather than
+  mis-integrated it. The barrier there ends 1.36 T from the false vacuum, measured from
+  V(phi) - V(0) alone with no solver and no tolerance in it, against 1.49 T at T_int = 1e-6
+  where the solve works. The profile the solver returns starts 1.4e+07 T out, against 4.3 T at
+  1e-6 and 4.8 T at 1e-7: it has gone four orders of magnitude past the whole barrier into the
+  region where the potential falls away, and the action it reports belongs to that excursion
+  and not to a bounce. Nothing below T_int ~ 1e-7 should be read as converged, and the
+  percolation of a model whose transition completes that cold is not established here.
 
 - **A timeout raised inside the initial-condition root find is no longer read as a wall too
   thin to integrate.** `errors.Timeout` comes from a POSIX alarm handler, so it lands wherever

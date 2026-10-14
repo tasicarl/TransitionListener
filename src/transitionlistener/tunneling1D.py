@@ -776,25 +776,26 @@ class SingleFieldInstanton:
             # `epsabs` has to be a fraction of the field range the integration covers, and
             # that range is the bounce's own excursion,
             # `|phi(0) - phi_metaMin| = |delta_phi0 - delta_phi|`, not the gap between the
-            # minima. On the shipped conformal dark U(1) at g = 0.46, y = 0.1 the gap is 1000
-            # internal units at every temperature while the excursion is 4.4 to 6.2 T, so
+            # minima. On the shipped conformal dark U(1) at g = 0.46, y = 0.01, v = 0.14 GeV,
+            # the configuration every number in this comment is measured at, the gap is 1000
+            # internal units at every temperature while the excursion is 4.3 to 6.1 T, so
             # `phitol |delta_phi|` is 1.6e-07 of the integrated feature at T_int = 0.1 and
-            # 2.3e-02 of it at 1e-6.
+            # 2.4e-02 of it at 1e-6.
             #
             # `integrateProfile` spends `epsabs` twice, and the second use is the one that
             # decides. Besides controlling the Runge-Kutta step it is the radius in
             # `abs(y - [phi_metaMin, 0]) < 3*epsabs` inside which a profile counts as having
             # reached the false vacuum. Tied to the gap that radius was a fixed absolute
             # distance while the bounce shrank with the temperature, so
-            # `3 phitol |delta_phi| / excursion` grew from 5.8e-05 at T_int = 1e-3 to 2.19 at
-            # 1e-7: an acceptance radius twice the whole bounce. The first trial was then
-            # declared converged after two integration steps with the profile not having moved
-            # at all, and the action came back 4.7e-14 against the 103.8 this code gives.
-            # Separating the two uses on that model shows which one matters: tightening only
-            # the step control still returns 4.7e-14 at T_int = 1e-7 and 92.3 against 104.4 at
-            # 1e-6, tightening only the acceptance radius returns 59.6 and 102.8, and both
-            # together 103.8 and 104.4. Tied to the bounce, `3*epsabs/excursion` is `3*phitol`
-            # at every temperature.
+            # `3 phitol |delta_phi| / excursion` grew from 5.9e-05 at T_int = 1e-3 to 0.069 at
+            # 1e-6 and 0.63 at 1e-7, where a trial counted as arrived once it came within two
+            # thirds of the whole bounce of the false vacuum and the action came back 0 against
+            # the 102.93 this code gives.
+            # Separating the two uses shows which one matters: tightening only the step control
+            # gives 91.10 at T_int = 1e-6 and still 0 at 1e-7, tightening only the acceptance
+            # radius gives 96.93 and 636.3, and both together 103.20 and 102.93, against a
+            # converged 102.46 and 92.42. Tied to the bounce, `3*epsabs/excursion` is
+            # `3*phitol` at every temperature.
             #
             # Where the bounce covers a sizeable part of the gap the two rules agree, which is
             # every transition that is not strongly supercooled: on the g = 0.7, y = 0.24
