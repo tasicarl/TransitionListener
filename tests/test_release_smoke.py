@@ -8,7 +8,8 @@ beyond the configured relative tolerance.
 This is the test we want to be green on every push to the release branch
 before tagging or shipping anything.
 
-Total runtime budget: roughly 1 to 2 minutes on a modern single-core CPU.
+Total runtime budget: about 3 minutes on a modern single-core CPU, and `SMOKE_TIMEOUT_S`
+below says what the subprocess is allowed before the test is failed as hung.
 
 Part of TransitionListener v2.0
 Documentation: https://tasillo.de/TransitionListener/
@@ -58,6 +59,17 @@ EXPECTED = {
 }
 
 
+# The example point is the conformal dark U(1) at g = 0.7, v_GeV = 0.1, y = 0.01, a strongly
+# supercooled transition, which is the configuration where the bounce integration does the most
+# work. Measured on one core of an otherwise idle machine: 143.0 s at d66a774 and 183.9 s once
+# `epsabs` is a fraction of the bounce's own excursion rather than of the gap between the minima,
+# for identical observables (Tperc_SM_GeV 2.2120e-03, betaH_RH 62.601, alpha 387.04 on both).
+# The former fitted inside a 180 s budget and the latter does not, so the budget is raised rather
+# than the integration loosened. It stays finite because the purpose of the limit is to fail a
+# hung run, not to measure speed: a regression in cost is visible in the reported runtime.
+SMOKE_TIMEOUT_S = 600
+
+
 @pytest.fixture(scope="module")
 def smoke_run() -> Path:
     if not EXAMPLE_YAML.exists():
@@ -76,7 +88,7 @@ def smoke_run() -> Path:
     try:
         result = subprocess.run(
             cmd, cwd=REPO_ROOT, env=env,
-            capture_output=True, text=True, timeout=180,
+            capture_output=True, text=True, timeout=SMOKE_TIMEOUT_S,
         )
     except FileNotFoundError:
         cmd = [
@@ -85,7 +97,7 @@ def smoke_run() -> Path:
         ]
         result = subprocess.run(
             cmd, cwd=REPO_ROOT, env=env,
-            capture_output=True, text=True, timeout=180,
+            capture_output=True, text=True, timeout=SMOKE_TIMEOUT_S,
         )
 
     if result.returncode != 0:
