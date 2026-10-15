@@ -29,8 +29,10 @@ def x_of_every_trial(pot, T_int):
     while `r0` is still `rmin`, which holds for ``x < -ln(thinCutoff) = 4.605`` at the shipped
     ``thinCutoff = 0.01``. Above that the returned field is pinned to
     ``thinCutoff * delta_phi``, and a `y0`-based reading sticks at 4.605 whatever `x` is, which
-    understates a large `x` instead of overstating it. Both branches are measured in
-    `scans/v211_validation/shooting_evidence/spy_saturation.log`.
+    understates a large `x` instead of overstating it. Both branches were measured on a hand-made
+    instanton with ``phi_absMin = 1``, ``phi_metaMin = 0``: the two readings agree to 1.8e-09
+    relative at every `x` from 0 to 4.6, and at `x` = 4.61, 5, 8 and 15 the `y0` one stays at
+    4.60517.
 
     A trial is still one `integrateProfile` call, so the count here is the count of profiles
     integrated. `findProfile` can call `initialConditions` once more than that, on the
@@ -78,31 +80,27 @@ class TheBracketClosesToAFractionOfX(unittest.TestCase):
 
     T_INT = 1e-7
 
-    def _trials(self):
+    def test_the_last_two_trials_differ_by_a_fraction_of_x(self):
         pot = conformal_u1.specific_potential(
             {"g": 0.46, "y": 0.1, "v_GeV": 1.0}, verbose=False)
         xs = x_of_every_trial(pot, self.T_INT)
+        self.assertGreater(len(xs), 2, f"only {len(xs)} trials: the bisection did not run")
         xtol = float(pot.config.tracingConf.tunneling_params
                      .get("tunneling_findProfile_params", {}).get("xtol", 1e-4))
-        return xs, xtol
-
-    def test_the_relative_window_is_far_tighter_here_than_the_absolute_one(self):
-        """The premise: without it the two rules agree and the test below is empty.
-
-        What matters is not `x` against `xtol` but `x` against one, since the relative window
-        is `xtol * x` and the absolute one is `xtol`. At this configuration `x` is about
-        4.2e-10, so the relative window is ten orders of magnitude tighter.
-        """
-        xs, xtol = self._trials()
-        self.assertTrue(xs, "integrateProfile was never reached")
+        # The premise, asserted first because without it the two rules agree and the assertion
+        # below is empty: what decides is not `x` against `xtol` but `x` against one, since the
+        # relative window is `xtol * x` and the absolute one is `xtol`. `x` at the accepted
+        # trial is about 4.2e-10 here, so the relative window is ten orders of magnitude the
+        # tighter of the two.
         self.assertLess(
             xs[-1], 1e-3,
             msg=f"x at the accepted trial is {xs[-1]:.6g}, which is not far below one, so an "
                 f"absolute bracket and a relative one would close at a similar width here")
-
-    def test_the_last_two_trials_differ_by_a_fraction_of_x(self):
-        xs, xtol = self._trials()
-        self.assertGreater(len(xs), 2, f"only {len(xs)} trials: the bisection did not run")
+        # The factor 4 is slack the assertion does not need here: the relative window closes
+        # the bracket until the last two trials agree in `x` to double precision, so the gap is
+        # exactly 0 at this configuration. It is there for a configuration that stops one
+        # halving earlier. With the stopping line put back to `(xmax-xmin) < xtol` the gap is
+        # 6.84e-11 against an allowed 1.92e-19, which is what makes this assertion bite.
         width = abs(xs[-1] - xs[-2])
         self.assertLessEqual(
             width, 4.0 * xtol * xs[-1],
@@ -117,19 +115,21 @@ class TheWindowIsNeverWiderThanTheAbsoluteOne(unittest.TestCase):
     below one. Above one it is the looser of the two, and `x` passes one on a model shipped with
     the code: on the conformal dark U(1) at g = 0.7, y = 0.24, v_GeV = 1.0 the accepted trial
     sits at `x` = 0.98 at T = 95 and 2.02 at T = 135. Without the cap the bisection there
-    stopped with the last two trials 1.01 to 1.16 times `xtol` apart, measured at five
-    temperatures in `scans/v211_validation/shooting_evidence/cap_at_one.log`. The
-    ``min(..., 1)`` costs one further trial, 37 against 36, and brings that gap back to 0.51 to
-    0.58 of `xtol`.
+    stopped with the last two trials 1.0114 to 1.1598 times `xtol` apart, at the five
+    temperatures from T = 125 to 135. The ``min(..., 1)`` costs one further trial, 37 against
+    36, and brings that gap back to 0.5057 to 0.5799 of `xtol`.
 
-    T = 130 is where the cap binds with the most room of the temperatures measured: `x` at the
-    accepted trial is 1.85, so the uncapped window would be 1.85 `xtol` and the recorded gap was
-    1.08 `xtol`. It costs about 2 s.
+    T = 130 is the middle of those five: `x` at the accepted trial is 1.85, so the uncapped
+    window would be 1.85 `xtol`, and the uncapped rule stopped 1.0833 `xtol` apart against
+    0.5416 `xtol` with the cap. Without the cap the gap therefore exceeds the bound the
+    assertion below applies by 8 per cent, and at T = 135, the widest of the five, by 16 per
+    cent. T = 130 costs about 2 s.
 
-    The gap between the last two integrated trials is not the bracket `(xmax-xmin)` that the
-    stopping test reads, which is one bisection update further on and never integrated. It is
-    half of it to within the last halving, which is enough to separate the two rules by a factor
-    of two here.
+    The gap between the last two integrated trials is the bracket `(xmax-xmin)` that the
+    stopping test read. Both of that bracket's endpoints are trials that were integrated, and
+    the trial the loop computes after the test is their midpoint, which the ``break`` leaves
+    unintegrated: at T = 130 the gap and the bracket are the same 5.416445070238751e-11 at
+    `xtol` = 1e-10.
     """
 
     T_INT = 130.0
@@ -141,12 +141,17 @@ class TheWindowIsNeverWiderThanTheAbsoluteOne(unittest.TestCase):
         self.assertGreater(len(xs), 2, f"only {len(xs)} trials: the bisection did not run")
         xtol = float(pot.config.tracingConf.tunneling_params
                      .get("tunneling_findProfile_params", {}).get("xtol", 1e-4))
-        # the premise: with every x below one the cap cannot bind and the assertion below would
-        # hold whether or not it is in the source
+        # The premise, on the accepted trial rather than on the largest `x` tried: the scale
+        # the stopping test reads is `max(|x|, |xmin|)` at the midpoint of the final bracket,
+        # so the cap binds at the step that stops the loop only if `x` is above one there. A
+        # configuration can try an `x` above one and still stop below it, and then the
+        # assertion below would hold whether or not the cap is in the source: at g = 0.50,
+        # y = 0.01, v_GeV = 0.14, internal T = 55.43 the largest `x` tried is 1.014 while the
+        # accepted one is 0.669, and the two rules give the same action to every digit printed.
         self.assertGreater(
-            max(xs), 1.0,
-            msg=f"the largest x the bisection tried is {max(xs):.6g}, not above one, so the cap "
-                f"at one cannot bind at this configuration and this test is empty")
+            xs[-1], 1.0,
+            msg=f"x at the accepted trial is {xs[-1]:.6g}, not above one, so the cap at one "
+                f"cannot bind where the bisection stops and this test is empty")
         width = abs(xs[-1] - xs[-2])
         self.assertLessEqual(
             width, xtol,

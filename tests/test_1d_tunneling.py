@@ -47,15 +47,17 @@ class test1DPotential(unittest.TestCase):
         # excursion rather than of the gap between the minima. This call takes `findProfile`'s
         # signature defaults, `phitol = xtol = 1e-4`, which no TransitionListener run uses --
         # the configured value is 1e-10. At 1e-4 the bisection's own window is what decides, and
-        # this is where making it relative to the `x` it holds moves the answer most: 1e-4 is
-        # five orders above the `x` this configuration needs, so the absolute test stopped the
-        # bisection on its first step. The three values at 1e-4 are 2388.1301 with an absolute
-        # window and a gap-scaled epsabs, 2388.0305 with an absolute window and a bounce-scaled
-        # epsabs, and 2388.6013 here, against a converged 2388.1790. Looser is not closer: at
-        # the model's own 10000 spline samples the distances from the converged 2384.3235 are
-        # 0.4248, 0.0390 and 0.6498. At the configured 1e-10 this code is the closest of the
-        # three, 2388.1790354 against 2388.1789449 and 2388.1788707, which is what the test
-        # below pins.
+        # this is where making it relative to the `x` it holds moves the answer most, because at
+        # that tolerance neither rule has converged: `x` at the accepted trial is 0.0857, so the
+        # relative window is a factor 12 the tighter and the loop takes 16 bisection trials
+        # against the absolute rule's 13. The action then moves by 0.024 per cent, against
+        # 3.8e-08 at the configured 1e-10, where the counts are 36 against 33. The three values
+        # at 1e-4 are 2388.1301 with an absolute window and a gap-scaled epsabs, 2388.0305 with
+        # an absolute window and a bounce-scaled epsabs, and 2388.6013 here, against a converged
+        # 2388.1790. Looser is not closer: at the model's own 10000 spline samples the distances
+        # from the converged 2384.3235 are 0.4248, 0.0390 and 0.6498. At the configured 1e-10
+        # this code is the closest of the three, 2388.1790354 against 2388.1789449 and
+        # 2388.1788707, which is what the test below pins.
         self.assertAlmostEqual(tobj.action, 2388.601280038287, places=5)
 
     def test_the_action_converges_as_the_tolerance_is_tightened(self):

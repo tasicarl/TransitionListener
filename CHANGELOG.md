@@ -308,11 +308,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `x` to a relative precision of `xtol / x`: on the shipped conformal dark U(1) at g = 0.46,
   y = 0.01, v_GeV = 0.14 that runs from 1.6e-07 at T_int = 0.1 to 2.3e-02 at 1e-6. What that
   costs is measured in the number of bisection trials the absolute rule allows, counted as
-  calls to `integrateProfile` on that model at the configured `xtol = 1e-10`: 25, 22, 19, 12,
-  9 and 3 at T_int = 1e-1, 1e-2, 1e-3, 1e-4, 1e-5 and 1e-6. The count falls as the transition
-  cools, because once `x` is small an absolute window of `xtol` is already wide compared with
-  the bracket, so the loop stops before the bisection has converged. With the window a
-  fraction of `x` the count is 36 at every one of those temperatures. The window is now
+  calls to `integrateProfile` on that model at the configured `xtol = 1e-10`, with only the
+  stopping line put back to `(xmax - xmin) < xtol`: 25, 22, 19, 15, 12 and 8 at
+  T_int = 1e-1, 1e-2, 1e-3, 1e-4, 1e-5 and 1e-6. The count falls as the transition cools,
+  because once `x` is small an absolute window of `xtol` is already wide compared with the
+  bracket, so the loop stops before the bisection has converged. With the window a fraction of
+  `x` the count is 36 at every one of those temperatures. The window is now
   `xtol * min(max(|x|, |xmin|), 1)`, with `xmin` present so the test is defined before `x` has
   been bracketed from below; `xmax` starts at infinity, so the test cannot fire at all until an
   overshoot has bracketed `x` from above.
@@ -324,8 +325,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   at T = 135, and without the cap the last two trials came out 1.0114 to 1.1598 times `xtol`
   apart at the five temperatures from T = 125 to 135. The cap costs one further trial there,
   37 against 36, and returns that gap to 0.51 to 0.58 of `xtol`. With it the window is
-  `xtol * x` where the bounce is small and `xtol` where it is not, so this is a tightening
-  everywhere and a loosening nowhere.
+  `xtol * x` where the bounce is small and `xtol` where it is not, so this tightens the
+  bisection on a supercooled transition, leaves it where the absolute rule already had it on a
+  thick-walled one, and loosens it nowhere.
 
   Measured against a bounce solved a second way, the reflected construction described in the
   entry below, S3/T at g = 0.46 goes from +0.005, +0.063, +0.722 and +11.4 per cent at
@@ -336,18 +338,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
   No verdict changes. The 22-coupling ladder is identical point for point, 17 of 22 with the
   lowest at g = 0.44, and `T_perc` moves by a median of 0.0001 per cent over the 17 that
-  percolate, by 2.76 per cent at g = 0.44. On the 2HDM benchmark the cap makes this a no-op: at
-  the warm edge coupling `lambda3` = 5.77 the bracket converges at `x` = 2.27 to 2.45, above the
-  cap, and `S3/T` reproduces the absolute rule to every digit printed, 139.648881933459,
-  137.716034313366 and 134.331859879769 at T = 45, 44 and 42 GeV, on the same trial counts.
+  percolate, by 2.76 per cent at g = 0.44. On the 2HDM benchmark the cap makes this a no-op. At
+  the three warm-edge couplings of the `edge` grid, `lambda3` = 5.77, 5.7713649314 and
+  5.7727298627, the bracket converges at `x` = 2.27 to 2.45, above the cap, and every field of
+  the recorded result reproduces the previous entry's code exactly; the one leaf that differs at
+  each coupling is the wall time the run took. Without the cap those three differ in 12 of the
+  15 summary fields, by up to 0.081 per cent in `(beta/H)_RH`.
 
   `tests/test_1d_tunneling.py::test_action_calculation` re-pins from 2388.030513420128 to
   2388.601280038287. That call takes the signature defaults, and at `xtol = 1e-4` this change
-  moves the answer most, because 1e-4 is five orders above the `x` that configuration needs.
-  Looser is not closer: at the model's own 10000 spline samples the distances from a converged
-  2384.3235 are 0.4248 before the previous entry's change, 0.0390 after it, and 0.6498 here. At
-  the configured `xtol = 1e-10` this code is the closest of the three, 2388.1790354 against
-  2388.1789449 and 2388.1788707, which is what the test pins.
+  moves the answer most, because at that tolerance neither rule has converged: `x` at the
+  accepted trial is 0.0857, so the window is a factor 12 the tighter and the bisection takes 16
+  trials against 13. Looser is not closer: at the model's own 10000 spline samples the distances
+  from a converged 2384.3235 are 0.4248 before the previous entry's change, 0.0390 after it, and
+  0.6498 here. At the configured `xtol = 1e-10` this code is the closest of the three,
+  2388.1790354 against 2388.1789449 and 2388.1788707, which is what the test pins.
 
 - **The bounce profile is integrated, and judged to have arrived, on the scale of the bounce
   and not of the gap between the minima.** `findProfile` holds the profile integration to an
