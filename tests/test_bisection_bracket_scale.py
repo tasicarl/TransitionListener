@@ -12,6 +12,25 @@ parts: that it closes to a fraction of `x` where the bounce is small, that the c
 ever being wider than the absolute `xtol` it replaces, and that the loop ends on the resolution
 of the floating-point grid rather than spinning when `xtol` is below what that grid can express.
 
+Only the first of the three fails against the absolute window this replaces, and that is what
+each is for. Run against four states of the one stopping line, each a copy of the solver with
+that line replaced and nothing else:
+
+    test                                 absolute  relative  relative  relative
+                                                   uncapped  capped    capped
+                                                                       + guard
+    closes to a fraction of x            fails     passes    passes    passes
+    never wider than the absolute one    passes    fails     passes    passes
+    stops at machine resolution          passes    fails     fails     passes
+
+The second cannot fail against the absolute window, because asserting the bracket is at most
+`xtol` wide is something a window of `xtol` satisfies by construction; it rejects the uncapped
+form, where the bracket closes to 1.0833 `xtol` at T = 130. The third cannot either, because the
+absolute window does not stall: at ``xtol = 1e-16`` it finishes in 28 and 53 trials where the
+relative one repeats one `x` for ever. Both are guards against a future loosening rather than
+tests of what this change added, and each state is rejected by at least one of the three.
+Measured in `scans/v211_validation/shooting_evidence/test_discrimination.log`.
+
 Part of TransitionListener v2
 """
 import copy
