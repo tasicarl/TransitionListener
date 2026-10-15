@@ -899,6 +899,19 @@ class SingleFieldInstanton:
             # `findProfile` is a general solver and nothing here constrains `x`, so the cap
             # keeps the change a tightening where the bounce is small, the absolute rule
             # unchanged where it is not, and a loosening nowhere.
+            #
+            # The bracket cannot be subdivided below the spacing of the floating-point grid.
+            # Once the midpoint lands on an endpoint every further trial repeats the same `x`,
+            # and no tolerance test can fire, so the loop has to stop on that rather than on
+            # `xtol`. It matters because the window is relative: the threshold
+            # `xtol * x` and the spacing `ulp(x)` both scale with `x`, so the stall sets in
+            # below `xtol` = 2.2e-16 at every `x`, where the absolute rule only stalled below
+            # `ulp(x)` itself and so needed an `xtol` under 5.2e-26 on the supercooled line.
+            # Measured with `xtol` = 1e-16: without this test the shipped conformal dark U(1)
+            # at g = 0.46, y = 0.01 and at g = 0.7, y = 0.24 both pass 400 trials with the last
+            # six `x` identical, and with it they stop.
+            if x == xmin or x == xmax:
+                break
             if (xmax-xmin) < xtol * min(max(abs(x), abs(xmin)), 1.0):
                 break
 

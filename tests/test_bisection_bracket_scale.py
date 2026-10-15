@@ -7,8 +7,15 @@ the gap between the minima that the bounce covers:
 fraction shrinks with the temperature while an absolute `xtol` does not, so the bisection used
 to deliver `x` to a relative precision of `xtol / x`, which degrades decade by decade.
 
+The window is ``xtol * min(max(|x|, |xmin|), 1)``, and the three classes here pin its three
+parts: that it closes to a fraction of `x` where the bounce is small, that the cap keeps it from
+ever being wider than the absolute `xtol` it replaces, and that the loop ends on the resolution
+of the floating-point grid rather than spinning when `xtol` is below what that grid can express.
+
 Part of TransitionListener v2
 """
+import copy
+import math
 import unittest
 
 import numpy as np
@@ -18,7 +25,12 @@ from transitionlistener import pathDeformation
 from transitionlistener import tunneling1D
 
 
-def x_of_every_trial(pot, T_int):
+class TooManyTrials(Exception):
+    """A run passed its trial cap, so a bisection that cannot terminate fails a test instead
+    of hanging it."""
+
+
+def x_of_every_trial(pot, T_int, xtol=None, cap=None):
     """Every raw bisection variable `x` the shooting tried, read where `findProfile` sets it.
 
     `findProfile` hands `delta_phi0 = exp(-x) * delta_phi` to :func:`initialConditions`, so
@@ -39,6 +51,11 @@ def x_of_every_trial(pot, T_int):
     iteration whose `r0` comes back non-finite and breaks the loop, and that `x` belongs to no
     integrated trial.
     """
+    params = copy.deepcopy(dict(pot.config.tracingConf.tunneling_params))
+    if xtol is not None:
+        fp = dict(params.get("tunneling_findProfile_params", {}))
+        fp["xtol"] = xtol
+        params["tunneling_findProfile_params"] = fp
     seen = []
     pending = {}
     real_ic = tunneling1D.SingleFieldInstanton.initialConditions
@@ -53,6 +70,8 @@ def x_of_every_trial(pot, T_int):
     def ip_spy(self, r0, y0, *a, **k):
         if "x" in pending:
             seen.append(pending.pop("x"))
+            if cap is not None and len(seen) > cap:
+                raise TooManyTrials(len(seen))
         return real_ip(self, r0, y0, *a, **k)
 
     tunneling1D.SingleFieldInstanton.initialConditions = ic_spy
@@ -62,8 +81,7 @@ def x_of_every_trial(pot, T_int):
             T_int, lambda X, T: pot.Vtot(X, T), lambda X, T: pot.gradV(X, T), {},
             dict(low_vev=np.array([float(pot.v_stable)]), high_vev=np.array([0.0]),
                  Tnuc=T_int, low_phase=1, high_phase=0),
-            verbose=False, conversionFactor=pot.conversionFactor,
-            **pot.config.tracingConf.tunneling_params)
+            verbose=False, conversionFactor=pot.conversionFactor, **params)
     finally:
         tunneling1D.SingleFieldInstanton.initialConditions = real_ic
         tunneling1D.SingleFieldInstanton.integrateProfile = real_ip
@@ -158,6 +176,56 @@ class TheWindowIsNeverWiderThanTheAbsoluteOne(unittest.TestCase):
             msg=f"the bisection stopped with the last two trials {width:.6g} apart, which is "
                 f"{width / xtol:.4g} times xtol = {xtol:g}, so the relative window was the "
                 f"looser of the two rules here and the cap at one is not holding")
+
+
+class TheLoopStopsWhenTheBracketReachesMachineResolution(unittest.TestCase):
+    """A tolerance the floating-point grid cannot resolve must end the loop, not spin it.
+
+    The window is relative, so the threshold ``xtol * x`` and the spacing ``ulp(x)`` both carry
+    the factor `x` and the threshold falls under the spacing below ``xtol`` = 2.2e-16 at every
+    `x`. The absolute window it replaces only became unsatisfiable below ``ulp(x)`` itself,
+    which on the supercooled line is 5.2e-26. Once the threshold cannot be met the midpoint
+    lands on a bracket endpoint and every further trial repeats the same `x`: measured at
+    ``xtol`` = 1e-16 without the guard, this configuration and the supercooled one both pass
+    400 trials with the last six `x` identical.
+
+    Measured here on the conformal dark U(1) at g = 0.7, y = 0.24, v_GeV = 1.0, internal
+    T = 15, where `x` at the accepted trial is 0.0857. That `x` is below one, so the relative
+    threshold is 8.6e-18 against a spacing of 1.4e-17 while the absolute `xtol` of 1e-16 is
+    above the spacing: the stall belongs to the relative window and not to the solver it
+    replaces. With the guard the loop stops after 55 trials. It costs about 3 s.
+    """
+
+    T_INT = 15.0
+    XTOL = 1e-16
+    CAP = 200
+
+    def test_a_tolerance_below_the_floating_point_spacing_still_terminates(self):
+        pot = conformal_u1.specific_potential(
+            {"g": 0.7, "y": 0.24, "v_GeV": 1.0}, verbose=False)
+        try:
+            xs = x_of_every_trial(pot, self.T_INT, xtol=self.XTOL, cap=self.CAP)
+        except TooManyTrials as exc:
+            self.fail(f"the bisection was still running after {exc.args[0]} trials at "
+                      f"xtol = {self.XTOL:g}, so a tolerance below the floating-point spacing "
+                      f"hangs the solver instead of ending the loop")
+        self.assertGreater(len(xs), 2, f"only {len(xs)} trials: the bisection did not run")
+        # the premise, in two parts: the relative threshold is below the spacing of `x`, so the
+        # tolerance test cannot fire, while the absolute `xtol` is above it and would have
+        # fired. Without both, this configuration does not exercise the relative window's own
+        # failure mode and the test would pass whether or not the guard is in the source.
+        accepted = xs[-1]
+        spacing = math.ulp(accepted)
+        self.assertLess(
+            self.XTOL * accepted, spacing,
+            msg=f"the relative threshold {self.XTOL * accepted:.3g} is not below the spacing "
+                f"{spacing:.3g} of x = {accepted:.6g}, so the tolerance test can still fire "
+                f"and this test is empty")
+        self.assertGreater(
+            self.XTOL, spacing,
+            msg=f"the absolute xtol {self.XTOL:g} is not above the spacing {spacing:.3g}, so "
+                f"the stall would be there with or without the relative window and this test "
+                f"does not pin what this change introduced")
 
 
 if __name__ == "__main__":

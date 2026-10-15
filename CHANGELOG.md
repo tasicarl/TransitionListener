@@ -329,6 +329,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   bisection on a supercooled transition, leaves it where the absolute rule already had it on a
   thick-walled one, and loosens it nowhere.
 
+  The loop also stops when the bracket reaches the resolution of the floating-point grid, on
+  `x == xmin or x == xmax`. A relative threshold needs it: `xtol * x` and the spacing `ulp(x)`
+  both carry the factor `x`, so the threshold falls under the spacing as soon as `xtol` goes
+  below 2.2e-16 whatever `x` is, where the absolute window only became unsatisfiable below
+  `ulp(x)` itself, which on the supercooled line is 5.2e-26. Past that point the midpoint lands
+  on a bracket endpoint and every further trial repeats the same `x`. Measured at
+  `xtol = 1e-16` on the shipped conformal dark U(1) at g = 0.46, y = 0.01 and at g = 0.7,
+  y = 0.24: without this test both pass 400 trials with the last six `x` identical, with it
+  both stop after 55, and at `xtol = 1e-20` also after 55, since what ends the loop there is
+  the spacing rather than the tolerance. At the configured `xtol = 1e-10` and at the signature
+  default of 1e-4 the trial counts are unchanged, 36 and 16.
+
   Measured against a bounce solved a second way, the reflected construction described in the
   entry below, S3/T at g = 0.46 goes from +0.005, +0.063, +0.722 and +11.4 per cent at
   T_int = 1e-4, 1e-5, 1e-6 and 1e-7 to +0.000, +0.000, +0.004 and +2.0. At the two couplings
