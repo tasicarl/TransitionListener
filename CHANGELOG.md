@@ -437,9 +437,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
   The extra time is inside the integration rather than around it: counted through `run_TL`,
   this code makes 1036 `calcAction` calls against 1059 and 3117 `integrateProfile` calls
-  against 3150. The subprocess
-  timeout in `tests/test_release_smoke.py` is raised from 180 s to 600 s accordingly, with all
-  six of that test's reference bands unchanged.
+  against 3150. The subprocess timeout in `tests/test_release_smoke.py` is raised from 180 s
+  to 600 s accordingly, with all six of that test's reference bands unchanged.
 
   Not addressed: below about T_int = 1e-8 the action is wrong by orders of magnitude on both
   sides of this change. At g = 0.44 and T_int = 1e-8 both return S3/T = 5.6e+08 against 96.50
