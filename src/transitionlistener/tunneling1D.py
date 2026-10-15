@@ -693,7 +693,10 @@ class SingleFieldInstanton:
             The initial guess for `x`. If `None`, `xguess` is set such
             that ``phi_guess = self.phi_bar``.
         xtol : float, optional
-            Target accuracy in `x`.
+            Target accuracy in `x`. The shooting stops once the bracket ``xmax - xmin`` falls
+            below ``xtol * min(max(|x|, |xmin|), 1)``, so `xtol` is a fraction of the `x` the
+            bracket holds while that `x` is below one, and an absolute window on `x` where it
+            is not.
         phitol : float, optional
             Fractional error tolerance in integration. It scales both tolerances the profile
             integration is held to: `epsfrac` directly, and `epsabs` as `phitol` times the
@@ -808,10 +811,15 @@ class SingleFieldInstanton:
             # absolute tolerance it shrinks the step by the largest factor it is allowed on
             # every try, so the integration would end at `dr < drmin` and an
             # `IntegrationError`. It bites only for `x` below 1.7e-16, where `1 - exp(-x)`
-            # falls under the machine epsilon, and the bisection below cannot produce such an
-            # `x`: its smallest is `0.5*xmin = 5*xtol`, so 5e-10 at the configured tolerance.
-            # The one way in is an `xguess` below that, which a model's
-            # `tunneling_findProfile_params` is free to set; nothing in this repository does.
+            # falls under the machine epsilon. The bisection's smallest `x` is not
+            # `0.5*xmin = 5*xtol`: `xmin` starts at `xtol*10` but an undershoot replaces it
+            # with the trial that undershot, so on the g = 0.46, y = 0.1, v_GeV = 1.0 point of
+            # `tests/test_bisection_bracket_scale.py` at the configured `xtol = 1e-10` the
+            # smallest `x` tried is 1.4e-10 and the accepted one 4.2e-10. Both are six orders
+            # above the floor. Reaching it needs an `xguess` that small, which a model's
+            # `tunneling_findProfile_params` is free to set, and `dV_from_absMin` then refuses
+            # the trial before any integration: on a quartic with minima at 0 and 1 an
+            # `xguess` of 1e-18 raises `TooSmalldVError` with no call to `integrateProfile`.
             phi_scale = max(excursion, abs(delta_phi) * np.finfo(float).eps)
             epsabs = abs(np.array([phi_scale, phi_scale/self.rscale])*phitol)
             integration_args = (dr0, epsfrac, epsabs, drmin, rmax)
@@ -865,8 +873,46 @@ class SingleFieldInstanton:
             elif ctype == "overshoot":  # x is too high
                 xmax = x
                 x = .5*(xmin+xmax)
-            # Check if we've reached xtol
-            if (xmax-xmin) < xtol:
+            # Check if we've reached xtol, as a fraction of the `x` the bracket holds rather
+            # than as an absolute window. `x` is the fraction of the gap between the minima that
+            # the bounce covers, `|phi(0) - phi_metaMin| / |delta_phi| = |exp(-x) - 1| ~ x`, so
+            # it shrinks with the supercooling while an absolute `xtol` does not: on the shipped
+            # conformal dark U(1) at g = 0.46, y = 0.01, v_GeV = 0.14, `xtol/x` runs from
+            # 1.6e-07 at T_int = 0.1 to 2.3e-02 at 1e-6. The cost shows in the number of
+            # bisection trials the absolute rule allows: on that model at the configured
+            # `xtol = 1e-10`, with this line put back to `(xmax-xmin) < xtol`, it is 25, 22,
+            # 19, 15, 12 and 8 at T_int = 1e-1 down to 1e-6, falling as the transition cools
+            # because an absolute `xtol` is already wide against the bracket once `x` is
+            # small. With the window a fraction of `x` it is 36 at every one of those
+            # temperatures. `xmin` enters so the test is defined on
+            # the first iteration, before `x` has been bracketed from below; note that `xmax`
+            # starts at infinity, so no stopping test fires until an overshoot has bracketed
+            # `x` from above.
+            #
+            # The scale is capped at one so the window is never wider than the absolute `xtol`
+            # it replaces. Without the cap this would loosen the bisection wherever the bracket
+            # sits above `x` = 1, which is the thick-walled end and not a corner case: the
+            # 2HDM benchmark of `TL_2HDM_BSMPT_highacc` converges at `x` = 2.27 to 2.45, and
+            # the shipped conformal dark U(1) at g = 0.7, y = 0.24 passes `x` = 1 at T = 97.5
+            # and reaches 2.02 at T = 135. Without the cap the bisection stopped 1.01 to 1.16
+            # times `xtol` apart there, looser than the absolute rule it replaces.
+            # `findProfile` is a general solver and nothing here constrains `x`, so the cap
+            # keeps the change a tightening where the bounce is small, the absolute rule
+            # unchanged where it is not, and a loosening nowhere.
+            #
+            # The bracket cannot be subdivided below the spacing of the floating-point grid.
+            # Once the midpoint lands on an endpoint every further trial repeats the same `x`,
+            # and no tolerance test can fire, so the loop has to stop on that rather than on
+            # `xtol`. It matters because the window is relative: the threshold
+            # `xtol * x` and the spacing `ulp(x)` both scale with `x`, so the stall sets in
+            # below `xtol` = 2.2e-16 at every `x`, where the absolute rule only stalled below
+            # `ulp(x)` itself and so needed an `xtol` under 5.2e-26 on the supercooled line.
+            # Measured with `xtol` = 1e-16: without this test the shipped conformal dark U(1)
+            # at g = 0.46, y = 0.01 and at g = 0.7, y = 0.24 both pass 400 trials with the last
+            # six `x` identical, and with it they stop.
+            if x == xmin or x == xmax:
+                break
+            if (xmax-xmin) < xtol * min(max(abs(x), abs(xmin)), 1.0):
                 break
 
         # Integrate a second time, this time getting the points along the way

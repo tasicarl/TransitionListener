@@ -299,6 +299,73 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The shooting bisection converges to a fraction of the `x` it brackets, not to an absolute
+  window.** `findProfile` varies `x`, where the trial profile starts at
+  `phi(0) = phi_absMin + exp(-x) delta_phi`, so for a small excursion `x` is the fraction of the
+  gap between the minima that the bounce covers,
+  `|phi(0) - phi_metaMin| / |delta_phi| = |exp(-x) - 1| ~ x`. On a supercooled transition that
+  fraction shrinks with the temperature while an absolute `xtol` does not, so the loop delivered
+  `x` to a relative precision of `xtol / x`: on the shipped conformal dark U(1) at g = 0.46,
+  y = 0.01, v_GeV = 0.14 that runs from 1.6e-07 at T_int = 0.1 to 2.3e-02 at 1e-6. What that
+  costs is measured in the number of bisection trials the absolute rule allows, counted as
+  calls to `integrateProfile` on that model at the configured `xtol = 1e-10`, with only the
+  stopping line put back to `(xmax - xmin) < xtol`: 25, 22, 19, 15, 12 and 8 at
+  T_int = 1e-1, 1e-2, 1e-3, 1e-4, 1e-5 and 1e-6. The count falls as the transition cools,
+  because once `x` is small an absolute window of `xtol` is already wide compared with the
+  bracket, so the loop stops before the bisection has converged. With the window a fraction of
+  `x` the count is 36 at every one of those temperatures. The window is now
+  `xtol * min(max(|x|, |xmin|), 1)`, with `xmin` present so the test is defined before `x` has
+  been bracketed from below; `xmax` starts at infinity, so the test cannot fire at all until an
+  overshoot has bracketed `x` from above.
+
+  The scale is capped at one so the window is never wider than the absolute `xtol` it replaces.
+  Without that cap the rule is the looser of the two wherever the bracket sits above `x` = 1,
+  which is the thick-walled end and not a corner case: on the same conformal dark U(1) at
+  g = 0.7, y = 0.24, v_GeV = 1.0 the accepted trial passes `x` = 1 at T = 97.5 and reaches 2.02
+  at T = 135, and without the cap the last two trials came out 1.0114 to 1.1598 times `xtol`
+  apart at the five temperatures from T = 125 to 135. The cap costs one further trial there,
+  37 against 36, and returns that gap to 0.51 to 0.58 of `xtol`. With it the window is
+  `xtol * x` where the bounce is small and `xtol` where it is not, so this tightens the
+  bisection on a supercooled transition, leaves it where the absolute rule already had it on a
+  thick-walled one, and loosens it nowhere.
+
+  The loop also stops when the bracket reaches the resolution of the floating-point grid, on
+  `x == xmin or x == xmax`. A relative threshold needs it: `xtol * x` and the spacing `ulp(x)`
+  both carry the factor `x`, so the threshold falls under the spacing as soon as `xtol` goes
+  below 2.2e-16 whatever `x` is, where the absolute window only became unsatisfiable below
+  `ulp(x)` itself, which on the supercooled line is 5.2e-26. Past that point the midpoint lands
+  on a bracket endpoint and every further trial repeats the same `x`. Measured at
+  `xtol = 1e-16` on the shipped conformal dark U(1) at g = 0.46, y = 0.01 and at g = 0.7,
+  y = 0.24: without this test both pass 400 trials with the last six `x` identical, with it
+  both stop after 55, and at `xtol = 1e-20` also after 55, since what ends the loop there is
+  the spacing rather than the tolerance. At the configured `xtol = 1e-10` and at the signature
+  default of 1e-4 the trial counts are unchanged, 36 and 16.
+
+  Measured against a bounce solved a second way, the reflected construction described in the
+  entry below, S3/T at g = 0.46 goes from +0.005, +0.063, +0.722 and +11.4 per cent at
+  T_int = 1e-4, 1e-5, 1e-6 and 1e-7 to +0.000, +0.000, +0.004 and +2.0. At the two couplings
+  that decide where the model percolates, at the temperature where they percolate, it
+  reproduces the converged action to all six figures printed: 129.656 at g = 0.43 and 120.819
+  at 0.44, against 129.761 and 120.921 without it.
+
+  No verdict changes. The 22-coupling ladder is identical point for point, 17 of 22 with the
+  lowest at g = 0.44, and `T_perc` moves by a median of 0.0001 per cent over the 17 that
+  percolate, by 2.76 per cent at g = 0.44. On the 2HDM benchmark the cap makes this a no-op. At
+  the three warm-edge couplings of the `edge` grid, `lambda3` = 5.77, 5.7713649314 and
+  5.7727298627, the bracket converges at `x` = 2.27 to 2.45, above the cap, and every field of
+  the recorded result reproduces the previous entry's code exactly; the one leaf that differs at
+  each coupling is the wall time the run took. Without the cap those three differ in 12 of the
+  15 summary fields, by up to 0.081 per cent in `(beta/H)_RH`.
+
+  `tests/test_1d_tunneling.py::test_action_calculation` re-pins from 2388.030513420128 to
+  2388.601280038287. That call takes the signature defaults, and at `xtol = 1e-4` this change
+  moves the answer most, because at that tolerance neither rule has converged: `x` at the
+  accepted trial is 0.0857, so the window is a factor 12 the tighter and the bisection takes 16
+  trials against 13. Looser is not closer: at the model's own 10000 spline samples the distances
+  from a converged 2384.3235 are 0.4248 before the previous entry's change, 0.0390 after it, and
+  0.6498 here. At the configured `xtol = 1e-10` this code is the closest of the three,
+  2388.1790354 against 2388.1789449 and 2388.1788707, which is what the test pins.
+
 - **The bounce profile is integrated, and judged to have arrived, on the scale of the bounce
   and not of the gap between the minima.** `findProfile` holds the profile integration to an
   absolute error `epsabs`, and that was `phitol` times `delta_phi`, the distance between the two
@@ -405,9 +472,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
   The extra time is inside the integration rather than around it: counted through `run_TL`,
   this code makes 1036 `calcAction` calls against 1059 and 3117 `integrateProfile` calls
-  against 3150. The subprocess
-  timeout in `tests/test_release_smoke.py` is raised from 180 s to 600 s accordingly, with all
-  six of that test's reference bands unchanged.
+  against 3150. The subprocess timeout in `tests/test_release_smoke.py` is raised from 180 s
+  to 600 s accordingly, with all six of that test's reference bands unchanged.
 
   Not addressed: below about T_int = 1e-8 the action is wrong by orders of magnitude on both
   sides of this change. At g = 0.44 and T_int = 1e-8 both return S3/T = 5.6e+08 against 96.50

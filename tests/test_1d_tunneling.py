@@ -46,18 +46,19 @@ class test1DPotential(unittest.TestCase):
         # 2388.030513420128 since `epsabs` became a fraction of the bounce's own field
         # excursion rather than of the gap between the minima. This call takes `findProfile`'s
         # signature defaults, `phitol = xtol = 1e-4`, which no TransitionListener run uses --
-        # the configured value is 1e-10 -- and at 1e-4 the two rules differ by 4.2e-05
-        # relative. Neither number is the bounce at that tolerance: what stops the shooting
-        # loop is the bracket `(xmax - xmin) < xtol`, and which rule lands closer to the
-        # converged value depends on the potential spline, which this call leaves at
-        # `fullTunneling`'s default of 100 samples. Here the old rule is 3 times closer
-        # (2388.1301 and 2388.0305 against a converged 2388.1790); with the model's own
-        # configured 10000 samples the new rule is 11 times closer (2384.7482 and 2384.3625
-        # against a converged 2384.3235). At the configured phitol = xtol = 1e-10 the two
-        # agree to 3.1e-08 relative, 2388.1789449 here against 2388.1788707 before. This
-        # configuration is not strongly supercooled, which is the case the change is for; the
-        # test below pins the value both rules walk towards.
-        self.assertAlmostEqual(tobj.action, 2388.030513420128, places=5)
+        # the configured value is 1e-10. At 1e-4 the bisection's own window is what decides, and
+        # this is where making it relative to the `x` it holds moves the answer most, because at
+        # that tolerance neither rule has converged: `x` at the accepted trial is 0.0857, so the
+        # relative window is a factor 12 the tighter and the loop takes 16 bisection trials
+        # against the absolute rule's 13. The action then moves by 0.024 per cent, against
+        # 3.8e-08 at the configured 1e-10, where the counts are 36 against 33. The three values
+        # at 1e-4 are 2388.1301 with an absolute window and a gap-scaled epsabs, 2388.0305 with
+        # an absolute window and a bounce-scaled epsabs, and 2388.6013 here, against a converged
+        # 2388.1790. Looser is not closer: at the model's own 10000 spline samples the distances
+        # from the converged 2384.3235 are 0.4248, 0.0390 and 0.6498. At the configured 1e-10
+        # this code is the closest of the three, 2388.1790354 against 2388.1789449 and
+        # 2388.1788707, which is what the test below pins.
+        self.assertAlmostEqual(tobj.action, 2388.601280038287, places=5)
 
     def test_the_action_converges_as_the_tolerance_is_tightened(self):
         """What the number above should have been pinned against.
@@ -91,9 +92,10 @@ class test1DPotential(unittest.TestCase):
         # fraction of the bounce's own excursion and 2388.1788707 when it is a fraction of the
         # gap between the minima. A window of 3e-05 holds the first and excludes the second.
         self.assertAlmostEqual(
-            actions[1e-10], 2388.1789449, delta=3e-5,
+            actions[1e-10], 2388.1790354, delta=3e-5,
             msg=f"at the configured phitol = xtol = 1e-10 the action is {actions[1e-10]}, "
-                f"which is not what this code gives; a fraction of the gap gives 2388.1788707")
+                f"which is not what this code gives; an absolute bracket gives 2388.1789449 "
+                f"and a gap-scaled epsabs with an absolute bracket 2388.1788707")
 
 
 if __name__ == "__main__":
