@@ -478,6 +478,13 @@ class SingleFieldInstanton:
         
         try:
             r0 = optimize.brentq(deltaPhiDiff, rlast, r, disp=False)
+        except errors.Timeout:
+            # The run's deadline is raised from a SIGALRM handler, so it can land inside
+            # `brentq` like anywhere else. Read as a root-finding failure it becomes a
+            # `TunnelingError`, which `pathDeformation._find_profile` turns into an
+            # `InfiniteActionError` and `bounceAction` reports as no tunnelling: a timed-out
+            # point would come back as a finished one with a verdict.
+            raise
         except Exception as e:
             msg = (
                 "Could not find initial conditions for integration. The bubble "
@@ -688,7 +695,11 @@ class SingleFieldInstanton:
         xtol : float, optional
             Target accuracy in `x`.
         phitol : float, optional
-            Fractional error tolerance in integration.
+            Fractional error tolerance in integration. It scales both tolerances the profile
+            integration is held to: `epsfrac` directly, and `epsabs` as `phitol` times the
+            bounce's own field excursion, `|phi(0) - phi_metaMin|`. Through `epsabs` it also
+            sets the radius, `3*epsabs`, inside which :func:`integrateProfile` counts a trial
+            profile as having reached `phi_metaMin`, so it is `3*phitol` of the excursion.
         thinCutoff : float, optional
             Equal to `delta_phi_cutoff / (phi_metaMin - phi_absMin)`, where
             `delta_phi_cutoff` is used  in :func:`initialConditions`.
@@ -748,15 +759,62 @@ class SingleFieldInstanton:
         # --
         # Set the phi parameters
         delta_phi = self.phi_metaMin - self.phi_absMin
-        epsabs = abs(np.array([delta_phi, delta_phi/self.rscale])*phitol)
         epsfrac = np.array([1,1]) * phitol
         delta_phi_cutoff = thinCutoff * delta_phi
             # The sign for delta_phi_cutoff doesn't matter
         # --
-        integration_args = (dr0, epsfrac, epsabs, drmin, rmax)
         rf = None
+        # `epsabs_rf` is the `epsabs` that belongs to `rf`. `epsabs` is recomputed from the
+        # trial `x` at the top of every iteration, so at the `break` below -- where a
+        # non-finite `r0_` or `x` makes the loop fall back on the last finite `r0`, `y0` and
+        # `rf` -- the current `epsabs` belongs to the trial that was just discarded, and can
+        # be non-finite itself. The saved profile is re-integrated from the values that were
+        # kept, so it is held to their tolerance. On every other exit the two are the same.
+        epsabs_rf = None
         while True:
             delta_phi0 = np.exp(-x)*delta_phi
+            # `epsabs` has to be a fraction of the field range the integration covers, and
+            # that range is the bounce's own excursion,
+            # `|phi(0) - phi_metaMin| = |delta_phi0 - delta_phi|`, not the gap between the
+            # minima. On the shipped conformal dark U(1) at g = 0.46, y = 0.01, v = 0.14 GeV,
+            # the configuration every number in this comment is measured at, the gap is 1000
+            # internal units at every temperature while the excursion is 4.3 to 6.1 T, so
+            # `phitol |delta_phi|` is 1.6e-07 of the integrated feature at T_int = 0.1 and
+            # 2.4e-02 of it at 1e-6.
+            #
+            # `integrateProfile` spends `epsabs` twice, and the second use is the one that
+            # decides. Besides controlling the Runge-Kutta step it is the radius in
+            # `abs(y - [phi_metaMin, 0]) < 3*epsabs` inside which a profile counts as having
+            # reached the false vacuum. Tied to the gap that radius was a fixed absolute
+            # distance while the bounce shrank with the temperature, so
+            # `3 phitol |delta_phi| / excursion` grew from 5.9e-05 at T_int = 1e-3 to 0.069 at
+            # 1e-6 and 0.63 at 1e-7, where a trial counted as arrived once it came within two
+            # thirds of the whole bounce of the false vacuum and the action came back 0 against
+            # the 102.93 this code gives.
+            # Separating the two uses shows which one matters: tightening only the step control
+            # gives 91.10 at T_int = 1e-6 and still 0 at 1e-7, tightening only the acceptance
+            # radius gives 96.93 and 636.3, and both together 103.20 and 102.93, against a
+            # converged 102.46 and 92.42. Tied to the bounce, `3*epsabs/excursion` is
+            # `3*phitol` at every temperature.
+            #
+            # Where the bounce covers a sizeable part of the gap the two rules are expected to
+            # agree, and the two configurations measured so far do: on the g = 0.7, y = 0.24
+            # configuration at T = 15 that `tests/test_1d_tunneling.py` uses they differ by
+            # 3.1e-08 relative at the configured `phitol = 1e-10`, and on
+            # `examples/example_point.yaml` the observables are identical to five figures. Away
+            # from the supercooled line that is the whole of the evidence.
+            excursion = abs(delta_phi0 - delta_phi)
+            # The floor keeps `epsabs` strictly positive, which `rkqs` needs: handed a zero
+            # absolute tolerance it shrinks the step by the largest factor it is allowed on
+            # every try, so the integration would end at `dr < drmin` and an
+            # `IntegrationError`. It bites only for `x` below 1.7e-16, where `1 - exp(-x)`
+            # falls under the machine epsilon, and the bisection below cannot produce such an
+            # `x`: its smallest is `0.5*xmin = 5*xtol`, so 5e-10 at the configured tolerance.
+            # The one way in is an `xguess` below that, which a model's
+            # `tunneling_findProfile_params` is free to set; nothing in this repository does.
+            phi_scale = max(excursion, abs(delta_phi) * np.finfo(float).eps)
+            epsabs = abs(np.array([phi_scale, phi_scale/self.rscale])*phitol)
+            integration_args = (dr0, epsfrac, epsabs, drmin, rmax)
 
             # The below part is new and tries to avoid
             # the problem of having a too small dV
@@ -796,6 +854,7 @@ class SingleFieldInstanton:
             except IntegrationError as e:
                 raise errors.TunnelingError(
                     "Integration failed: " + str(e))
+            epsabs_rf = epsabs
                 
             # Check for overshoot, undershoot
             if ctype == "converged":
@@ -813,7 +872,7 @@ class SingleFieldInstanton:
         # Integrate a second time, this time getting the points along the way
         R = np.linspace(r0, rf, npoints)
         profile = self.integrateAndSaveProfile(R, y0, dr0,
-                                               epsfrac, epsabs, drmin)
+                                               epsfrac, epsabs_rf, drmin)
         # Make points interior to the bubble.
         if max_interior_pts is None:
             max_interior_pts = len(R) // 2
