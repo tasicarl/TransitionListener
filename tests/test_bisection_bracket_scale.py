@@ -18,6 +18,56 @@ from transitionlistener import pathDeformation
 from transitionlistener import tunneling1D
 
 
+def x_of_every_trial(pot, T_int):
+    """Every raw bisection variable `x` the shooting tried, read where `findProfile` sets it.
+
+    `findProfile` hands `delta_phi0 = exp(-x) * delta_phi` to :func:`initialConditions`, so
+    ``x = -ln|delta_phi0 / delta_phi|`` recovers it with nothing inverted.
+
+    Reading it instead from the `y0` that :func:`integrateProfile` receives would be wrong:
+    `initialConditions` returns the profile at a radius `r0`, not at `r = 0`. The two agree
+    while `r0` is still `rmin`, which holds for ``x < -ln(thinCutoff) = 4.605`` at the shipped
+    ``thinCutoff = 0.01``. Above that the returned field is pinned to
+    ``thinCutoff * delta_phi``, and a `y0`-based reading sticks at 4.605 whatever `x` is, which
+    understates a large `x` instead of overstating it. Both branches are measured in
+    `scans/v211_validation/shooting_evidence/spy_saturation.log`.
+
+    A trial is still one `integrateProfile` call, so the count here is the count of profiles
+    integrated. `findProfile` can call `initialConditions` once more than that, on the
+    iteration whose `r0` comes back non-finite and breaks the loop, and that `x` belongs to no
+    integrated trial.
+    """
+    seen = []
+    pending = {}
+    real_ic = tunneling1D.SingleFieldInstanton.initialConditions
+    real_ip = tunneling1D.SingleFieldInstanton.integrateProfile
+
+    def ic_spy(self, delta_phi0, *a, **k):
+        delta_phi = float(np.squeeze(self.phi_metaMin - self.phi_absMin))
+        ratio = abs(float(np.squeeze(delta_phi0)) / delta_phi)
+        pending["x"] = -np.log(max(ratio, 1e-300))
+        return real_ic(self, delta_phi0, *a, **k)
+
+    def ip_spy(self, r0, y0, *a, **k):
+        if "x" in pending:
+            seen.append(pending.pop("x"))
+        return real_ip(self, r0, y0, *a, **k)
+
+    tunneling1D.SingleFieldInstanton.initialConditions = ic_spy
+    tunneling1D.SingleFieldInstanton.integrateProfile = ip_spy
+    try:
+        pathDeformation.bounceAction(
+            T_int, lambda X, T: pot.Vtot(X, T), lambda X, T: pot.gradV(X, T), {},
+            dict(low_vev=np.array([float(pot.v_stable)]), high_vev=np.array([0.0]),
+                 Tnuc=T_int, low_phase=1, high_phase=0),
+            verbose=False, conversionFactor=pot.conversionFactor,
+            **pot.config.tracingConf.tunneling_params)
+    finally:
+        tunneling1D.SingleFieldInstanton.initialConditions = real_ic
+        tunneling1D.SingleFieldInstanton.integrateProfile = real_ip
+    return seen
+
+
 class TheBracketClosesToAFractionOfX(unittest.TestCase):
     """The last two trials must differ by a fraction of `x`, not by an absolute window.
 
@@ -31,28 +81,10 @@ class TheBracketClosesToAFractionOfX(unittest.TestCase):
     def _trials(self):
         pot = conformal_u1.specific_potential(
             {"g": 0.46, "y": 0.1, "v_GeV": 1.0}, verbose=False)
-        seen = []
-        real = tunneling1D.SingleFieldInstanton.integrateProfile
-
-        def spy(self, r0, y0, *a, **k):
-            delta_phi = float(self.phi_metaMin - self.phi_absMin)
-            seen.append(dict(x=abs(float(y0[0]) - float(self.phi_metaMin)) / abs(delta_phi),
-                             xtol=None))
-            return real(self, r0, y0, *a, **k)
-
-        tunneling1D.SingleFieldInstanton.integrateProfile = spy
-        try:
-            pathDeformation.bounceAction(
-                self.T_INT, lambda X, T: pot.Vtot(X, T), lambda X, T: pot.gradV(X, T), {},
-                dict(low_vev=np.array([float(pot.v_stable)]), high_vev=np.array([0.0]),
-                     Tnuc=self.T_INT, low_phase=1, high_phase=0),
-                verbose=False, conversionFactor=pot.conversionFactor,
-                **pot.config.tracingConf.tunneling_params)
-        finally:
-            tunneling1D.SingleFieldInstanton.integrateProfile = real
+        xs = x_of_every_trial(pot, self.T_INT)
         xtol = float(pot.config.tracingConf.tunneling_params
                      .get("tunneling_findProfile_params", {}).get("xtol", 1e-4))
-        return [t["x"] for t in seen], xtol
+        return xs, xtol
 
     def test_the_relative_window_is_far_tighter_here_than_the_absolute_one(self):
         """The premise: without it the two rules agree and the test below is empty.
@@ -99,27 +131,7 @@ class TheRelativeWindowIsTheTighterOfTheTwoRules(unittest.TestCase):
     def test_x_stays_below_one(self):
         pot = conformal_u1.specific_potential(
             {"g": 0.7, "y": 0.24, "v_GeV": 1.0}, verbose=False)
-        seen = []
-        real = tunneling1D.SingleFieldInstanton.integrateProfile
-
-        def spy(self, r0, y0, *a, **k):
-            delta_phi = float(self.phi_metaMin - self.phi_absMin)
-            # the spy sees |exp(-x) - 1|, which is below one by construction; converting back
-            # to the raw `x` is what keeps this test from being vacuous
-            m = abs(float(y0[0]) - float(self.phi_metaMin)) / abs(delta_phi)
-            seen.append(-np.log(max(1.0 - m, 1e-300)))
-            return real(self, r0, y0, *a, **k)
-
-        tunneling1D.SingleFieldInstanton.integrateProfile = spy
-        try:
-            pathDeformation.bounceAction(
-                self.T_INT, lambda X, T: pot.Vtot(X, T), lambda X, T: pot.gradV(X, T), {},
-                dict(low_vev=np.array([float(pot.v_stable)]), high_vev=np.array([0.0]),
-                     Tnuc=self.T_INT, low_phase=1, high_phase=0),
-                verbose=False, conversionFactor=pot.conversionFactor,
-                **pot.config.tracingConf.tunneling_params)
-        finally:
-            tunneling1D.SingleFieldInstanton.integrateProfile = real
+        seen = x_of_every_trial(pot, self.T_INT)
         self.assertTrue(seen, "integrateProfile was never reached")
         worst = max(seen)
         self.assertLess(
