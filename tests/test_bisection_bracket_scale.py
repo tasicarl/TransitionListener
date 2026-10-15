@@ -110,35 +110,49 @@ class TheBracketClosesToAFractionOfX(unittest.TestCase):
                 f"{width / xs[-1]:.3g} of x = {xs[-1]:.6g}, against xtol = {xtol:g}")
 
 
-class TheRelativeWindowIsTheTighterOfTheTwoRules(unittest.TestCase):
-    """The precondition the change rests on, measured where it has the least room.
+class TheWindowIsNeverWiderThanTheAbsoluteOne(unittest.TestCase):
+    """The scale is capped at one, so the bisection never stops looser than `xtol` alone.
 
-    The stopping window is ``xtol * max(|x|, |xmin|)``, so it is tighter than the old absolute
-    ``xtol`` only while that factor stays below one. Above one the change would loosen the
-    bisection and could leave the answer less converged than an absolute window would.
+    `xtol * max(|x|, |xmin|)` is tighter than the absolute `xtol` only while that factor stays
+    below one. Above one it is the looser of the two, and `x` passes one on a model shipped with
+    the code: on the conformal dark U(1) at g = 0.7, y = 0.24, v_GeV = 1.0 the accepted trial
+    sits at `x` = 0.98 at T = 95 and 2.02 at T = 135. Without the cap the bisection there
+    stopped with the last two trials 1.01 to 1.16 times `xtol` apart, measured at five
+    temperatures in `scans/v211_validation/shooting_evidence/cap_at_one.log`. The
+    ``min(..., 1)`` costs one further trial, 37 against 36, and brings that gap back to 0.51 to
+    0.58 of `xtol`.
 
-    `x` is the raw bisection variable, ``phi(0) = phi_absMin + exp(-x) * delta_phi``, so
-    ``x > 1`` means the bounce starts more than 63 per cent of the way from the false vacuum to
-    the true one. `x` grows as the wall thickens, so the supercooled configuration the class
-    above uses is the wrong place to check it: there `x` is 6.8e-10 and the bound has nine
-    orders of magnitude of headroom. This uses the thick-walled ``g = 0.7``, ``y = 0.24``
-    configuration of `tests/test_1d_tunneling.py`, where `x` reaches 0.144 and the margin is a
-    factor of 6.9. It costs about 4 s.
+    T = 130 is where the cap binds with the most room of the temperatures measured: `x` at the
+    accepted trial is 1.85, so the uncapped window would be 1.85 `xtol` and the recorded gap was
+    1.08 `xtol`. It costs about 2 s.
+
+    The gap between the last two integrated trials is not the bracket `(xmax-xmin)` that the
+    stopping test reads, which is one bisection update further on and never integrated. It is
+    half of it to within the last halving, which is enough to separate the two rules by a factor
+    of two here.
     """
 
-    T_INT = 15.0
+    T_INT = 130.0
 
-    def test_x_stays_below_one(self):
+    def test_the_last_two_trials_are_never_more_than_xtol_apart(self):
         pot = conformal_u1.specific_potential(
             {"g": 0.7, "y": 0.24, "v_GeV": 1.0}, verbose=False)
-        seen = x_of_every_trial(pot, self.T_INT)
-        self.assertTrue(seen, "integrateProfile was never reached")
-        worst = max(seen)
-        self.assertLess(
-            worst, 1.0,
-            msg=f"the largest x the bisection tried is {worst:.6g}, at or above one, so here "
-                f"xtol*x is the looser of the two rules and this change may leave the "
-                f"bisection less converged than an absolute xtol would")
+        xs = x_of_every_trial(pot, self.T_INT)
+        self.assertGreater(len(xs), 2, f"only {len(xs)} trials: the bisection did not run")
+        xtol = float(pot.config.tracingConf.tunneling_params
+                     .get("tunneling_findProfile_params", {}).get("xtol", 1e-4))
+        # the premise: with every x below one the cap cannot bind and the assertion below would
+        # hold whether or not it is in the source
+        self.assertGreater(
+            max(xs), 1.0,
+            msg=f"the largest x the bisection tried is {max(xs):.6g}, not above one, so the cap "
+                f"at one cannot bind at this configuration and this test is empty")
+        width = abs(xs[-1] - xs[-2])
+        self.assertLessEqual(
+            width, xtol,
+            msg=f"the bisection stopped with the last two trials {width:.6g} apart, which is "
+                f"{width / xtol:.4g} times xtol = {xtol:g}, so the relative window was the "
+                f"looser of the two rules here and the cap at one is not holding")
 
 
 if __name__ == "__main__":

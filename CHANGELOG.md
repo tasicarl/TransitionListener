@@ -313,9 +313,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   cools, because once `x` is small an absolute window of `xtol` is already wide compared with
   the bracket, so the loop stops before the bisection has converged. With the window a
   fraction of `x` the count is 36 at every one of those temperatures. The window is now
-  `xtol * max(|x|, |xmin|)`, with `xmin` present so the test is defined before `x` has been
-  bracketed from below; `xmax` starts at infinity, so the test cannot fire at all until an
+  `xtol * min(max(|x|, |xmin|), 1)`, with `xmin` present so the test is defined before `x` has
+  been bracketed from below; `xmax` starts at infinity, so the test cannot fire at all until an
   overshoot has bracketed `x` from above.
+
+  The scale is capped at one so the window is never wider than the absolute `xtol` it replaces.
+  Without that cap the rule is the looser of the two wherever the bracket sits above `x` = 1,
+  which is the thick-walled end and not a corner case: on the same conformal dark U(1) at
+  g = 0.7, y = 0.24, v_GeV = 1.0 the accepted trial passes `x` = 1 at T = 97.5 and reaches 2.02
+  at T = 135, and without the cap the last two trials came out 1.0114 to 1.1598 times `xtol`
+  apart at the five temperatures from T = 125 to 135. The cap costs one further trial there,
+  37 against 36, and returns that gap to 0.51 to 0.58 of `xtol`. With it the window is
+  `xtol * x` where the bounce is small and `xtol` where it is not, so this is a tightening
+  everywhere and a loosening nowhere.
 
   Measured against a bounce solved a second way, the reflected construction described in the
   entry below, S3/T at g = 0.46 goes from +0.005, +0.063, +0.722 and +11.4 per cent at
@@ -326,8 +336,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
   No verdict changes. The 22-coupling ladder is identical point for point, 17 of 22 with the
   lowest at g = 0.44, and `T_perc` moves by a median of 0.0001 per cent over the 17 that
-  percolate, by 2.76 per cent at g = 0.44. Three couplings of the 2HDM `edge` grid move by at
-  most 0.081 per cent in `(beta/H)_RH` and 0.0014 in `T_perc`, with no error-code change.
+  percolate, by 2.76 per cent at g = 0.44. On the 2HDM benchmark the cap makes this a no-op: at
+  the warm edge coupling `lambda3` = 5.77 the bracket converges at `x` = 2.27 to 2.45, above the
+  cap, and `S3/T` reproduces the absolute rule to every digit printed, 139.648881933459,
+  137.716034313366 and 134.331859879769 at T = 45, 44 and 42 GeV, on the same trial counts.
 
   `tests/test_1d_tunneling.py::test_action_calculation` re-pins from 2388.030513420128 to
   2388.601280038287. That call takes the signature defaults, and at `xtol = 1e-4` this change

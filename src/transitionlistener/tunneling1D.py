@@ -879,7 +879,17 @@ class SingleFieldInstanton:
             # the first iteration, before `x` has been bracketed from below; note that `xmax`
             # starts at infinity, so no stopping test fires until an overshoot has bracketed
             # `x` from above.
-            if (xmax-xmin) < xtol * max(abs(x), abs(xmin)):
+            #
+            # The scale is capped at one so the window is never wider than the absolute `xtol`
+            # it replaces. Without the cap this would loosen the bisection wherever the bracket
+            # sits above `x` = 1, which is the thick-walled end and not a corner case: the
+            # 2HDM benchmark of `TL_2HDM_BSMPT` converges at `x` = 2.27 to 2.45, and the
+            # shipped conformal dark U(1) at g = 0.7, y = 0.24 passes `x` = 1 at T = 97.5 and
+            # reaches 2.02 at T = 135. Without the cap the bisection stopped 1.01 to 1.16 times
+            # `xtol` apart there, looser than the absolute rule it replaces. `findProfile` is a
+            # general solver and nothing here constrains `x`, so the cap keeps the change a
+            # tightening everywhere and a loosening nowhere.
+            if (xmax-xmin) < xtol * min(max(abs(x), abs(xmin)), 1.0):
                 break
 
         # Integrate a second time, this time getting the points along the way
