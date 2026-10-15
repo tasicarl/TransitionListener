@@ -78,5 +78,56 @@ class TheBracketClosesToAFractionOfX(unittest.TestCase):
                 f"{width / xs[-1]:.3g} of x = {xs[-1]:.6g}, against xtol = {xtol:g}")
 
 
+class TheRelativeWindowIsTheTighterOfTheTwoRules(unittest.TestCase):
+    """The precondition the change rests on, measured where it has the least room.
+
+    The stopping window is ``xtol * max(|x|, |xmin|)``, so it is tighter than the old absolute
+    ``xtol`` only while that factor stays below one. Above one the change would loosen the
+    bisection and could leave the answer less converged than an absolute window would.
+
+    `x` is the raw bisection variable, ``phi(0) = phi_absMin + exp(-x) * delta_phi``, so
+    ``x > 1`` means the bounce starts more than 63 per cent of the way from the false vacuum to
+    the true one. `x` grows as the wall thickens, so the supercooled configuration the class
+    above uses is the wrong place to check it: there `x` is 6.8e-10 and the bound has nine
+    orders of magnitude of headroom. This uses the thick-walled ``g = 0.7``, ``y = 0.24``
+    configuration of `tests/test_1d_tunneling.py`, where `x` reaches 0.144 and the margin is a
+    factor of 6.9. It costs about 4 s.
+    """
+
+    T_INT = 15.0
+
+    def test_x_stays_below_one(self):
+        pot = conformal_u1.specific_potential(
+            {"g": 0.7, "y": 0.24, "v_GeV": 1.0}, verbose=False)
+        seen = []
+        real = tunneling1D.SingleFieldInstanton.integrateProfile
+
+        def spy(self, r0, y0, *a, **k):
+            delta_phi = float(self.phi_metaMin - self.phi_absMin)
+            # the spy sees |exp(-x) - 1|, which is below one by construction; converting back
+            # to the raw `x` is what keeps this test from being vacuous
+            m = abs(float(y0[0]) - float(self.phi_metaMin)) / abs(delta_phi)
+            seen.append(-np.log(max(1.0 - m, 1e-300)))
+            return real(self, r0, y0, *a, **k)
+
+        tunneling1D.SingleFieldInstanton.integrateProfile = spy
+        try:
+            pathDeformation.bounceAction(
+                self.T_INT, lambda X, T: pot.Vtot(X, T), lambda X, T: pot.gradV(X, T), {},
+                dict(low_vev=np.array([float(pot.v_stable)]), high_vev=np.array([0.0]),
+                     Tnuc=self.T_INT, low_phase=1, high_phase=0),
+                verbose=False, conversionFactor=pot.conversionFactor,
+                **pot.config.tracingConf.tunneling_params)
+        finally:
+            tunneling1D.SingleFieldInstanton.integrateProfile = real
+        self.assertTrue(seen, "integrateProfile was never reached")
+        worst = max(seen)
+        self.assertLess(
+            worst, 1.0,
+            msg=f"the largest x the bisection tried is {worst:.6g}, at or above one, so here "
+                f"xtol*x is the looser of the two rules and this change may leave the "
+                f"bisection less converged than an absolute xtol would")
+
+
 if __name__ == "__main__":
     unittest.main()
