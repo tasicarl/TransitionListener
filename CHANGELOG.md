@@ -306,10 +306,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `|phi(0) - phi_metaMin| / |delta_phi| = |exp(-x) - 1| ~ x`. On a supercooled transition that
   fraction shrinks with the temperature while an absolute `xtol` does not, so the loop delivered
   `x` to a relative precision of `xtol / x`: on the shipped conformal dark U(1) at g = 0.46,
-  y = 0.01, v_GeV = 0.14 that runs from 1.6e-07 at T_int = 0.1 to 2.3e-02 at 1e-6, and at
-  `findProfile`'s signature default of `xtol = 1e-4` the first bisection step already satisfies
-  the test whatever `x` is. The window is now `xtol * max(|x|, |xmin|)`, with `xmin` present so
-  the test is defined before `x` has been bracketed from below.
+  y = 0.01, v_GeV = 0.14 that runs from 1.6e-07 at T_int = 0.1 to 2.3e-02 at 1e-6. What that
+  costs is measured in the number of bisection trials the absolute rule allows, counted as
+  calls to `integrateProfile` on that model at the configured `xtol = 1e-10`: 25, 22, 19, 12,
+  9 and 3 at T_int = 1e-1, 1e-2, 1e-3, 1e-4, 1e-5 and 1e-6. The count falls as the transition
+  cools, because once `x` is small an absolute window of `xtol` is already wide compared with
+  the bracket, so the loop stops before the bisection has converged. With the window a
+  fraction of `x` the count is 36 at every one of those temperatures. The window is now
+  `xtol * max(|x|, |xmin|)`, with `xmin` present so the test is defined before `x` has been
+  bracketed from below; `xmax` starts at infinity, so the test cannot fire at all until an
+  overshoot has bracketed `x` from above.
 
   Measured against a bounce solved a second way, the reflected construction described in the
   entry below, S3/T at g = 0.46 goes from +0.005, +0.063, +0.722 and +11.4 per cent at

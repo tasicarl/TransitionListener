@@ -870,10 +870,15 @@ class SingleFieldInstanton:
             # the bounce covers, `|phi(0) - phi_metaMin| / |delta_phi| = |exp(-x) - 1| ~ x`, so
             # it shrinks with the supercooling while an absolute `xtol` does not: on the shipped
             # conformal dark U(1) at g = 0.46, y = 0.01, v_GeV = 0.14, `xtol/x` runs from
-            # 1.6e-07 at T_int = 0.1 to 2.3e-02 at 1e-6, and at `findProfile`'s signature
-            # default of 1e-4 the first bisection step already satisfies the test whatever `x`
-            # is. `xmin` enters so the test is defined on the first iteration, before `x` has
-            # been bracketed from below.
+            # 1.6e-07 at T_int = 0.1 to 2.3e-02 at 1e-6. The cost shows in the number of
+            # bisection trials the absolute rule allows: on that model at the configured
+            # `xtol = 1e-10` it is 25, 22, 19, 12, 9 and 3 at T_int = 1e-1 down to 1e-6,
+            # falling as the transition cools because an absolute `xtol` is already wide
+            # against the bracket once `x` is small. With the window a fraction of `x` it is
+            # 36 at every one of those temperatures. `xmin` enters so the test is defined on
+            # the first iteration, before `x` has been bracketed from below; note that `xmax`
+            # starts at infinity, so no stopping test fires until an overshoot has bracketed
+            # `x` from above.
             if (xmax-xmin) < xtol * max(abs(x), abs(xmin)):
                 break
 
