@@ -395,12 +395,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   boundary.
 
   It takes longer, because tighter tolerances mean smaller integration steps on the same solves.
-  How much depends on how supercooled the transition is: 2.3 per cent over the 2HDM pairs, at
-  T/v around 0.15, and 28.6 per cent on `examples/example_point.yaml`, the conformal dark U(1)
-  at g = 0.7, v_GeV = 0.1, y = 0.01, which takes 143.04 s at d66a774 and 183.92 s here on one
-  core of an idle machine for observables identical to five figures. The extra time is inside
-  the integration rather than around it: counted through `run_TL`, this code makes 1036
-  `calcAction` calls against 1059 and 3117 `integrateProfile` calls against 3150. The subprocess
+  Measured on `examples/example_point.yaml`, the conformal dark U(1) at g = 0.7, v_GeV = 0.1,
+  y = 0.01: 143.04 s at d66a774 against 183.92 s here, 28.6 per cent, on one core of an idle
+  machine for observables identical to five figures. That is the same point run twice and is
+  the only runtime figure quoted here. A per-grid cost over the 2HDM benchmark is not quoted
+  because it is not measurable: the two arms' runtimes per coupling scatter by 21 to 38 per
+  cent for reasons unrelated to this change, and over 592 pairs on four grids no grid total is
+  distinguishable from zero.
+
+  The extra time is inside the integration rather than around it: counted through `run_TL`,
+  this code makes 1036 `calcAction` calls against 1059 and 3117 `integrateProfile` calls
+  against 3150. The subprocess
   timeout in `tests/test_release_smoke.py` is raised from 180 s to 600 s accordingly, with all
   six of that test's reference bands unchanged.
 
