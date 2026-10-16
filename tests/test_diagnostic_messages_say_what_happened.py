@@ -229,7 +229,13 @@ class CyclicPhaseGraphTests(unittest.TestCase):
                       "the walk found two transitions before the cycle closed and must say so")
         self.assertIn("1 child phase(s) listed, 1 evaluated as a candidate", message,
                       "the message must say what was offered and what was actually tried")
-        self.assertIn("phases may not overlap", message,
+        self.assertIn("0 of those ended in a nucleation solve that did not succeed", message,
+                      "a candidate can also disappear because the solver failed, which is "
+                      "neither a rejection nor an overlap problem")
+        self.assertIn("failed numerically", message,
+                      "the fixed-step path loses candidates to NucleationError, so a solver "
+                      "failure has to be among the causes offered")
+        self.assertIn("this may be supercooling, or", message,
                       "the reason must stay hedged; this is not necessarily supercooling")
         self.assertNotIn("every candidate was rejected", message,
                          "a child can be skipped without ever being evaluated: "
