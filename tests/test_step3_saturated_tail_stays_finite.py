@@ -45,9 +45,16 @@ class SaturatedTailTests(unittest.TestCase):
         def energy_density(pot, phase, T, include_decoupled=True):
             return (1.0 if phase is sym else 0.0) + T**4
 
-        # an action that varies with temperature, so "the last computed one" is identifiable
+        # An action that varies with temperature, so "the last computed one" is identifiable,
+        # and a record of every value the solver actually asked for. The record is the
+        # reference the assertions use: it is built by the mock, so the implementation cannot
+        # satisfy it by carrying some other constant.
+        computed: list[float] = []
+
         def action(pot, T, ps, pb, outdict, *a, **k):
-            return 100.0 + float(np.squeeze(T))
+            value = 100.0 + float(np.squeeze(T))
+            computed.append(value)
+            return value
 
         TSYM = np.linspace(1.0, 0.5, 40)
         # P passes f_final = 0.99 at index 20 and stays there, so the walk saturates
@@ -66,24 +73,57 @@ class SaturatedTailTests(unittest.TestCase):
             pas._compute_step3_profile(
                 state, TSYM, P, settings, {}, types.SimpleNamespace(conversionFactor=1.0),
                 sym, bro, 1.0, 1.0, TBROmin=0.1, TBROmax=5.0, verbose=False)
-        return TSYM, state
+        return TSYM, state, computed
 
     def test_the_saturated_tail_carries_a_finite_action(self):
-        _, state = self.profile()
+        _, state, _ = self.profile()
         self.assertTrue(np.all(np.isfinite(state.Sr)),
                         "the saturated branch left a non-finite action in Sr, which fails "
                         "percIntegralODE's validity test and floors the integrand")
 
-    def test_the_tail_carries_the_last_computed_action(self):
-        TSYM, state = self.profile()
-        computed = np.isfinite(state.Sr)
-        self.assertTrue(computed.any())
-        # the walk saturates partway down, so some entries are carried rather than computed
-        carried = state.Sr[22:]
-        self.assertTrue(np.allclose(carried, carried[0]),
-                        "the carried tail should hold one value, the last computed action")
-        self.assertGreater(carried[0], 100.0,
-                           "the carried value should be an action, not a placeholder")
+    def test_the_tail_carries_the_last_action_the_solver_computed(self):
+        """The carried value must be the last computed action, not merely some constant.
+
+        The previous version of this test asserted only that the tail was constant and above
+        100, which the fixture's first action also satisfies. It would have passed an
+        implementation that carried the warmest action forward instead of the coldest, and the
+        two differ by the whole temperature range. The reference here is the list the mocked
+        `calcAction` filled, so the assertion fails for any other value.
+        """
+        _, state, computed = self.profile()
+        self.assertGreater(len(computed), 1, "the fixture must compute more than one action")
+        self.assertNotAlmostEqual(
+            computed[0], computed[-1],
+            msg="the fixture cannot discriminate if the first and last action agree")
+
+        carried = state.Sr[len(computed):]
+        self.assertGreater(carried.size, 0, "the fixture must saturate before the last point")
+        np.testing.assert_allclose(
+            carried, computed[-1], rtol=0, atol=0,
+            err_msg="the saturated tail must hold the last action the solver computed")
+        self.assertFalse(np.any(np.isclose(carried, computed[0])),
+                         "carrying the first action forward is not the same fix")
+
+    def test_the_computed_entries_are_left_alone(self):
+        """The carry must not overwrite the actions that were computed."""
+        _, state, computed = self.profile()
+        np.testing.assert_allclose(state.Sr[:len(computed)], computed, rtol=0, atol=0)
+
+    def test_no_non_finite_action_follows_a_finite_one(self):
+        """The invariant the percolation integral needs.
+
+        `percIntegralODE` masks non-finite actions out of its validity test, so a nan anywhere
+        below the warm region floors the source and transport terms from there on down. A nan
+        before the first computed action cannot be avoided -- there is nothing to carry yet,
+        and inventing a value would be a clamp -- but one after a finite entry is the defect
+        this branch fixes.
+        """
+        _, state, _ = self.profile()
+        finite = np.isfinite(np.asarray(state.Sr, dtype=float))
+        first_finite = int(np.argmax(finite)) if finite.any() else state.Sr.size
+        self.assertTrue(np.all(finite[first_finite:]),
+                        "a non-finite action appears after a finite one, so the integral "
+                        "stops accumulating from there down")
 
 
 if __name__ == "__main__":
