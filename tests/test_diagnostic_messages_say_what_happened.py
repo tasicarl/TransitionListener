@@ -18,7 +18,10 @@ rejected because the starting phase is higher in potential at `tmax` and exists 
 
 from __future__ import annotations
 
+import contextlib
 import inspect
+import io
+import types
 import unittest
 
 from transitionlistener import transitions
@@ -75,14 +78,53 @@ class SupercoolingErrorNamesItsReasonTests(unittest.TestCase):
                          f"raises at lines {bare} rely on the class default, which claims the "
                          "transition is too supercooled to nucleate")
 
-    def test_the_seedless_skip_message_matches_its_condition(self):
-        """The branch tests high.Tmax <= low.Tmax, so the starting phase exists to a LOWER
-        temperature. The message used to say the opposite."""
-        source = inspect.getsource(transitions.TransitionsFinder.seedlessFirstOrderCandidate
-                                   if hasattr(transitions, "TransitionsFinder")
-                                   else transitions)
-        self.assertNotIn("exists to at least as high a", source,
-                         "the message contradicts the condition above it")
+class SeedlessSkipMessageTests(unittest.TestCase):
+    """Drive the branch and read what it prints, rather than grepping the source.
+
+    The branch tests ``high_phase.Tmax <= low_phase.Tmax``, so the starting phase exists to a
+    LOWER temperature than the target. The message used to say the opposite, that the starting
+    phase "exists to at least as high a temperature". Asserting only that the old wording is
+    absent would pass if the message were deleted or replaced by a different wrong one, which
+    is what this version fixes.
+    """
+
+    @staticmethod
+    def _phase(tmax, value):
+        return types.SimpleNamespace(Tmax=tmax, key="p", valAt=lambda T, v=value: v)
+
+    def _run(self, high_tmax, low_tmax):
+        """Reach the third rejection branch: dv_min >= 0 and dv_max > 0.
+
+        `V` returns the field value itself, so the potential difference is
+        ``high - low = 1.0`` at every temperature, which is positive at both ends. The method
+        is called unbound; the only attribute it reads off `self` past the branch under test is
+        `conversionFactor`, used to print the reference temperature in GeV.
+        """
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            result = transitions.Transitions.seedlessFirstOrderCandidate(
+                types.SimpleNamespace(conversionFactor=1.0),
+                lambda x, T: float(x),
+                self._phase(high_tmax, 2.0),
+                self._phase(low_tmax, 1.0),
+                10.0, 100.0, verbose=True,
+            )
+        # TL wraps stdout at about 75 columns, so the message arrives with newlines inside
+        # it. Collapse the whitespace before matching on the wording.
+        return result, " ".join(buffer.getvalue().split())
+
+    def test_the_message_says_the_starting_phase_stops_at_a_lower_temperature(self):
+        result, printed = self._run(high_tmax=121.3, low_tmax=615.5)
+        self.assertIsNone(result, "this branch rejects the candidate")
+        self.assertIn("does not exist to as high a temperature", printed)
+        self.assertIn("no window to tunnel from", printed)
+        self.assertNotIn("exists to at least as high a", printed,
+                         "the old wording contradicted the condition above it")
+
+    def test_the_message_is_not_printed_when_the_starting_phase_reaches_higher(self):
+        """Pins the message to its condition: swap the two Tmax values and it must not fire."""
+        _result, printed = self._run(high_tmax=615.5, low_tmax=121.3)
+        self.assertNotIn("does not exist to as high a temperature", printed)
 
 
 if __name__ == "__main__":
