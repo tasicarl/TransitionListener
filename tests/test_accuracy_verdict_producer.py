@@ -8,6 +8,7 @@ What it must NOT assert: that the verdict gates acceptance. It does not -- both 
 function return False, which the caller reads as "accept" -- so the targets are advisory and
 the verdict is only a report. A test asserting otherwise would encode a falsehood.
 """
+import math
 import unittest
 
 import numpy as np
@@ -41,9 +42,10 @@ def _call(estimate, *, previous=None, acc=1e-2):
         ad._estimate_dynamiczoomwindow_accuracy = original
 
 
-def _estimate(rh_unc):
-    return {"Tperc": 40.0, "Tf": 30.0, "RH": 0.05,
-            "Tperc_uncertainty": 1e-3, "Tf_uncertainty": 1e-3, "RH_uncertainty": rh_unc,
+def _estimate(rh_unc, *, tf_unc=1e-3, tperc_unc=1e-3, rh=0.05):
+    return {"Tperc": 40.0, "Tf": 30.0, "RH": rh,
+            "Tperc_uncertainty": tperc_unc, "Tf_uncertainty": tf_unc,
+            "RH_uncertainty": rh_unc,
             "Tperc_bracket_width": 1e-3, "Tf_bracket_width": 1e-3}
 
 
@@ -58,24 +60,43 @@ class AccuracyVerdictProducerTests(unittest.TestCase):
         _retry, est = _call(_estimate(0.276), previous=_estimate(0.276))
         self.assertIs(est["targets_met"], False)
 
-    def test_verdict_is_undecided_without_a_comparable_previous_estimate(self):
-        """One sample carries no information about its own convergence, so the verdict is
-        None rather than False.
+    def test_verdict_is_undecided_when_only_rh_was_never_measured(self):
+        """RH is the one target with no reference-free measure, so an infinite RH uncertainty
+        beside two met targets is undecided rather than missed.
 
         This test asserted False until 2026-10-16. False makes the warning fire, and because
-        the controller usually accepts on its first estimate the warning fired on every point
-        of every scan: 127 of 127 resolved couplings of the 2HDM broad arm, 36 of 36 of its
-        edge arm, and the shipped example point. A column that says the same about every point
-        separates none of them.
+        the controller normally reaches this point with nothing to difference RH against, the
+        warning fired on every point of every scan: 127 of 127 resolved couplings of the 2HDM
+        broad arm, 36 of 36 of its edge arm, and the shipped example point. A column that says
+        the same about every point separates none of them.
 
-        None does not weaken the guard that this field exists for. The target is still not
+        None does not weaken the guard this field exists for. The target is still not
         certified, `DIAG:accuracy_rh_uncertainty` is still infinite and says so, and
-        `targets_met` is still never True without a comparison. What changed is only that
-        "could not be certified" stopped being reported as "was measured and missed"."""
-        _retry, est = _call(_estimate(1e-3), previous=None)
+        `targets_met` is still never True without a comparison. What changed is that "never
+        measured" stopped being reported as "measured and missed"."""
+        _retry, est = _call(_estimate(math.inf), previous=None)
         self.assertIsNone(est["targets_met"])
         self.assertNotEqual(est["targets_met"], True,
                             "never certified without something to certify against")
+
+    def test_a_measured_miss_is_still_false_without_a_previous_estimate(self):
+        """The case a blanket None would have thrown away.
+
+        Tperc and Tf fall back to their own bracket widths, so their uncertainties are
+        measured from a single profile and a miss on either is a real miss whether or not RH
+        could be compared. On the release scans 21 of the 163 warned points are exactly this:
+        10 of the broad arm and 11 of the edge arm, with a worst Tf uncertainty of 14.2% and a
+        worst Tperc uncertainty of 4.8% against targets of 1%. The shipped example point is
+        one of them, at a Tf uncertainty of 1.03%."""
+        _retry, est = _call(_estimate(math.inf, tf_unc=0.142), previous=None)
+        self.assertIs(est["targets_met"], False)
+        _retry, est = _call(_estimate(math.inf, tperc_unc=0.048), previous=None)
+        self.assertIs(est["targets_met"], False)
+
+    def test_an_rh_that_could_not_be_determined_is_missed_not_undecided(self):
+        """An absent value is not an absent reference."""
+        _retry, est = _call(_estimate(math.inf, rh=math.nan), previous=None)
+        self.assertIs(est["targets_met"], False)
 
     def test_the_verdict_does_not_gate_acceptance(self):
         """Both exits accept. Pinned so a future change cannot quietly make it binding."""

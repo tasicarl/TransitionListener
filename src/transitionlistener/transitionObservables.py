@@ -907,15 +907,15 @@ class TransitionObservables:
                     "rescue_success": getattr(
                         percolation.metadata, "action_jitter_rescue_success", False),
                 })
-                # The accuracy verdict. `accuracy_targets_met` is tri-state: True where the
-                # targets were met, False where one was measured against a previous estimate
-                # and missed, and None where no verdict could be formed. None covers three
-                # cases, told apart by the three uncertainties: all nan for the fixed-step
-                # backend and the controller's "limit" exit, which form no verdict at all, and
-                # a finite Tperc and Tf beside an infinite RH where the profile was accepted
-                # on its first estimate and so had nothing to compare against. The warning
-                # fires only on False, because "not certified" is not the same claim as
-                # "missed".
+                # The accuracy verdict. `accuracy_targets_met` is tri-state: True where all
+                # three targets were measured and met, False where a measured uncertainty
+                # exceeded its target, and None where everything measurable was met and RH
+                # was never measured. The three DIAG:accuracy_*_uncertainty columns tell the
+                # None cases apart: all nan for the fixed-step backend and the adaptive
+                # controller's "limit" exit, which form no verdict at all, and a finite Tperc
+                # and Tf beside an infinite RH where RH had no previous estimate to be
+                # differenced against. The warning fires only on False, because "not
+                # measured" is not the same claim as "missed".
                 met = getattr(percolation.metadata, "accuracy_targets_met", None)
                 if met is False:
                     derived["WARNING:accuracy_targets_missed"] = True
