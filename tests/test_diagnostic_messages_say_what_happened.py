@@ -150,7 +150,7 @@ class _Phases(dict):
 
 
 class CyclicPhaseGraphTests(unittest.TestCase):
-    """The chain walk must say how many transitions it is throwing away.
+    """A chain that reaches the zero-temperature phase is complete, not a failure.
 
     Measured on the 2HDM at `lambda3` = 5.8888888889, 5.8939393939 and 5.9015151515, the phase
     graph contains a cycle: the zero-temperature phase lists the high-temperature root phase
@@ -160,9 +160,11 @@ class CyclicPhaseGraphTests(unittest.TestCase):
     615.5 GeV. `childTransitions` is then empty and the walk raises, discarding the two
     transitions it had already found. All three couplings report CLI error 8 and no transitions.
 
-    The error is not wrong to be raised here -- deciding whether the chain should instead end
-    successfully is a change to the walk and not to a message -- but it must not hide that it
-    found a chain and dropped it. This pins that.
+    Until this change the walk raised there, discarding the two transitions it had already
+    found and reporting the run as too supercooled to nucleate a single bubble per Hubble
+    volume. It now returns them. The couplings still do not percolate, for the unrelated and
+    physical reason that the first step of their chain has a 0.079 GeV overlap window, but the
+    chain itself is no longer thrown away and the error is left for real failures.
 
     The fixture accepts both of its first two steps through the `high_phase.Tmax >
     low_phase.Tmax` branch, which is the simplest way to reach the third step; on the benchmark
@@ -198,20 +200,72 @@ class CyclicPhaseGraphTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             return transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
 
-    def test_the_error_says_how_many_transitions_it_discards(self):
-        with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
-            self._walk()
-        message = " ".join(str(caught.exception).split())
-        self.assertIn("2 transition(s) had already been found", message,
-                      "the walk found two transitions before the cycle closed and must say so")
-        self.assertIn("zero-temperature phase", message,
-                      "the final phase is the T0 phase, which is why the chain had ended")
-        self.assertIn("phases may not overlap", message,
-                      "the reason must stay hedged; this is not necessarily supercooling")
+    def test_the_chain_completes_instead_of_being_discarded(self):
+        found = self._walk()
+        self.assertEqual(len(found), 2,
+                         "the two transitions found before the cycle closed must be returned")
+        self.assertEqual([t.high_phase for t in found], ["1", "2"])
+        self.assertEqual([t.low_phase for t in found], ["2", "0"])
 
-    def test_the_error_does_not_claim_supercooling_on_its_own(self):
-        """The class default claims one bubble per Hubble volume was never reached."""
+    def test_a_partial_chain_stopped_short_of_the_end_still_raises(self):
+        """The exit is for the end of the chain, not for any dead end.
+
+        Without this, dropping the `T0Phase` test from the new exit passes the whole file: the
+        other dead-end case stops before anything has been found, so `and transitions` alone
+        already keeps the error. Here the walk accepts `1 -> 2` and is then stuck at phase 2,
+        which is not the zero-temperature phase, with one transition in hand. Returning that
+        partial chain would be wrong -- the universe has not arrived anywhere stable -- so the
+        error must still be raised, and it must say one transition is being discarded.
+        """
+        phases = _Phases({
+            "1": self._phase("1", 615.5, 50.0, ["2"], 4.0),
+            "2": self._phase("2", 300.0, 40.0, ["3"], 3.0),
+            "3": self._phase("3", 615.5, 30.0, ["0"], 2.0),
+            "0": self._phase("0", 100.0, 0.0, [], 1.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
         with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
-            self._walk()
+            with contextlib.redirect_stdout(io.StringIO()):
+                transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        message = " ".join(str(caught.exception).split())
+        self.assertIn("1 transition(s) had already been found", message)
+        self.assertNotIn("zero-temperature phase", message,
+                         "phase 2 is a dead end, not the end of the chain")
+
+    def test_the_error_still_fires_where_the_chain_is_not_complete(self):
+        """The message is not dead code: a phase that is not the end of the chain still raises.
+
+        Here the walk is stopped at phase 1, which is not the zero-temperature phase, by a
+        candidate that fails the same `T_max` ordering test. Nothing has been found yet, so
+        there is no chain to return and the error is the right answer.
+        """
+        phases = _Phases({
+            "1": self._phase("1", 200.0, 50.0, ["2"], 3.0),
+            "2": self._phase("2", 615.5, 40.0, ["0"], 2.0),
+            "0": self._phase("0", 100.0, 0.0, [], 1.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+        with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+            with contextlib.redirect_stdout(io.StringIO()):
+                transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        message = " ".join(str(caught.exception).split())
+        self.assertIn("0 transition(s) had already been found", message)
+        self.assertNotIn("zero-temperature phase", message,
+                         "phase 1 is not the end of the chain")
         self.assertNotIn("until today", str(caught.exception),
                          "the class default is a claim about the physics, not about this walk")
+
