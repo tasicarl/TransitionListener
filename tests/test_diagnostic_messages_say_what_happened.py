@@ -22,6 +22,7 @@ import contextlib
 import inspect
 import io
 import math
+import threading
 import types
 import unittest
 
@@ -229,6 +230,57 @@ class CyclicPhaseGraphTests(unittest.TestCase):
                          "the two transitions found before the cycle closed must be returned")
         self.assertEqual([t.high_phase for t in found], ["1", "2"])
         self.assertEqual([t.low_phase for t in found], ["2", "0"])
+
+    def test_the_chain_stops_even_when_the_closing_edge_would_be_accepted(self):
+        """The reason the exit is tested before the children are enumerated.
+
+        In the measured band the cycle's closing edge is refused, so an exit that fires only
+        when every candidate was rejected is enough there. It is not enough in general: a pair
+        can be accepted without consulting the `T_max` ordering, through the critical-temperature
+        branch of `seedlessFirstOrderCandidate`. Here `0 -> 1` is such a pair, and with the exit
+        placed after child enumeration the walk follows it back to phase 1 and cycles forever.
+
+        The potential difference is made temperature dependent so both directions are accepted:
+        `1 -> 0` through the `T_max` branch and `0 -> 1` through the crossing branch.
+
+        Run on a daemon thread with a deadline, because the failure this guards against is a
+        hang rather than a wrong answer, and a hanging test reports nothing.
+        """
+        phases = _Phases({
+            "1": types.SimpleNamespace(key="1", Tmax=615.5, Tmin=50.0, childPhases=["0"],
+                                       low_trans={}, valAt=lambda T: 5.0),
+            "0": types.SimpleNamespace(key="0", Tmax=200.0, Tmin=10.0, childPhases=["1"],
+                                       low_trans={}, valAt=lambda T: 10.0 - T / 10.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+
+        box = {}
+
+        def run():
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    box["found"] = transitions.Transitions.findTransitionPathFromTnuc(
+                        stub, verbose=False)
+            except BaseException as err:
+                box["error"] = err
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(20.0)
+        self.assertFalse(worker.is_alive(),
+                         "the walk followed the cycle instead of stopping at the "
+                         "zero-temperature phase")
+        self.assertNotIn("error", box, f"unexpected error: {box.get('error')!r}")
+        self.assertEqual(len(box["found"]), 1,
+                         "only the transition into the zero-temperature phase belongs here")
+        self.assertEqual(box["found"][0].low_phase, "0")
 
     def test_a_partial_chain_stopped_short_of_the_end_still_raises(self):
         """The exit is for the end of the chain, not for any dead end.

@@ -603,6 +603,25 @@ class Transitions():
         seedless = self.pot.config.percolationConf.algorithm_mode == "adaptive_step_size"
 
         while True:
+            # The chain is complete once it reaches the zero-temperature phase, whatever the
+            # phase graph still lists as reachable from there. This has to be tested BEFORE the
+            # children are enumerated: a cyclic graph can offer an edge back to a hotter phase
+            # that is *accepted* -- the second-order branch below accepts without consulting
+            # the Tmax ordering, and it reassigns `startPhase` as it goes -- and the walk would
+            # then follow the cycle instead of stopping. Testing only "every candidate was
+            # rejected" catches the measured case and not that one.
+            #
+            # Measured on the 2HDM at lambda3 = 5.8888888889, 5.8939393939 and 5.9015151515:
+            # phase 0 is the zero-temperature phase and lists the high-temperature root phase
+            # among its children, so the walk asked it for one more transition, was refused the
+            # cycle's closing link, and raised -- discarding the two transitions it had already
+            # found and reporting the run as too supercooled to nucleate.
+            if startPhase.key == self.phases.T0Phase and transitions:
+                if verbose:
+                    print(f"Chain complete at the zero-temperature phase {startPhase.key} "
+                          f"after {len(transitions)} transition(s).")
+                break
+
             # check if we are in the lowest minimum
             if startPhase.childPhases == []:
                 if startPhase.key == self.phases.T0Phase:
@@ -687,31 +706,6 @@ class Transitions():
                 except Exception as err:
                     raise errors.NucleationError("Unexpected nucleation error:\n" + 
                                                  str(err))
-
-            if childTransitions == [] and startPhase.key == self.phases.T0Phase and transitions:
-                # The chain is complete. Arriving at the zero-temperature phase with nothing
-                # further to tunnel into is how a transition path ends, not a failure, and the
-                # loop already says so: its intended exit a few lines above breaks when the
-                # current phase is `T0Phase`. That exit also demands `childPhases == []`, which
-                # a cyclic phase graph denies. Measured on the 2HDM at lambda3 = 5.8888888889,
-                # 5.8939393939 and 5.9015151515, phase 0 is the zero-temperature phase and
-                # lists the high-temperature root phase among its children, so the walk asks it
-                # for one more transition, is refused the cycle's closing link because the
-                # starting phase reaches 121.3 GeV against 615.5 GeV, and raised -- throwing
-                # away the two transitions it had already found and reporting the run as too
-                # supercooled to nucleate.
-                #
-                # This changes no result. Those couplings still do not percolate, for an
-                # unrelated and physical reason: the first step of their chain has a
-                # phase-overlap window 0.079 GeV wide. What changes is that a completed chain
-                # is returned instead of discarded, and the error is left for the cases that
-                # are really failures. At lambda3 = 5.6010101010 the observables are identical
-                # to the last digit with and without this exit.
-                if verbose:
-                    print(f"Chain complete at the zero-temperature phase {startPhase.key} "
-                          f"after {len(transitions)} transition(s); it has no further "
-                          "transition to offer.")
-                break
 
             if childTransitions == []:
                 # Raised with a message rather than bare. The class default says the phase is
