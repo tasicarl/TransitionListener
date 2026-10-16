@@ -613,6 +613,12 @@ class Transitions():
             childTransitions = []
             # exclude equivalent tunnelings to mirror phases
             childPhases = self.getUniqueTunnelingPhases(V, phases, startPhase.key, startPhase.childPhases)
+            # Counted so the error below can say what actually happened. Not every child
+            # becomes a candidate: `getUniqueTunnelingPhases` drops children equivalent to one
+            # already offered, and the `tmin >= tmax` branch skips a pair with no overlap
+            # without ever evaluating it.
+            offered = len(startPhase.childPhases)
+            evaluated = 0
             for i in childPhases:
                 endPhase = phases[i]
 
@@ -631,6 +637,7 @@ class Transitions():
                     continue
 
                 if seedless:
+                    evaluated += 1
                     transition = self.seedlessFirstOrderCandidate(
                         V,
                         startPhase,
@@ -644,6 +651,7 @@ class Transitions():
                     continue
 
                 try:
+                    evaluated += 1
                     if verbose:
                         print(f"\nTry tunneling from phase {startPhase.key} to phase {endPhase.key}")
                     tunn = computeNucleationTemperature(self.V, self.dV, self.d2V,
@@ -694,15 +702,14 @@ class Transitions():
                 # here means only that no candidate below the current phase was viable, which
                 # on the 2HDM benchmark was a phase-overlap rejection and not supercooling.
                 raise errors.TooMuchSupercoolingError(
-                    "No viable transition found below phase "
-                    f"{startPhase.key}: every candidate was rejected. This may be "
+                    f"No viable transition remained below phase {startPhase.key}: "
+                    f"{offered} child phase(s) listed, {evaluated} evaluated as a candidate, "
+                    "none viable. A child is not evaluated when it duplicates one already "
+                    "offered or when the two phases do not overlap in temperature. This may be "
                     "supercooling, or the phases may not overlap in the way a first-order "
-                    "transition needs. Rerun with verbose=True to see each rejection. "
-                    f"{len(transitions)} transition(s) had already been found along the "
-                    "chain and are discarded with this error"
-                    + (f"; {startPhase.key} is the zero-temperature phase, so the chain had "
-                       "reached its end" if startPhase.key == self.phases.T0Phase else "")
-                    + ".")
+                    "transition needs. Rerun with verbose=True to see each phase pair. "
+                    f"{len(transitions)} transition(s) had already been found along the chain "
+                    "and are discarded with this error.")
 
             childTransitions = sorted(childTransitions, key=_transition_sort_temperature, reverse=True)
             # new start phase:

@@ -227,10 +227,43 @@ class CyclicPhaseGraphTests(unittest.TestCase):
         message = " ".join(str(caught.exception).split())
         self.assertIn("2 transition(s) had already been found", message,
                       "the walk found two transitions before the cycle closed and must say so")
-        self.assertIn("zero-temperature phase", message,
-                      "the final phase is the T0 phase, which is why the chain had ended")
+        self.assertIn("1 child phase(s) listed, 1 evaluated as a candidate", message,
+                      "the message must say what was offered and what was actually tried")
         self.assertIn("phases may not overlap", message,
                       "the reason must stay hedged; this is not necessarily supercooling")
+        self.assertNotIn("every candidate was rejected", message,
+                         "a child can be skipped without ever being evaluated: "
+                         "getUniqueTunnelingPhases drops duplicates and the tmin >= tmax "
+                         "branch skips a pair with no temperature overlap")
+
+    def test_a_child_skipped_without_evaluation_is_counted_as_such(self):
+        """The case that made "every candidate was rejected" false.
+
+        A child phase is never turned into a candidate when the two phases do not overlap in
+        temperature: the `tmin >= tmax` branch skips it without calling
+        `seedlessFirstOrderCandidate`, so nothing is rejected and verbose mode shows no
+        rejection either. `getUniqueTunnelingPhases` dropping a duplicate child has the same
+        effect. The message must not claim a rejection that never happened.
+        """
+        phases = _Phases({
+            "1": self._phase("1", 615.5, 300.0, ["0"], 2.0),   # exists only above 300
+            "0": self._phase("0", 200.0, 0.0, [], 1.0),        # exists only below 200
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+        with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+            with contextlib.redirect_stdout(io.StringIO()):
+                transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        message = " ".join(str(caught.exception).split())
+        self.assertIn("1 child phase(s) listed, 0 evaluated as a candidate", message,
+                      "the pair has no temperature overlap, so nothing was evaluated")
+        self.assertNotIn("every candidate was rejected", message)
 
     def test_the_error_does_not_claim_supercooling_on_its_own(self):
         """The class default claims one bubble per Hubble volume was never reached."""
