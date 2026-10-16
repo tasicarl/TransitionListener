@@ -612,15 +612,19 @@ class Transitions():
 
             childTransitions = []
             # exclude equivalent tunnelings to mirror phases
-            # Counted BEFORE the call, and the call is given a copy. `getUniqueTunnelingPhases`
-            # consumes the list it is handed, `while childPhases != []: childPhases.pop()`, so
-            # passing `startPhase.childPhases` itself empties the phase's own child list. That
-            # made this count read zero every time, and it also leaves the phase looking
-            # childless to the `startPhase.childPhases == []` exit above if the walk ever
-            # returns to it, which a cyclic phase graph allows.
+            # Counted BEFORE the call. `getUniqueTunnelingPhases` consumes the list it is
+            # handed, `while childPhases != []: childPhases.pop()`, so after the call
+            # `startPhase.childPhases` is empty and counting it there reads zero every time.
+            #
+            # The list is still passed directly, not copied, and that is deliberate here. The
+            # consumption is load-bearing: it is what stops this loop running forever on a
+            # cyclic phase graph, because a phase revisited by the cycle has an empty child
+            # list and leaves through the `startPhase.childPhases == []` exit above. Handing
+            # over a copy removes that accidental guard, so it belongs with an explicit one
+            # rather than in a change about diagnostics.
             offered = len(startPhase.childPhases)
             childPhases = self.getUniqueTunnelingPhases(
-                V, phases, startPhase.key, list(startPhase.childPhases))
+                V, phases, startPhase.key, startPhase.childPhases)
             # Not every child becomes a candidate: `getUniqueTunnelingPhases` drops children
             # equivalent to one already offered, and the `tmin >= tmax` branch skips a pair
             # with no overlap without ever evaluating it.

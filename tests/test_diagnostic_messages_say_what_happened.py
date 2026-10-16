@@ -109,17 +109,21 @@ class SupercoolingErrorNamesItsReasonTests(unittest.TestCase):
                          "transition is too supercooled to nucleate")
 
 
-class ChildPhaseListIsNotConsumedTests(unittest.TestCase):
-    """The walk must not destroy the phase graph while counting it.
+class ChildPhaseCountTests(unittest.TestCase):
+    """The count must be taken before the helper empties the list.
 
     `getUniqueTunnelingPhases` empties the list it is given: its loop is
-    `while childPhases != []: p1 = childPhases.pop()`. The walk used to hand it
-    `startPhase.childPhases` itself, so the phase's own child list came back empty. Two
-    consequences, both silent: the `offered` count read zero, and a phase revisited by a cyclic
-    graph looked childless to the `startPhase.childPhases == []` exit.
+    `while childPhases != []: p1 = childPhases.pop()`. The walk hands it
+    `startPhase.childPhases` itself, so the phase's child list comes back empty and a count
+    taken after the call reads zero. The count is therefore taken before it.
 
-    Every other test in this file stubs `getUniqueTunnelingPhases`, which is exactly why none
-    of them saw it. This one calls the real method.
+    The consumption is left in place, because it is what terminates this loop on a cyclic
+    phase graph: a revisited phase has an empty child list and leaves through the
+    `startPhase.childPhases == []` exit. Handing over a copy removes that guard, which needs
+    an explicit replacement and does not belong in a change about diagnostics.
+
+    Every other test in this file stubs `getUniqueTunnelingPhases`, which is why none of them
+    saw the count was wrong. This one calls the real method.
     """
 
     @staticmethod
@@ -141,8 +145,8 @@ class ChildPhaseListIsNotConsumedTests(unittest.TestCase):
                          "if this ever stops emptying its argument, the copy in the walk can "
                          "go, but until then it is load-bearing")
 
-    def test_the_walk_leaves_the_phase_graph_intact(self):
-        """The walk calls it, so the phase must keep its children afterwards."""
+    def test_the_count_survives_the_helper_emptying_the_list(self):
+        """The count is taken first, so it describes the graph that was encountered."""
         phases = _Phases({
             "1": types.SimpleNamespace(key="1", Tmax=615.5, Tmin=300.0, childPhases=["0"],
                                        low_trans={}, valAt=lambda T: 2.0,
@@ -163,11 +167,15 @@ class ChildPhaseListIsNotConsumedTests(unittest.TestCase):
         with self.assertRaises(transitions.errors.NoViablePhasePairError) as caught:
             with contextlib.redirect_stdout(io.StringIO()):
                 transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
-        self.assertEqual(phases["1"].childPhases, ["0"],
-                         "the walk emptied the phase's own child list")
         message = " ".join(str(caught.exception).split())
         self.assertIn("1 child phase(s) listed below phase 1", message,
-                      "the count is taken before the call, so it is not zero")
+                      "counted before the helper emptied the list, so not zero")
+        # This fixture's phases never coexist: phase 1 exists only above 300 GeV and phase 0
+        # only below 200, so the `tmin >= tmax` branch skips the pair without evaluating it.
+        self.assertIn("0 evaluated as a candidate", message)
+        self.assertEqual(phases["1"].childPhases, [],
+                         "the helper consumed the list, which is the behaviour this branch "
+                         "leaves alone")
 
 
 class SeedlessSkipMessageTests(unittest.TestCase):
