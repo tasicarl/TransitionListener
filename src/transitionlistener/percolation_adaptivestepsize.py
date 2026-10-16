@@ -1265,7 +1265,31 @@ def _compute_step3_profile(
 
                 state.Hr[i] = bd.HubbleParameter(P * eBRO + (1.0 - P) * eSYM_PT + e_decoupled, CF)
         else:
-            state.Sr[i] = np.nan
+            # Carry the last computed action forward rather than writing `nan`.
+            #
+            # The truncation above is right that nothing new nucleates below the saturation
+            # point: `S_3/T` is already 133 there on the 2HDM benchmark and only grows as the
+            # temperature falls, reaching 412 a decade below, so the rate is `exp(-133)` or
+            # smaller and no choice of action in this region can contribute to the integral.
+            # What the truncation missed is that this region is where the bubbles *already*
+            # nucleated keep growing, and `percIntegralODE` needs valid samples across it to
+            # carry that growth. A `nan` fails its validity test, which floors both the source
+            # and the transport term at `_LOG_GAMMA_SOURCE_FLOOR`, and the integral stops
+            # accumulating: on that benchmark `I` collapsed from 50 to 9.7e-38 and
+            # `P = 1 - exp(-I)` rounded to exactly 0 at all 174 support points, so a transition
+            # whose percolation temperature step 2 had already found was reported as one that
+            # never percolates.
+            #
+            # Any finite value does, and dropping the points instead does not work: it removes
+            # the growth along with the nucleation and leaves `I` at 10.4. The last computed
+            # action is the cheapest choice and costs nothing, since the rate there is
+            # negligible whatever the action is.
+            last_action = np.nan
+            if i > 0:
+                finite_so_far = state.Sr[:i][np.isfinite(state.Sr[:i])]
+                if finite_so_far.size:
+                    last_action = float(finite_so_far[-1])
+            state.Sr[i] = last_action
             state.Hr[i] = bd.HubbleParameter(bd.energyDensity(pot, phase_symmetric, T), CF)
 
         if i >= 1 and previous_probability[i] > settings.f_final and previous_probability[i - 1] > settings.f_final:
