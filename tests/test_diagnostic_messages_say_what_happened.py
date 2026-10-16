@@ -78,6 +78,7 @@ class SupercoolingErrorNamesItsReasonTests(unittest.TestCase):
                          f"raises at lines {bare} rely on the class default, which claims the "
                          "transition is too supercooled to nucleate")
 
+
 class SeedlessSkipMessageTests(unittest.TestCase):
     """Drive the branch and read what it prints, rather than grepping the source.
 
@@ -109,8 +110,10 @@ class SeedlessSkipMessageTests(unittest.TestCase):
                 self._phase(low_tmax, 1.0),
                 10.0, 100.0, verbose=True,
             )
-        # TL wraps stdout at about 75 columns, so the message arrives with newlines inside
-        # it. Collapse the whitespace before matching on the wording.
+        # `transitionlistener.print` is `rich.console.Console.print`, which word-wraps to the
+        # console width, 80 columns when stdout is not a terminal as it is here. The message
+        # therefore arrives with newlines inside it, so collapse the whitespace before
+        # matching on the wording.
         return result, " ".join(buffer.getvalue().split())
 
     def test_the_message_says_the_starting_phase_stops_at_a_lower_temperature(self):
@@ -122,10 +125,93 @@ class SeedlessSkipMessageTests(unittest.TestCase):
                          "the old wording contradicted the condition above it")
 
     def test_the_message_is_not_printed_when_the_starting_phase_reaches_higher(self):
-        """Pins the message to its condition: swap the two Tmax values and it must not fire."""
-        _result, printed = self._run(high_tmax=615.5, low_tmax=121.3)
+        """Pins the message to its condition: swap the two Tmax values and it must not fire.
+
+        The absence of the message is only evidence if the swapped case still walks past the
+        branch, so the candidate it then builds and the line it prints instead are asserted
+        too. Without them the test would pass just as happily on an earlier `return None`.
+        """
+        result, printed = self._run(high_tmax=615.5, low_tmax=121.3)
+        self.assertIsNotNone(result, "the swapped case must reach the end and build the "
+                                     "candidate, or the branch under test was never passed")
+        self.assertIn("Adding seedless first-order candidate", printed)
         self.assertNotIn("does not exist to as high a temperature", printed)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _Phases(dict):
+    """The phase mapping the walk is handed, with the two keys it reads off it."""
+
+    rootPhase = "1"
+    T0Phase = "0"
+
+
+class CyclicPhaseGraphTests(unittest.TestCase):
+    """The chain walk must say how many transitions it is throwing away.
+
+    Measured on the 2HDM at `lambda3` = 5.8888888889, 5.8939393939 and 5.9015151515, the phase
+    graph contains a cycle: the zero-temperature phase lists the high-temperature root phase
+    among its children. The walk therefore reaches the end of the chain, asks the final phase
+    for one more transition, gets the cycle's closing link, and `seedlessFirstOrderCandidate`
+    rightly refuses it because the starting phase reaches 121.3 GeV against the target's
+    615.5 GeV. `childTransitions` is then empty and the walk raises, discarding the two
+    transitions it had already found. All three couplings report CLI error 8 and no transitions.
+
+    The error is not wrong to be raised here -- deciding whether the chain should instead end
+    successfully is a change to the walk and not to a message -- but it must not hide that it
+    found a chain and dropped it. This pins that.
+
+    The fixture accepts both of its first two steps through the `high_phase.Tmax >
+    low_phase.Tmax` branch, which is the simplest way to reach the third step; on the benchmark
+    the second step is accepted through the critical-temperature branch instead. The claim here
+    is about the walk's bookkeeping, not about which branch accepts a pair.
+    """
+
+    @staticmethod
+    def _phase(key, tmax, tmin, children, value):
+        return types.SimpleNamespace(key=key, Tmax=tmax, Tmin=tmin, childPhases=children,
+                                     low_trans={}, valAt=lambda T, v=value: v)
+
+    def _walk(self):
+        phases = _Phases({
+            "1": self._phase("1", 615.5, 50.0, ["2"], 3.0),
+            "2": self._phase("2", 300.0, 40.0, ["0"], 2.0),
+            "0": self._phase("0", 200.0, 0.0, ["1"], 1.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases,
+            V=lambda x, T: float(x),
+            conversionFactor=1.0,
+            pot=types.SimpleNamespace(
+                config=types.SimpleNamespace(
+                    percolationConf=types.SimpleNamespace(
+                        algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, phases, startPhase, childPhases: childPhases,
+            # read once at the top of the walk and only used on the non-seedless path
+            tunnelFromPhase_args={},
+        )
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+        with contextlib.redirect_stdout(io.StringIO()):
+            return transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+
+    def test_the_error_says_how_many_transitions_it_discards(self):
+        with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+            self._walk()
+        message = " ".join(str(caught.exception).split())
+        self.assertIn("2 transition(s) had already been found", message,
+                      "the walk found two transitions before the cycle closed and must say so")
+        self.assertIn("zero-temperature phase", message,
+                      "the final phase is the T0 phase, which is why the chain had ended")
+        self.assertIn("phases may not overlap", message,
+                      "the reason must stay hedged; this is not necessarily supercooling")
+
+    def test_the_error_does_not_claim_supercooling_on_its_own(self):
+        """The class default claims one bubble per Hubble volume was never reached."""
+        with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+            self._walk()
+        self.assertNotIn("until today", str(caught.exception),
+                         "the class default is a claim about the physics, not about this walk")

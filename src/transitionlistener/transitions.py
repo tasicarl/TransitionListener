@@ -697,7 +697,12 @@ class Transitions():
                     "No viable transition found below phase "
                     f"{startPhase.key}: every candidate was rejected. This may be "
                     "supercooling, or the phases may not overlap in the way a first-order "
-                    "transition needs. Rerun with verbose=True to see each rejection.")
+                    "transition needs. Rerun with verbose=True to see each rejection. "
+                    f"{len(transitions)} transition(s) had already been found along the "
+                    "chain and are discarded with this error"
+                    + (f"; {startPhase.key} is the zero-temperature phase, so the chain had "
+                       "reached its end" if startPhase.key == self.phases.T0Phase else "")
+                    + ".")
 
             childTransitions = sorted(childTransitions, key=_transition_sort_temperature, reverse=True)
             # new start phase:
