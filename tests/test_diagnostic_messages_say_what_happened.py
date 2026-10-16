@@ -316,13 +316,14 @@ class CyclicPhaseGraphTests(unittest.TestCase):
         self.assertEqual([t.high_phase for t in found], ["1", "2"])
         self.assertEqual([t.low_phase for t in found], ["2", "0"])
 
-    def test_a_failed_nucleation_solve_is_supercooling_not_an_unviable_pair(self):
+    def test_a_candidate_that_reached_the_solver_is_code_8_not_code_19(self):
         """The discriminator between the two errors, which is the point of having two.
 
         A pair that never reaches a nucleation solve says nothing about the rate, so it raises
         `NoViablePhasePairError`, code 19. A pair that does reach one and fails it has had the
-        physics attempted: that is `TooMuchSupercoolingError`, code 8, and the message keeps
-        the hedge that the solve may also have failed numerically.
+        reached the solver: that is `TooMuchSupercoolingError`, code 8. Code 8 does not claim
+        the transition is supercooled, only that a solve was attempted and did not succeed,
+        which may be supercooling or a numerical failure, and the message says so.
 
         Driven on the fixed-step path, where `computeNucleationTemperature` is what raises
         `NucleationError` and the candidate is dropped.

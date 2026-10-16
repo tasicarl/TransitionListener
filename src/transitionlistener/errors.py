@@ -331,13 +331,12 @@ class TooMuchSupercoolingError(Exception):
 class NoViablePhasePairError(Exception):
     """Raised when no phase pair below the current phase was ever a tunnelling candidate.
 
-    Distinct from `TooMuchSupercoolingError`, which is a statement about the physics: that the
-    rate never reached one bubble per Hubble volume. This one says the solver never got far
-    enough to make that statement, because no pair of phases was viable to begin with. The two
-    are told apart by whether any candidate reached a nucleation solve: a pair refused on its
-    phase geometry leaves the action cache untouched, while genuine supercooling fills it and
-    still finds no percolation. On the 2HDM benchmark the two cases differed by 1 finite
-    action-cache entry against 80 in the percolation window.
+    Distinct from `TooMuchSupercoolingError`, which is raised where a candidate did reach the
+    nucleation solver and the solve did not succeed. **The test is reaching the solver, not
+    what the solver concluded**: a failed solve may mean the transition is genuinely too
+    supercooled, or that the solve failed numerically, and the raise does not tell those two
+    apart. This class is the narrower statement, that no candidate reached the solver at all,
+    so nothing about the rate was computed either way.
 
     Reasons a pair is never a candidate: the two phases do not overlap in temperature, the
     starting phase does not exist up to a high enough temperature, or the children offered were
