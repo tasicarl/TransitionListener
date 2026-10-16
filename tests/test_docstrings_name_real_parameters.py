@@ -33,7 +33,10 @@ SECTION_START = re.compile(r"^Parameters\s*$", re.M)
 SECTION_END = re.compile(
     r"^(?:Returns|Raises|Yields|Notes|Examples|See Also)\s*:?\s*$", re.M)
 
-# (file, function, documented name) still outstanding; fixed on chore/release-v2.2 (2767339)
+# (file, function, documented name) still outstanding. These six are corrected by the release
+# preparation rather than here, so that the two changes do not touch the same lines. The test
+# below fails once they are, which is the signal to empty this set rather than to grow it: a
+# ghost found later belongs in a fix, not in a waiver.
 KNOWN = {
     ("bubbledynamics.py", "g_eff_DS", "T"),
     ("bubbledynamics.py", "h_eff_DS", "T"),
