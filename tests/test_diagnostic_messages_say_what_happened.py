@@ -21,6 +21,7 @@ from __future__ import annotations
 import contextlib
 import inspect
 import io
+import math
 import types
 import unittest
 
@@ -43,12 +44,37 @@ class PipelineFilledNamesAreNotReportedMissingTests(unittest.TestCase):
         self.assertIn("DIAG:runtime_s", tobs._FILLED_BY_THE_PIPELINE)
         self.assertIn("DIAG:runtime_s", tobs_fixed._FILLED_BY_THE_PIPELINE)
 
-    def test_the_check_consults_the_skip_set(self):
+    def test_the_loop_warns_selectively_and_fills_unconditionally(self):
+        """Both halves of the completeness check, driven rather than grepped.
+
+        `_finalize_results` reads only `ctx.derived_params` and `ctx.derived_param_names` and
+        touches no instance state, so it runs unbound. Every other branch in it is guarded by a
+        name being in `derived_param_names`, and neither name below is one of those, so what
+        executes is the completeness loop.
+
+        The placeholder half matters as much as the warning half: `printDerivedParams` indexes
+        every configured name directly, and `interface/pipeline.py` assigns `DIAG:runtime_s`
+        only to `strongestTransitionObservables`, so a per-transition dictionary missing the key
+        raises `KeyError` when the run prints its table. The first version of this change
+        skipped the assignment along with the message and would have crashed there.
+        """
         for module in (tobs, tobs_fixed):
-            source = inspect.getsource(module)
-            self.assertIn("if name in _FILLED_BY_THE_PIPELINE:", source,
-                          f"{module.__name__} does not consult the skip set, so it will still "
-                          "report a pipeline-filled name as unimplemented")
+            with self.subTest(module=module.__name__):
+                names = ["DIAG:runtime_s", "DIAG:not_implemented_anywhere"]
+                ctx = types.SimpleNamespace(derived_params={}, derived_param_names=names)
+                buffer = io.StringIO()
+                with contextlib.redirect_stdout(buffer):
+                    derived = module.TransitionObservables._finalize_results(None, ctx)
+                printed = " ".join(buffer.getvalue().split())
+
+                for name in names:
+                    self.assertIn(name, derived,
+                                  "printDerivedParams indexes this name directly")
+                    self.assertTrue(math.isnan(derived[name]))
+                self.assertNotIn("DIAG:runtime_s not found", printed,
+                                 "the pipeline fills this one later; no warning is due")
+                self.assertIn("DIAG:not_implemented_anywhere not found", printed,
+                              "a genuinely missing name must still be reported")
 
 
 class SupercoolingErrorNamesItsReasonTests(unittest.TestCase):
