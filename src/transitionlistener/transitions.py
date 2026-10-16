@@ -273,7 +273,14 @@ class Transitions():
         # Check if we have found any transitions
         if len(transitions_dict) == 0:
             if TooMuchSupercooling:
-                raise errors.TooMuchSupercoolingError()
+                # With a message rather than empty. The class default asserts that the phase is
+                # too supercooled to nucleate; reaching here means only that every candidate
+                # raised a nucleation error, which may be supercooling or may be the tunnelling
+                # solver failing to find a solution.
+                raise errors.TooMuchSupercoolingError(
+                    "No transition found: every candidate raised a nucleation error. This may "
+                    "be supercooling, or the tunnelling solver may have failed to find a "
+                    "solution. Rerun with verbose=True to see each failure.")
             raise errors.NoTransitionFound("No transition found.")
         
         # Check if only second-order transitions were found
@@ -682,7 +689,15 @@ class Transitions():
                                                  str(err))
 
             if childTransitions == []:
-                raise errors.TooMuchSupercoolingError
+                # Raised with a message rather than bare. The class default says the phase is
+                # too supercooled to nucleate, which is a claim about the physics; reaching
+                # here means only that no candidate below the current phase was viable, which
+                # on the 2HDM benchmark was a phase-overlap rejection and not supercooling.
+                raise errors.TooMuchSupercoolingError(
+                    "No viable transition found below phase "
+                    f"{startPhase.key}: every candidate was rejected. This may be "
+                    "supercooling, or the phases may not overlap in the way a first-order "
+                    "transition needs. Rerun with verbose=True to see each rejection.")
 
             childTransitions = sorted(childTransitions, key=_transition_sort_temperature, reverse=True)
             # new start phase:
@@ -745,8 +760,8 @@ class Transitions():
             if verbose:
                 print(
                     "Skipping seedless candidate because the starting phase is "
-                    "higher at Tmax and also exists to at least as high a "
-                    "temperature as the target phase."
+                    "higher at Tmax and does not exist to as high a temperature "
+                    "as the target phase, so there is no window to tunnel from."
                 )
             return None
 

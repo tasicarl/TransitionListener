@@ -44,6 +44,11 @@ import rich
 from rich.panel import Panel
 
 
+# Observable names the pipeline assigns after the observables are computed, so the
+# completeness check must not report them missing.
+_FILLED_BY_THE_PIPELINE = frozenset({"DIAG:runtime_s"})
+
+
 def _extract_instanton_profile_arrays(instanton) -> tuple[np.ndarray, np.ndarray] | tuple[None, None]:
     """Return radius/field arrays from either supported instanton representation.
 
@@ -1421,8 +1426,13 @@ class TransitionObservables:
             derived["WARNING:not_T0_global_min"] = False
 
         # Check if there are any names in derived_param_names which are not
-        # in the derived_params_dict
+        # in the derived_params_dict. Names the pipeline fills after the observables are
+        # computed cannot be present yet and are not missing: DIAG:runtime_s is assigned in
+        # interface/pipeline.py once the elapsed time is known, so warning about it told every
+        # user of every run that an implemented column was unimplemented.
         for name in ctx.derived_param_names:
+            if name in _FILLED_BY_THE_PIPELINE:
+                continue
             if name not in derived:
                 msg = (
                     f"{name} not found in derived_params_dict. "
