@@ -138,9 +138,6 @@ class SeedlessSkipMessageTests(unittest.TestCase):
         self.assertNotIn("does not exist to as high a temperature", printed)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class _Phases(dict):
     """The phase mapping the walk is handed, with the two keys it reads off it."""
@@ -215,3 +212,7 @@ class CyclicPhaseGraphTests(unittest.TestCase):
             self._walk()
         self.assertNotIn("until today", str(caught.exception),
                          "the class default is a claim about the physics, not about this walk")
+
+
+if __name__ == "__main__":
+    unittest.main()
