@@ -43,6 +43,24 @@ KNOWN = {
 }
 
 
+def _unparsable():
+    """Files the sweep could not read, which it must report rather than skip.
+
+    Swallowing a `SyntaxError` would let a file that no longer parses pass this guard
+    silently, and a documentation regression inside it would never be seen.
+    """
+    root = Path(__file__).resolve().parents[1]
+    bad = []
+    for f in sorted((root / "src").rglob("*.py")) + sorted((root / "models").rglob("*.py")):
+        try:
+            ast.parse(f.read_text(encoding="utf-8"))
+        except SyntaxError as err:
+            bad.append(f"{f.relative_to(root)}: {err}")
+        except OSError as err:
+            bad.append(f"{f.relative_to(root)}: {err}")
+    return bad
+
+
 def _ghosts():
     root = Path(__file__).resolve().parents[1]
     out = set()
@@ -76,6 +94,13 @@ def _ghosts():
 
 
 class DocstringParametersTests(unittest.TestCase):
+    def test_every_file_in_the_sweep_parses(self):
+        """The sweep is only a guard over the files it could read."""
+        bad = _unparsable()
+        self.assertEqual(bad, [],
+                         "these files could not be parsed, so the sweep skipped them "
+                         "entirely:\n  " + "\n  ".join(bad))
+
     def test_no_docstring_names_a_parameter_that_does_not_exist(self):
         found = _ghosts()
         new = found - KNOWN
