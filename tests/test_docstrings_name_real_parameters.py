@@ -29,6 +29,7 @@ from pathlib import Path
 # the first description that happens to contain it, and the rest of the block then goes
 # unchecked: on the base commit that hid `tunneling1D.findRscaleNew` documenting `ndim` behind
 # "Returns the potential at V(phi)" in its `V` entry, 21 findings instead of 22.
+SECTION_START = re.compile(r"^Parameters\s*$", re.M)
 SECTION_END = re.compile(
     r"^(?:Returns|Raises|Yields|Notes|Examples|See Also)\s*:?\s*$", re.M)
 
@@ -81,7 +82,13 @@ def _ghosts():
                 sig.add(a.vararg.arg)
             if a.kwarg:
                 sig.add(a.kwarg.arg)
-            section = SECTION_END.split(doc.split("Parameters", 1)[1], maxsplit=1)[0]
+            # "Parameters" is anchored to its own line too, for the same reason the stop
+            # words are: a docstring that mentions the word in prose before the heading would
+            # otherwise have everything before the real heading treated as the block.
+            head = SECTION_START.split(doc, maxsplit=1)
+            if len(head) < 2:
+                continue
+            section = SECTION_END.split(head[1], maxsplit=1)[0]
             # "X : type" and "startstep, minstep : type" are both parameter headers; a
             # continuation line starting "word:" inside a description is not, which is why
             # the match is anchored at the start of the line with no leading whitespace left
@@ -108,6 +115,23 @@ class DocstringParametersTests(unittest.TestCase):
             new, set(),
             "these docstrings name parameters their function does not take:\n  "
             + "\n  ".join(f"{f}:{fn}() documents {n}" for f, fn, n in sorted(new)))
+
+    def test_prose_mentioning_parameters_is_not_read_as_a_block(self):
+        """Why the heading is anchored to its own line.
+
+        Splitting on the bare word takes everything after the first mention, so a docstring
+        with no Parameters block at all but the word in prose has its prose scanned for
+        `name : description` lines. A sentence like "Note : the caller owns the object" then
+        reads as a parameter called `Note`, and the sweep reports a function that documents
+        nothing wrongly. Measured: with the split unanchored this raises, with it anchored it
+        does not.
+        """
+        doc = ("Explains how Parameters are handled elsewhere in the pipeline.\n\n"
+               "    Note : the caller owns the lifetime of the object passed in.\n")
+        head = SECTION_START.split(doc, maxsplit=1)
+        self.assertEqual(len(head), 1,
+                         "a prose mention is not a Parameters heading, so there is no block "
+                         "to scan and no name to report")
 
     def test_the_known_list_has_not_gone_stale(self):
         """When the release branch lands, these are fixed and must leave the list."""
