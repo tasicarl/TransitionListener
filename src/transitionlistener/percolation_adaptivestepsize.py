@@ -1280,15 +1280,23 @@ def _compute_step3_profile(
             # whose percolation temperature step 2 had already found was reported as one that
             # never percolates.
             #
-            # Any finite value does, and dropping the points instead does not work: it removes
-            # the growth along with the nucleation and leaves `I` at 10.4. The last computed
-            # action is the cheapest choice and costs nothing, since the rate there is
-            # negligible whatever the action is.
+            # Dropping the points instead does not work: it removes the growth along with the
+            # nucleation and leaves `I` at 10.4. The last computed action is the cheapest
+            # choice and costs nothing, since the rate there is negligible whatever the action
+            # is.
+            #
+            # It has to be the last USABLE action, not merely the last finite one.
+            # `percIntegralODE`'s validity mask is `np.isfinite(S) & (S > 0.0) & ...`
+            # (`bubbledynamics.py:1250`), so carrying a zero or negative action forward would
+            # leave the sample invalid and the integral floored exactly as a `nan` does, which
+            # is the failure this branch exists to prevent. A non-positive action is not
+            # physical for a bounce and means that solve did not succeed.
             last_action = np.nan
             if i > 0:
-                finite_so_far = state.Sr[:i][np.isfinite(state.Sr[:i])]
-                if finite_so_far.size:
-                    last_action = float(finite_so_far[-1])
+                previous = state.Sr[:i]
+                usable = previous[np.isfinite(previous) & (previous > 0.0)]
+                if usable.size:
+                    last_action = float(usable[-1])
             state.Sr[i] = last_action
             state.Hr[i] = bd.HubbleParameter(bd.energyDensity(pot, phase_symmetric, T), CF)
 

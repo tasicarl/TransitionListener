@@ -39,7 +39,7 @@ class SaturatedTailTests(unittest.TestCase):
 
     phases = (types.SimpleNamespace(name="sym"), types.SimpleNamespace(name="bro"))
 
-    def profile(self, nonfinite_call=None):
+    def profile(self, nonfinite_call=None, zero_at_last_computed=False):
         """Run the step-3 profile loop.
 
         With `nonfinite_call` set, the mocked `calcAction` returns `nan` on that call, counting
@@ -60,6 +60,9 @@ class SaturatedTailTests(unittest.TestCase):
         computed: list[float] = []
 
         def action(pot, T, ps, pb, outdict, *a, **k):
+            if zero_at_last_computed and len(computed) == 21:
+                computed.append(0.0)
+                return 0.0
             if nonfinite_call is not None and len(computed) == nonfinite_call:
                 computed.append(np.nan)
                 return np.nan
@@ -122,6 +125,28 @@ class SaturatedTailTests(unittest.TestCase):
         """The carry must not overwrite the actions that were computed."""
         _, state, computed = self.profile()
         np.testing.assert_allclose(state.Sr[:len(computed)], computed, rtol=0, atol=0)
+
+    def test_the_carry_skips_a_non_positive_action_not_just_a_nan(self):
+        """What `percIntegralODE` calls usable, which is narrower than finite.
+
+        Its validity mask is `np.isfinite(S) & (S > 0.0) & ...` (`bubbledynamics.py:1250`), so
+        a carried action of zero or less is dropped from the integral exactly as a `nan` is,
+        and the tail would stop accumulating again. A non-positive action is not physical for a
+        bounce; it means that solve did not succeed.
+
+        Here the last computed action is zero, so the carry has to reach past it to the last
+        positive one. The fixture computes 22 actions before it saturates, so the zero is
+        placed on the 22nd.
+        """
+        _, state, computed = self.profile(zero_at_last_computed=True)
+        self.assertEqual(computed[-1], 0.0, "the fixture must end on a non-positive action")
+        carried = state.Sr[len(computed):]
+        self.assertGreater(carried.size, 0)
+        self.assertTrue(np.all(carried > 0.0),
+                        "a carried action must satisfy the same validity test as a computed "
+                        "one, or the integral floors it away")
+        positive = [v for v in computed if v > 0.0]
+        np.testing.assert_allclose(carried, positive[-1], rtol=0, atol=0)
 
     def test_step_3_leaves_no_hole_between_the_computed_part_and_the_tail(self):
         """The shape of the array the percolation integral is handed.
