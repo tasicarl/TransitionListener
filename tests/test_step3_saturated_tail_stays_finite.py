@@ -39,7 +39,15 @@ class SaturatedTailTests(unittest.TestCase):
 
     phases = (types.SimpleNamespace(name="sym"), types.SimpleNamespace(name="bro"))
 
-    def profile(self):
+    def profile(self, nonfinite_call=None):
+        """Run the step-3 profile loop.
+
+        With `nonfinite_call` set, the mocked `calcAction` returns `nan` on that call, counting
+        from zero, and records the `nan` like any other value. That is what a cached discarded
+        sample does in production: `calcAction` returns `outdict[T]["action"]` whenever the
+        temperature is already in the cache, and `_rescue_action_rate_jitter` writes `nan` into
+        that payload for a sample it drops.
+        """
         sym, bro = self.phases
 
         def energy_density(pot, phase, T, include_decoupled=True):
@@ -52,6 +60,9 @@ class SaturatedTailTests(unittest.TestCase):
         computed: list[float] = []
 
         def action(pot, T, ps, pb, outdict, *a, **k):
+            if nonfinite_call is not None and len(computed) == nonfinite_call:
+                computed.append(np.nan)
+                return np.nan
             value = 100.0 + float(np.squeeze(T))
             computed.append(value)
             return value
@@ -92,9 +103,12 @@ class SaturatedTailTests(unittest.TestCase):
         """
         _, state, computed = self.profile()
         self.assertGreater(len(computed), 1, "the fixture must compute more than one action")
-        self.assertNotAlmostEqual(
-            computed[0], computed[-1],
-            msg="the fixture cannot discriminate if the first and last action agree")
+        # The spread has to be wider than the tolerance of the np.isclose check below, not
+        # merely nonzero: 101.0 against 100.73 is 2.6e-3 relative against an rtol of 1e-5.
+        self.assertFalse(
+            np.isclose(computed[0], computed[-1]),
+            "the fixture cannot discriminate if the first and last action agree to within "
+            "the tolerance the assertions below use")
 
         carried = state.Sr[len(computed):]
         self.assertGreater(carried.size, 0, "the fixture must saturate before the last point")
@@ -109,21 +123,63 @@ class SaturatedTailTests(unittest.TestCase):
         _, state, computed = self.profile()
         np.testing.assert_allclose(state.Sr[:len(computed)], computed, rtol=0, atol=0)
 
-    def test_no_non_finite_action_follows_a_finite_one(self):
-        """The invariant the percolation integral needs.
+    def test_step_3_leaves_no_hole_between_the_computed_part_and_the_tail(self):
+        """The shape of the array the percolation integral is handed.
 
-        `percIntegralODE` masks non-finite actions out of its validity test, so a nan anywhere
-        below the warm region floors the source and transport terms from there on down. A nan
-        before the first computed action cannot be avoided -- there is nothing to carry yet,
-        and inventing a value would be a clamp -- but one after a finite entry is the defect
-        this branch fixes.
+        `percIntegralODE` drops non-finite actions from its validity test, so a non-finite
+        entry anywhere below the warm region floors the source and transport terms from there
+        down. This pins the one thing `_compute_step3_profile` controls: everything from its
+        first computed action to the coldest point comes back finite, with no gap where the
+        carry starts.
+
+        The claim is about step 3's own output and not about the profile for the rest of the
+        solve. `calcAction` can hand back a non-finite action for a sample the jitter rescue
+        discarded (`bubbledynamics.py:2705` writes `nan` into the cached payload and
+        `bubbledynamics.py:900` returns it), and that rescue also writes `nan` straight into
+        `state.Sr`, so a later stage can reintroduce a non-finite tail. Asserting otherwise
+        here would be asserting something this function cannot promise.
         """
         _, state, _ = self.profile()
         finite = np.isfinite(np.asarray(state.Sr, dtype=float))
-        first_finite = int(np.argmax(finite)) if finite.any() else state.Sr.size
-        self.assertTrue(np.all(finite[first_finite:]),
-                        "a non-finite action appears after a finite one, so the integral "
-                        "stops accumulating from there down")
+        self.assertTrue(finite.any(), "the fixture must compute at least one action")
+        first = int(np.argmax(finite))
+        self.assertTrue(
+            np.all(finite[first:]),
+            "a non-finite action appears after a finite one, so the percolation integral "
+            "stops accumulating from there down")
+
+    def test_the_carry_takes_the_last_finite_action_not_the_last_entry(self):
+        """The `np.isfinite` filter in the carry, which nothing else exercises.
+
+        A computed sample can itself be non-finite: `calcAction` returns
+        `outdict[T]["action"]` for any temperature already in the cache, and
+        `_rescue_action_rate_jitter` writes `nan` into that payload for a sample it discards.
+        Here the non-finite action lands on the last temperature whose action is computed,
+        which is the one position where the filter changes the answer -- anywhere further up
+        the profile the entry immediately above the saturation point is finite anyway, and the
+        unfiltered and filtered carries agree.
+
+        Without the filter the tail would hold `nan`, `percIntegralODE` would mark every one
+        of those samples invalid, and both its source and its transport term would be floored
+        at `_LOG_GAMMA_SOURCE_FLOOR` over the whole tail: exactly the collapse this branch is
+        about, reintroduced by the fix itself.
+        """
+        _, state, computed = self.profile(nonfinite_call=21)
+        self.assertEqual(len(computed) - 1, 21,
+                         "the fixture must put the non-finite action on the last computed "
+                         "temperature, or the filter is not being asked to skip anything")
+        self.assertFalse(np.isfinite(state.Sr[21]),
+                         "the non-finite action must reach Sr, otherwise the carry below "
+                         "never sees it")
+
+        last_finite = computed[-2]
+        self.assertTrue(np.isfinite(last_finite))
+        carried = state.Sr[22:]
+        self.assertGreater(carried.size, 0)
+        np.testing.assert_allclose(
+            carried, last_finite, rtol=0, atol=0,
+            err_msg="the saturated tail must carry the last FINITE action, not the "
+                    "non-finite entry that sits directly above it")
 
 
 if __name__ == "__main__":
