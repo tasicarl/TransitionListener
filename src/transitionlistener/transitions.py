@@ -706,17 +706,28 @@ class Transitions():
                 # too supercooled to nucleate, which is a claim about the physics; reaching
                 # here means only that no candidate below the current phase was viable, which
                 # on the 2HDM benchmark was a phase-overlap rejection and not supercooling.
+                # Which error this is depends on how far the solver got. Supercooling is a
+                # claim about the physics -- the rate never reached one bubble per Hubble
+                # volume -- and it can only be made if a nucleation solve was actually
+                # attempted. Where no candidate reached one, nothing was measured and the
+                # honest answer is that no phase pair was viable.
+                tail = (f"{offered} child phase(s) listed below phase {startPhase.key}, "
+                        f"{evaluated} evaluated as a candidate, {solver_failures} of those "
+                        "ended in a nucleation solve that did not succeed. A child is not "
+                        "evaluated at all when it duplicates one already offered or when the "
+                        "two phases do not overlap in temperature. Rerun with verbose=True to "
+                        f"see each phase pair and what became of it. {len(transitions)} "
+                        "transition(s) had already been found along the chain and are "
+                        "discarded with this error.")
+                if solver_failures == 0:
+                    raise errors.NoViablePhasePairError(
+                        "No pair of phases below the current one was a viable tunnelling "
+                        "candidate, so no nucleation calculation was attempted and nothing "
+                        "was measured about supercooling. " + tail)
                 raise errors.TooMuchSupercoolingError(
-                    f"No viable transition remained below phase {startPhase.key}: "
-                    f"{offered} child phase(s) listed, {evaluated} evaluated as a candidate, "
-                    f"{solver_failures} of those ended in a nucleation solve that did not "
-                    "succeed, and none was viable. A child is not evaluated at all when it "
-                    "duplicates one already offered or when the two phases do not overlap in "
-                    "temperature. So this may be supercooling, or a pair that does not overlap "
-                    "in the way a first-order transition needs, or a nucleation solve that "
-                    "failed numerically. Rerun with verbose=True to see each phase pair and "
-                    f"what became of it. {len(transitions)} transition(s) had already been "
-                    "found along the chain and are discarded with this error.")
+                    "No viable transition remained: every candidate that reached a nucleation "
+                    "solve failed it, which may be supercooling or a solve that failed "
+                    "numerically. " + tail)
 
             childTransitions = sorted(childTransitions, key=_transition_sort_temperature, reverse=True)
             # new start phase:

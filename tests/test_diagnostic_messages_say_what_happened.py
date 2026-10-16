@@ -24,6 +24,7 @@ import io
 import math
 import types
 import unittest
+from unittest import mock
 
 from transitionlistener import transitions
 from transitionlistener import transitionObservables as tobs
@@ -92,13 +93,14 @@ class SupercoolingErrorNamesItsReasonTests(unittest.TestCase):
             exc = node.exc
             name = (exc.attr if isinstance(exc, _ast.Attribute)
                     else exc.id if isinstance(exc, _ast.Name) else None)
-            if name == "TooMuchSupercoolingError":
+            if name in ("TooMuchSupercoolingError", "NoViablePhasePairError"):
                 bare.append(node.lineno)          # the class itself, no call
             elif isinstance(exc, _ast.Call):
                 fn = exc.func
                 fname = (fn.attr if isinstance(fn, _ast.Attribute)
                          else fn.id if isinstance(fn, _ast.Name) else None)
-                if fname == "TooMuchSupercoolingError" and not exc.args and not exc.keywords:
+                if (fname in ("TooMuchSupercoolingError", "NoViablePhasePairError")
+                        and not exc.args and not exc.keywords):
                     bare.append(node.lineno)
         self.assertEqual(bare, [],
                          f"raises at lines {bare} rely on the class default, which claims the "
@@ -222,25 +224,60 @@ class CyclicPhaseGraphTests(unittest.TestCase):
             return transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
 
     def test_the_error_says_how_many_transitions_it_discards(self):
-        with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+        with self.assertRaises(transitions.errors.NoViablePhasePairError) as caught:
             self._walk()
         message = " ".join(str(caught.exception).split())
         self.assertIn("2 transition(s) had already been found", message,
                       "the walk found two transitions before the cycle closed and must say so")
-        self.assertIn("1 child phase(s) listed, 1 evaluated as a candidate", message,
+        self.assertIn("1 child phase(s) listed below phase 0, 1 evaluated as a candidate",
+                      message,
                       "the message must say what was offered and what was actually tried")
         self.assertIn("0 of those ended in a nucleation solve that did not succeed", message,
                       "a candidate can also disappear because the solver failed, which is "
                       "neither a rejection nor an overlap problem")
-        self.assertIn("failed numerically", message,
-                      "the fixed-step path loses candidates to NucleationError, so a solver "
-                      "failure has to be among the causes offered")
-        self.assertIn("this may be supercooling, or", message,
-                      "the reason must stay hedged; this is not necessarily supercooling")
+        self.assertIn("nothing was measured about supercooling", message,
+                      "no candidate reached a nucleation solve, so this run cannot say "
+                      "anything about the rate either way")
         self.assertNotIn("every candidate was rejected", message,
                          "a child can be skipped without ever being evaluated: "
                          "getUniqueTunnelingPhases drops duplicates and the tmin >= tmax "
                          "branch skips a pair with no temperature overlap")
+
+    def test_a_failed_nucleation_solve_is_supercooling_not_an_unviable_pair(self):
+        """The discriminator between the two errors, which is the point of having two.
+
+        A pair that never reaches a nucleation solve says nothing about the rate, so it raises
+        `NoViablePhasePairError`, code 19. A pair that does reach one and fails it has had the
+        physics attempted: that is `TooMuchSupercoolingError`, code 8, and the message keeps
+        the hedge that the solve may also have failed numerically.
+
+        Driven on the fixed-step path, where `computeNucleationTemperature` is what raises
+        `NucleationError` and the candidate is dropped.
+        """
+        phases = _Phases({
+            "1": self._phase("1", 615.5, 50.0, ["0"], 3.0),
+            "0": self._phase("0", 200.0, 0.0, [], 1.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), dV=None, d2V=None,
+            conversionFactor=1.0, tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="fixed_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+
+        def failing_solve(*a, **k):
+            raise transitions.errors.NucleationError("no finite nucleation criterion")
+
+        with mock.patch.object(transitions, "computeNucleationTemperature", failing_solve):
+            with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        message = " ".join(str(caught.exception).split())
+        self.assertEqual(caught.exception.errorcode, 8)
+        self.assertIn("1 of those ended in a nucleation solve that did not succeed", message)
+        self.assertIn("failed numerically", message,
+                      "the solve was attempted, so a numerical failure is a live possibility")
+        self.assertNotIsInstance(caught.exception, transitions.errors.NoViablePhasePairError)
 
     def test_a_child_skipped_without_evaluation_is_counted_as_such(self):
         """The case that made "every candidate was rejected" false.
@@ -263,20 +300,30 @@ class CyclicPhaseGraphTests(unittest.TestCase):
             getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
         stub.seedlessFirstOrderCandidate = (
             transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
-        with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+        with self.assertRaises(transitions.errors.NoViablePhasePairError) as caught:
             with contextlib.redirect_stdout(io.StringIO()):
                 transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
         message = " ".join(str(caught.exception).split())
-        self.assertIn("1 child phase(s) listed, 0 evaluated as a candidate", message,
+        self.assertIn("1 child phase(s) listed below phase 1, 0 evaluated as a candidate",
+                      message,
                       "the pair has no temperature overlap, so nothing was evaluated")
         self.assertNotIn("every candidate was rejected", message)
 
     def test_the_error_does_not_claim_supercooling_on_its_own(self):
-        """The class default claims one bubble per Hubble volume was never reached."""
-        with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+        """Not merely a better message: a different error, carrying CLI code 19.
+
+        Supercooling is a claim about the physics, that the rate never reached one bubble per
+        Hubble volume. It can only be made where a nucleation solve was attempted. These
+        phases never produced a candidate, so nothing about the rate was measured.
+        """
+        with self.assertRaises(transitions.errors.NoViablePhasePairError) as caught:
             self._walk()
         self.assertNotIn("until today", str(caught.exception),
                          "the class default is a claim about the physics, not about this walk")
+        self.assertEqual(caught.exception.errorcode, 19)
+        self.assertNotIsInstance(caught.exception, transitions.errors.TooMuchSupercoolingError,
+                                 "no nucleation solve was attempted, so supercooling is not "
+                                 "something this run can report")
 
 
 if __name__ == "__main__":

@@ -328,6 +328,34 @@ class TooMuchSupercoolingError(Exception):
         self.errorcode = 8
 
 
+class NoViablePhasePairError(Exception):
+    """Raised when no phase pair below the current phase was ever a tunnelling candidate.
+
+    Distinct from `TooMuchSupercoolingError`, which is a statement about the physics: that the
+    rate never reached one bubble per Hubble volume. This one says the solver never got far
+    enough to make that statement, because no pair of phases was viable to begin with. The two
+    are told apart by whether any candidate reached a nucleation solve: a pair refused on its
+    phase geometry leaves the action cache untouched, while genuine supercooling fills it and
+    still finds no percolation. On the 2HDM benchmark the two cases differed by 1 finite
+    action-cache entry against 80 in the percolation window.
+
+    Reasons a pair is never a candidate: the two phases do not overlap in temperature, the
+    starting phase does not exist up to a high enough temperature, or the children offered were
+    all duplicates of one another.
+    """
+
+    def __init__(
+        self,
+        message=(
+            "No pair of phases below the current one was a viable tunnelling candidate, so "
+            "no nucleation calculation was attempted."
+        ),
+    ):
+        """Attach the CLI error code identifying a transition with no viable phase pair."""
+        super().__init__(message)
+        self.errorcode = 19
+
+
 class OnlySecondOrderTransitionsError(Exception):
     """Raised when the scan identifies only second-order transitions."""
 

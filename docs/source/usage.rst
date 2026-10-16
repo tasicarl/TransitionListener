@@ -159,6 +159,17 @@ The most important controls are:
   is substituted; set ``sound_speed`` to ``"1/3"`` or to a number to run such a
   point anyway. A phase that has simply frozen out, where the ratio is zero over
   zero or negative, is still reported as ``nan`` and is not an error.
+- CLI error codes 8 and 19 both mean no transition was found, and they say different
+  things. Code 8, too much supercooling, is a statement about the physics: a nucleation
+  calculation was attempted and the rate never reached one bubble per Hubble volume. Code
+  19, no viable phase pair, says the solver never got that far, because no pair of phases
+  below the current one was a tunnelling candidate at all: they do not overlap in
+  temperature, the starting phase does not exist up to a high enough temperature, or the
+  children offered were duplicates of one another. Nothing about the rate was measured, so
+  nothing about supercooling is being claimed. Both messages report how many child phases
+  were listed, how many were evaluated as candidates, and how many ended in a nucleation
+  solve that did not succeed; run with ``verbose=True`` to see each phase pair.
+
 - ``WARNING:noisy_c_s`` and ``DIAG:c_s_step_change``: whether the computed sound
   speed survives a change of the derivative step. A value can be round-off and
   still lie between zero and one, so no test on the value itself finds it; the
