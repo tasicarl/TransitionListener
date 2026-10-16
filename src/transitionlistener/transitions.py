@@ -187,11 +187,8 @@ class Transitions():
         """Find all the possible transitions between coexisting phases
         by computing the nucleation temperatures.
 
-        Parameters
-        ----------
-        phases : list[PhaseInfo]
-        V : func
-        dV : func
+        The phases and the potential are taken from the instance, as
+        ``self.phases``, ``self.V`` and ``self.dV``; this method takes no arguments.
 
         Returns
         -------

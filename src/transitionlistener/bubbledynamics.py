@@ -3900,12 +3900,12 @@ def calcTf(Tperc, Tlow, Pint, pot, verbose=False):
     Tlow : float
         Lowest temperature considered in the percolation computation. At this temperature, the true vacuum
         fraction Pint is >= f_final ~ 0.99. The final temperature must thus be <= Tlow.
-    phase_sym : scipy.interpolate.interp1d object
-        The symmetric phase
-    Sint : scipy.interpolate.interp1d object
-        The action
     Pint : scipy.interpolate.interp1d object
         The true vacuum fraction.
+    pot : generic_potential
+        The effective potential. Only ``pot.config.percolationConf.f_final`` is read.
+    verbose : bool
+        Print the bracketing of the final temperature as it is found.
     Returns
     ----------
     Tf : float

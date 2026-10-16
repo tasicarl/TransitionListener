@@ -2150,8 +2150,6 @@ def calcMeanBubbleSeparation(T, Tmax, Sint, Pint, Hint):
         Symmetric phase temperature
     Tmax : float
         Upper limit of the integral, usually the nucleation temperature
-    phase_sym : scipy.interpolate.interp1d object
-        The symmetric phase
     Sint : scipy.interpolate.interp1d object
         The action
     Pint : scipy.interpolate.interp1d object
@@ -2182,8 +2180,6 @@ def calcMeanBubbleSeparationwExp(T, Tmax, Sint, Pint, Hint, CSint, SFRint):
         Symmetric phase temperature
     Tmax : float
         Upper limit of the integral, usually the nucleation temperature
-    phase_sym : scipy.interpolate.interp1d object
-        The symmetric phase
     Sint : scipy.interpolate.interp1d object
         The action
     Pint : scipy.interpolate.interp1d object
@@ -2220,12 +2216,12 @@ def calcTf(Tperc, Tlow, Pint, pot, verbose=False):
     Tlow : float
         Lowest temperature considered in the percolation computation. At this temperature, the true vacuum
         fraction Pint is >= f_final ~ 0.99. The final temperature must thus be <= Tlow.
-    phase_sym : scipy.interpolate.interp1d object
-        The symmetric phase
-    Sint : scipy.interpolate.interp1d object
-        The action
     Pint : scipy.interpolate.interp1d object
         The true vacuum fraction.
+    pot : generic_potential
+        The effective potential. Only ``pot.config.percolationConf.f_final`` is read.
+    verbose : bool
+        Print the bracketing of the final temperature as it is found.
     Returns
     ----------
     Tf : float
@@ -2436,14 +2432,14 @@ def computeNucleationTemperature(V, dV, d2V, start_phase, end_phase,
 
     Parameters
     ----------
-    V, dV : callable
-        The potential V(x,T) and its gradient.
+    V, dV, d2V : callable
+        The potential V(x,T), its gradient and its Hessian.
     start_phase : PhaseInfo
         The metastable phase from which tunneling occurs.
-    end_phase : PhaesInfo
+    end_phase : PhaseInfo
         The destination phase.
-    Tmax : float
-        The highest temperature at which to try tunneling.
+    CF : float
+        Conversion factor from the solver's internal temperature units to GeV.
     Ttol : float, optional
         Tolerance for finding the nucleation temperature.
     maxiter : int, optional
@@ -2457,6 +2453,9 @@ def computeNucleationTemperature(V, dV, d2V, start_phase, end_phase,
         Function of the action *S* and temperature *T*. Should return 0 for the
         correct nucleation rate, > 0 for a low rate and < 0 for a high rate.
         Defaults to ``S/T - 140``.
+    approximate_strength_threshold : float, optional
+        Passed to :func:`checkNucleationPossibility`: a transition whose approximate strength
+        stays below this across the whole range is treated as second order.
     verbose : bool
         If true, print a message before each attempted tunneling.
     fullTunneling_params : dict
@@ -2678,12 +2677,32 @@ def checkNucleationPossibility(Tmin, Tmax, args, outdict, V, dV, start_phase,
 
     Parameters
     ----------
-    tr : TransitionInfo
-        The transition information
+    Tmin, Tmax : float
+        The temperature range searched, in the solver's internal units.
+    args : tuple
+        Forwarded unchanged to ``evalNucleationCriterion``.
+    outdict : dict
+        The action cache, keyed by temperature. Read at ``Tmax`` to recognise a transition
+        already identified as second order.
+    V : func
+        The effective potential, used for the approximate strength of the transition.
+    dV : func
+        Accepted for symmetry with the other nucleation entry points and not used here.
+    start_phase, end_phase : PhaseInfo
+        The phase tunnelled from and the phase tunnelled to.
+    conversionFactor : float
+        Internal temperature units to GeV, used only in the messages.
+    apprx_strength_thr : float
+        If the approximate strength stays below this over the whole range, the transition is
+        treated as second order.
+    verbose : bool
+        Print which of the two checks rejected the transition.
+
     Returns
     -------
-    tuple[bool, dict] :
-        (True, {}) if possible otherwise, (False, {returndict})."""
+    bool
+        True if tunnelling is possible, False if either check identifies a hidden second-order
+        transition."""
     # We want Tmax to be the highest temperature at which tunneling is theoretically
     # possible, i.e. where the potential difference between the two phases is at least
     # DVmin. Find the largest Tmax for which V(start_phase) > V(end_phase)

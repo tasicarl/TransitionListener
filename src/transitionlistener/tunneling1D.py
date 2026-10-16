@@ -238,14 +238,13 @@ class SingleFieldInstanton:
 
         Parameters
         ----------
-        V : function
-            Returns the potential at V(phi)
+        phimeta : float
+            The metastable minimum of the potential
         phi0 : float
             The field release point
-        phimeta : float
-            The meta stable minimum of the potential
-        ndim : int
-            Number of dimensions.
+
+        The potential and the number of dimensions are read off the instance, as
+        ``self.V`` and ``self.alpha``; neither is an argument.
     
         The analytic
         solution to the equation
