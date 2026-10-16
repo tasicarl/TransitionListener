@@ -37,13 +37,18 @@ SECTION_END = re.compile(
 # preparation rather than here, so that the two changes do not touch the same lines. The test
 # below fails once they are, which is the signal to empty this set rather than to grow it: a
 # ghost found later belongs in a fix, not in a waiver.
+# Keyed by path relative to the repository root, not by file name: three `__init__.py` files
+# already share a basename, so a name-only key would let a ghost in one file be waived by an
+# entry written for another.
 KNOWN = {
-    ("bubbledynamics.py", "g_eff_DS", "T"),
-    ("bubbledynamics.py", "h_eff_DS", "T"),
-    ("bubbledynamics_fixedstep.py", "g_eff_DS", "T"),
-    ("bubbledynamics_fixedstep.py", "h_eff_DS", "T"),
-    ("bubbledynamics_fixedstep.py", "calcMeanBubbleSeparationwExp", "SRFint"),
-    ("generic_potential.py", "makePrettyDictionaryPrint", "input_dict"),
+    ("src/transitionlistener/bubbledynamics.py", "g_eff_DS", "T"),
+    ("src/transitionlistener/bubbledynamics.py", "h_eff_DS", "T"),
+    ("src/transitionlistener/bubbledynamics_fixedstep.py", "g_eff_DS", "T"),
+    ("src/transitionlistener/bubbledynamics_fixedstep.py", "h_eff_DS", "T"),
+    ("src/transitionlistener/bubbledynamics_fixedstep.py",
+     "calcMeanBubbleSeparationwExp", "SRFint"),
+    ("src/transitionlistener/generic_potential.py",
+     "makePrettyDictionaryPrint", "input_dict"),
 }
 
 
@@ -99,7 +104,7 @@ def _ghosts():
             for m in re.finditer(r"^([A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*)\s*:", section, re.M):
                 for name in (x.strip() for x in m.group(1).split(",")):
                     if name not in sig and name not in ("self", "cls"):
-                        out.add((f.name, node.name, name))
+                        out.add((f.relative_to(root).as_posix(), node.name, name))
     return out
 
 
