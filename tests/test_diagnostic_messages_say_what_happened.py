@@ -287,9 +287,27 @@ class CyclicPhaseGraphTests(unittest.TestCase):
                     "low_vev": endPhase.valAt(120.0), "high_vev": startPhase.valAt(120.0),
                     "action": 140.0, "trantype": 1, "instanton": {}}
 
-        with mock.patch.object(transitions, "computeNucleationTemperature", fake_nucleation):
-            with contextlib.redirect_stdout(io.StringIO()):
-                found = transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        # Same deadline as the seedless cycle test: without the exit this walk follows the
+        # cycle and never returns, and a test that hangs reports nothing.
+        box = {}
+
+        def run():
+            try:
+                with mock.patch.object(transitions, "computeNucleationTemperature",
+                                       fake_nucleation):
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        box["found"] = transitions.Transitions.findTransitionPathFromTnuc(
+                            stub, verbose=False)
+            except BaseException as err:
+                box["error"] = err
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(20.0)
+        self.assertFalse(worker.is_alive(),
+                         "the fixed-step walk followed the cycle instead of stopping")
+        self.assertNotIn("error", box, f"unexpected error: {box.get('error')!r}")
+        found = box["found"]
         self.assertEqual(len(found), 1,
                          "the walk must stop at the zero-temperature phase, not follow the "
                          "cycle back to the root")
