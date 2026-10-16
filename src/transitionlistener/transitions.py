@@ -601,6 +601,11 @@ class Transitions():
         V = self.V
         startPhase = phases[phases.rootPhase]
         seedless = self.pot.config.percolationConf.algorithm_mode == "adaptive_step_size"
+        # Every phase the walk has stood on. A phase graph may contain a cycle -- measured on
+        # the 2HDM at lambda3 = 5.8888888889 and above, where the zero-temperature phase lists
+        # the high-temperature root phase among its children -- and a chain that returns to a
+        # phase it already left is not a sequence the universe can follow.
+        visited = []
 
         while True:
             # The chain is complete once it reaches the zero-temperature phase, whatever the
@@ -631,12 +636,15 @@ class Transitions():
 
             childTransitions = []
             # exclude equivalent tunnelings to mirror phases
-            # Counted BEFORE the call, and the call is given a copy. `getUniqueTunnelingPhases`
-            # consumes the list it is handed, `while childPhases != []: childPhases.pop()`, so
-            # passing `startPhase.childPhases` itself empties the phase's own child list. That
-            # made this count read zero every time, and it also leaves the phase looking
-            # childless to the `startPhase.childPhases == []` exit above if the walk ever
-            # returns to it, which a cyclic phase graph allows.
+            # Counted BEFORE the call. `getUniqueTunnelingPhases` consumes the list it is
+            # handed, `while childPhases != []: childPhases.pop()`, so after the call
+            # `startPhase.childPhases` is empty and counting it there reads zero every time.
+            #
+            # The helper is given a COPY here, so the phase keeps its children. That is only
+            # safe because of the explicit cycle guard below: the consumption used to stop
+            # this loop running forever on a cyclic graph, by leaving a revisited phase with
+            # an empty child list that took the `startPhase.childPhases == []` exit above.
+            # Relying on that was accidental, and it destroyed the graph as a side effect.
             offered = len(startPhase.childPhases)
             childPhases = self.getUniqueTunnelingPhases(
                 V, phases, startPhase.key, list(startPhase.childPhases))
@@ -756,7 +764,15 @@ class Transitions():
 
             childTransitions = sorted(childTransitions, key=_transition_sort_temperature, reverse=True)
             # new start phase:
+            visited.append(startPhase.key)
             startPhase = phases[childTransitions[0].low_phase]
+            if startPhase.key in visited:
+                raise errors.WrongT0MinimumError(
+                    f"The transition chain returns to phase {startPhase.key}, which it has "
+                    f"already left: {' -> '.join(visited)} -> {startPhase.key}. The phase "
+                    "graph contains a cycle, so the chain cannot reach the zero-temperature "
+                    f"minimum ({self.phases.T0Phase}). {len(transitions)} transition(s) were "
+                    "found before the cycle closed.")
             transitions.append(childTransitions[0])
 
         for i, tr in enumerate(transitions):
