@@ -605,9 +605,17 @@ def _try_dynamiczoomwindow_completed_refinement(
     # `WARNING:accuracy_targets_missed` beside the three `DIAG:accuracy_*_uncertainty`
     # columns. False here means "not certified": either a target was missed, or there was no
     # comparable second estimate, and a single estimate cannot certify anything.
-    estimate["targets_met"] = bool(
-        previous_estimate is not None
-        and _dynamiczoomwindow_accuracy_reached(estimate, settings)
+    # Only claim a target was missed when there was something to miss it against. Without a
+    # previous estimate nothing is certified either way, and reporting that as "missed" made
+    # the warning fire on every point of every scan: 127 of 127 resolved couplings of the 2HDM
+    # broad arm, 36 of 36 of its edge arm, and the shipped example point. A column that says
+    # the same thing about every point distinguishes none of them. The three
+    # DIAG:accuracy_*_uncertainty values still carry what happened, and an infinite RH
+    # uncertainty still says it was not certified.
+    estimate["targets_met"] = (
+        bool(_dynamiczoomwindow_accuracy_reached(estimate, settings))
+        if previous_estimate is not None
+        else None
     )
     return False, estimate
 

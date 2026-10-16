@@ -58,10 +58,24 @@ class AccuracyVerdictProducerTests(unittest.TestCase):
         _retry, est = _call(_estimate(0.276), previous=_estimate(0.276))
         self.assertIs(est["targets_met"], False)
 
-    def test_verdict_is_false_without_a_comparable_previous_estimate(self):
-        """One sample carries no information about its own convergence."""
+    def test_verdict_is_undecided_without_a_comparable_previous_estimate(self):
+        """One sample carries no information about its own convergence, so the verdict is
+        None rather than False.
+
+        This test asserted False until 2026-10-16. False makes the warning fire, and because
+        the controller usually accepts on its first estimate the warning fired on every point
+        of every scan: 127 of 127 resolved couplings of the 2HDM broad arm, 36 of 36 of its
+        edge arm, and the shipped example point. A column that says the same about every point
+        separates none of them.
+
+        None does not weaken the guard that this field exists for. The target is still not
+        certified, `DIAG:accuracy_rh_uncertainty` is still infinite and says so, and
+        `targets_met` is still never True without a comparison. What changed is only that
+        "could not be certified" stopped being reported as "was measured and missed"."""
         _retry, est = _call(_estimate(1e-3), previous=None)
-        self.assertIs(est["targets_met"], False)
+        self.assertIsNone(est["targets_met"])
+        self.assertNotEqual(est["targets_met"], True,
+                            "never certified without something to certify against")
 
     def test_the_verdict_does_not_gate_acceptance(self):
         """Both exits accept. Pinned so a future change cannot quietly make it binding."""
