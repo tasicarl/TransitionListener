@@ -909,7 +909,8 @@ class TransitionObservables:
                 })
                 # The accuracy verdict. `accuracy_targets_met` is tri-state: True where all
                 # three targets were measured and met, False where a measured uncertainty
-                # exceeded its target, and None where everything measurable was met and RH
+                # exceeded its target OR a required observable -- Tperc, Tf or RH -- could not
+                # be determined at all, and None where everything measurable was met and RH
                 # was never measured. The three DIAG:accuracy_*_uncertainty columns tell the
                 # None cases apart: all nan for the fixed-step backend and the adaptive
                 # controller's "limit" exit, which form no verdict at all, and a finite Tperc

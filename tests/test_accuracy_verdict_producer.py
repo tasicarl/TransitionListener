@@ -91,10 +91,21 @@ class AccuracyVerdictProducerTests(unittest.TestCase):
         _retry, est = _call(_estimate(math.inf, tperc_unc=0.048), previous=None)
         self.assertIs(est["targets_met"], False)
 
-    def test_an_rh_that_could_not_be_determined_is_missed_not_undecided(self):
-        """An absent value is not an absent reference."""
-        _retry, est = _call(_estimate(math.inf, rh=math.nan), previous=None)
-        self.assertIs(est["targets_met"], False)
+    def test_a_required_observable_that_is_absent_is_missed_not_undecided(self):
+        """An absent value is not an absent reference, for any of the three.
+
+        `None` is reserved for "`acc_rh` could not be judged". A `Tperc`, `Tf` or `RH` that
+        came back non-finite is a different matter: nothing about that profile was determined,
+        so it is reported as missed. Only `RH` was covered here until the review pointed out
+        that the documented meaning of `False` left this case out.
+        """
+        for observable in ("Tperc", "Tf", "RH"):
+            with self.subTest(observable=observable):
+                est = _estimate(math.inf)
+                est[observable] = math.nan
+                _retry, out = _call(est, previous=None)
+                self.assertIs(out["targets_met"], False,
+                              f"a non-finite {observable} is a missed target, not undecided")
 
     def test_the_two_verdict_functions_agree_where_rh_was_measured(self):
         """`_dynamiczoomwindow_accuracy_verdict` must not drift from its sibling.

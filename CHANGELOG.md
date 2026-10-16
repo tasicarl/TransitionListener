@@ -14,10 +14,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   whether the accepted percolation profile met `acc_tperc`, `acc_tfinal` and `acc_rh`. Those
   targets are advisory -- the controller accepts either way -- so this is the only record of
   whether they were honoured; a profile whose `RH` missed its 1% target was previously
-  indistinguishable from one that met it, with a 90th-percentile spread of 27.6%. The warning
-  false with finite uncertainties means the targets were met; true means they could not be
-  certified, which covers a target genuinely missed as well as a profile accepted with no
-  comparable second estimate to measure convergence against; false with `nan` means no verdict
+  indistinguishable from one that met it, with a 90th-percentile spread of 27.6%. The warning is
+  raised only where an uncertainty was measured and exceeded its target, or a required
+  observable could not be determined at all. False with finite uncertainties means every target
+  that could be measured was met, including the common case where `acc_rh` could not be judged
+  because no second estimate of the mean bubble separation existed to difference against, which
+  `DIAG:accuracy_rh_uncertainty` reports as `inf`; false with `nan` means no verdict
   was formed at all, which is the fixed step size backend and the adaptive controller's
   iteration-limit exit. `WARNING:v_wall_no_solution` fires where `find_vw` returns exactly
   0, which is a verdict that no wall solution exists but which zeroes every kinetic energy
