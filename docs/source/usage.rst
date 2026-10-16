@@ -160,9 +160,11 @@ The most important controls are:
   point anyway. A phase that has simply frozen out, where the ratio is zero over
   zero or negative, is still reported as ``nan`` and is not an error.
 - CLI error codes 8 and 19 both mean no transition was found, and they say different
-  things. Code 8, too much supercooling, is a statement about the physics: a nucleation
-  calculation was attempted and the rate never reached one bubble per Hubble volume. Code
-  19, no viable phase pair, says the solver never got that far, because no pair of phases
+  things. Code 8 means a candidate did reach the nucleation solver and the solve did not
+  succeed. That may be because the transition is too supercooled to nucleate one bubble per
+  Hubble volume, or because the solve failed numerically; the error does not distinguish
+  them, and its message says so. Code
+  19, no viable phase pair, says the solver was never reached, because no pair of phases
   below the current one was a tunnelling candidate at all: they do not overlap in
   temperature, the starting phase does not exist up to a high enough temperature, or the
   children offered were duplicates of one another. Nothing about the rate was measured, so
