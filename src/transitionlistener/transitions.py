@@ -612,12 +612,18 @@ class Transitions():
 
             childTransitions = []
             # exclude equivalent tunnelings to mirror phases
-            childPhases = self.getUniqueTunnelingPhases(V, phases, startPhase.key, startPhase.childPhases)
-            # Counted so the error below can say what actually happened. Not every child
-            # becomes a candidate: `getUniqueTunnelingPhases` drops children equivalent to one
-            # already offered, and the `tmin >= tmax` branch skips a pair with no overlap
-            # without ever evaluating it.
+            # Counted BEFORE the call, and the call is given a copy. `getUniqueTunnelingPhases`
+            # consumes the list it is handed, `while childPhases != []: childPhases.pop()`, so
+            # passing `startPhase.childPhases` itself empties the phase's own child list. That
+            # made this count read zero every time, and it also leaves the phase looking
+            # childless to the `startPhase.childPhases == []` exit above if the walk ever
+            # returns to it, which a cyclic phase graph allows.
             offered = len(startPhase.childPhases)
+            childPhases = self.getUniqueTunnelingPhases(
+                V, phases, startPhase.key, list(startPhase.childPhases))
+            # Not every child becomes a candidate: `getUniqueTunnelingPhases` drops children
+            # equivalent to one already offered, and the `tmin >= tmax` branch skips a pair
+            # with no overlap without ever evaluating it.
             evaluated = 0
             solver_failures = 0
             for i in childPhases:
@@ -790,8 +796,10 @@ class Transitions():
             if verbose:
                 print(
                     "Skipping seedless candidate because the starting phase is "
-                    "higher at Tmax and does not exist to as high a temperature "
-                    "as the target phase, so there is no window to tunnel from."
+                    "higher at Tmax and does not exist to a higher temperature "
+                    "than the target phase, so there is no window to tunnel from. "
+                    "The test is Tmax(start) <= Tmax(target), so this also covers the two "
+                    "ending at the same temperature."
                 )
             return None
 
