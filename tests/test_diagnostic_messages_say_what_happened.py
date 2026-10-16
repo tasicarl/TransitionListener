@@ -170,6 +170,12 @@ class ChildPhaseListIsNotConsumedTests(unittest.TestCase):
         message = " ".join(str(caught.exception).split())
         self.assertIn("1 child phase(s) listed below phase 1", message,
                       "the count is taken before the call, so it is not zero")
+        # Spelled out because it is easy to misread this fixture as one where the pair is
+        # accepted and the new zero-temperature exit then fires. It is not: phase 1 exists only
+        # above 300 GeV and phase 0 only below 200, so they never coexist, the `tmin >= tmax`
+        # branch skips the pair without evaluating it, and the walk never reaches phase 0.
+        self.assertIn("0 evaluated as a candidate", message,
+                      "no overlap, so the pair is skipped rather than rejected or accepted")
 
 
 class SeedlessSkipMessageTests(unittest.TestCase):
