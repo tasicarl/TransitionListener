@@ -243,8 +243,10 @@ class SingleFieldInstanton:
         phi0 : float
             The field release point
 
-        The potential and the number of dimensions are read off the instance, as
-        ``self.V`` and ``self.alpha``; neither is an argument.
+        The potential and the friction coefficient are read off the instance, as ``self.V``
+        and ``self.alpha``; neither is an argument. ``self.alpha`` is the coefficient of the
+        friction term in the bounce equation, which is the number of spacetime dimensions
+        minus one, not the number of dimensions itself.
     
         The analytic
         solution to the equation

@@ -3905,7 +3905,8 @@ def calcTf(Tperc, Tlow, Pint, pot, verbose=False):
     pot : generic_potential
         The effective potential. Only ``pot.config.percolationConf.f_final`` is read.
     verbose : bool
-        Print the bracketing of the final temperature as it is found.
+        Print the error message if the solve for the final temperature fails, just before
+        :class:`PercolationError` is raised. Nothing is printed on success.
     Returns
     ----------
     Tf : float

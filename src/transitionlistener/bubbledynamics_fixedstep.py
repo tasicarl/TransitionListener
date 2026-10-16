@@ -2221,7 +2221,8 @@ def calcTf(Tperc, Tlow, Pint, pot, verbose=False):
     pot : generic_potential
         The effective potential. Only ``pot.config.percolationConf.f_final`` is read.
     verbose : bool
-        Print the bracketing of the final temperature as it is found.
+        Print the error message if the solve for the final temperature fails, just before
+        :class:`PercolationError` is raised. Nothing is printed on success.
     Returns
     ----------
     Tf : float
@@ -2672,7 +2673,7 @@ def computeNucleationTemperature(V, dV, d2V, start_phase, end_phase,
 
 def checkNucleationPossibility(Tmin, Tmax, args, outdict, V, dV, start_phase,
                                end_phase, conversionFactor, apprx_strength_thr,
-                               verbose) -> tuple[bool, dict]:
+                               verbose) -> bool:
     """Do some checks to see if tunneling is possible.
 
     Parameters

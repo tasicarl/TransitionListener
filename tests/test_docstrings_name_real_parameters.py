@@ -1,12 +1,15 @@
 """No docstring may list a parameter its function does not take.
 
-Ten functions did. Most were arguments that had been renamed while the documentation was not:
+Eleven docstrings did. Measured on the base commit, 16 functions carried at least one such
+parameter; this corrects 11 docstrings and leaves 6 functions with one, each of them pinned in
+KNOWN below. Most were arguments that had been renamed while the documentation was not:
 `calcTf` documented `phase_sym` and `Sint` and took neither, `energyDensity` documented `pot`
 and is a method of it, `findAllTransitions` documented three arguments and takes only `self`.
 Two were worse than stale. `checkNucleationPossibility` documented one argument it does not
-take and none of the eleven it does, and promised a `tuple[bool, dict]` while every `return` in
-it is a bare bool. `deformPath` documented `maxstep`, which belongs to `step`, instead of
-`minstep`, which it actually takes.
+take and none of the eleven it does, and both its docstring and its signature promised a
+`tuple[bool, dict]` while every `return` in it is a bare bool. `deformPath` documented
+`maxstep`, which belongs to `Deformation_Spline.step`, a different class, instead of `minstep`,
+which it actually takes; the method it calls has no upper bound at all.
 
 This test is the guard. It walks every function in `src/` and `models/` and compares the
 Parameters block against the signature. KNOWN is the set still outstanding, each of which is
@@ -22,7 +25,12 @@ import re
 import unittest
 from pathlib import Path
 
-SECTION_END = ("Returns", "Raises", "Yields", "Notes", "Examples", "See Also")
+# Anchored to a line of its own. Splitting on the bare word truncates the Parameters block at
+# the first description that happens to contain it, and the rest of the block then goes
+# unchecked: on the base commit that hid `tunneling1D.findRscaleNew` documenting `ndim` behind
+# "Returns the potential at V(phi)" in its `V` entry, 21 findings instead of 22.
+SECTION_END = re.compile(
+    r"^(?:Returns|Raises|Yields|Notes|Examples|See Also)\s*:?\s*$", re.M)
 
 # (file, function, documented name) still outstanding; fixed on chore/release-v2.2 (2767339)
 KNOWN = {
@@ -55,9 +63,7 @@ def _ghosts():
                 sig.add(a.vararg.arg)
             if a.kwarg:
                 sig.add(a.kwarg.arg)
-            section = doc.split("Parameters", 1)[1]
-            for stop in SECTION_END:
-                section = section.split(stop, 1)[0]
+            section = SECTION_END.split(doc.split("Parameters", 1)[1], maxsplit=1)[0]
             # "X : type" and "startstep, minstep : type" are both parameter headers; a
             # continuation line starting "word:" inside a description is not, which is why
             # the match is anchored at the start of the line with no leading whitespace left
