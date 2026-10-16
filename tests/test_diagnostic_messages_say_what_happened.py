@@ -25,6 +25,7 @@ import math
 import threading
 import types
 import unittest
+from unittest import mock
 
 from transitionlistener import transitions
 from transitionlistener import transitionObservables as tobs
@@ -230,6 +231,69 @@ class CyclicPhaseGraphTests(unittest.TestCase):
                          "the two transitions found before the cycle closed must be returned")
         self.assertEqual([t.high_phase for t in found], ["1", "2"])
         self.assertEqual([t.low_phase for t in found], ["2", "0"])
+
+    def test_a_child_skipped_without_evaluation_is_counted_as_such(self):
+        """The case that made "every candidate was rejected" false.
+
+        A child phase is never turned into a candidate when the two phases do not overlap in
+        temperature: the `tmin >= tmax` branch skips it without calling
+        `seedlessFirstOrderCandidate`, so nothing is rejected and verbose mode shows no
+        rejection either. `getUniqueTunnelingPhases` dropping a duplicate child has the same
+        effect. The message must not claim a rejection that never happened.
+        """
+        phases = _Phases({
+            "1": self._phase("1", 615.5, 300.0, ["0"], 2.0),   # exists only above 300
+            "0": self._phase("0", 200.0, 0.0, [], 1.0),        # exists only below 200
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+        with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+            with contextlib.redirect_stdout(io.StringIO()):
+                transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        message = " ".join(str(caught.exception).split())
+        self.assertIn("1 child phase(s) listed, 0 evaluated as a candidate", message,
+                      "the pair has no temperature overlap, so nothing was evaluated")
+        self.assertNotIn("every candidate was rejected", message)
+
+    def test_the_chain_also_ends_at_the_zero_temperature_phase_in_fixed_step_mode(self):
+        """The exit is before the seedless branch, so it must hold for the other backend too.
+
+        With `algorithm_mode` anything other than `"adaptive_step_size"`, `seedless` is False
+        and candidates go through `computeNucleationTemperature` instead of
+        `seedlessFirstOrderCandidate`. The walk is shared -- there is no `_fixedstep` twin of
+        `findTransitionPathFromTnuc` -- but every other test here drives only the seedless
+        path, so this one pins that the chain still ends rather than following the cycle.
+        """
+        phases = _Phases({
+            "1": self._phase("1", 615.5, 50.0, ["0"], 3.0),
+            "0": self._phase("0", 200.0, 0.0, ["1"], 1.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), dV=None, d2V=None,
+            conversionFactor=1.0, tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="fixed_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+
+        def fake_nucleation(V, dV, d2V, startPhase, endPhase, CF, **kwargs):
+            return {"Tcrit": 150.0, "Tnuc": 120.0,
+                    "low_phase": endPhase.key, "high_phase": startPhase.key,
+                    "low_vev": endPhase.valAt(120.0), "high_vev": startPhase.valAt(120.0),
+                    "action": 140.0, "trantype": 1, "instanton": {}}
+
+        with mock.patch.object(transitions, "computeNucleationTemperature", fake_nucleation):
+            with contextlib.redirect_stdout(io.StringIO()):
+                found = transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        self.assertEqual(len(found), 1,
+                         "the walk must stop at the zero-temperature phase, not follow the "
+                         "cycle back to the root")
+        self.assertEqual(found[0].low_phase, "0")
 
     def test_the_chain_stops_even_when_the_closing_edge_would_be_accepted(self):
         """The reason the exit is tested before the children are enumerated.
