@@ -76,8 +76,6 @@ class AccuracyVerdictProducerTests(unittest.TestCase):
         measured" stopped being reported as "measured and missed"."""
         _retry, est = _call(_estimate(math.inf), previous=None)
         self.assertIsNone(est["targets_met"])
-        self.assertNotEqual(est["targets_met"], True,
-                            "never certified without something to certify against")
 
     def test_a_measured_miss_is_still_false_without_a_previous_estimate(self):
         """The case a blanket None would have thrown away.
@@ -97,6 +95,90 @@ class AccuracyVerdictProducerTests(unittest.TestCase):
         """An absent value is not an absent reference."""
         _retry, est = _call(_estimate(math.inf, rh=math.nan), previous=None)
         self.assertIs(est["targets_met"], False)
+
+    def test_the_two_verdict_functions_agree_where_rh_was_measured(self):
+        """`_dynamiczoomwindow_accuracy_verdict` must not drift from its sibling.
+
+        `_dynamiczoomwindow_accuracy_reached` decides whether the controller may stop
+        refining and reads the same three settings a few lines above. The two are allowed to
+        differ in exactly one place, an infinite `RH_uncertainty`, so everywhere else they
+        have to give the same answer; a threshold edited in one copy only shows up here.
+
+        This also covers the verdict's True return, which no other test reaches: the
+        all-targets-met case returns True from the `reached` branch in the caller before the
+        verdict is ever called.
+        """
+        from transitionlistener import percolation_adaptivestepsize as ad
+        from transitionlistener import config
+        settings = config.PercolationConf()
+        settings.acc_tperc = settings.acc_tfinal = settings.acc_rh = 1e-2
+        for tperc_unc, tf_unc, rh_unc in (
+            (1e-3, 1e-3, 1e-3),      # all met
+            (1e-3, 1e-3, 2e-2),      # RH missed
+            (2e-2, 1e-3, 1e-3),      # Tperc missed
+            (1e-3, 2e-2, 1e-3),      # Tf missed
+            (1e-2, 1e-2, 1e-2),      # all exactly on target
+        ):
+            with self.subTest(tperc=tperc_unc, tf=tf_unc, rh=rh_unc):
+                est = _estimate(rh_unc, tf_unc=tf_unc, tperc_unc=tperc_unc)
+                verdict = ad._dynamiczoomwindow_accuracy_verdict(est, settings)
+                reached = ad._dynamiczoomwindow_accuracy_reached(est, settings)
+                self.assertIs(verdict, bool(reached))
+        # and the True return really is exercised above
+        self.assertIs(
+            ad._dynamiczoomwindow_accuracy_verdict(_estimate(1e-3), settings), True)
+
+    def test_a_single_profile_measures_tperc_and_tf_but_not_rh(self):
+        """The claim the whole asymmetry rests on, taken from the real estimator.
+
+        Every other test here stubs `_estimate_dynamiczoomwindow_accuracy`, so nothing
+        checked that a lone profile really does measure Tperc and Tf. It does, through the
+        bracket-width fallback, and the references below are the linearised crossing and the
+        sample spacing of the grid this test writes down, not values read off a previous run.
+        RH has no such fallback, which is why an infinite `RH_uncertainty` must not be read
+        as a miss: `_dynamiczoomwindow_accuracy_reached` is False on this estimate however
+        loose the targets are, while the verdict is None.
+        """
+        import types
+        from transitionlistener import percolation_adaptivestepsize as ad
+        from transitionlistener import config
+        settings = config.PercolationConf()
+        pot = types.SimpleNamespace(config=types.SimpleNamespace(
+            percolationConf=types.SimpleNamespace(f_final=settings.f_final)))
+
+        temperatures = np.array([100.0, 90.0, 80.0, 70.0, 60.0, 50.0, 40.0, 30.0])
+        probabilities = np.array([0.0, 0.05, 0.20, 0.40, 0.70, 0.90, 0.98, 0.995])
+        spacing = 10.0
+        self.assertTrue(0.20 < settings.f_perc < 0.40,
+                        "the grid brackets f_perc between its third and fourth sample")
+        self.assertTrue(0.98 < settings.f_final < 0.995,
+                        "the grid brackets f_final between its seventh and eighth sample")
+
+        est = ad._estimate_dynamiczoomwindow_accuracy(
+            temperatures, np.full(temperatures.size, 1e-16), probabilities,
+            np.linspace(150.0, 120.0, temperatures.size), settings, pot, previous=None)
+
+        expected_Tperc = 80.0 + (settings.f_perc - 0.20) / (0.40 - 0.20) * (70.0 - 80.0)
+        self.assertAlmostEqual(est["Tperc"], expected_Tperc, places=10)
+        self.assertAlmostEqual(est["Tperc_uncertainty"], spacing / expected_Tperc, places=12)
+
+        # Tf is solved on the interpolant rather than linearised, so it is pinned to its
+        # bracket and to the relation the fallback asserts, not to a number.
+        self.assertTrue(30.0 <= est["Tf"] <= 40.0, est["Tf"])
+        self.assertAlmostEqual(est["Tf_uncertainty"] * est["Tf"], spacing, places=10)
+
+        self.assertTrue(np.isfinite(est["RH"]), "RH itself was determined")
+        self.assertEqual(est["RH_uncertainty"], math.inf,
+                         "RH has no bracket measure, so one profile cannot bound it")
+
+        loose = types.SimpleNamespace(acc_tperc=1.0, acc_tfinal=1.0, acc_rh=1.0)
+        self.assertFalse(ad._dynamiczoomwindow_accuracy_reached(est, loose),
+                         "the conjunction is false on any single profile, which is what made "
+                         "the warning fire everywhere")
+        self.assertIsNone(ad._dynamiczoomwindow_accuracy_verdict(est, loose))
+        self.assertIs(ad._dynamiczoomwindow_accuracy_verdict(est, settings), False,
+                      "against the 1% defaults this profile is a measured miss on both Tperc "
+                      "and Tf, and must stay one")
 
     def test_the_verdict_does_not_gate_acceptance(self):
         """Both exits accept. Pinned so a future change cannot quietly make it binding."""

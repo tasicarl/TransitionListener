@@ -363,6 +363,17 @@ def _dynamiczoomwindow_accuracy_verdict(
 
     An RH that could not be determined at all is a different matter and counts as missed,
     because the value is absent rather than its reference.
+
+    Relation to `_dynamiczoomwindow_accuracy_reached`, which reads the same three settings a
+    few lines above: that one answers whether the controller may stop refining and so has to
+    be the strict conjunction, and this one only reports. They agree wherever RH was measured,
+    `True` here exactly when `reached` is True, and differ only in that this function returns
+    None instead of False where `RH_uncertainty` is infinite. Keep the two thresholds in step;
+    `test_accuracy_verdict_producer.py` pins the agreement. The True return is not reachable
+    through today's caller: with a previous estimate the caller has already returned True from
+    the `reached` branch above, and without one `_estimate_dynamiczoomwindow_accuracy` leaves
+    `RH_uncertainty` infinite, so the verdict is None. It is written out in full because the
+    separate change that gives RH a second estimate on the accepted profile makes it live.
     """
     for observable in ("Tperc", "Tf", "RH"):
         if not np.isfinite(float(estimate[observable])):
@@ -632,8 +643,8 @@ def _try_dynamiczoomwindow_completed_refinement(
     # to better than 1%. The verdict is carried on `PercolationState.accuracy_estimate`,
     # reported by `PercolationDiagnostics`, and written to the scan table as
     # `WARNING:accuracy_targets_missed` beside the three `DIAG:accuracy_*_uncertainty`
-    # columns. False here means "not certified": either a target was missed, or there was no
-    # comparable second estimate, and a single estimate cannot certify anything.
+    # columns. False here means a target was measured and missed; None means everything
+    # measurable was met and RH was not measured. Neither True nor None is a certificate.
     # Only claim a target was missed where the miss was measured. Reporting "not certified"
     # as "missed" made the warning fire on every point of every scan: 127 of 127 resolved
     # couplings of the 2HDM broad arm, 36 of 36 of its edge arm, and the shipped example
