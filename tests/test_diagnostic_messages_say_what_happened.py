@@ -27,6 +27,9 @@ import types
 import unittest
 from unittest import mock
 
+import numpy as np
+from unittest import mock
+
 from transitionlistener import transitions
 from transitionlistener import transitionObservables as tobs
 from transitionlistener import transitionObservables_fixedstep as tobs_fixed
@@ -94,17 +97,79 @@ class SupercoolingErrorNamesItsReasonTests(unittest.TestCase):
             exc = node.exc
             name = (exc.attr if isinstance(exc, _ast.Attribute)
                     else exc.id if isinstance(exc, _ast.Name) else None)
-            if name == "TooMuchSupercoolingError":
+            if name in ("TooMuchSupercoolingError", "NoViablePhasePairError"):
                 bare.append(node.lineno)          # the class itself, no call
             elif isinstance(exc, _ast.Call):
                 fn = exc.func
                 fname = (fn.attr if isinstance(fn, _ast.Attribute)
                          else fn.id if isinstance(fn, _ast.Name) else None)
-                if fname == "TooMuchSupercoolingError" and not exc.args and not exc.keywords:
+                if (fname in ("TooMuchSupercoolingError", "NoViablePhasePairError")
+                        and not exc.args and not exc.keywords):
                     bare.append(node.lineno)
         self.assertEqual(bare, [],
                          f"raises at lines {bare} rely on the class default, which claims the "
                          "transition is too supercooled to nucleate")
+
+
+class ChildPhaseListIsNotConsumedTests(unittest.TestCase):
+    """The walk must not destroy the phase graph while counting it.
+
+    `getUniqueTunnelingPhases` empties the list it is given: its loop is
+    `while childPhases != []: p1 = childPhases.pop()`. The walk used to hand it
+    `startPhase.childPhases` itself, so the phase's own child list came back empty. Two
+    consequences, both silent: the `offered` count read zero, and a phase revisited by a cyclic
+    graph looked childless to the `startPhase.childPhases == []` exit.
+
+    Every other test in this file stubs `getUniqueTunnelingPhases`, which is exactly why none
+    of them saw it. This one calls the real method.
+    """
+
+    @staticmethod
+    def _phase(key, value):
+        return types.SimpleNamespace(
+            key=key, X=np.array([[value], [value]], dtype=float),
+            T=np.array([10.0, 200.0]))
+
+    def test_the_real_method_consumes_the_list_it_is_given(self):
+        """Pinned as a property of that method, so the walk's copy is not cargo cult."""
+        phases = {"a": self._phase("a", 1.0), "b": self._phase("b", 2.0),
+                  "root": self._phase("root", 0.0)}
+        stub = types.SimpleNamespace()
+        children = ["a", "b"]
+        with contextlib.redirect_stdout(io.StringIO()):
+            transitions.Transitions.getUniqueTunnelingPhases(
+                stub, lambda x, T: float(np.squeeze(x)), phases, "root", children)
+        self.assertEqual(children, [],
+                         "if this ever stops emptying its argument, the copy in the walk can "
+                         "go, but until then it is load-bearing")
+
+    def test_the_walk_leaves_the_phase_graph_intact(self):
+        """The walk calls it, so the phase must keep its children afterwards."""
+        phases = _Phases({
+            "1": types.SimpleNamespace(key="1", Tmax=615.5, Tmin=300.0, childPhases=["0"],
+                                       low_trans={}, valAt=lambda T: 2.0,
+                                       X=np.array([[2.0], [2.0]]), T=np.array([300.0, 615.5])),
+            "0": types.SimpleNamespace(key="0", Tmax=200.0, Tmin=0.0, childPhases=[],
+                                       low_trans={}, valAt=lambda T: 1.0,
+                                       X=np.array([[1.0], [1.0]]), T=np.array([0.0, 200.0])),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(np.squeeze(x)), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))))
+        stub.getUniqueTunnelingPhases = (
+            transitions.Transitions.getUniqueTunnelingPhases.__get__(stub))
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+        with self.assertRaises(transitions.errors.NoViablePhasePairError) as caught:
+            with contextlib.redirect_stdout(io.StringIO()):
+                transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        self.assertEqual(phases["1"].childPhases, ["0"],
+                         "the walk emptied the phase's own child list")
+        message = " ".join(str(caught.exception).split())
+        self.assertIn("1 child phase(s) listed below phase 1", message,
+                      "the count is taken before the call, so it is not zero")
 
 
 class SeedlessSkipMessageTests(unittest.TestCase):
@@ -147,10 +212,23 @@ class SeedlessSkipMessageTests(unittest.TestCase):
     def test_the_message_says_the_starting_phase_stops_at_a_lower_temperature(self):
         result, printed = self._run(high_tmax=121.3, low_tmax=615.5)
         self.assertIsNone(result, "this branch rejects the candidate")
-        self.assertIn("does not exist to as high a temperature", printed)
+        self.assertIn("does not exist to a higher temperature", printed)
         self.assertIn("no window to tunnel from", printed)
         self.assertNotIn("exists to at least as high a", printed,
                          "the old wording contradicted the condition above it")
+
+    def test_the_message_covers_two_phases_ending_at_the_same_temperature(self):
+        """The branch tests `<=`, so equal Tmax takes it too.
+
+        "does not exist to as high a temperature" was false in that case: it exists to exactly
+        as high a one. The wording now says "to a higher temperature than", which is what the
+        condition actually means.
+        """
+        result, printed = self._run(high_tmax=300.0, low_tmax=300.0)
+        self.assertIsNone(result, "equal Tmax is still refused by this branch")
+        self.assertIn("does not exist to a higher temperature", printed)
+        self.assertIn("same temperature", printed,
+                      "the equal case is worth naming, since it reads as a contradiction")
 
     def test_the_message_is_not_printed_when_the_starting_phase_reaches_higher(self):
         """Pins the message to its condition: swap the two Tmax values and it must not fire.
@@ -163,7 +241,7 @@ class SeedlessSkipMessageTests(unittest.TestCase):
         self.assertIsNotNone(result, "the swapped case must reach the end and build the "
                                      "candidate, or the branch under test was never passed")
         self.assertIn("Adding seedless first-order candidate", printed)
-        self.assertNotIn("does not exist to as high a temperature", printed)
+        self.assertNotIn("does not exist to a higher temperature", printed)
 
 
 
@@ -232,6 +310,42 @@ class CyclicPhaseGraphTests(unittest.TestCase):
         self.assertEqual([t.high_phase for t in found], ["1", "2"])
         self.assertEqual([t.low_phase for t in found], ["2", "0"])
 
+    def test_a_failed_nucleation_solve_is_supercooling_not_an_unviable_pair(self):
+        """The discriminator between the two errors, which is the point of having two.
+
+        A pair that never reaches a nucleation solve says nothing about the rate, so it raises
+        `NoViablePhasePairError`, code 19. A pair that does reach one and fails it has had the
+        physics attempted: that is `TooMuchSupercoolingError`, code 8, and the message keeps
+        the hedge that the solve may also have failed numerically.
+
+        Driven on the fixed-step path, where `computeNucleationTemperature` is what raises
+        `NucleationError` and the candidate is dropped.
+        """
+        phases = _Phases({
+            "1": self._phase("1", 615.5, 50.0, ["0"], 3.0),
+            "0": self._phase("0", 200.0, 0.0, [], 1.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), dV=None, d2V=None,
+            conversionFactor=1.0, tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="fixed_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+
+        def failing_solve(*a, **k):
+            raise transitions.errors.NucleationError("no finite nucleation criterion")
+
+        with mock.patch.object(transitions, "computeNucleationTemperature", failing_solve):
+            with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        message = " ".join(str(caught.exception).split())
+        self.assertEqual(caught.exception.errorcode, 8)
+        self.assertIn("1 of those ended in a nucleation solve that did not succeed", message)
+        self.assertIn("failed numerically", message,
+                      "the solve was attempted, so a numerical failure is a live possibility")
+        self.assertNotIsInstance(caught.exception, transitions.errors.NoViablePhasePairError)
+
     def test_a_child_skipped_without_evaluation_is_counted_as_such(self):
         """The case that made "every candidate was rejected" false.
 
@@ -253,11 +367,12 @@ class CyclicPhaseGraphTests(unittest.TestCase):
             getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
         stub.seedlessFirstOrderCandidate = (
             transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
-        with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+        with self.assertRaises(transitions.errors.NoViablePhasePairError) as caught:
             with contextlib.redirect_stdout(io.StringIO()):
                 transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
         message = " ".join(str(caught.exception).split())
-        self.assertIn("1 child phase(s) listed, 0 evaluated as a candidate", message,
+        self.assertIn("1 child phase(s) listed below phase 1, 0 evaluated as a candidate",
+                      message,
                       "the pair has no temperature overlap, so nothing was evaluated")
         self.assertNotIn("every candidate was rejected", message)
 
@@ -388,7 +503,7 @@ class CyclicPhaseGraphTests(unittest.TestCase):
             getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
         stub.seedlessFirstOrderCandidate = (
             transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
-        with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+        with self.assertRaises(transitions.errors.NoViablePhasePairError) as caught:
             with contextlib.redirect_stdout(io.StringIO()):
                 transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
         message = " ".join(str(caught.exception).split())
@@ -416,7 +531,7 @@ class CyclicPhaseGraphTests(unittest.TestCase):
             getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
         stub.seedlessFirstOrderCandidate = (
             transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
-        with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+        with self.assertRaises(transitions.errors.NoViablePhasePairError) as caught:
             with contextlib.redirect_stdout(io.StringIO()):
                 transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
         message = " ".join(str(caught.exception).split())
@@ -425,6 +540,10 @@ class CyclicPhaseGraphTests(unittest.TestCase):
                          "phase 1 is not the end of the chain")
         self.assertNotIn("until today", str(caught.exception),
                          "the class default is a claim about the physics, not about this walk")
+        self.assertEqual(caught.exception.errorcode, 19)
+        self.assertNotIsInstance(caught.exception, transitions.errors.TooMuchSupercoolingError,
+                                 "no nucleation solve was attempted, so supercooling is not "
+                                 "something this run can report")
 
 
 if __name__ == "__main__":
