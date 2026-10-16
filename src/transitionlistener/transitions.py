@@ -638,6 +638,7 @@ class Transitions():
             # without ever evaluating it.
             offered = len(startPhase.childPhases)
             evaluated = 0
+            solver_failures = 0
             for i in childPhases:
                 endPhase = phases[i]
 
@@ -692,7 +693,11 @@ class Transitions():
                         tr.instanton = tunn['instanton']
                     childTransitions.append(tr)
                 except errors.NucleationError as err:
-                    # Too much supercooling, cannot tunnel.
+                    # Too much supercooling, cannot tunnel -- or the nucleation solve failed
+                    # for a numerical reason. Counted apart from a rejection, because on the
+                    # fixed-step path this is the usual way a candidate disappears and it is
+                    # not a statement about the phases overlapping.
+                    solver_failures += 1
                     if verbose:
                         print("Nucleation error: ", err)
                     if seedless:
@@ -723,12 +728,14 @@ class Transitions():
                 raise errors.TooMuchSupercoolingError(
                     f"No viable transition remained below phase {startPhase.key}: "
                     f"{offered} child phase(s) listed, {evaluated} evaluated as a candidate, "
-                    "none viable. A child is not evaluated when it duplicates one already "
-                    "offered or when the two phases do not overlap in temperature. This may be "
-                    "supercooling, or the phases may not overlap in the way a first-order "
-                    "transition needs. Rerun with verbose=True to see each phase pair. "
-                    f"{len(transitions)} transition(s) had already been found along the chain "
-                    "and are discarded with this error.")
+                    f"{solver_failures} of those ended in a nucleation solve that did not "
+                    "succeed, and none was viable. A child is not evaluated at all when it "
+                    "duplicates one already offered or when the two phases do not overlap in "
+                    "temperature. So this may be supercooling, or a pair that does not overlap "
+                    "in the way a first-order transition needs, or a nucleation solve that "
+                    "failed numerically. Rerun with verbose=True to see each phase pair and "
+                    f"what became of it. {len(transitions)} transition(s) had already been "
+                    "found along the chain and are discarded with this error.")
 
             childTransitions = sorted(childTransitions, key=_transition_sort_temperature, reverse=True)
             # new start phase:
