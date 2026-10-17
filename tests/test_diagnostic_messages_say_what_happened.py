@@ -108,6 +108,47 @@ class SupercoolingErrorNamesItsReasonTests(unittest.TestCase):
                          f"raises at lines {bare} rely on the class default, which claims the "
                          "transition is too supercooled to nucleate")
 
+    def test_findAllTransitions_says_why_when_every_candidate_fails_the_solver(self):
+        """The parse-tree check above proves the raise is not bare. It cannot prove the message
+        is right: replacing it with another non-empty but misleading string passes it.
+
+        So this drives `findAllTransitions` on the fixed-step path with every
+        `computeNucleationTemperature` call raising `NucleationError`, which is the only way to
+        reach that raise -- on the seedless path the handler appends a transition with
+        `Tnuc = None` instead, so `transitions_dict` is not empty and the raise is unreachable.
+        """
+        tr = types.SimpleNamespace(type=1, Tcrit=120.0, high_phase="1", low_phase="0",
+                                   Tnuc=None, action=None)
+        stub = types.SimpleNamespace(
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="fixed_step_size"))),
+            phases={"1": types.SimpleNamespace(key="1"), "0": types.SimpleNamespace(key="0")},
+            verbose=False, tunnelFromPhase_args={}, conversionFactor=1.0,
+            V=lambda x, T: 0.0, dV=None, d2V=None,
+            findTransitionPathFromTnuc=lambda verbose=False: [tr])
+
+        def always_fails(*args, **kwargs):
+            raise transitions.errors.NucleationError("no nucleation solution")
+
+        with mock.patch.object(transitions, "computeNucleationTemperature", always_fails):
+            with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    transitions.Transitions.findAllTransitions(stub)
+        message = " ".join(str(caught.exception).split())
+
+        self.assertIn("every candidate raised a nucleation error", message,
+                      "the message has to say what actually happened")
+        self.assertIn("verbose=True", message,
+                      "a user with no per-candidate detail cannot tell the two causes apart, "
+                      "so the message has to point at where that detail is")
+        self.assertIn("may", message,
+                      "supercooling and a failed solve are not distinguished here and the "
+                      "message must not pick one")
+        self.assertNotIn("one bubble per Hubble volume", message,
+                         "that is the class default, which asserts supercooling; reaching "
+                         "this raise means only that every solve failed")
+
+
 
 class ChildPhaseCountTests(unittest.TestCase):
     """The count must be taken before the helper empties the list.
