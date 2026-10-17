@@ -332,7 +332,8 @@ class NoViablePhasePairError(Exception):
     """Raised when no phase pair below the current phase was ever a tunnelling candidate.
 
     Distinct from `TooMuchSupercoolingError`, which is raised where a candidate did reach the
-    nucleation solver and the solve did not succeed. **The test is reaching the solver, not
+    nucleation solver and the solve did not succeed, and also, from a later stage, where
+    percolation found no temperature at which the true vacuum fraction reaches `f_perc`. **The test is reaching the solver, not
     what the solver concluded**: a failed solve may mean the transition is genuinely too
     supercooled, or that the solve failed numerically, and the raise does not tell those two
     apart. This class is the narrower statement, that no candidate reached the solver at all,

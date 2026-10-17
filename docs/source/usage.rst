@@ -159,18 +159,24 @@ The most important controls are:
   is substituted; set ``sound_speed`` to ``"1/3"`` or to a number to run such a
   point anyway. A phase that has simply frozen out, where the ratio is zero over
   zero or negative, is still reported as ``nan`` and is not an error.
-- CLI error codes 8 and 19 both mean no transition was found, and they say different
-  things. Code 8 means a candidate did reach the nucleation solver and the solve did not
-  succeed. That may be because the transition is too supercooled to nucleate one bubble per
-  Hubble volume, or because the solve failed numerically; the error does not distinguish
-  them, and its message says so. Code
-  19, no viable phase pair, says the solver was never reached, because no pair of phases
-  below the current one was a tunnelling candidate at all: they do not overlap in
+- CLI error code 8 is raised from two different stages, and the message says which. While
+  the transition path is being built, it means a candidate reached the nucleation solver and
+  the solve did not succeed, which may be because the transition is too supercooled to
+  nucleate one bubble per Hubble volume or because the solve failed numerically; the error
+  does not distinguish those and says so. Later, during percolation, it means the transition
+  was found and its actions computed but the true vacuum fraction never reached ``f_perc``
+  over the temperature range explored, and the message gives the fraction reached and the
+  lowest temperature tried.
+
+- CLI error code 19, no viable phase pair, comes only from the first of those stages and is
+  the narrower statement: the nucleation solver was never reached, because no pair of phases
+  below the current one was a tunnelling candidate at all. They do not overlap in
   temperature, the starting phase does not exist up to a high enough temperature, or the
-  children offered were duplicates of one another. Nothing about the rate was measured, so
-  nothing about supercooling is being claimed. Both messages report how many child phases
-  were listed, how many were evaluated as candidates, and how many ended in a nucleation
-  solve that did not succeed; run with ``verbose=True`` to see each phase pair.
+  children offered were duplicates of one another. Nothing about the rate was computed, so
+  nothing about supercooling is being claimed. Its message, and the transition-path form of
+  code 8, report how many child phases were listed, how many were evaluated as candidates,
+  and how many ended in a nucleation solve that did not succeed; run with ``verbose=True``
+  to see each phase pair.
 
 - ``WARNING:noisy_c_s`` and ``DIAG:c_s_step_change``: whether the computed sound
   speed survives a change of the derivative step. A value can be round-off and
