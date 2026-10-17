@@ -362,9 +362,14 @@ class NoViablePhasePairError(Exception):
     narrower statement, that no candidate below this phase reached the solver at all, so
     nothing about the rate at this step was computed either way.
 
-    Reasons a pair is never a candidate: the two phases do not overlap in temperature, the
-    starting phase does not exist up to a high enough temperature, or the children offered were
-    all duplicates of one another.
+    Two reasons a child never becomes a candidate at all, which is what this error reports:
+    it duplicates a child already offered, so `getUniqueTunnelingPhases` drops it, or the two
+    phases do not overlap in temperature. The counts in the message keep those apart from a pair
+    that was evaluated and then refused, which in the adaptive backend happens when the starting
+    phase is already the deeper minimum at the cold end of the overlap, when it does not exist to
+    a higher temperature than the target, or when the potential difference could not be evaluated
+    there. On the fixed-step path an evaluated pair can instead fail the nucleation solve, counted
+    separately again. Run with `verbose=True` for the individual decisions.
     """
 
     def __init__(
