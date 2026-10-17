@@ -19,6 +19,7 @@ from rich.table import Table
 from transitionlistener.config import all_observables
 from transitionlistener.helper_functions import import_file, load_potential
 from transitionlistener import console
+from transitionlistener import errors
 
 from . import state
 from ..observability import GW_Sensitivity_Data
@@ -178,6 +179,12 @@ class ScanConfig:
         """Return the parameter metadata defined by the imported model module."""
         try:
             params = potential.model_parameters
+        except errors.Timeout:
+            # The run deadline arrives from the SIGALRM handler in interface/state.py and can land
+            # on any bytecode. Caught by the broad handler below it is reported as
+            # `AttributeError`, so a run that never finished comes out as a finished one with a
+            # verdict.
+            raise
         except Exception:
             raise AttributeError(
                 "The provided model does not expose model_parameters either as a module-level "
