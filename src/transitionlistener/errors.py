@@ -314,7 +314,21 @@ class PercolationApproximation1Error(Exception):
 
 
 class TooMuchSupercoolingError(Exception):
-    """Raised when excessive supercooling prevents bubble nucleation within Hubble time."""
+    """Raised with CLI error code 8 from either of two stages, and the message says which.
+
+    At the transition-chain walk it means a candidate below the current phase did reach the
+    nucleation solver and the solve did not succeed. **That test is reaching the solver, not
+    what the solver concluded**: the transition may be genuinely too supercooled, or the solve
+    may have failed numerically, and the raise does not tell those two apart. The claim is
+    about the one step the walk had reached; steps already completed are not implicated.
+
+    At percolation it means the true vacuum fraction never reaches `f_perc`, so no percolation
+    temperature exists on the temperature range that was searched.
+
+    Distinct from `NoViablePhasePairError`, code 19, which comes only from the first stage and
+    means no candidate was ever offered to the solver, so nothing about the rate was measured
+    at that step.
+    """
 
     def __init__(
         self,
