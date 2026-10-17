@@ -7,9 +7,9 @@ from there on.
 
 A bare `except Exception` that converts what it catches into a TransitionListener error class
 therefore turns an aborted run into a finished one with a verdict. `nucleation.py` reported it as
-`NucleationError`, which reaches the user as CLI error code 8. `bubbledynamics.py` reported it as
-`PercolationError` with a message attributing the failure to strong supercooling. `gwfopt.py`
-reported it as "Missing necessary GW parameters", a statement about the input.
+`NucleationError`, which reaches the user as CLI error code 2. `bubbledynamics.py` reported it as
+`PercolationError`, code 10, with a message attributing the failure to strong supercooling.
+`gwfopt.py` reported it as "Missing necessary GW parameters", a statement about the input.
 
 `tunneling1D.initialConditions` and `pathDeformation._fit_spline_path` already guarded their own
 broad handlers for this reason. This test makes the pattern a rule rather than two examples.
@@ -121,11 +121,49 @@ class EveryConvertingHandlerLetsTheDeadlineThroughTests(unittest.TestCase):
                       "still be seen as guarded")
 
 
+class TheDocumentedCodesAreTheRealCodesTests(unittest.TestCase):
+    """The prose in this file and in the guards names CLI codes. Pin them to `errors.py`.
+
+    The first version of this branch said a deadline rewrapped as `NucleationError` reached the
+    user as code 8. It reaches it as code 2; code 8 is `TooMuchSupercoolingError`. A reviewer
+    caught it, in a docstring, where nothing executes and no assertion looks. Renumbering any of
+    these classes now fails here, which is the signal to re-read the prose that quotes them.
+    """
+
+    EXPECTED = {
+        "Timeout": 16,
+        "NucleationError": 2,
+        "TooMuchSupercoolingError": 8,
+        "NoViablePhasePairError": 19,
+        "PercolationError": 10,
+        "PercolationApproximation1Error": 7,
+        "WrongT0MinimumError": 3,
+    }
+
+    def test_each_class_still_carries_the_code_the_prose_quotes(self):
+        for name, code in sorted(self.EXPECTED.items()):
+            cls = getattr(errors, name)
+            with self.subTest(error=name):
+                self.assertEqual(
+                    getattr(cls(), "errorcode", None), code,
+                    f"{name} no longer carries CLI code {code}. Every docstring and comment in "
+                    "this file and in tests/test_diagnostic_messages_say_what_happened.py that "
+                    "quotes a code has to be re-read before this number is changed")
+
+    def test_the_gw_error_still_carries_no_code(self):
+        """`gwfopt` reports a deadline as `GWParamsError`, which has no code of its own.
+
+        So the prose must not give it one. If it gains an `errorcode`, the claim that the
+        deadline is simply lost there becomes a claim about a specific code instead.
+        """
+        self.assertIsNone(getattr(errors.GWParamsError(), "errorcode", None))
+
+
 class TheDeadlineReachesTheCallerTests(unittest.TestCase):
     """The sweep above proves the shape. These drive the real functions."""
 
     def test_the_deadline_escapes_the_u_shaped_nucleation_search(self):
-        """Otherwise `findTminFromUShapedNucl` reports it as `NucleationError`, code 8."""
+        """Otherwise `findTminFromUShapedNucl` reports it as `NucleationError`, CLI code 2."""
         def times_out(*args, **kwargs):
             raise errors.Timeout()
 

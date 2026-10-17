@@ -754,9 +754,11 @@ class Transitions():
                     else:
                         continue
                 except errors.Timeout:
-                    # Same reason as in `findAllTransitions`: the deadline must not be
-                    # reclassified as a nucleation failure, which would count towards
-                    # `solver_failures` and be reported as code 8.
+                    # Same reason as in `findAllTransitions`. Note where it would go: the
+                    # `except errors.NucleationError` handler above cannot catch a
+                    # `NucleationError` raised from inside this one, so the deadline would not
+                    # reach `solver_failures` and would not become code 8. It would propagate
+                    # as a nucleation failure, CLI code 2, which is a claim about the solve.
                     raise
                 except Exception as err:
                     raise errors.NucleationError("Unexpected nucleation error:\n" + 

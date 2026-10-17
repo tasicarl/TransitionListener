@@ -346,9 +346,9 @@ class TheRunDeadlineIsNotAPhysicsVerdictTests(unittest.TestCase):
     guards its own `brentq` call for this reason.
 
     The class guard below is scoped to `transitions` on purpose. Measured across `src/` on
-    2026-10-17 there are 122 bare `except Exception`/`except BaseException` handlers, of which
-    22 guard the deadline, so a package-wide version of this test would fail on 100 sites in 25
-    files. Most of those are not on the physics path, where a swallowed deadline becomes a
+    2026-10-17, with this branch's guards in place, there are 122 bare
+    `except Exception`/`except BaseException` handlers, of which 36 guard the deadline, so a
+    package-wide version of this test would fail on 86 sites in 25 files. Most of those are not on the physics path, where a swallowed deadline becomes a
     verdict; auditing the ones that are is its own change.
     """
 
@@ -400,7 +400,7 @@ class TheRunDeadlineIsNotAPhysicsVerdictTests(unittest.TestCase):
         self.assertEqual(caught.exception.errorcode, 16)
 
     def test_the_deadline_escapes_the_transition_path_walk(self):
-        """On the fixed-step path it would otherwise become a NucleationError, so code 8."""
+        """On the fixed-step path it would otherwise become a `NucleationError`, CLI code 2."""
         phases = _Phases({
             "1": types.SimpleNamespace(key="1", Tmax=615.5, Tmin=50.0, childPhases=["0"],
                                        low_trans={}, valAt=lambda T: 3.0),
