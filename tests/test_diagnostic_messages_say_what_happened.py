@@ -321,9 +321,18 @@ class CyclicPhaseGraphTests(unittest.TestCase):
                       "neither a rejection nor an overlap problem")
         self.assertIn("nothing about the rate was measured at this step", message,
                       "no candidate reached a nucleation solve below this phase")
-        self.assertIn("says nothing about the steps already taken", message,
-                      "the claim is about one step of the chain; transitions found earlier "
-                      "were solved normally and the message must not disown them")
+        self.assertIn("The claim is about this step alone", message,
+                      "the claim is about one step of the chain and has to say so")
+        self.assertIn("counted below", message,
+                      "the transitions found earlier are reported, not disowned")
+        for overclaim in ("solved normally", "were solved", "solved earlier"):
+            self.assertNotIn(
+                overclaim, message,
+                f"{overclaim!r} claims a nucleation solve succeeded for the earlier steps. "
+                "A second-order step appends a transition with no solve at all "
+                "(transitions.py, the low_trans branch), and in the adaptive backend "
+                "seedlessFirstOrderCandidate builds a candidate without computing Tnuc, so "
+                "nothing below this phase had been solved when this error was raised")
         self.assertIn("below phase 0", message,
                       "the phase the claim is scoped to has to be named in it")
         self.assertNotIn("every candidate was rejected", message,
