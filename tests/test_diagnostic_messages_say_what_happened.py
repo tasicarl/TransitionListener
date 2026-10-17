@@ -334,6 +334,118 @@ class SeedlessSkipMessageTests(unittest.TestCase):
 
 
 
+class TheRunDeadlineIsNotAPhysicsVerdictTests(unittest.TestCase):
+    """`errors.Timeout` carries CLI error code 16 and is an ordinary `Exception`.
+
+    It is raised from a `SIGALRM` handler (`interface/state.py`, armed in
+    `interface/pipeline.py`), so it can land on any bytecode, including inside a bare
+    `except Exception`. Caught there it becomes whatever that handler reports, and an aborted
+    run is published as a finished one with a verdict: through
+    `seedlessFirstOrderCandidate` it returns `None`, which is a refusal that never counts as a
+    solver failure, so the walk reports code 19, no viable phase pair. `tunneling1D` already
+    guards its own `brentq` call for this reason.
+
+    The class guard below is scoped to `transitions` on purpose. Measured across `src/` on
+    2026-10-17 there are 122 bare `except Exception`/`except BaseException` handlers, of which
+    22 guard the deadline, so a package-wide version of this test would fail on 100 sites in 25
+    files. Most of those are not on the physics path, where a swallowed deadline becomes a
+    verdict; auditing the ones that are is its own change.
+    """
+
+    @staticmethod
+    def _phase(key, value):
+        return types.SimpleNamespace(key=key, Tmax=615.5, Tmin=50.0, childPhases=[],
+                                     low_trans={}, valAt=lambda T, v=value: v)
+
+    def test_every_broad_handler_lets_the_deadline_through(self):
+        """The class guard. A handler added later without this gets caught here."""
+        import ast as _ast
+        tree = _ast.parse(inspect.getsource(transitions))
+        unguarded = []
+        for node in _ast.walk(tree):
+            if not isinstance(node, _ast.Try):
+                continue
+            for i, handler in enumerate(node.handlers):
+                t = handler.type
+                if not (isinstance(t, _ast.Name) and t.id in ("Exception", "BaseException")):
+                    continue
+                earlier = node.handlers[:i]
+                guarded = any(
+                    (isinstance(h.type, _ast.Attribute) and h.type.attr == "Timeout")
+                    or (isinstance(h.type, _ast.Name) and h.type.id == "Timeout")
+                    for h in earlier)
+                if not guarded:
+                    unguarded.append(handler.lineno)
+        self.assertEqual(
+            unguarded, [],
+            f"the broad handlers at lines {unguarded} catch errors.Timeout, which is an "
+            "Exception raised from the SIGALRM handler. Add `except errors.Timeout: raise` "
+            "before them, or the run deadline is reported as a physics verdict instead of "
+            "CLI error code 16")
+
+    def test_the_deadline_escapes_the_seedless_candidate(self):
+        """The path the reviewer named: swallowed here it is reported as code 19."""
+        stub = types.SimpleNamespace()
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+
+        def times_out(x, T):
+            raise transitions.errors.Timeout()
+
+        with self.assertRaises(transitions.errors.Timeout) as caught:
+            with contextlib.redirect_stdout(io.StringIO()):
+                stub.seedlessFirstOrderCandidate(
+                    times_out, self._phase("1", 3.0), self._phase("0", 1.0),
+                    50.0, 200.0, False)
+        self.assertEqual(caught.exception.errorcode, 16)
+
+    def test_the_deadline_escapes_the_transition_path_walk(self):
+        """On the fixed-step path it would otherwise become a NucleationError, so code 8."""
+        phases = _Phases({
+            "1": types.SimpleNamespace(key="1", Tmax=615.5, Tmin=50.0, childPhases=["0"],
+                                       low_trans={}, valAt=lambda T: 3.0),
+            "0": types.SimpleNamespace(key="0", Tmax=200.0, Tmin=10.0, childPhases=[],
+                                       low_trans={}, valAt=lambda T: 1.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), dV=None, d2V=None,
+            conversionFactor=1.0, tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="fixed_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+
+        def times_out(*args, **kwargs):
+            raise transitions.errors.Timeout()
+
+        with mock.patch.object(transitions, "computeNucleationTemperature", times_out):
+            with self.assertRaises(transitions.errors.Timeout) as caught:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        self.assertEqual(caught.exception.errorcode, 16)
+
+    def test_the_deadline_escapes_findAllTransitions(self):
+        """Otherwise it is rewrapped as "an unexpected error occurred"."""
+        tr = types.SimpleNamespace(type=1, Tcrit=120.0, high_phase="1", low_phase="0",
+                                   Tnuc=None, action=None)
+        stub = types.SimpleNamespace(
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="fixed_step_size"))),
+            phases={"1": types.SimpleNamespace(key="1"), "0": types.SimpleNamespace(key="0")},
+            verbose=False, tunnelFromPhase_args={}, conversionFactor=1.0,
+            V=lambda x, T: 0.0, dV=None, d2V=None,
+            findTransitionPathFromTnuc=lambda verbose=False: [tr])
+
+        def times_out(*args, **kwargs):
+            raise transitions.errors.Timeout()
+
+        with mock.patch.object(transitions, "computeNucleationTemperature", times_out):
+            with self.assertRaises(transitions.errors.Timeout) as caught:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    transitions.Transitions.findAllTransitions(stub)
+        self.assertEqual(caught.exception.errorcode, 16)
+
+
+
 class _Phases(dict):
     """The phase mapping the walk is handed, with the two keys it reads off it."""
 

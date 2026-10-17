@@ -262,6 +262,12 @@ class Transitions():
                 else:
                     TooMuchSupercooling = True
                     continue
+            except errors.Timeout:
+                # The run's deadline is raised from a SIGALRM handler, so it can land anywhere,
+                # including inside the nucleation solve. Read as an unexpected failure it
+                # becomes a `NucleationError` and the run is reported as a physics verdict
+                # instead of CLI error code 16, so an aborted point would look finished.
+                raise
             except Exception as err:
                 raise errors.NucleationError("An unexpected error occurred " + 
                                              "while trying to find the tunneling solution: "
@@ -747,6 +753,11 @@ class Transitions():
                         childTransitions.append(transition)
                     else:
                         continue
+                except errors.Timeout:
+                    # Same reason as in `findAllTransitions`: the deadline must not be
+                    # reclassified as a nucleation failure, which would count towards
+                    # `solver_failures` and be reported as code 8.
+                    raise
                 except Exception as err:
                     raise errors.NucleationError("Unexpected nucleation error:\n" + 
                                                  str(err))
@@ -817,6 +828,12 @@ class Transitions():
         try:
             dv_min = DV(tmin)
             dv_max = DV(tmax)
+        except errors.Timeout:
+            # The deadline can land inside `DV` like anywhere else. Swallowed here it returns
+            # None, which is a refusal: the candidate is never counted as a solver failure, so
+            # the walk reports code 19, no viable phase pair, and an aborted run is published
+            # as a statement about the phases.
+            raise
         except Exception as err:
             if verbose:
                 print(
