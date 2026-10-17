@@ -170,10 +170,14 @@ The most important controls are:
 
 - CLI error code 19, no viable phase pair, comes only from the first of those stages and is
   the narrower statement: the nucleation solver was never reached, because no pair of phases
-  below the current one was a tunnelling candidate at all. They do not overlap in
-  temperature, the starting phase does not exist up to a high enough temperature, or the
-  children offered were duplicates of one another. Nothing about the rate was computed, so
-  nothing about supercooling is being claimed. Its message, and the transition-path form of
+  below the current one was a tunnelling candidate at all. A child never becomes a candidate for
+  one of two reasons, that it duplicates a child already offered or that the two phases do not
+  overlap in temperature. A pair that is evaluated can still be refused, and the counts report
+  that apart: in the adaptive backend a candidate is refused when the starting phase is already
+  the deeper minimum at the cold end of the overlap, when it does not exist to a higher
+  temperature than the target, or when the potential difference could not be evaluated there; on
+  the fixed-step path it can instead fail the nucleation solve. Nothing about the rate was
+  computed, so nothing about supercooling is being claimed. Its message, and the transition-path form of
   code 8, report how many child phases were listed, how many were evaluated as candidates,
   and how many ended in a nucleation solve that did not succeed; run with ``verbose=True``
   to see each phase pair. Those three counts belong to the transition-path stage alone. The
