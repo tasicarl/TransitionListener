@@ -331,13 +331,18 @@ class TooMuchSupercoolingError(Exception):
 class NoViablePhasePairError(Exception):
     """Raised when no phase pair below the current phase was ever a tunnelling candidate.
 
-    Distinct from `TooMuchSupercoolingError`, which is raised where a candidate did reach the
-    nucleation solver and the solve did not succeed, and also, from a later stage, where
-    percolation found no temperature at which the true vacuum fraction reaches `f_perc`. **The test is reaching the solver, not
-    what the solver concluded**: a failed solve may mean the transition is genuinely too
-    supercooled, or that the solve failed numerically, and the raise does not tell those two
-    apart. This class is the narrower statement, that no candidate reached the solver at all,
-    so nothing about the rate was computed either way.
+    **Every claim here is about one step of the chain**, the phase the walk had reached, and
+    about the candidates offered below it. Transitions found at earlier steps were solved
+    normally; the message reports how many, because this error discards them.
+
+    Distinct from `TooMuchSupercoolingError`, which at this same point means a candidate did
+    reach the nucleation solver and the solve did not succeed, and which is also raised from a
+    later stage, where percolation found no temperature at which the true vacuum fraction
+    reaches `f_perc`. **The test is reaching the solver, not what the solver concluded**: a
+    failed solve may mean the transition is genuinely too supercooled, or that the solve
+    failed numerically, and the raise does not tell those two apart. This class is the
+    narrower statement, that no candidate below this phase reached the solver at all, so
+    nothing about the rate at this step was computed either way.
 
     Reasons a pair is never a candidate: the two phases do not overlap in temperature, the
     starting phase does not exist up to a high enough temperature, or the children offered were

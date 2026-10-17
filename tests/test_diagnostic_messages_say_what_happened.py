@@ -28,7 +28,6 @@ import unittest
 from unittest import mock
 
 import numpy as np
-from unittest import mock
 
 from transitionlistener import transitions
 from transitionlistener import transitionObservables as tobs

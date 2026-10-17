@@ -769,13 +769,17 @@ class Transitions():
                         "discarded with this error.")
                 if solver_failures == 0:
                     raise errors.NoViablePhasePairError(
-                        "No pair of phases below the current one was a viable tunnelling "
-                        "candidate, so no nucleation calculation was attempted and nothing "
-                        "was measured about supercooling. " + tail)
+                        f"No pair of phases below phase {startPhase.key} was a viable "
+                        "tunnelling candidate, so no nucleation calculation was attempted "
+                        "for any of them and nothing about the rate was measured at this "
+                        "step. That says nothing about the steps already taken: any "
+                        "transition found earlier in the chain was solved normally, and the "
+                        "count below is of those. " + tail)
                 raise errors.TooMuchSupercoolingError(
-                    "No viable transition remained: every candidate that reached a nucleation "
-                    "solve failed it, which may be supercooling or a solve that failed "
-                    "numerically. " + tail)
+                    f"No viable transition remained below phase {startPhase.key}: every "
+                    "candidate there that reached a nucleation solve failed it, which may be "
+                    "supercooling or a solve that failed numerically. Earlier steps of the "
+                    "chain are not implicated. " + tail)
 
             childTransitions = sorted(childTransitions, key=_transition_sort_temperature, reverse=True)
             # new start phase:
