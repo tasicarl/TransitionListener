@@ -777,9 +777,9 @@ class Transitions():
                         f"No pair of phases below phase {startPhase.key} was a viable "
                         "tunnelling candidate, so no nucleation calculation was attempted "
                         "for any of them and nothing about the rate was measured at this "
-                        "step. That says nothing about the steps already taken: any "
-                        "transition found earlier in the chain was solved normally, and the "
-                        "count below is of those. " + tail)
+                        "step. The claim is about this step alone: the transitions already "
+                        "found in the chain are counted below, and this error neither "
+                        "reassesses them nor says how they were obtained. " + tail)
                 raise errors.TooMuchSupercoolingError(
                     f"No viable transition remained below phase {startPhase.key}: every "
                     "candidate there that reached a nucleation solve failed it, which may be "

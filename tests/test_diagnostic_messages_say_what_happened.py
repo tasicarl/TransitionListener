@@ -740,6 +740,21 @@ class CyclicPhaseGraphTests(unittest.TestCase):
         self.assertIn("1 transition(s) had already been found", message)
         self.assertNotIn("zero-temperature phase", message,
                          "phase 2 is a dead end, not the end of the chain")
+        # The wording assertions live here rather than on the cyclic fixture, because on this
+        # branch that walk completes and never produces this message. Without them the merge
+        # of the two branches would leave nothing able to catch the overclaim coming back.
+        self.assertIn("The claim is about this step alone", message,
+                      "the claim is about one step of the chain and has to say so")
+        self.assertIn("counted below", message,
+                      "the transition found earlier is reported, not disowned")
+        for overclaim in ("solved normally", "were solved", "solved earlier"):
+            self.assertNotIn(
+                overclaim, message,
+                f"{overclaim!r} claims a nucleation solve succeeded for the earlier steps. "
+                "A second-order step appends a transition with no solve at all, and in the "
+                "adaptive backend seedlessFirstOrderCandidate accepts a pair without "
+                "computing a nucleation temperature, so nothing below this phase had been "
+                "solved when this error was raised")
 
     def test_the_error_still_fires_where_the_chain_is_not_complete(self):
         """The message is not dead code: a phase that is not the end of the chain still raises.
