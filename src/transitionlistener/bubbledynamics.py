@@ -2267,12 +2267,14 @@ class PercolationDiagnostics:
     # which no consumer reads.
     action_jitter_rescue_discarded_temperatures: list[float] | None = None
     # Whether the accepted profile met acc_tperc, acc_tfinal and acc_rh, with the three
-    # relative uncertainties behind that verdict. True or False is the verdict the controller
-    # formed on the profile it accepted -- False covers both "a target was missed" and "there
-    # was no second estimate to compare against", since an uncomparable estimate cannot
-    # certify anything. None means no verdict reached these diagnostics at all: the
+    # relative uncertainties behind that verdict. True means all three targets were measured
+    # and met. False means a measured uncertainty exceeded its target, or a required observable
+    # -- Tperc, Tf or RH -- could not be determined at all, an absent value being a different
+    # matter from an absent reference. None means everything measurable was met and `acc_rh`
+    # was never measured, or that no verdict reached these diagnostics at all: the
     # fixed_step_size backend, which has no such controller, and a profile the controller
-    # handed back at its iteration limit rather than accepting. The targets do not gate
+    # handed back at its iteration limit rather than accepting. The three uncertainties tell
+    # those two None cases apart, being all nan in the second. The targets do not gate
     # acceptance, so these fields are the only record of whether they were honoured.
     # `transitionObservables` reads them into the `WARNING:accuracy_targets_missed` and
     # `DIAG:accuracy_*_uncertainty` columns; a caller that keeps the metadata from

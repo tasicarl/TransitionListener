@@ -348,6 +348,46 @@ def _dynamiczoomwindow_accuracy_reached(
     )
 
 
+def _dynamiczoomwindow_accuracy_verdict(
+    estimate: dict[str, float | None],
+    settings,
+) -> bool | None:
+    """Return True, False or None for the accuracy targets of an accepted profile.
+
+    None means undecided, which is not the same claim as missed. Tperc and Tf can always be
+    judged: when there is no previous estimate to difference against, each falls back to its
+    own bracket width, so a single profile still measures them. RH has no bracket measure.
+    Its uncertainty is a relative difference against a previous RH or it is infinite, and an
+    infinite one means nobody measured it. A profile that meets every target it could measure
+    and never measured RH is therefore returned as None rather than False.
+
+    An RH that could not be determined at all is a different matter and counts as missed,
+    because the value is absent rather than its reference.
+
+    Relation to `_dynamiczoomwindow_accuracy_reached`, which reads the same three settings a
+    few lines above: that one answers whether the controller may stop refining and so has to
+    be the strict conjunction, and this one only reports. They agree wherever RH was measured,
+    `True` here exactly when `reached` is True, and differ only in that this function returns
+    None instead of False where `RH_uncertainty` is infinite. Keep the two thresholds in step;
+    `test_accuracy_verdict_producer.py` pins the agreement. The True return is not reachable
+    through today's caller: with a previous estimate the caller has already returned True from
+    the `reached` branch above, and without one `_estimate_dynamiczoomwindow_accuracy` leaves
+    `RH_uncertainty` infinite, so the verdict is None. It is written out in full because the
+    separate change that gives RH a second estimate on the accepted profile makes it live.
+    """
+    for observable in ("Tperc", "Tf", "RH"):
+        if not np.isfinite(float(estimate[observable])):
+            return False
+    if float(estimate["Tperc_uncertainty"]) > settings.acc_tperc:
+        return False
+    if float(estimate["Tf_uncertainty"]) > settings.acc_tfinal:
+        return False
+    rh_uncertainty = float(estimate["RH_uncertainty"])
+    if not np.isfinite(rh_uncertainty):
+        return None
+    return rh_uncertainty <= settings.acc_rh
+
+
 def _dynamiczoomwindow_accuracy_warning_message(
     stage: str,
     estimate: dict[str, float | None],
@@ -603,12 +643,15 @@ def _try_dynamiczoomwindow_completed_refinement(
     # to better than 1%. The verdict is carried on `PercolationState.accuracy_estimate`,
     # reported by `PercolationDiagnostics`, and written to the scan table as
     # `WARNING:accuracy_targets_missed` beside the three `DIAG:accuracy_*_uncertainty`
-    # columns. False here means "not certified": either a target was missed, or there was no
-    # comparable second estimate, and a single estimate cannot certify anything.
-    estimate["targets_met"] = bool(
-        previous_estimate is not None
-        and _dynamiczoomwindow_accuracy_reached(estimate, settings)
-    )
+    # columns. False here means a target was measured and missed; None means everything
+    # measurable was met and RH was not measured. Neither True nor None is a certificate.
+    # Only claim a target was missed where the miss was measured. Reporting "not certified"
+    # as "missed" made the warning fire on every point of every scan: 127 of 127 resolved
+    # couplings of the 2HDM broad arm, 36 of 36 of its edge arm, and the shipped example
+    # point. A column with the same value everywhere separates nothing. The verdict below is
+    # per target, which on those same scans leaves the warning on the 21 points that have a
+    # measured miss, up to 14.2% against a 1% target.
+    estimate["targets_met"] = _dynamiczoomwindow_accuracy_verdict(estimate, settings)
     return False, estimate
 
 
