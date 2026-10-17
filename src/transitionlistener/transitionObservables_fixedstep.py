@@ -42,6 +42,11 @@ import rich
 from rich.panel import Panel
 
 
+# Observable names the pipeline assigns after the observables are computed, so the
+# completeness check must not report them missing.
+_FILLED_BY_THE_PIPELINE = frozenset({"DIAG:runtime_s"})
+
+
 @dataclass
 class TransitionObservableInfo:
     """Collection of transition observable data."""
@@ -1007,15 +1012,24 @@ class TransitionObservables:
             derived["WARNING:not_T0_global_min"] = False
 
         # Check if there are any names in derived_param_names which are not
-        # in the derived_params_dict
+        # in the derived_params_dict. Names the pipeline fills after the observables are
+        # computed cannot be present yet and are not missing: DIAG:runtime_s is assigned in
+        # interface/pipeline.py once the elapsed time is known, so warning about it told every
+        # user of every run that an implemented column was unimplemented.
         for name in ctx.derived_param_names:
             if name not in derived:
-                msg = (
-                    f"{name} not found in derived_params_dict. "
-                    "It might be that this variable still needs to be implemented. "
-                    "It is added to the dictionary with value NaN."
-                )
-                console.print(f"[bold yellow]WARNING:[/bold yellow] {msg}")
+                # The placeholder goes in either way. `printDerivedParams` indexes every
+                # configured name directly, `derived_params_dict[name]`, and the pipeline
+                # assigns DIAG:runtime_s only to `strongestTransitionObservables`, so a
+                # per-transition dictionary that is missing the key raises KeyError before
+                # the run ever prints. Only the warning is suppressed.
+                if name not in _FILLED_BY_THE_PIPELINE:
+                    msg = (
+                        f"{name} not found in derived_params_dict. "
+                        "It might be that this variable still needs to be implemented. "
+                        "It is added to the dictionary with value NaN."
+                    )
+                    console.print(f"[bold yellow]WARNING:[/bold yellow] {msg}")
                 derived[name] = np.nan
 
         return derived

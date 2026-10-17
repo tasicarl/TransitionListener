@@ -270,7 +270,14 @@ class Transitions():
         # Check if we have found any transitions
         if len(transitions_dict) == 0:
             if TooMuchSupercooling:
-                raise errors.TooMuchSupercoolingError()
+                # With a message rather than empty. The class default asserts that the phase is
+                # too supercooled to nucleate; reaching here means only that every candidate
+                # raised a nucleation error, which may be supercooling or may be the tunnelling
+                # solver failing to find a solution.
+                raise errors.TooMuchSupercoolingError(
+                    "No transition found: every candidate raised a nucleation error. This may "
+                    "be supercooling, or the tunnelling solver may have failed to find a "
+                    "solution. Rerun with verbose=True to see each failure.")
             raise errors.NoTransitionFound("No transition found.")
         
         # Check if only second-order transitions were found
@@ -591,8 +598,52 @@ class Transitions():
         V = self.V
         startPhase = phases[phases.rootPhase]
         seedless = self.pot.config.percolationConf.algorithm_mode == "adaptive_step_size"
+        # Every phase the walk has stood on. A phase graph may contain a cycle -- measured on
+        # the 2HDM at lambda3 = 5.8888888889 and above, where the zero-temperature phase lists
+        # the high-temperature root phase among its children -- and a chain that returns to a
+        # phase it already left is not a sequence the universe can follow.
+        visited = []
 
         while True:
+            # The chain is complete once it reaches the zero-temperature phase, whatever the
+            # phase graph still lists as reachable from there. This has to be tested BEFORE the
+            # children are enumerated: a cyclic graph can offer an edge back to a hotter phase
+            # that is *accepted* -- the second-order branch below accepts without consulting
+            # the Tmax ordering, and it reassigns `startPhase` as it goes -- and the walk would
+            # then follow the cycle instead of stopping. Testing only "every candidate was
+            # rejected" catches the measured case and not that one.
+            #
+            # Measured on the 2HDM at lambda3 = 5.8888888889, 5.8939393939 and 5.9015151515:
+            # phase 0 is the zero-temperature phase and lists the high-temperature root phase
+            # among its children, so the walk asked it for one more transition, was refused the
+            # cycle's closing link, and raised -- discarding the two transitions it had already
+            # found and reporting the run as too supercooled to nucleate.
+            # Tested at the top, on the phase this iteration begins at, because
+            # `startPhase` is reassigned in two places below: once by the second-order branch
+            # inside the child loop, and once at the end of the iteration. Reading it after
+            # either of those compares a phase against itself and reports a valid second-order
+            # step as a cycle.
+            # Completion is tested before the cycle guard. A chain can reach the
+            # zero-temperature phase before it has found any transition, advance from it by a
+            # second-order step, and come back to it with transitions in hand. That chain is
+            # complete and must stop here; testing the guard first would report it as a cycle
+            # and discard it, which is the defect this whole branch exists to remove.
+            if startPhase.key == self.phases.T0Phase and transitions:
+                if verbose:
+                    print(f"Chain complete at the zero-temperature phase {startPhase.key} "
+                          f"after {len(transitions)} transition(s).")
+                break
+
+            if startPhase.key in visited:
+                walked = " -> ".join(str(k) for k in visited)
+                raise errors.WrongT0MinimumError(
+                    f"The transition chain returns to phase {startPhase.key}, which it has "
+                    f"already left: {walked} -> {startPhase.key}. The phase graph contains a "
+                    "cycle, so the chain cannot reach the zero-temperature minimum "
+                    f"({self.phases.T0Phase}). {len(transitions)} transition(s) were found "
+                    "before the cycle closed.")
+            visited.append(startPhase.key)
+
             # check if we are in the lowest minimum
             if startPhase.childPhases == []:
                 if startPhase.key == self.phases.T0Phase:
@@ -602,7 +653,23 @@ class Transitions():
 
             childTransitions = []
             # exclude equivalent tunnelings to mirror phases
-            childPhases = self.getUniqueTunnelingPhases(V, phases, startPhase.key, startPhase.childPhases)
+            # Counted BEFORE the call. `getUniqueTunnelingPhases` consumes the list it is
+            # handed, `while childPhases != []: childPhases.pop()`, so after the call
+            # `startPhase.childPhases` is empty and counting it there reads zero every time.
+            #
+            # The helper is given a COPY here, so the phase keeps its children. That is only
+            # safe because of the explicit cycle guard below: the consumption used to stop
+            # this loop running forever on a cyclic graph, by leaving a revisited phase with
+            # an empty child list that took the `startPhase.childPhases == []` exit above.
+            # Relying on that was accidental, and it destroyed the graph as a side effect.
+            offered = len(startPhase.childPhases)
+            childPhases = self.getUniqueTunnelingPhases(
+                V, phases, startPhase.key, list(startPhase.childPhases))
+            # Not every child becomes a candidate: `getUniqueTunnelingPhases` drops children
+            # equivalent to one already offered, and the `tmin >= tmax` branch skips a pair
+            # with no overlap without ever evaluating it.
+            evaluated = 0
+            solver_failures = 0
             for i in childPhases:
                 endPhase = phases[i]
 
@@ -621,6 +688,7 @@ class Transitions():
                     continue
 
                 if seedless:
+                    evaluated += 1
                     transition = self.seedlessFirstOrderCandidate(
                         V,
                         startPhase,
@@ -634,6 +702,7 @@ class Transitions():
                     continue
 
                 try:
+                    evaluated += 1
                     if verbose:
                         print(f"\nTry tunneling from phase {startPhase.key} to phase {endPhase.key}")
                     tunn = computeNucleationTemperature(self.V, self.dV, self.d2V,
@@ -655,7 +724,11 @@ class Transitions():
                         tr.instanton = tunn['instanton']
                     childTransitions.append(tr)
                 except errors.NucleationError as err:
-                    # Too much supercooling, cannot tunnel.
+                    # Too much supercooling, cannot tunnel -- or the nucleation solve failed
+                    # for a numerical reason. Counted apart from a rejection, because on the
+                    # fixed-step path this is the usual way a candidate disappears and it is
+                    # not a statement about the phases overlapping.
+                    solver_failures += 1
                     if verbose:
                         print("Nucleation error: ", err)
                     if seedless:
@@ -679,7 +752,36 @@ class Transitions():
                                                  str(err))
 
             if childTransitions == []:
-                raise errors.TooMuchSupercoolingError
+                # Raised with a message rather than bare. The class default says the phase is
+                # too supercooled to nucleate, which is a claim about the physics; reaching
+                # here means only that no candidate below the current phase was viable, which
+                # on the 2HDM benchmark was a phase-overlap rejection and not supercooling.
+                # Which error this is depends on how far the solver got. Supercooling is a
+                # claim about the physics -- the rate never reached one bubble per Hubble
+                # volume -- and it can only be made if a nucleation solve was actually
+                # attempted. Where no candidate reached one, nothing was measured and the
+                # honest answer is that no phase pair was viable.
+                tail = (f"{offered} child phase(s) listed below phase {startPhase.key}, "
+                        f"{evaluated} evaluated as a candidate, {solver_failures} of those "
+                        "ended in a nucleation solve that did not succeed. A child is not "
+                        "evaluated at all when it duplicates one already offered or when the "
+                        "two phases do not overlap in temperature. Rerun with verbose=True to "
+                        f"see each phase pair and what became of it. {len(transitions)} "
+                        "transition(s) had already been found along the chain and are "
+                        "discarded with this error.")
+                if solver_failures == 0:
+                    raise errors.NoViablePhasePairError(
+                        f"No pair of phases below phase {startPhase.key} was a viable "
+                        "tunnelling candidate, so no nucleation calculation was attempted "
+                        "for any of them and nothing about the rate was measured at this "
+                        "step. The claim is about this step alone: the transitions already "
+                        "found in the chain are counted below, and this error neither "
+                        "reassesses them nor says how they were obtained. " + tail)
+                raise errors.TooMuchSupercoolingError(
+                    f"No viable transition remained below phase {startPhase.key}: every "
+                    "candidate there that reached a nucleation solve failed it, which may be "
+                    "supercooling or a solve that failed numerically. Earlier steps of the "
+                    "chain are not implicated. " + tail)
 
             childTransitions = sorted(childTransitions, key=_transition_sort_temperature, reverse=True)
             # new start phase:
@@ -742,8 +844,10 @@ class Transitions():
             if verbose:
                 print(
                     "Skipping seedless candidate because the starting phase is "
-                    "higher at Tmax and also exists to at least as high a "
-                    "temperature as the target phase."
+                    "higher at Tmax and does not exist to a higher temperature "
+                    "than the target phase, so there is no window to tunnel from. "
+                    "The test is Tmax(start) <= Tmax(target), so this also covers the two "
+                    "ending at the same temperature."
                 )
             return None
 

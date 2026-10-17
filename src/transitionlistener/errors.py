@@ -314,7 +314,21 @@ class PercolationApproximation1Error(Exception):
 
 
 class TooMuchSupercoolingError(Exception):
-    """Raised when excessive supercooling prevents bubble nucleation within Hubble time."""
+    """Raised with CLI error code 8 from either of two stages, and the message says which.
+
+    At the transition-chain walk it means a candidate below the current phase did reach the
+    nucleation solver and the solve did not succeed. **That test is reaching the solver, not
+    what the solver concluded**: the transition may be genuinely too supercooled, or the solve
+    may have failed numerically, and the raise does not tell those two apart. The claim is
+    about the one step the walk had reached; steps already completed are not implicated.
+
+    At percolation it means the true vacuum fraction never reaches `f_perc`, so no percolation
+    temperature exists on the temperature range that was searched.
+
+    Distinct from `NoViablePhasePairError`, code 19, which comes only from the first stage and
+    means no candidate was ever offered to the solver, so nothing about the rate was measured
+    at that step.
+    """
 
     def __init__(
         self,
@@ -326,6 +340,48 @@ class TooMuchSupercoolingError(Exception):
         """Attach the CLI error code identifying over-supercooled transitions."""
         super().__init__(message)
         self.errorcode = 8
+
+
+class NoViablePhasePairError(Exception):
+    """Raised when no phase pair below the current phase was ever a tunnelling candidate.
+
+    **Every claim here is about one step of the chain**, the phase the walk had reached, and
+    about the candidates offered below it. The transitions already found are counted in the
+    message, because this error discards them, and nothing here reassesses them or says how
+    they were obtained. In particular they need not have been solved: a second-order step
+    records a transition with no nucleation solve, and in the adaptive backend
+    `seedlessFirstOrderCandidate` accepts a pair without computing a nucleation temperature at
+    all, leaving that to percolation.
+
+    Distinct from `TooMuchSupercoolingError`, which at this same point means a candidate did
+    reach the nucleation solver and the solve did not succeed, and which is also raised from a
+    later stage, where percolation found no temperature at which the true vacuum fraction
+    reaches `f_perc`. **The test is reaching the solver, not what the solver concluded**: a
+    failed solve may mean the transition is genuinely too supercooled, or that the solve
+    failed numerically, and the raise does not tell those two apart. This class is the
+    narrower statement, that no candidate below this phase reached the solver at all, so
+    nothing about the rate at this step was computed either way.
+
+    Two reasons a child never becomes a candidate at all, which is what this error reports:
+    it duplicates a child already offered, so `getUniqueTunnelingPhases` drops it, or the two
+    phases do not overlap in temperature. The counts in the message keep those apart from a pair
+    that was evaluated and then refused, which in the adaptive backend happens when the starting
+    phase is already the deeper minimum at the cold end of the overlap, when it does not exist to
+    a higher temperature than the target, or when the potential difference could not be evaluated
+    there. On the fixed-step path an evaluated pair can instead fail the nucleation solve, counted
+    separately again. Run with `verbose=True` for the individual decisions.
+    """
+
+    def __init__(
+        self,
+        message=(
+            "No pair of phases below the current one was a viable tunnelling candidate, so "
+            "no nucleation calculation was attempted."
+        ),
+    ):
+        """Attach the CLI error code identifying a transition with no viable phase pair."""
+        super().__init__(message)
+        self.errorcode = 19
 
 
 class OnlySecondOrderTransitionsError(Exception):

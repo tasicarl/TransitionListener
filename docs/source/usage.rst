@@ -159,6 +159,33 @@ The most important controls are:
   is substituted; set ``sound_speed`` to ``"1/3"`` or to a number to run such a
   point anyway. A phase that has simply frozen out, where the ratio is zero over
   zero or negative, is still reported as ``nan`` and is not an error.
+- CLI error code 8 is raised from two different stages, and the message says which. While
+  the transition path is being built, it means a candidate reached the nucleation solver and
+  the solve did not succeed, which may be because the transition is too supercooled to
+  nucleate one bubble per Hubble volume or because the solve failed numerically; the error
+  does not distinguish those and says so. Later, during percolation, it means the transition
+  was found and its actions computed but the true vacuum fraction never reached ``f_perc``
+  over the temperature range explored, and the message gives the fraction reached and the
+  lowest temperature tried.
+
+- CLI error code 19, no viable phase pair, comes only from the first of those stages and is
+  the narrower statement: the nucleation solver was never reached, because no pair of phases
+  below the current one was a tunnelling candidate at all. A child never becomes a candidate for
+  one of two reasons, that it duplicates a child already offered or that the two phases do not
+  overlap in temperature. A pair that is evaluated can still be refused, and the counts report
+  that apart: in the adaptive backend a candidate is refused when the starting phase is already
+  the deeper minimum at the cold end of the overlap, when it does not exist to a higher
+  temperature than the target, or when the potential difference could not be evaluated there; on
+  the fixed-step path it can instead fail the nucleation solve. Nothing about the rate was
+  computed, so nothing about supercooling is being claimed. Its message, and the transition-path form of
+  code 8, report how many child phases were listed, how many were evaluated as candidates,
+  and how many ended in a nucleation solve that did not succeed; run with ``verbose=True``
+  to see each phase pair. Those three counts belong to the transition-path stage alone. The
+  percolation form of code 8 carries none of them, because at that point the transition has
+  already been found; it reports the fraction reached and the lowest temperature tried, as
+  above. So a scan reading code 8 should take the counts as present only when the message is
+  the transition-path one.
+
 - ``WARNING:noisy_c_s`` and ``DIAG:c_s_step_change``: whether the computed sound
   speed survives a change of the derivative step. A value can be round-off and
   still lie between zero and one, so no test on the value itself finds it; the

@@ -1,0 +1,873 @@
+"""Diagnostics must not claim something the run did not do.
+
+Two unrelated messages said the wrong thing on every run that reached them.
+
+`DIAG:runtime_s` is in the output schema, so the completeness check in
+`computeTransitionObservables` looks for it, but `interface/pipeline.py` assigns it afterwards,
+once the elapsed time is known. The check could therefore never find it and every completed run
+printed "It might be that this variable still needs to be implemented" about a column that is
+implemented and correct in the same output file.
+
+`transitions.py` raised `TooMuchSupercoolingError` as a bare class when no candidate transition
+below the current phase was viable, so the user was shown the class default, "too supercooled
+to allow for the nucleation of one bubble per Hubble volume until today". On the 2HDM benchmark
+at `lambda3` = 5.8888889 to 5.9015152 that was not supercooling: the candidate pair was
+rejected because the starting phase is higher in potential at `tmax` and exists only to
+121.3 GeV against the target's 615.5 GeV.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import inspect
+import io
+import math
+import threading
+import types
+import unittest
+from unittest import mock
+
+import numpy as np
+
+from transitionlistener import transitions
+from transitionlistener import transitionObservables as tobs
+from transitionlistener import transitionObservables_fixedstep as tobs_fixed
+from transitionlistener.interface import output_schema
+
+
+class PipelineFilledNamesAreNotReportedMissingTests(unittest.TestCase):
+    def test_the_runtime_diagnostic_is_in_the_schema(self):
+        """If it were not, the completeness check would never look for it and this is moot."""
+        self.assertIn("DIAG:runtime_s", set(output_schema.DIAGNOSTIC_COLUMN_ORDER))
+
+    def test_both_backends_skip_the_same_names(self):
+        """The two modules carry one copy of this loop each; a fix to one must reach the other."""
+        self.assertEqual(tobs._FILLED_BY_THE_PIPELINE, tobs_fixed._FILLED_BY_THE_PIPELINE)
+
+    def test_the_runtime_diagnostic_is_skipped(self):
+        self.assertIn("DIAG:runtime_s", tobs._FILLED_BY_THE_PIPELINE)
+        self.assertIn("DIAG:runtime_s", tobs_fixed._FILLED_BY_THE_PIPELINE)
+
+    def test_the_loop_warns_selectively_and_fills_unconditionally(self):
+        """Both halves of the completeness check, driven rather than grepped.
+
+        `_finalize_results` reads only `ctx.derived_params` and `ctx.derived_param_names` and
+        touches no instance state, so it runs unbound. Every other branch in it is guarded by a
+        name being in `derived_param_names`, and neither name below is one of those, so what
+        executes is the completeness loop.
+
+        The placeholder half matters as much as the warning half: `printDerivedParams` indexes
+        every configured name directly, and `interface/pipeline.py` assigns `DIAG:runtime_s`
+        only to `strongestTransitionObservables`, so a per-transition dictionary missing the key
+        raises `KeyError` when the run prints its table. The first version of this change
+        skipped the assignment along with the message and would have crashed there.
+        """
+        for module in (tobs, tobs_fixed):
+            with self.subTest(module=module.__name__):
+                names = ["DIAG:runtime_s", "DIAG:not_implemented_anywhere"]
+                ctx = types.SimpleNamespace(derived_params={}, derived_param_names=names)
+                buffer = io.StringIO()
+                with contextlib.redirect_stdout(buffer):
+                    derived = module.TransitionObservables._finalize_results(None, ctx)
+                printed = " ".join(buffer.getvalue().split())
+
+                for name in names:
+                    self.assertIn(name, derived,
+                                  "printDerivedParams indexes this name directly")
+                    self.assertTrue(math.isnan(derived[name]))
+                self.assertNotIn("DIAG:runtime_s not found", printed,
+                                 "the pipeline fills this one later; no warning is due")
+                self.assertIn("DIAG:not_implemented_anywhere not found", printed,
+                              "a genuinely missing name must still be reported")
+
+
+class SupercoolingErrorNamesItsReasonTests(unittest.TestCase):
+    def test_no_raise_relies_on_the_class_default(self):
+        """Both the bare class and empty parentheses show the default, which asserts
+        supercooling. Checked on the parse tree, because a string search for one spelling
+        misses the other, which is how the first version of this test passed while a
+        message-less raise was still in the file."""
+        import ast as _ast
+        tree = _ast.parse(inspect.getsource(transitions))
+        bare = []
+        for node in _ast.walk(tree):
+            if not isinstance(node, _ast.Raise) or node.exc is None:
+                continue
+            exc = node.exc
+            name = (exc.attr if isinstance(exc, _ast.Attribute)
+                    else exc.id if isinstance(exc, _ast.Name) else None)
+            if name in ("TooMuchSupercoolingError", "NoViablePhasePairError"):
+                bare.append(node.lineno)          # the class itself, no call
+            elif isinstance(exc, _ast.Call):
+                fn = exc.func
+                fname = (fn.attr if isinstance(fn, _ast.Attribute)
+                         else fn.id if isinstance(fn, _ast.Name) else None)
+                if (fname in ("TooMuchSupercoolingError", "NoViablePhasePairError")
+                        and not exc.args and not exc.keywords):
+                    bare.append(node.lineno)
+        self.assertEqual(bare, [],
+                         f"raises at lines {bare} rely on the class default, which claims the "
+                         "transition is too supercooled to nucleate")
+
+    def test_findAllTransitions_says_why_when_every_candidate_fails_the_solver(self):
+        """The parse-tree check above proves the raise is not bare. It cannot prove the message
+        is right: replacing it with another non-empty but misleading string passes it.
+
+        So this drives `findAllTransitions` on the fixed-step path with every
+        `computeNucleationTemperature` call raising `NucleationError`, which is the only way to
+        reach that raise -- on the seedless path the handler appends a transition with
+        `Tnuc = None` instead, so `transitions_dict` is not empty and the raise is unreachable.
+        """
+        tr = types.SimpleNamespace(type=1, Tcrit=120.0, high_phase="1", low_phase="0",
+                                   Tnuc=None, action=None)
+        stub = types.SimpleNamespace(
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="fixed_step_size"))),
+            phases={"1": types.SimpleNamespace(key="1"), "0": types.SimpleNamespace(key="0")},
+            verbose=False, tunnelFromPhase_args={}, conversionFactor=1.0,
+            V=lambda x, T: 0.0, dV=None, d2V=None,
+            findTransitionPathFromTnuc=lambda verbose=False: [tr])
+
+        def always_fails(*args, **kwargs):
+            raise transitions.errors.NucleationError("no nucleation solution")
+
+        with mock.patch.object(transitions, "computeNucleationTemperature", always_fails):
+            with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    transitions.Transitions.findAllTransitions(stub)
+        message = " ".join(str(caught.exception).split())
+
+        self.assertIn("every candidate raised a nucleation error", message,
+                      "the message has to say what actually happened")
+        self.assertIn("verbose=True", message,
+                      "a user with no per-candidate detail cannot tell the two causes apart, "
+                      "so the message has to point at where that detail is")
+        self.assertIn("may", message,
+                      "supercooling and a failed solve are not distinguished here and the "
+                      "message must not pick one")
+        self.assertNotIn("one bubble per Hubble volume", message,
+                         "that is the class default, which asserts supercooling; reaching "
+                         "this raise means only that every solve failed")
+
+
+    def test_the_documented_refusal_reasons_match_the_code(self):
+        """The enumeration in two documents is prose, with nothing holding it to the code.
+
+        It has already been wrong once: the list named no temperature overlap, the starting phase
+        not reaching high enough, and duplicate children, which mixes "never evaluated" with
+        "evaluated then refused" and leaves out the refusal that actually fires on the 2HDM band,
+        `dv_min < 0`. A fourth refusal path added later would make both documents wrong again and
+        nothing would notice, so this counts the paths and checks each is described.
+        """
+        import ast as _ast
+        import textwrap
+        from pathlib import Path
+
+        fn = _ast.parse(textwrap.dedent(
+            inspect.getsource(transitions.Transitions.seedlessFirstOrderCandidate))).body[0]
+        refusals = [n for n in _ast.walk(fn)
+                    if isinstance(n, _ast.Return)
+                    and isinstance(n.value, _ast.Constant) and n.value.value is None]
+        self.assertEqual(
+            len(refusals), 3,
+            f"seedlessFirstOrderCandidate now has {len(refusals)} refusal paths, not 3. Both "
+            "the NoViablePhasePairError docstring in errors.py and the code-19 paragraph in "
+            "docs/source/usage.rst enumerate three; update them before changing this number")
+
+        usage = (Path(__file__).resolve().parents[1]
+                 / "docs" / "source" / "usage.rst").read_text()
+        docstring = transitions.errors.NoViablePhasePairError.__doc__ or ""
+        for phrase, why in (
+                ("deeper minimum", "the dv_min < 0 refusal, which is the 2HDM band's own cause"),
+                ("higher temperature than the target", "the Tmax-ordering refusal"),
+                ("could not be evaluated", "the refusal when DV itself raises")):
+            self.assertIn(phrase, " ".join(docstring.split()),
+                          f"the exception docstring no longer describes {why}")
+            self.assertIn(phrase, " ".join(usage.split()),
+                          f"docs/source/usage.rst no longer describes {why}")
+
+
+
+class ChildPhaseCountTests(unittest.TestCase):
+    """The count must be taken before the helper empties the list.
+
+    `getUniqueTunnelingPhases` empties the list it is given: its loop is
+    `while childPhases != []: p1 = childPhases.pop()`. The walk hands it
+    `startPhase.childPhases` itself, so the phase's child list comes back empty and a count
+    taken after the call reads zero. The count is therefore taken before it.
+
+    The consumption is left in place, because it is what terminates this loop on a cyclic
+    phase graph: a revisited phase has an empty child list and leaves through the
+    `startPhase.childPhases == []` exit. Handing over a copy removes that guard, which needs
+    an explicit replacement and does not belong in a change about diagnostics.
+
+    Every other test in this file stubs `getUniqueTunnelingPhases`, which is why none of them
+    saw the count was wrong. This one calls the real method.
+    """
+
+    @staticmethod
+    def _phase(key, value):
+        return types.SimpleNamespace(
+            key=key, X=np.array([[value], [value]], dtype=float),
+            T=np.array([10.0, 200.0]))
+
+    def test_the_real_method_consumes_the_list_it_is_given(self):
+        """Pinned as a property of that method, so the walk's copy is not cargo cult."""
+        phases = {"a": self._phase("a", 1.0), "b": self._phase("b", 2.0),
+                  "root": self._phase("root", 0.0)}
+        stub = types.SimpleNamespace()
+        children = ["a", "b"]
+        with contextlib.redirect_stdout(io.StringIO()):
+            transitions.Transitions.getUniqueTunnelingPhases(
+                stub, lambda x, T: float(np.squeeze(x)), phases, "root", children)
+        self.assertEqual(children, [],
+                         "if this ever stops emptying its argument, the copy in the walk can "
+                         "go, but until then it is load-bearing")
+
+    def test_the_count_survives_the_helper_emptying_the_list(self):
+        """The count is taken first, so it describes the graph that was encountered."""
+        phases = _Phases({
+            "1": types.SimpleNamespace(key="1", Tmax=615.5, Tmin=300.0, childPhases=["0"],
+                                       low_trans={}, valAt=lambda T: 2.0,
+                                       X=np.array([[2.0], [2.0]]), T=np.array([300.0, 615.5])),
+            "0": types.SimpleNamespace(key="0", Tmax=200.0, Tmin=0.0, childPhases=[],
+                                       low_trans={}, valAt=lambda T: 1.0,
+                                       X=np.array([[1.0], [1.0]]), T=np.array([0.0, 200.0])),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(np.squeeze(x)), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))))
+        stub.getUniqueTunnelingPhases = (
+            transitions.Transitions.getUniqueTunnelingPhases.__get__(stub))
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+        with self.assertRaises(transitions.errors.NoViablePhasePairError) as caught:
+            with contextlib.redirect_stdout(io.StringIO()):
+                transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        message = " ".join(str(caught.exception).split())
+        self.assertIn("1 child phase(s) listed below phase 1", message,
+                      "the count is taken before the call, so it is not zero")
+        # Spelled out because it is easy to misread this fixture as one where the pair is
+        # accepted and the new zero-temperature exit then fires. It is not: phase 1 exists only
+        # above 300 GeV and phase 0 only below 200, so they never coexist, the `tmin >= tmax`
+        # branch skips the pair without evaluating it, and the walk never reaches phase 0.
+        self.assertIn("0 evaluated as a candidate", message,
+                      "no overlap, so the pair is skipped rather than rejected or accepted")
+        self.assertEqual(phases["1"].childPhases, ["0"],
+                         "this branch hands the helper a copy, so the phase keeps its "
+                         "children; the explicit cycle guard replaces what the consumption "
+                         "used to do by accident")
+
+
+class SeedlessSkipMessageTests(unittest.TestCase):
+    """Drive the branch and read what it prints, rather than grepping the source.
+
+    The branch tests ``high_phase.Tmax <= low_phase.Tmax``, so the starting phase exists to a
+    LOWER temperature than the target. The message used to say the opposite, that the starting
+    phase "exists to at least as high a temperature". Asserting only that the old wording is
+    absent would pass if the message were deleted or replaced by a different wrong one, which
+    is what this version fixes.
+    """
+
+    @staticmethod
+    def _phase(tmax, value):
+        return types.SimpleNamespace(Tmax=tmax, key="p", valAt=lambda T, v=value: v)
+
+    def _run(self, high_tmax, low_tmax):
+        """Reach the third rejection branch: dv_min >= 0 and dv_max > 0.
+
+        `V` returns the field value itself, so the potential difference is
+        ``high - low = 1.0`` at every temperature, which is positive at both ends. The method
+        is called unbound; the only attribute it reads off `self` past the branch under test is
+        `conversionFactor`, used to print the reference temperature in GeV.
+        """
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            result = transitions.Transitions.seedlessFirstOrderCandidate(
+                types.SimpleNamespace(conversionFactor=1.0),
+                lambda x, T: float(x),
+                self._phase(high_tmax, 2.0),
+                self._phase(low_tmax, 1.0),
+                10.0, 100.0, verbose=True,
+            )
+        # `transitionlistener.print` is `rich.console.Console.print`, which word-wraps to the
+        # console width, 80 columns when stdout is not a terminal as it is here. The message
+        # therefore arrives with newlines inside it, so collapse the whitespace before
+        # matching on the wording.
+        return result, " ".join(buffer.getvalue().split())
+
+    def test_the_message_says_the_starting_phase_stops_at_a_lower_temperature(self):
+        result, printed = self._run(high_tmax=121.3, low_tmax=615.5)
+        self.assertIsNone(result, "this branch rejects the candidate")
+        self.assertIn("does not exist to a higher temperature", printed)
+        self.assertIn("no window to tunnel from", printed)
+        self.assertNotIn("exists to at least as high a", printed,
+                         "the old wording contradicted the condition above it")
+
+    def test_the_message_covers_two_phases_ending_at_the_same_temperature(self):
+        """The branch tests `<=`, so equal Tmax takes it too.
+
+        "does not exist to as high a temperature" was false in that case: it exists to exactly
+        as high a one. The wording now says "to a higher temperature than", which is what the
+        condition actually means.
+        """
+        result, printed = self._run(high_tmax=300.0, low_tmax=300.0)
+        self.assertIsNone(result, "equal Tmax is still refused by this branch")
+        self.assertIn("does not exist to a higher temperature", printed)
+        self.assertIn("same temperature", printed,
+                      "the equal case is worth naming, since it reads as a contradiction")
+
+    def test_the_message_is_not_printed_when_the_starting_phase_reaches_higher(self):
+        """Pins the message to its condition: swap the two Tmax values and it must not fire.
+
+        The absence of the message is only evidence if the swapped case still walks past the
+        branch, so the candidate it then builds and the line it prints instead are asserted
+        too. Without them the test would pass just as happily on an earlier `return None`.
+        """
+        result, printed = self._run(high_tmax=615.5, low_tmax=121.3)
+        self.assertIsNotNone(result, "the swapped case must reach the end and build the "
+                                     "candidate, or the branch under test was never passed")
+        self.assertIn("Adding seedless first-order candidate", printed)
+        self.assertNotIn("does not exist to a higher temperature", printed)
+
+
+
+class _Phases(dict):
+    """The phase mapping the walk is handed, with the two keys it reads off it."""
+
+    rootPhase = "1"
+    T0Phase = "0"
+
+
+class CyclicPhaseGraphTests(unittest.TestCase):
+    """A chain that reaches the zero-temperature phase is complete, not a failure.
+
+    Measured on the 2HDM at `lambda3` = 5.8888888889, 5.8939393939 and 5.9015151515, the phase
+    graph contains a cycle: the zero-temperature phase lists the high-temperature root phase
+    among its children. The walk therefore reaches the end of the chain, asks the final phase
+    for one more transition, gets the cycle's closing link, and `seedlessFirstOrderCandidate`
+    rightly refuses it because the starting phase reaches 121.3 GeV against the target's
+    615.5 GeV. `childTransitions` is then empty and the walk raises, discarding the two
+    transitions it had already found. All three couplings report CLI error 8 and no transitions.
+
+    Until this change the walk raised there, discarding the two transitions it had already
+    found and reporting the run as too supercooled to nucleate a single bubble per Hubble
+    volume. It now returns them. The couplings still do not percolate, for the unrelated and
+    physical reason that the first step of their chain has a 0.079 GeV overlap window, but the
+    chain itself is no longer thrown away and the error is left for real failures.
+
+    The fixture accepts both of its first two steps through the `high_phase.Tmax >
+    low_phase.Tmax` branch, which is the simplest way to reach the third step; on the benchmark
+    the second step is accepted through the critical-temperature branch instead. The claim here
+    is about the walk's bookkeeping, not about which branch accepts a pair.
+    """
+
+    @staticmethod
+    def _phase(key, tmax, tmin, children, value):
+        return types.SimpleNamespace(key=key, Tmax=tmax, Tmin=tmin, childPhases=children,
+                                     low_trans={}, valAt=lambda T, v=value: v)
+
+    def _walk(self):
+        phases = _Phases({
+            "1": self._phase("1", 615.5, 50.0, ["2"], 3.0),
+            "2": self._phase("2", 300.0, 40.0, ["0"], 2.0),
+            "0": self._phase("0", 200.0, 0.0, ["1"], 1.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases,
+            V=lambda x, T: float(x),
+            conversionFactor=1.0,
+            pot=types.SimpleNamespace(
+                config=types.SimpleNamespace(
+                    percolationConf=types.SimpleNamespace(
+                        algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, phases, startPhase, childPhases: childPhases,
+            # read once at the top of the walk and only used on the non-seedless path
+            tunnelFromPhase_args={},
+        )
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+        with contextlib.redirect_stdout(io.StringIO()):
+            return transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+
+    def test_the_chain_completes_instead_of_being_discarded(self):
+        found = self._walk()
+        self.assertEqual(len(found), 2,
+                         "the two transitions found before the cycle closed must be returned")
+        self.assertEqual([t.high_phase for t in found], ["1", "2"])
+        self.assertEqual([t.low_phase for t in found], ["2", "0"])
+
+    def test_a_candidate_that_reached_the_solver_is_code_8_not_code_19(self):
+        """The discriminator between the two errors, which is the point of having two.
+
+        A pair that never reaches a nucleation solve says nothing about the rate, so it raises
+        `NoViablePhasePairError`, code 19. A pair that does reach one and fails it has had the
+        reached the solver: that is `TooMuchSupercoolingError`, code 8. Code 8 does not claim
+        the transition is supercooled, only that a solve was attempted and did not succeed,
+        which may be supercooling or a numerical failure, and the message says so.
+
+        Driven on the fixed-step path, where `computeNucleationTemperature` is what raises
+        `NucleationError` and the candidate is dropped.
+        """
+        phases = _Phases({
+            "1": self._phase("1", 615.5, 50.0, ["0"], 3.0),
+            "0": self._phase("0", 200.0, 0.0, [], 1.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), dV=None, d2V=None,
+            conversionFactor=1.0, tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="fixed_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+
+        def failing_solve(*a, **k):
+            raise transitions.errors.NucleationError("no finite nucleation criterion")
+
+        with mock.patch.object(transitions, "computeNucleationTemperature", failing_solve):
+            with self.assertRaises(transitions.errors.TooMuchSupercoolingError) as caught:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        message = " ".join(str(caught.exception).split())
+        self.assertEqual(caught.exception.errorcode, 8)
+        self.assertIn("1 of those ended in a nucleation solve that did not succeed", message)
+        self.assertIn("failed numerically", message,
+                      "the solve was attempted, so a numerical failure is a live possibility")
+        self.assertNotIsInstance(caught.exception, transitions.errors.NoViablePhasePairError)
+
+    def test_a_child_skipped_without_evaluation_is_counted_as_such(self):
+        """The case that made "every candidate was rejected" false.
+
+        A child phase is never turned into a candidate when the two phases do not overlap in
+        temperature: the `tmin >= tmax` branch skips it without calling
+        `seedlessFirstOrderCandidate`, so nothing is rejected and verbose mode shows no
+        rejection either. `getUniqueTunnelingPhases` dropping a duplicate child has the same
+        effect. The message must not claim a rejection that never happened.
+        """
+        phases = _Phases({
+            "1": self._phase("1", 615.5, 300.0, ["0"], 2.0),   # exists only above 300
+            "0": self._phase("0", 200.0, 0.0, [], 1.0),        # exists only below 200
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+        with self.assertRaises(transitions.errors.NoViablePhasePairError) as caught:
+            with contextlib.redirect_stdout(io.StringIO()):
+                transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        message = " ".join(str(caught.exception).split())
+        self.assertIn("1 child phase(s) listed below phase 1, 0 evaluated as a candidate",
+                      message,
+                      "the pair has no temperature overlap, so nothing was evaluated")
+        self.assertNotIn("every candidate was rejected", message)
+
+    def test_a_cycle_that_avoids_the_zero_temperature_phase_is_caught(self):
+        """What the explicit guard is for, now that the graph is no longer destroyed.
+
+        The zero-temperature exit only fires at `T0Phase`. A cycle that never passes through
+        it -- here `1 -> 2 -> 1`, with the T0 phase off to one side -- used to terminate only
+        because `getUniqueTunnelingPhases` emptied each phase's child list as it went, which
+        also destroyed the graph. This branch hands the helper a copy, so that accident is
+        gone and the guard has to do the work.
+
+        Deadline, because the failure this guards against is a hang.
+        """
+        phases = _Phases({
+            "1": types.SimpleNamespace(key="1", Tmax=615.5, Tmin=50.0, childPhases=["2"],
+                                       low_trans={}, valAt=lambda T: 3.0,
+                                       X=np.array([[3.0], [3.0]]), T=np.array([50.0, 615.5])),
+            # Same potential as phase 1, so neither direction is the downhill one and both
+            # pairs are accepted; otherwise the walk stops at the first rejection and never
+            # reaches the guard.
+            "2": types.SimpleNamespace(key="2", Tmax=500.0, Tmin=40.0, childPhases=["1"],
+                                       low_trans={}, valAt=lambda T: 3.0,
+                                       X=np.array([[2.0], [2.0]]), T=np.array([40.0, 500.0])),
+            "0": types.SimpleNamespace(key="0", Tmax=200.0, Tmin=0.0, childPhases=[],
+                                       low_trans={}, valAt=lambda T: 1.0,
+                                       X=np.array([[1.0], [1.0]]), T=np.array([0.0, 200.0])),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(np.squeeze(x)), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))))
+        stub.getUniqueTunnelingPhases = (
+            transitions.Transitions.getUniqueTunnelingPhases.__get__(stub))
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+
+        box = {}
+
+        def run():
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    box["found"] = transitions.Transitions.findTransitionPathFromTnuc(
+                        stub, verbose=False)
+            except BaseException as err:
+                box["error"] = err
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(20.0)
+        self.assertFalse(worker.is_alive(), "the walk followed the cycle forever")
+        err = box.get("error")
+        self.assertIsInstance(err, transitions.errors.WrongT0MinimumError,
+                              f"expected the cycle guard to fire, got {box!r}")
+        message = " ".join(str(err).split())
+        self.assertIn("returns to phase 1", message)
+        self.assertIn("1 -> 2 -> 1", message, "the message names the cycle it walked")
+        self.assertEqual(phases["1"].childPhases, ["2"],
+                         "the graph is intact, which is why the guard is needed")
+
+    def test_the_cycle_report_handles_integer_phase_keys(self):
+        """`PhaseInfo.key` may be an integer.
+
+        `phases.getT0Phase` is annotated `-> int | str` and the phase dictionary is
+        `dict[int | str, PhaseInfo]`, so a cyclic graph with integer keys must still raise
+        `WrongT0MinimumError` and its CLI code 3. Joining the visited keys without converting
+        them raises `TypeError` instead, losing the error the caller is meant to see.
+        """
+        phases = _Phases({
+            1: types.SimpleNamespace(key=1, Tmax=615.5, Tmin=50.0, childPhases=[2],
+                                     low_trans={}, valAt=lambda T: 3.0,
+                                     X=np.array([[3.0], [3.0]]), T=np.array([50.0, 615.5])),
+            2: types.SimpleNamespace(key=2, Tmax=500.0, Tmin=40.0, childPhases=[1],
+                                     low_trans={}, valAt=lambda T: 3.0,
+                                     X=np.array([[2.0], [2.0]]), T=np.array([40.0, 500.0])),
+            0: types.SimpleNamespace(key=0, Tmax=200.0, Tmin=0.0, childPhases=[],
+                                     low_trans={}, valAt=lambda T: 1.0,
+                                     X=np.array([[1.0], [1.0]]), T=np.array([0.0, 200.0])),
+        })
+        phases.rootPhase = 1
+        phases.T0Phase = 0
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(np.squeeze(x)), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+
+        box = {}
+
+        def run():
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+            except BaseException as err:
+                box["error"] = err
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(20.0)
+        self.assertFalse(worker.is_alive())
+        err = box.get("error")
+        self.assertIsInstance(err, transitions.errors.WrongT0MinimumError,
+                              f"integer keys must not turn this into something else: {err!r}")
+        self.assertEqual(err.errorcode, 3)
+        self.assertIn("1 -> 2 -> 1", " ".join(str(err).split()))
+
+    def test_a_second_order_step_is_not_reported_as_a_cycle(self):
+        """The branch that reassigns `startPhase` inside the child loop.
+
+        `secondOrderTrans` appends a transition and moves `startPhase` to the end phase before
+        the iteration finishes. A guard that records the phase at the bottom of the loop then
+        compares that phase against itself and reports a cycle that did not happen. Recording
+        at the top, before anything reassigns, is what makes this pass.
+        """
+        phases = _Phases({
+            "1": types.SimpleNamespace(key="1", Tmax=615.5, Tmin=300.0, childPhases=["0"],
+                                       low_trans={"0": True}, valAt=lambda T: 2.0,
+                                       X=np.array([[2.0], [2.0]]), T=np.array([300.0, 615.5])),
+            "0": types.SimpleNamespace(key="0", Tmax=200.0, Tmin=0.0, childPhases=[],
+                                       low_trans={}, valAt=lambda T: 1.0,
+                                       X=np.array([[1.0], [1.0]]), T=np.array([0.0, 200.0])),
+        })
+        second_order = types.SimpleNamespace(
+            Tcrit=200.0, Tnuc=None, low_phase="0", high_phase="1", type=2,
+            low_vev=1.0, high_vev=2.0)
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(np.squeeze(x)), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp,
+            secondOrderTrans=lambda V, sp, ep, verbose: second_order)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+
+        box = {}
+
+        def run():
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    box["found"] = transitions.Transitions.findTransitionPathFromTnuc(
+                        stub, verbose=False)
+            except BaseException as err:
+                box["error"] = err
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(20.0)
+        self.assertFalse(worker.is_alive(), "the walk did not terminate")
+        self.assertNotIsInstance(box.get("error"), transitions.errors.WrongT0MinimumError,
+                                 "a second-order step is not a cycle")
+        self.assertEqual(len(box.get("found", [])), 1,
+                         f"expected the second-order transition to be returned: {box!r}")
+
+    def test_the_chain_also_ends_at_the_zero_temperature_phase_in_fixed_step_mode(self):
+        """The exit is before the seedless branch, so it must hold for the other backend too.
+
+        With `algorithm_mode` anything other than `"adaptive_step_size"`, `seedless` is False
+        and candidates go through `computeNucleationTemperature` instead of
+        `seedlessFirstOrderCandidate`. The walk is shared -- there is no `_fixedstep` twin of
+        `findTransitionPathFromTnuc` -- but every other test here drives only the seedless
+        path, so this one pins that the chain still ends rather than following the cycle.
+        """
+        phases = _Phases({
+            "1": self._phase("1", 615.5, 50.0, ["0"], 3.0),
+            "0": self._phase("0", 200.0, 0.0, ["1"], 1.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), dV=None, d2V=None,
+            conversionFactor=1.0, tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="fixed_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+
+        def fake_nucleation(V, dV, d2V, startPhase, endPhase, CF, **kwargs):
+            return {"Tcrit": 150.0, "Tnuc": 120.0,
+                    "low_phase": endPhase.key, "high_phase": startPhase.key,
+                    "low_vev": endPhase.valAt(120.0), "high_vev": startPhase.valAt(120.0),
+                    "action": 140.0, "trantype": 1, "instanton": {}}
+
+        # Same deadline as the seedless cycle test: without the exit this walk follows the
+        # cycle and never returns, and a test that hangs reports nothing.
+        box = {}
+
+        def run():
+            try:
+                with mock.patch.object(transitions, "computeNucleationTemperature",
+                                       fake_nucleation):
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        box["found"] = transitions.Transitions.findTransitionPathFromTnuc(
+                            stub, verbose=False)
+            except BaseException as err:
+                box["error"] = err
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(20.0)
+        self.assertFalse(worker.is_alive(),
+                         "the fixed-step walk followed the cycle instead of stopping")
+        self.assertNotIn("error", box, f"unexpected error: {box.get('error')!r}")
+        found = box["found"]
+        self.assertEqual(len(found), 1,
+                         "the walk must stop at the zero-temperature phase, not follow the "
+                         "cycle back to the root")
+        self.assertEqual(found[0].low_phase, "0")
+
+    def test_the_chain_stops_even_when_the_closing_edge_would_be_accepted(self):
+        """The reason the exit is tested before the children are enumerated.
+
+        In the measured band the cycle's closing edge is refused, so an exit that fires only
+        when every candidate was rejected is enough there. It is not enough in general: a pair
+        can be accepted without consulting the `T_max` ordering, through the critical-temperature
+        branch of `seedlessFirstOrderCandidate`. Here `0 -> 1` is such a pair, and with the exit
+        placed after child enumeration the walk follows it back to phase 1 and cycles forever.
+
+        The potential difference is made temperature dependent so both directions are accepted:
+        `1 -> 0` through the `T_max` branch and `0 -> 1` through the crossing branch.
+
+        Run on a daemon thread with a deadline, because the failure this guards against is a
+        hang rather than a wrong answer, and a hanging test reports nothing.
+        """
+        phases = _Phases({
+            "1": types.SimpleNamespace(key="1", Tmax=615.5, Tmin=50.0, childPhases=["0"],
+                                       low_trans={}, valAt=lambda T: 5.0),
+            "0": types.SimpleNamespace(key="0", Tmax=200.0, Tmin=10.0, childPhases=["1"],
+                                       low_trans={}, valAt=lambda T: 10.0 - T / 10.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+
+        box = {}
+
+        def run():
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    box["found"] = transitions.Transitions.findTransitionPathFromTnuc(
+                        stub, verbose=False)
+            except BaseException as err:
+                box["error"] = err
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(20.0)
+        self.assertFalse(worker.is_alive(),
+                         "the walk followed the cycle instead of stopping at the "
+                         "zero-temperature phase")
+        self.assertNotIn("error", box, f"unexpected error: {box.get('error')!r}")
+        self.assertEqual(len(box["found"]), 1,
+                         "only the transition into the zero-temperature phase belongs here")
+        self.assertEqual(box["found"][0].low_phase, "0")
+
+    def test_a_chain_that_returns_to_the_zero_temperature_phase_completes(self):
+        """Why the completion test runs before the cycle guard, not after it.
+
+        The walk can only stand on the zero-temperature phase with no transition in hand on its
+        first iteration, because `startPhase` advances only together with
+        `transitions.append(...)`. That needs `rootPhase` and `T0Phase` to be the same key,
+        which no recorded walk of the 2HDM shows -- 31 traces all give `T0Phase=0` with
+        `rootPhase` 1 or 4 -- and which nothing in `getStartPhase`/`getT0Phase` forbids, since
+        they are chosen independently.
+
+        With the guard tested first, the walk leaves that phase, comes back to it holding two
+        transitions, and raises `WrongT0MinimumError` saying "the chain cannot reach the
+        zero-temperature minimum" while standing on it. The statement is false and the chain is
+        thrown away. Testing completion first reports what happened.
+
+        Both edges are accepted, `0 -> 1` through the crossing branch and `1 -> 0` through the
+        `T_max` branch, so the walk really does return rather than stopping for lack of a
+        candidate. Run on a daemon thread with a deadline, because an ordering mistake here can
+        hang instead of answering.
+        """
+        class _RootIsT0(_Phases):
+            rootPhase = "0"
+            T0Phase = "0"
+
+        phases = _RootIsT0({
+            "1": types.SimpleNamespace(key="1", Tmax=615.5, Tmin=50.0, childPhases=["0"],
+                                       low_trans={}, valAt=lambda T: 5.0),
+            "0": types.SimpleNamespace(key="0", Tmax=200.0, Tmin=10.0, childPhases=["1"],
+                                       low_trans={}, valAt=lambda T: 10.0 - T / 10.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+
+        box = {}
+
+        def run():
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    box["found"] = transitions.Transitions.findTransitionPathFromTnuc(
+                        stub, verbose=False)
+            except BaseException as err:
+                box["error"] = err
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(20.0)
+        self.assertFalse(worker.is_alive(), "the walk did not terminate")
+        self.assertNotIsInstance(
+            box.get("error"), transitions.errors.WrongT0MinimumError,
+            "a chain standing on the zero-temperature phase has reached it, so the cycle "
+            f"error must not fire: {box.get('error')!r}")
+        self.assertNotIn("error", box, f"unexpected error: {box.get('error')!r}")
+        self.assertEqual(len(box["found"]), 2,
+                         "both steps of the chain belong in the result")
+        self.assertEqual(box["found"][-1].low_phase, "0",
+                         "the chain ends on the zero-temperature phase")
+
+    def test_a_partial_chain_stopped_short_of_the_end_still_raises(self):
+        """The exit is for the end of the chain, not for any dead end.
+
+        Without this, dropping the `T0Phase` test from the new exit passes the whole file: the
+        other dead-end case stops before anything has been found, so `and transitions` alone
+        already keeps the error. Here the walk accepts `1 -> 2` and is then stuck at phase 2,
+        which is not the zero-temperature phase, with one transition in hand. Returning that
+        partial chain would be wrong -- the universe has not arrived anywhere stable -- so the
+        error must still be raised, and it must say one transition is being discarded.
+        """
+        phases = _Phases({
+            "1": self._phase("1", 615.5, 50.0, ["2"], 4.0),
+            "2": self._phase("2", 300.0, 40.0, ["3"], 3.0),
+            "3": self._phase("3", 615.5, 30.0, ["0"], 2.0),
+            "0": self._phase("0", 100.0, 0.0, [], 1.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+        with self.assertRaises(transitions.errors.NoViablePhasePairError) as caught:
+            with contextlib.redirect_stdout(io.StringIO()):
+                transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        message = " ".join(str(caught.exception).split())
+        self.assertIn("1 transition(s) had already been found", message)
+        self.assertNotIn("zero-temperature phase", message,
+                         "phase 2 is a dead end, not the end of the chain")
+        # The wording assertions live here rather than on the cyclic fixture, because on this
+        # branch that walk completes and never produces this message. Without them the merge
+        # of the two branches would leave nothing able to catch the overclaim coming back.
+        self.assertIn("The claim is about this step alone", message,
+                      "the claim is about one step of the chain and has to say so")
+        self.assertIn("counted below", message,
+                      "the transition found earlier is reported, not disowned")
+        for overclaim in ("solved normally", "were solved", "solved earlier"):
+            self.assertNotIn(
+                overclaim, message,
+                f"{overclaim!r} claims a nucleation solve succeeded for the earlier steps. "
+                "A second-order step appends a transition with no solve at all, and in the "
+                "adaptive backend seedlessFirstOrderCandidate accepts a pair without "
+                "computing a nucleation temperature, so nothing below this phase had been "
+                "solved when this error was raised")
+
+    def test_the_error_still_fires_where_the_chain_is_not_complete(self):
+        """The message is not dead code: a phase that is not the end of the chain still raises.
+
+        Here the walk is stopped at phase 1, which is not the zero-temperature phase, by a
+        candidate that fails the same `T_max` ordering test. Nothing has been found yet, so
+        there is no chain to return and the error is the right answer.
+        """
+        phases = _Phases({
+            "1": self._phase("1", 200.0, 50.0, ["2"], 3.0),
+            "2": self._phase("2", 615.5, 40.0, ["0"], 2.0),
+            "0": self._phase("0", 100.0, 0.0, [], 1.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+        with self.assertRaises(transitions.errors.NoViablePhasePairError) as caught:
+            with contextlib.redirect_stdout(io.StringIO()):
+                transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+        message = " ".join(str(caught.exception).split())
+        self.assertIn("0 transition(s) had already been found", message)
+        self.assertNotIn("zero-temperature phase", message,
+                         "phase 1 is not the end of the chain")
+        self.assertNotIn("until today", str(caught.exception),
+                         "the class default is a claim about the physics, not about this walk")
+        self.assertEqual(caught.exception.errorcode, 19)
+        self.assertNotIsInstance(caught.exception, transitions.errors.TooMuchSupercoolingError,
+                                 "no nucleation solve was attempted, so supercooling is not "
+                                 "something this run can report")
+
+
+if __name__ == "__main__":
+    unittest.main()
