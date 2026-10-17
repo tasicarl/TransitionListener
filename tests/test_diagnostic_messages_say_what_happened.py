@@ -319,9 +319,13 @@ class CyclicPhaseGraphTests(unittest.TestCase):
         self.assertIn("0 of those ended in a nucleation solve that did not succeed", message,
                       "a candidate can also disappear because the solver failed, which is "
                       "neither a rejection nor an overlap problem")
-        self.assertIn("nothing was measured about supercooling", message,
-                      "no candidate reached a nucleation solve, so this run cannot say "
-                      "anything about the rate either way")
+        self.assertIn("nothing about the rate was measured at this step", message,
+                      "no candidate reached a nucleation solve below this phase")
+        self.assertIn("says nothing about the steps already taken", message,
+                      "the claim is about one step of the chain; transitions found earlier "
+                      "were solved normally and the message must not disown them")
+        self.assertIn("below phase 0", message,
+                      "the phase the claim is scoped to has to be named in it")
         self.assertNotIn("every candidate was rejected", message,
                          "a child can be skipped without ever being evaluated: "
                          "getUniqueTunnelingPhases drops duplicates and the tmin >= tmax "
