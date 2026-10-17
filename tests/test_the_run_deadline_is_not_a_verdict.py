@@ -18,15 +18,19 @@ broad handlers for this reason. This test makes the pattern a rule rather than t
 from __future__ import annotations
 
 import ast
+import contextlib
+import io
 import pathlib
+import types
 import unittest
 
-import numpy as np
 from unittest import mock
 
 from transitionlistener import errors
 from transitionlistener import gwfopt
 from transitionlistener import nucleation
+from transitionlistener.interface import pipeline
+from transitionlistener.interface import state as tl_state
 
 
 def _src_root() -> pathlib.Path:
@@ -119,6 +123,68 @@ class EveryConvertingHandlerLetsTheDeadlineThroughTests(unittest.TestCase):
                       {(f, fn) for f, fn, _, guarded in handlers if guarded},
                       "tunneling1D guarded its broad handler before this change and must "
                       "still be seen as guarded")
+
+
+class TheOptionalStagesDoNotAbsorbTheDeadlineTests(unittest.TestCase):
+    """Re-raising inside a module is not enough; the caller has to let it out too.
+
+    `_compute_single_point` wraps the spectrum stage so that a point which already has
+    transition observables still returns them when only the spectrum fails. That fallback falls
+    through to `signal.alarm(0)` and `return context, None`, a success. So the `gwfopt` guard on
+    its own moved the deadline one level up into a handler that dropped it completely -- not a
+    wrong code, no error at all. A reviewer found this on PR #41 after the guard was added.
+
+    The outer handler of the same function is deliberately **not** guarded: it is the terminus
+    that returns the exception as the point's error, which `error_code = getattr(error,
+    "errorcode", -1)` then maps. Guarding it would break the mapping. So "every broad handler
+    must re-raise" is the wrong rule, and this tests the contract instead: a deadline in an
+    optional stage comes back as the point's error.
+    """
+
+    def test_a_deadline_in_the_spectrum_stage_is_the_points_error(self):
+        pot = types.SimpleNamespace(config=types.SimpleNamespace(
+            percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size")))
+        observables = types.SimpleNamespace(transitionObservables={0: {"alpha": 0.1}})
+
+        def times_out(*args, **kwargs):
+            raise errors.Timeout()
+
+        with mock.patch.object(pipeline, "Phases", lambda *a, **k: "phases"), \
+             mock.patch.object(pipeline, "Transitions", lambda *a, **k: "transitions"), \
+             mock.patch.object(pipeline, "_select_observables_class",
+                               lambda p: lambda *a, **k: observables), \
+             mock.patch.object(pipeline, "_find_strongest_transition",
+                               lambda d: {"alpha": 0.1}), \
+             mock.patch.object(pipeline, "FOPTspectrum", times_out), \
+             mock.patch.object(tl_state, "DEBUGMODE", False):
+            with contextlib.redirect_stdout(io.StringIO()):
+                context, error = pipeline._compute_single_point(
+                    inputparams_dict={}, potential=lambda *a, **k: pot,
+                    timeout=0, verbose=False, include_smbhb=False, max_stage=4)
+
+        self.assertIsNotNone(
+            error,
+            "the deadline was absorbed as an optional-stage failure and the point came back "
+            "successful, so nothing downstream can report CLI code 16")
+        self.assertIsInstance(error, errors.Timeout)
+        self.assertEqual(getattr(error, "errorcode", None), 16)
+
+    def test_the_terminal_handler_still_returns_other_errors(self):
+        """The guard must not turn the terminus into a re-raiser for ordinary failures."""
+        pot = types.SimpleNamespace(config=types.SimpleNamespace(
+            percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size")))
+
+        def ordinary(*args, **kwargs):
+            raise errors.NucleationError("no solution")
+
+        with mock.patch.object(pipeline, "Phases", ordinary), \
+             mock.patch.object(tl_state, "DEBUGMODE", False):
+            with contextlib.redirect_stdout(io.StringIO()):
+                context, error = pipeline._compute_single_point(
+                    inputparams_dict={}, potential=lambda *a, **k: pot,
+                    timeout=0, verbose=False, include_smbhb=False, max_stage=4)
+        self.assertIsInstance(error, errors.NucleationError)
+        self.assertEqual(getattr(error, "errorcode", None), 2)
 
 
 class TheDocumentedCodesAreTheRealCodesTests(unittest.TestCase):
