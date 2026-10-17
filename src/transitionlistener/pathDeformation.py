@@ -544,9 +544,13 @@ class Deformation_Points(object):
 
         Parameters
         ----------
-        startstep, maxstep : float, optional
-            Starting and maximum stepsizes used in :func:`step`, rescaled by
-            ``|phi[0]-phi[1]| / (max(dV)*num_points)``.
+        startstep, minstep : float, optional
+            Starting and minimum stepsizes passed to :func:`step`, rescaled by
+            ``sum(|phi[0]-phi[-1]|) / (num_points * max(dV))``, the first and last points of
+            the path rather than the first two. ``minstep`` is the lower bound on the
+            stepsize; :func:`step` takes no upper bound, and only ever divides the stepsize by
+            ``step_decrease``, while :func:`deformPath` multiplies it by ``step_increase``
+            after each step.
         fRatioConv : float, optional
             The routine will stop when the maximum normal force on the path
             divided by the maximum potential gradient is less than this.

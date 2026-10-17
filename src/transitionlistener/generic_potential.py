@@ -753,8 +753,6 @@ class generic_potential():
 
         Parameters
         ----------
-        X : array_like
-            The field values
         T : float or array_like
             The temperatures
         include_decoupled : bool, optional
@@ -1812,8 +1810,6 @@ class generic_potential():
 
         Parameters
         ----------
-        pot : generic_potential
-            Effective potential
         X : np.ndarray
             The scalar field values
         T : float|np.ndarray
