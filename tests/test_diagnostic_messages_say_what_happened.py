@@ -347,8 +347,9 @@ class TheRunDeadlineIsNotAPhysicsVerdictTests(unittest.TestCase):
 
     The class guard below is scoped to `transitions` on purpose. Measured across `src/` on
     2026-10-17, with this branch's guards in place, there are 122 bare
-    `except Exception`/`except BaseException` handlers, of which 36 guard the deadline, so a
-    package-wide version of this test would fail on 86 sites in 25 files. Most of those are not on the physics path, where a swallowed deadline becomes a
+    `except Exception`/`except BaseException` handlers, of which 37 guard the deadline, so a
+    package-wide version of this test would fail on 85 sites. The numbers shift whenever a guard
+    is added, this branch included, so treat them as a measurement rather than a target. Most of those are not on the physics path, where a swallowed deadline becomes a
     verdict; auditing the ones that are is its own change.
     """
 

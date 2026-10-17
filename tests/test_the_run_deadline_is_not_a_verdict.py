@@ -48,6 +48,31 @@ def _enclosing_function(tree: ast.AST, lineno: int) -> str:
     return best.name if best else "<module>"
 
 
+def _is_bare_timeout_reraise(handler) -> bool:
+    """A guard only counts if it catches the deadline **and lets it out unchanged**.
+
+    Checking merely that an `except ...Timeout` precedes the broad handler tests the shape and
+    not the contract: `except errors.Timeout: raise errors.NucleationError(...)`, or a plain
+    `pass`, would satisfy it while the deadline is still relabelled or dropped. A reviewer
+    pointed that out on PR #41, and the runtime witnesses below cover only a few of the sites,
+    so the static rule has to carry the rest.
+
+    The body must therefore be exactly one bare `raise`. Comments do not appear in the parse
+    tree, so the explanatory comment above each `raise` costs nothing here. A tuple handler such
+    as `except (errors.Timeout, ValueError):` is deliberately **not** accepted: re-raising there
+    would re-raise the other types too, which is a different decision and should be made
+    explicitly. There are none in `src/` today.
+    """
+    kind = handler.type
+    named = ((isinstance(kind, ast.Attribute) and kind.attr == "Timeout")
+             or (isinstance(kind, ast.Name) and kind.id == "Timeout"))
+    if not named:
+        return False
+    return (len(handler.body) == 1
+            and isinstance(handler.body[0], ast.Raise)
+            and handler.body[0].exc is None)
+
+
 def _converting_handlers():
     """Every broad handler that turns what it catches into an error class.
 
@@ -77,11 +102,8 @@ def _converting_handlers():
                             raised.add(name)
                 if not raised:
                     continue
-                guarded = any(
-                    (isinstance(earlier.type, ast.Attribute)
-                     and earlier.type.attr == "Timeout")
-                    or (isinstance(earlier.type, ast.Name) and earlier.type.id == "Timeout")
-                    for earlier in node.handlers[:index])
+                guarded = any(_is_bare_timeout_reraise(earlier)
+                               for earlier in node.handlers[:index])
                 found.append((path.name, _enclosing_function(tree, handler.lineno),
                               tuple(sorted(raised)), guarded))
     return found
