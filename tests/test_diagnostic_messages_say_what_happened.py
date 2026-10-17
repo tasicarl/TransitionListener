@@ -447,6 +447,103 @@ class CyclicPhaseGraphTests(unittest.TestCase):
         self.assertEqual(phases["1"].childPhases, ["2"],
                          "the graph is intact, which is why the guard is needed")
 
+    def test_the_cycle_report_handles_integer_phase_keys(self):
+        """`PhaseInfo.key` may be an integer.
+
+        `phases.getT0Phase` is annotated `-> int | str` and the phase dictionary is
+        `dict[int | str, PhaseInfo]`, so a cyclic graph with integer keys must still raise
+        `WrongT0MinimumError` and its CLI code 3. Joining the visited keys without converting
+        them raises `TypeError` instead, losing the error the caller is meant to see.
+        """
+        phases = _Phases({
+            1: types.SimpleNamespace(key=1, Tmax=615.5, Tmin=50.0, childPhases=[2],
+                                     low_trans={}, valAt=lambda T: 3.0,
+                                     X=np.array([[3.0], [3.0]]), T=np.array([50.0, 615.5])),
+            2: types.SimpleNamespace(key=2, Tmax=500.0, Tmin=40.0, childPhases=[1],
+                                     low_trans={}, valAt=lambda T: 3.0,
+                                     X=np.array([[2.0], [2.0]]), T=np.array([40.0, 500.0])),
+            0: types.SimpleNamespace(key=0, Tmax=200.0, Tmin=0.0, childPhases=[],
+                                     low_trans={}, valAt=lambda T: 1.0,
+                                     X=np.array([[1.0], [1.0]]), T=np.array([0.0, 200.0])),
+        })
+        phases.rootPhase = 1
+        phases.T0Phase = 0
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(np.squeeze(x)), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+
+        box = {}
+
+        def run():
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    transitions.Transitions.findTransitionPathFromTnuc(stub, verbose=False)
+            except BaseException as err:
+                box["error"] = err
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(20.0)
+        self.assertFalse(worker.is_alive())
+        err = box.get("error")
+        self.assertIsInstance(err, transitions.errors.WrongT0MinimumError,
+                              f"integer keys must not turn this into something else: {err!r}")
+        self.assertEqual(err.errorcode, 3)
+        self.assertIn("1 -> 2 -> 1", " ".join(str(err).split()))
+
+    def test_a_second_order_step_is_not_reported_as_a_cycle(self):
+        """The branch that reassigns `startPhase` inside the child loop.
+
+        `secondOrderTrans` appends a transition and moves `startPhase` to the end phase before
+        the iteration finishes. A guard that records the phase at the bottom of the loop then
+        compares that phase against itself and reports a cycle that did not happen. Recording
+        at the top, before anything reassigns, is what makes this pass.
+        """
+        phases = _Phases({
+            "1": types.SimpleNamespace(key="1", Tmax=615.5, Tmin=300.0, childPhases=["0"],
+                                       low_trans={"0": True}, valAt=lambda T: 2.0,
+                                       X=np.array([[2.0], [2.0]]), T=np.array([300.0, 615.5])),
+            "0": types.SimpleNamespace(key="0", Tmax=200.0, Tmin=0.0, childPhases=[],
+                                       low_trans={}, valAt=lambda T: 1.0,
+                                       X=np.array([[1.0], [1.0]]), T=np.array([0.0, 200.0])),
+        })
+        second_order = types.SimpleNamespace(
+            Tcrit=200.0, Tnuc=None, low_phase="0", high_phase="1", type=2,
+            low_vev=1.0, high_vev=2.0)
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(np.squeeze(x)), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp,
+            secondOrderTrans=lambda V, sp, ep, verbose: second_order)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+
+        box = {}
+
+        def run():
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    box["found"] = transitions.Transitions.findTransitionPathFromTnuc(
+                        stub, verbose=False)
+            except BaseException as err:
+                box["error"] = err
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(20.0)
+        self.assertFalse(worker.is_alive(), "the walk did not terminate")
+        self.assertNotIsInstance(box.get("error"), transitions.errors.WrongT0MinimumError,
+                                 "a second-order step is not a cycle")
+        self.assertEqual(len(box.get("found", [])), 1,
+                         f"expected the second-order transition to be returned: {box!r}")
+
     def test_the_chain_also_ends_at_the_zero_temperature_phase_in_fixed_step_mode(self):
         """The exit is before the seedless branch, so it must hold for the other backend too.
 

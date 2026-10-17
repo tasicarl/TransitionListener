@@ -621,6 +621,21 @@ class Transitions():
             # among its children, so the walk asked it for one more transition, was refused the
             # cycle's closing link, and raised -- discarding the two transitions it had already
             # found and reporting the run as too supercooled to nucleate.
+            # Tested at the top, on the phase this iteration begins at, because
+            # `startPhase` is reassigned in two places below: once by the second-order branch
+            # inside the child loop, and once at the end of the iteration. Reading it after
+            # either of those compares a phase against itself and reports a valid second-order
+            # step as a cycle.
+            if startPhase.key in visited:
+                walked = " -> ".join(str(k) for k in visited)
+                raise errors.WrongT0MinimumError(
+                    f"The transition chain returns to phase {startPhase.key}, which it has "
+                    f"already left: {walked} -> {startPhase.key}. The phase graph contains a "
+                    "cycle, so the chain cannot reach the zero-temperature minimum "
+                    f"({self.phases.T0Phase}). {len(transitions)} transition(s) were found "
+                    "before the cycle closed.")
+            visited.append(startPhase.key)
+
             if startPhase.key == self.phases.T0Phase and transitions:
                 if verbose:
                     print(f"Chain complete at the zero-temperature phase {startPhase.key} "
@@ -764,15 +779,7 @@ class Transitions():
 
             childTransitions = sorted(childTransitions, key=_transition_sort_temperature, reverse=True)
             # new start phase:
-            visited.append(startPhase.key)
             startPhase = phases[childTransitions[0].low_phase]
-            if startPhase.key in visited:
-                raise errors.WrongT0MinimumError(
-                    f"The transition chain returns to phase {startPhase.key}, which it has "
-                    f"already left: {' -> '.join(visited)} -> {startPhase.key}. The phase "
-                    "graph contains a cycle, so the chain cannot reach the zero-temperature "
-                    f"minimum ({self.phases.T0Phase}). {len(transitions)} transition(s) were "
-                    "found before the cycle closed.")
             transitions.append(childTransitions[0])
 
         for i, tr in enumerate(transitions):
