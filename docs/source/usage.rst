@@ -176,7 +176,11 @@ The most important controls are:
   nothing about supercooling is being claimed. Its message, and the transition-path form of
   code 8, report how many child phases were listed, how many were evaluated as candidates,
   and how many ended in a nucleation solve that did not succeed; run with ``verbose=True``
-  to see each phase pair.
+  to see each phase pair. Those three counts belong to the transition-path stage alone. The
+  percolation form of code 8 carries none of them, because at that point the transition has
+  already been found; it reports the fraction reached and the lowest temperature tried, as
+  above. So a scan reading code 8 should take the counts as present only when the message is
+  the transition-path one.
 
 - ``WARNING:noisy_c_s`` and ``DIAG:c_s_step_change``: whether the computed sound
   speed survives a change of the derivative step. A value can be round-off and
