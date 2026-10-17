@@ -83,14 +83,11 @@ def _converting_handlers():
     return found
 
 
-# Keyed on (file, function) rather than a line number, so the waiver survives edits above it.
-# These two are fixed on `fix/diagnostic-messages`, which is in review as pull request #37 and
-# touches the same lines, so guarding them here would only create a merge conflict. **Empty this
-# set when #37 merges**; the stale-waiver test below fails if an entry stops being needed.
-KNOWN_UNGUARDED = {
-    ("transitions.py", "findAllTransitions"),
-    ("transitions.py", "findTransitionPathFromTnuc"),
-}
+# Empty, and the staleness test below keeps it that way. It briefly held the two `transitions.py`
+# handlers while pull request #37 was in review, because that branch touched the same lines. #37
+# merged without its deadline fix, so those two came into `main` unguarded and are fixed here
+# instead, which is why nothing is waived any more.
+KNOWN_UNGUARDED: set[tuple[str, str]] = set()
 
 
 class EveryConvertingHandlerLetsTheDeadlineThroughTests(unittest.TestCase):
