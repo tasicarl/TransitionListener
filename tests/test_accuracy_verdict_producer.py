@@ -139,16 +139,17 @@ class AccuracyVerdictProducerTests(unittest.TestCase):
         self.assertIs(
             ad._dynamiczoomwindow_accuracy_verdict(_estimate(1e-3), settings), True)
 
-    def test_a_single_profile_measures_tperc_and_tf_but_not_rh(self):
+    def test_a_single_profile_now_measures_all_three(self):
         """The claim the whole asymmetry rests on, taken from the real estimator.
 
         Every other test here stubs `_estimate_dynamiczoomwindow_accuracy`, so nothing
         checked that a lone profile really does measure Tperc and Tf. It does, through the
         bracket-width fallback, and the references below are the linearised crossing and the
         sample spacing of the grid this test writes down, not values read off a previous run.
-        RH has no such fallback, which is why an infinite `RH_uncertainty` must not be read
-        as a miss: `_dynamiczoomwindow_accuracy_reached` is False on this estimate however
-        loose the targets are, while the verdict is None.
+        RH had no such fallback until it gained one: it is now recomputed on every second
+        support point, and the relative difference between the two is its uncertainty. So a
+        lone profile measures all three, and `acc_rh` is judgeable on a first estimate where
+        it previously never was.
         """
         import types
         from transitionlistener import percolation_adaptivestepsize as ad
@@ -179,14 +180,24 @@ class AccuracyVerdictProducerTests(unittest.TestCase):
         self.assertAlmostEqual(est["Tf_uncertainty"] * est["Tf"], spacing, places=10)
 
         self.assertTrue(np.isfinite(est["RH"]), "RH itself was determined")
-        self.assertEqual(est["RH_uncertainty"], math.inf,
-                         "RH has no bracket measure, so one profile cannot bound it")
+        self.assertTrue(np.isfinite(est["RH_half_support"]),
+                        "eight points is the smallest support the halving accepts")
+        self.assertTrue(np.isfinite(est["RH_uncertainty"]),
+                        "one profile now bounds RH, which is the point of this change")
+        expected_rh_unc = (abs(est["RH"] - est["RH_half_support"])
+                           / max(abs(est["RH"]), 1e-30))
+        self.assertAlmostEqual(est["RH_uncertainty"], expected_rh_unc, places=12,
+                               msg="the uncertainty is the relative difference between the "
+                                   "full and the halved support, computed here from the "
+                                   "estimate's own two values")
 
         loose = types.SimpleNamespace(acc_tperc=1.0, acc_tfinal=1.0, acc_rh=1.0)
-        self.assertFalse(ad._dynamiczoomwindow_accuracy_reached(est, loose),
-                         "the conjunction is false on any single profile, which is what made "
-                         "the warning fire everywhere")
-        self.assertIsNone(ad._dynamiczoomwindow_accuracy_verdict(est, loose))
+        self.assertTrue(ad._dynamiczoomwindow_accuracy_reached(est, loose),
+                        "with RH measurable the conjunction can now be satisfied by a single "
+                        "profile, which it never could before")
+        self.assertIs(ad._dynamiczoomwindow_accuracy_verdict(est, loose), True,
+                      "and the verdict is a certificate rather than None, because all three "
+                      "targets were measured and met")
         self.assertIs(ad._dynamiczoomwindow_accuracy_verdict(est, settings), False,
                       "against the 1% defaults this profile is a measured miss on both Tperc "
                       "and Tf, and must stay one")

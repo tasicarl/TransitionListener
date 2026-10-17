@@ -195,6 +195,7 @@ def _estimate_dynamiczoomwindow_accuracy(
         "Tf_uncertainty": math.inf,
         "RH": math.nan,
         "RH_uncertainty": math.inf,
+        "RH_half_support": math.nan,
         "Tperc_bracket_width": math.inf,
         "Tf_bracket_width": math.inf,
     }
@@ -284,6 +285,18 @@ def _estimate_dynamiczoomwindow_accuracy(
             rh_indicator = float(bubble_separation * float(Hint(float(estimate["Tperc"]))))
             if np.isfinite(rh_indicator) and rh_indicator > 0.0:
                 estimate["RH"] = rh_indicator
+                # The same quantity from half the support. `Tperc` and `Tf` each have a
+                # self-contained measure of their own convergence -- the width of the bracket
+                # they were found in -- and `RH` had none, so `acc_rh` could only be judged
+                # when an earlier iteration happened to leave a value to difference against,
+                # which on the 2HDM benchmark never happened: 163 of 163 resolved couplings
+                # reported an infinite RH uncertainty. Recomputing it on every second support
+                # point gives the same kind of measure, how much the answer depends on the
+                # density of the grid it was integrated on. No bounce is solved for it: it
+                # reuses the samples already in hand, so it costs three interpolations.
+                estimate["RH_half_support"] = _rh_on_halved_support(
+                    temps, probability_values, action_values, hubble_values,
+                    float(estimate["Tperc"]), pot, settings)
         except Exception:
             pass
 
@@ -321,16 +334,78 @@ def _estimate_dynamiczoomwindow_accuracy(
         # Tperc and Tf do not have this hole: each falls back to its own bracket width. RH
         # has no bracket measure, so the honest value with nothing to compare against is
         # "unknown", which must not satisfy the target.
-        estimate["RH_uncertainty"] = (
-            math.inf
-            if previous_RH is None
-            or not np.isfinite(previous_RH)
-            or not np.isfinite(float(estimate["RH"]))
-            else abs(float(estimate["RH"]) - float(previous_RH))
-            / max(abs(float(estimate["RH"])), 1e-30)
-        )
+        # Two measures, and the larger wins, exactly as Tperc and Tf take the larger of
+        # their bracket width and their difference against the previous iteration. The
+        # halved-support value is the self-contained one and is what makes acc_rh judgeable
+        # on a first estimate; the difference against a previous RH is kept because it
+        # measures something the halving cannot, namely drift as the grid was refined.
+        rh_value = float(estimate["RH"])
+        candidates = []
+        half = float(estimate.get("RH_half_support", math.nan))
+        if np.isfinite(half):
+            candidates.append(abs(rh_value - half) / max(abs(rh_value), 1e-30))
+        if previous_RH is not None and np.isfinite(previous_RH):
+            candidates.append(abs(rh_value - float(previous_RH)) / max(abs(rh_value), 1e-30))
+        estimate["RH_uncertainty"] = max(candidates) if candidates else math.inf
 
     return estimate
+
+
+def _halved_support_mask(n: int) -> np.ndarray:
+    """Every second support point, with both ends kept.
+
+    The ends are kept so that the halved profile spans the same temperature range as the full
+    one. Dropping either would change the interval the bubble separation is integrated over,
+    and the difference between the two estimates would then measure the range rather than the
+    sampling density, which is the whole point of the comparison.
+    """
+    keep = np.zeros(int(n), dtype=bool)
+    keep[::2] = True          # the stride already includes index 0
+    keep[-1] = True           # the cold end only lands on the stride for odd n
+    return keep
+
+
+def _rh_on_halved_support(temps, probabilities, actions, hubble, Tperc, pot, settings):
+    """`RH` recomputed from every second support point, as a convergence measure.
+
+    Returns `nan` where the halved support cannot carry the calculation, which the caller
+    treats the same as having no second estimate: not measured rather than missed.
+
+    The halving keeps the first and last points so the integration range is unchanged, and
+    the quantity is built exactly as the full-support one is, through the same
+    `calcMeanBubbleSeparation` on the bag relation. What the difference between them measures
+    is the sensitivity of `RH` to how densely the profile was sampled, which is what
+    `acc_rh` is asking about.
+    """
+    from transitionlistener import bubbledynamics as bd
+
+    temps = np.asarray(temps, dtype=float)
+    if temps.size < 8:
+        # Halving a short support leaves too few points for a cubic interpolant, and the
+        # difference would measure the interpolation rather than the profile.
+        return math.nan
+    keep = _halved_support_mask(temps.size)
+
+    sub_t = temps[keep]
+    sub_p = np.asarray(probabilities, dtype=float)[keep]
+    sub_s = np.asarray(actions, dtype=float)[keep]
+    sub_h = np.asarray(hubble, dtype=float)[keep]
+    ok_p, ok_s, ok_h = np.isfinite(sub_p), np.isfinite(sub_s), np.isfinite(sub_h)
+    if min(np.count_nonzero(ok_p), np.count_nonzero(ok_s), np.count_nonzero(ok_h)) < 4:
+        return math.nan
+    try:
+        Pint = interpolate.interp1d(sub_t[ok_p], sub_p[ok_p], kind="cubic",
+                                    fill_value=(0.0, 1.0), bounds_error=False)
+        Sint = interpolate.interp1d(sub_t[ok_s], sub_s[ok_s], kind="cubic",
+                                    fill_value=(-np.inf, np.inf), bounds_error=False)
+        Hint = interpolate.interp1d(sub_t[ok_h], sub_h[ok_h], kind="cubic",
+                                    fill_value="extrapolate", bounds_error=False)
+        separation = bd.calcMeanBubbleSeparation(
+            Tperc, float(sub_t[0]), Sint, Pint, Hint, None, None, verbose=False)
+        value = float(separation * float(Hint(Tperc)))
+    except Exception:
+        return math.nan
+    return value if np.isfinite(value) and value > 0.0 else math.nan
 
 
 def _dynamiczoomwindow_accuracy_reached(
