@@ -626,6 +626,17 @@ class Transitions():
             # inside the child loop, and once at the end of the iteration. Reading it after
             # either of those compares a phase against itself and reports a valid second-order
             # step as a cycle.
+            # Completion is tested before the cycle guard. A chain can reach the
+            # zero-temperature phase before it has found any transition, advance from it by a
+            # second-order step, and come back to it with transitions in hand. That chain is
+            # complete and must stop here; testing the guard first would report it as a cycle
+            # and discard it, which is the defect this whole branch exists to remove.
+            if startPhase.key == self.phases.T0Phase and transitions:
+                if verbose:
+                    print(f"Chain complete at the zero-temperature phase {startPhase.key} "
+                          f"after {len(transitions)} transition(s).")
+                break
+
             if startPhase.key in visited:
                 walked = " -> ".join(str(k) for k in visited)
                 raise errors.WrongT0MinimumError(
@@ -635,12 +646,6 @@ class Transitions():
                     f"({self.phases.T0Phase}). {len(transitions)} transition(s) were found "
                     "before the cycle closed.")
             visited.append(startPhase.key)
-
-            if startPhase.key == self.phases.T0Phase and transitions:
-                if verbose:
-                    print(f"Chain complete at the zero-temperature phase {startPhase.key} "
-                          f"after {len(transitions)} transition(s).")
-                break
 
             # check if we are in the lowest minimum
             if startPhase.childPhases == []:

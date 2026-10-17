@@ -646,6 +646,69 @@ class CyclicPhaseGraphTests(unittest.TestCase):
                          "only the transition into the zero-temperature phase belongs here")
         self.assertEqual(box["found"][0].low_phase, "0")
 
+    def test_a_chain_that_returns_to_the_zero_temperature_phase_completes(self):
+        """Why the completion test runs before the cycle guard, not after it.
+
+        The walk can only stand on the zero-temperature phase with no transition in hand on its
+        first iteration, because `startPhase` advances only together with
+        `transitions.append(...)`. That needs `rootPhase` and `T0Phase` to be the same key,
+        which no recorded walk of the 2HDM shows -- 31 traces all give `T0Phase=0` with
+        `rootPhase` 1 or 4 -- and which nothing in `getStartPhase`/`getT0Phase` forbids, since
+        they are chosen independently.
+
+        With the guard tested first, the walk leaves that phase, comes back to it holding two
+        transitions, and raises `WrongT0MinimumError` saying "the chain cannot reach the
+        zero-temperature minimum" while standing on it. The statement is false and the chain is
+        thrown away. Testing completion first reports what happened.
+
+        Both edges are accepted, `0 -> 1` through the crossing branch and `1 -> 0` through the
+        `T_max` branch, so the walk really does return rather than stopping for lack of a
+        candidate. Run on a daemon thread with a deadline, because an ordering mistake here can
+        hang instead of answering.
+        """
+        class _RootIsT0(_Phases):
+            rootPhase = "0"
+            T0Phase = "0"
+
+        phases = _RootIsT0({
+            "1": types.SimpleNamespace(key="1", Tmax=615.5, Tmin=50.0, childPhases=["0"],
+                                       low_trans={}, valAt=lambda T: 5.0),
+            "0": types.SimpleNamespace(key="0", Tmax=200.0, Tmin=10.0, childPhases=["1"],
+                                       low_trans={}, valAt=lambda T: 10.0 - T / 10.0),
+        })
+        stub = types.SimpleNamespace(
+            phases=phases, V=lambda x, T: float(x), conversionFactor=1.0,
+            tunnelFromPhase_args={},
+            pot=types.SimpleNamespace(config=types.SimpleNamespace(
+                percolationConf=types.SimpleNamespace(algorithm_mode="adaptive_step_size"))),
+            getUniqueTunnelingPhases=lambda V, p, sp, cp: cp)
+        stub.seedlessFirstOrderCandidate = (
+            transitions.Transitions.seedlessFirstOrderCandidate.__get__(stub))
+
+        box = {}
+
+        def run():
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    box["found"] = transitions.Transitions.findTransitionPathFromTnuc(
+                        stub, verbose=False)
+            except BaseException as err:
+                box["error"] = err
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(20.0)
+        self.assertFalse(worker.is_alive(), "the walk did not terminate")
+        self.assertNotIsInstance(
+            box.get("error"), transitions.errors.WrongT0MinimumError,
+            "a chain standing on the zero-temperature phase has reached it, so the cycle "
+            f"error must not fire: {box.get('error')!r}")
+        self.assertNotIn("error", box, f"unexpected error: {box.get('error')!r}")
+        self.assertEqual(len(box["found"]), 2,
+                         "both steps of the chain belong in the result")
+        self.assertEqual(box["found"][-1].low_phase, "0",
+                         "the chain ends on the zero-temperature phase")
+
     def test_a_partial_chain_stopped_short_of_the_end_still_raises(self):
         """The exit is for the end of the chain, not for any dead end.
 
