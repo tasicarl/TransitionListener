@@ -846,6 +846,7 @@ def _dynamiczoomwindow_range_targets(
     iterator: int,
     hot_head_needs_support: bool,
     maxit_margin: int,
+    actions_computed=None,
     cold_tail_last_temperature: float | None,
     cold_tail_last_probability: float | None,
     cold_tail_last_integral: float | None,
@@ -863,7 +864,8 @@ def _dynamiczoomwindow_range_targets(
     # further point there returns a non-finite action, is dropped by the percolation
     # integral and by the profile rebuild, and still costs a bounce solve. Stop expanding
     # and leave the controller to refine where an action can still be computed.
-    if cold_tail_unresolved and _cold_walk_has_left_the_bounce_region(actions):
+    if cold_tail_unresolved and _cold_walk_has_left_the_bounce_region(
+            actions, actions_computed):
         cold_tail_unresolved = False
 
     if (probabilities[0] > settings.f_start or hot_head_needs_support) and not cold_tail_unresolved:
@@ -1206,12 +1208,18 @@ def _compute_step3_profile(
     state.Pr.fill(0)
     state.Tb.fill(np.nan)
     state.Sr.fill(0)
+    # Provenance of every entry of `Sr`, so that a consumer asking "was a bounce solved here"
+    # does not have to infer it from the value being finite. The carry below makes the
+    # saturated tail finite on purpose, which is what the integral needs and what the
+    # bounce-boundary test must not mistake for a solve.
+    state.Sr_computed = np.zeros(TSYM.size, dtype=bool)
     profile_saturated = False
 
     for i, T in enumerate(TSYM):
         if not profile_saturated:
             eSYM = bd.energyDensity(pot, phase_symmetric, T)
             state.Sr[i] = bd.calcAction(pot, T, phase_symmetric, phase_broken, outdict)
+            state.Sr_computed[i] = True
             P = float(previous_probability[i]) if np.isfinite(previous_probability[i]) else 0.0
             # Only the transitioning sector and the radiation coupled to it are
             # reheated inside the bubbles; a decoupled bath keeps the background
@@ -1341,6 +1349,7 @@ def _compute_step3_profile(
                 if usable.size:
                     last_action = float(usable[-1])
             state.Sr[i] = last_action
+            # left False: carried, not solved
             state.Hr[i] = bd.HubbleParameter(bd.energyDensity(pot, phase_symmetric, T), CF)
 
         if i >= 1 and previous_probability[i] > settings.f_final and previous_probability[i - 1] > settings.f_final:
@@ -1594,6 +1603,7 @@ def _initial_percolation_scan_dynamiczoomwindow(
             iterator=iterator,
             hot_head_needs_support=hot_head_needs_support,
             maxit_margin=2,
+            actions_computed=state.Sr_computed,
             cold_tail_last_temperature=state.cold_tail_last_temperature,
             cold_tail_last_probability=state.cold_tail_last_probability,
             cold_tail_last_integral=state.cold_tail_last_integral,
@@ -2013,6 +2023,7 @@ def _refine_percolation_temperature_dynamiczoomwindow(
             iterator=iterator,
             hot_head_needs_support=hot_head_needs_support,
             maxit_margin=1,
+            actions_computed=state.Sr_computed,
             cold_tail_last_temperature=state.cold_tail_last_temperature,
             cold_tail_last_probability=state.cold_tail_last_probability,
             cold_tail_last_integral=state.cold_tail_last_integral,
