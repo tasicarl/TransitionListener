@@ -410,6 +410,13 @@ def _rh_on_halved_support(temps, probabilities, actions, hubble, Tperc, pot, set
         separation = bd.calcMeanBubbleSeparation(
             Tperc, float(sub_t[0]), Sint, Pint, Hint, None, None, verbose=False)
         value = float(separation * float(Hint(Tperc)))
+    except errors.Timeout:
+        # The deadline is raised from a SIGALRM handler and can land in either interpolation or
+        # inside `calcMeanBubbleSeparation`. Returned as `nan` here it is indistinguishable from
+        # a support this estimate simply cannot carry, so the caller records "not measured" and
+        # the point is reported as finished. The guard at the call site cannot help: this handler
+        # catches the deadline first, so it has to be re-raised here.
+        raise
     except Exception:
         return math.nan
     return value if np.isfinite(value) and value > 0.0 else math.nan

@@ -21,6 +21,7 @@ import unittest
 import numpy as np
 
 from transitionlistener import config
+from transitionlistener import bubbledynamics as bd
 from transitionlistener import percolation_adaptivestepsize as ad
 
 
@@ -109,15 +110,38 @@ class TheOptionalEstimateDoesNotSwallowTheDeadlineTests(unittest.TestCase):
     """
 
     def test_a_deadline_inside_the_halved_estimate_reaches_the_caller(self):
+        """Drive the real estimator, not a stub of the thing under test.
+
+        The first version of this test patched `_rh_on_halved_support` and then called the patched
+        helper, so it asserted that its own stub raises and exercised neither the estimator nor
+        the helper's exception path. A reviewer caught it. It would have passed with the
+        production bug fully present.
+
+        Here `calcMeanBubbleSeparation` is patched so the **full-support** call succeeds and the
+        **halved-support** one raises the deadline, which is the real sequence: the halved
+        estimate is computed after the full one, from the same samples.
+        """
         from unittest import mock
         from transitionlistener import errors
 
-        def times_out(*args, **kwargs):
+        settings = config.PercolationConf()
+        temps, p, a, h = _profile()
+        real = bd.calcMeanBubbleSeparation
+        calls = {"n": 0}
+
+        def first_then_deadline(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return real(*args, **kwargs)
             raise errors.Timeout()
 
-        with mock.patch.object(ad, "_rh_on_halved_support", times_out):
+        with mock.patch.object(bd, "calcMeanBubbleSeparation", first_then_deadline):
             with self.assertRaises(errors.Timeout) as caught:
-                ad._rh_on_halved_support(None, None, None, None, 1.0, None, None)
+                ad._estimate_dynamiczoomwindow_accuracy(
+                    temps, h, p, a, settings, _pot(settings), previous=None)
+        self.assertGreaterEqual(calls["n"], 2,
+                                "the halved-support call has to be reached for this to mean "
+                                f"anything; it was called {calls['n']} time(s)")
         self.assertEqual(caught.exception.errorcode, 16)
 
     def test_the_guard_precedes_the_broad_handler_at_that_call_site(self):
