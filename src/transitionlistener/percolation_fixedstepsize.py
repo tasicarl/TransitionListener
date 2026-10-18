@@ -363,6 +363,12 @@ def _refine_percolation_temperature(
                                 )
                             state.Tb[i] = state.Tb[i - 1]
                             TBRO = state.Tb[i]
+                        except errors.Timeout:
+                            # The run deadline arrives from the SIGALRM handler in
+                            # interface/state.py and can land on any bytecode. Caught by the broad
+                            # handler below it is reported as `PercolationError`, so a run that
+                            # never finished comes out as a finished one with a verdict.
+                            raise
                         except Exception as err:
                             raise errors.PercolationError(
                                 "Error in energy_criterion_BRO: "

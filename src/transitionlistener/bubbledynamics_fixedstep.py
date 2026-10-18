@@ -835,6 +835,12 @@ def calcApproxPercolation(
                     print("Newton method used in percolation approximation 1")
                 if Tperc < float(tmin) or Tperc > float(tmax):
                     raise ValueError("Newton method failed to find a root in the range")
+            except errors.Timeout:
+                # The run deadline arrives from the SIGALRM handler in interface/state.py and can
+                # land on any bytecode. Caught by the broad handler below it is reported as
+                # `PercolationApproximation1Error`, so a run that never finished comes out as a
+                # finished one with a verdict.
+                raise
             except Exception as newton_err:
                 if verbose:
                     print("Newton method failed in percolation approximation 1: ", newton_err)
@@ -1358,6 +1364,11 @@ def _solve_for_initial_Tperc(
                     f"{state.TSYM[-1] * pot.conversionFactor} GeV."
                 )
         raise errors.PercolationError(err)
+    except errors.Timeout:
+        # The run deadline arrives from the SIGALRM handler in interface/state.py and can land on
+        # any bytecode. Caught by the broad handler below it is reported as `PercolationError`, so
+        # a run that never finished comes out as a finished one with a verdict.
+        raise
     except Exception as err:
         msg = (
             "Error in calculating Tperc_prev after the second approximation step "
@@ -1504,6 +1515,12 @@ def _refine_percolation_temperature(
                                 )
                             state.Tb[i] = state.Tb[i - 1]
                             TBRO = state.Tb[i]
+                        except errors.Timeout:
+                            # The run deadline arrives from the SIGALRM handler in
+                            # interface/state.py and can land on any bytecode. Caught by the broad
+                            # handler below it is reported as `PercolationError`, so a run that
+                            # never finished comes out as a finished one with a verdict.
+                            raise
                         except Exception as err:
                             raise errors.PercolationError(
                                 "Error in energy_criterion_BRO: "
@@ -2257,6 +2274,11 @@ def calcTf(Tperc, Tlow, Pint, pot, verbose=False):
     # Step 2: Find Tf by solving Pint(Tf) = f_final
     try:
         Tf = optimize.brentq(lambda TSYM: Pint(TSYM) - f_final, Tlow, Tperc)
+    except errors.Timeout:
+        # The run deadline arrives from the SIGALRM handler in interface/state.py and can land on
+        # any bytecode. Caught by the broad handler below it is reported as `PercolationError`, so
+        # a run that never finished comes out as a finished one with a verdict.
+        raise
     except Exception as e:
         msg = "Error in calculating Tf: " + str(e)
         if verbose:
@@ -2417,6 +2439,11 @@ def findTminFromUShapedNucl(Tmin, Tmax, args, start_phase, end_phase, outdict,
             if verbose:
                 print("Finding Tmin_u failed: ", result.message)
             raise errors.NucleationError("Nucleation criterion failed in the finding of Tmin_u:" + str(result.message))
+    except errors.Timeout:
+        # The run deadline arrives from the SIGALRM handler in interface/state.py and can land on
+        # any bytecode. Caught by the broad handler below it is reported as `NucleationError`, so a
+        # run that never finished comes out as a finished one with a verdict.
+        raise
     except Exception as err:
         raise errors.NucleationError("Nucleation calculation failed: " + str(err))
 
@@ -2591,6 +2618,12 @@ def computeNucleationTemperature(V, dV, d2V, start_phase, end_phase,
             )
             if verbose:
                 print("Brentq done after second try! Tnuc = ", Tnuc * CF, "GeV")
+        except errors.Timeout:
+            # The run deadline arrives from the SIGALRM handler in interface/state.py and can land
+            # on any bytecode. Caught by the broad handler below it is reported as
+            # `NucleationError`, so a run that never finished comes out as a finished one with a
+            # verdict.
+            raise
         except Exception:
             if verbose:
                 print("Brentq failed again after increasing the numerical tolerance by a factor 10.")
@@ -2896,6 +2929,11 @@ def computeNucleationTemperature2(
 
     try:
         Tnuc = optimize.brentq(evalNucleationCriterion, Tmin, Tmax, args=args, xtol=Ttol, maxiter=maxiter, disp=False)
+    except errors.Timeout:
+        # The run deadline arrives from the SIGALRM handler in interface/state.py and can land on
+        # any bytecode. Caught by the broad handler below it is reported as `NucleationError`, so a
+        # run that never finished comes out as a finished one with a verdict.
+        raise
     except Exception as e:
         print("Nucleation calculation failed!")
         print(e)

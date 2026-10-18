@@ -2100,6 +2100,11 @@ def _solve_for_initial_Tperc(
                     f"{state.TSYM[-1] * pot.conversionFactor} GeV."
                 )
         raise errors.PercolationError(err)
+    except errors.Timeout:
+        # The run deadline arrives from the SIGALRM handler in interface/state.py and can land on
+        # any bytecode. Caught by the broad handler below it is reported as `PercolationError`, so
+        # a run that never finished comes out as a finished one with a verdict.
+        raise
     except Exception as err:
         msg = (
             "Error in calculating Tperc_prev after the second approximation step "
@@ -3943,6 +3948,11 @@ def calcTf(Tperc, Tlow, Pint, pot, verbose=False):
     # Step 2: Find Tf by solving Pint(Tf) = f_final
     try:
         Tf = optimize.brentq(lambda TSYM: Pint(TSYM) - f_final, Tlow, Tperc)
+    except errors.Timeout:
+        # The run deadline arrives from the SIGALRM handler in interface/state.py and can land on
+        # any bytecode. Caught by the broad handler below it is reported as `PercolationError`, so
+        # a run that never finished comes out as a finished one with a verdict.
+        raise
     except Exception as e:
         msg = "Error in calculating Tf: " + str(e)
         if verbose:
