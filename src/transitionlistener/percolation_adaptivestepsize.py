@@ -242,6 +242,13 @@ def _estimate_dynamiczoomwindow_accuracy(
                 fill_value="extrapolate",
                 bounds_error=False,
             )
+        except errors.Timeout:
+            # Building the interpolants is where a SIGALRM most easily lands, since it is the
+            # first thing this function does with the profile. Caught here the deadline becomes
+            # `Pint = Sint = Hint = None`, every estimate below is skipped, and the point is
+            # reported as finished with a partial accuracy record. The guard further down cannot
+            # help: this handler runs first.
+            raise
         except Exception:
             Pint = Sint = Hint = None
     else:
@@ -258,6 +265,11 @@ def _estimate_dynamiczoomwindow_accuracy(
                 pot,
                 verbose=False,
             )
+        except errors.Timeout:
+            # Same reason: `calcTf` integrates, so the deadline can land inside it. Swallowed
+            # here it leaves `Tf` at whatever the crossing gave and the run continues, so a
+            # timed-out point reports an accuracy record it never finished computing.
+            raise
         except Exception:
             pass
 

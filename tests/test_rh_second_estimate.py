@@ -144,41 +144,66 @@ class TheOptionalEstimateDoesNotSwallowTheDeadlineTests(unittest.TestCase):
                                 f"anything; it was called {calls['n']} time(s)")
         self.assertEqual(caught.exception.errorcode, 16)
 
-    def test_the_guard_precedes_the_broad_handler_at_that_call_site(self):
-        """The behavioural test above cannot reach the real try/except, so pin it structurally."""
+    def test_no_broad_handler_in_the_module_can_eat_the_deadline(self):
+        """Scoped to the module, because that is the scope of the claim.
+
+        The first version checked only the handler around the halved-support call. Two more sat
+        a few lines above -- around building the interpolants, and around `calcTf` -- and both ran
+        *before* it, so the deadline never reached the guarded one. A reviewer pointed out that
+        the branch claims the deadline reaches the caller from this estimate, and that claim is
+        about the whole path, not one call. Checking one site let the claim be false while the
+        test was green, which is the same mistake in the gate rather than in the code.
+
+        So: every broad handler in this module must be preceded by a bare `except errors.Timeout:
+        raise`. There are four, all on the accuracy-estimate path, and a new one cannot be added
+        without this failing.
+        """
         import ast
         import inspect
-        import textwrap
 
-        src = inspect.getsource(ad)
-        tree = ast.parse(src)
-        sites = []
+        tree = ast.parse(inspect.getsource(ad))
+
+        def enclosing(lineno):
+            best = None
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef) and node.lineno <= lineno <= (
+                        node.end_lineno or node.lineno):
+                    if best is None or node.lineno > best.lineno:
+                        best = node
+            return best.name if best else "<module>"
+
+        unguarded = []
+        total = 0
         for node in ast.walk(tree):
             if not isinstance(node, ast.Try):
                 continue
-            calls = [n for n in ast.walk(node)
-                     if isinstance(n, ast.Call)
-                     and getattr(n.func, "id", None) == "_rh_on_halved_support"]
-            if not calls:
-                continue
-            guarded = False
-            for h in node.handlers:
-                t = h.type
-                named = ((isinstance(t, ast.Attribute) and t.attr == "Timeout")
-                         or (isinstance(t, ast.Name) and t.id == "Timeout"))
-                if named and len(h.body) == 1 and isinstance(h.body[0], ast.Raise) \
-                        and h.body[0].exc is None:
-                    guarded = True
-                if isinstance(t, ast.Name) and t.id in ("Exception", "BaseException"):
-                    sites.append((node.lineno, guarded))
-                    break
-        self.assertTrue(sites, "no broad handler found around the halved-support call")
-        for lineno, guarded in sites:
-            self.assertTrue(
-                guarded,
-                f"the broad handler around _rh_on_halved_support (try at line {lineno} of "
-                "percolation_adaptivestepsize.py) has no preceding `except errors.Timeout: "
-                "raise`, so a run deadline there is dropped and the point is reported as finished")
+            for index, handler in enumerate(node.handlers):
+                kind = handler.type
+                if not (isinstance(kind, ast.Name)
+                        and kind.id in ("Exception", "BaseException")):
+                    continue
+                total += 1
+                guarded = False
+                for earlier in node.handlers[:index]:
+                    t = earlier.type
+                    named = ((isinstance(t, ast.Attribute) and t.attr == "Timeout")
+                             or (isinstance(t, ast.Name) and t.id == "Timeout"))
+                    if (named and len(earlier.body) == 1
+                            and isinstance(earlier.body[0], ast.Raise)
+                            and earlier.body[0].exc is None):
+                        guarded = True
+                if not guarded:
+                    unguarded.append((handler.lineno, enclosing(handler.lineno)))
+
+        self.assertGreaterEqual(total, 4,
+                                "the sweep found fewer broad handlers than the four this module "
+                                "has, so it is not looking at what it thinks it is")
+        self.assertEqual(
+            unguarded, [],
+            "these broad handlers in percolation_adaptivestepsize.py have no preceding "
+            "`except errors.Timeout: raise`, so a run deadline there is turned into a partial "
+            "accuracy estimate and the point is reported as finished: "
+            + "; ".join(f"line {ln} in {fn}" for ln, fn in unguarded))
 
 
 class UncertaintyUsesBothMeasuresTests(unittest.TestCase):
