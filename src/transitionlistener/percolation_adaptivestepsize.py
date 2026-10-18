@@ -289,7 +289,7 @@ def _estimate_dynamiczoomwindow_accuracy(
                 # self-contained measure of their own convergence -- the width of the bracket
                 # they were found in -- and `RH` had none, so `acc_rh` could only be judged
                 # when an earlier iteration happened to leave a value to difference against,
-                # which on the 2HDM benchmark never happened: 163 of 163 resolved couplings
+                # which on the 2HDM benchmark never happened: 164 of 164 resolved couplings
                 # reported an infinite RH uncertainty. Recomputing it on every second support
                 # point gives the same kind of measure, how much the answer depends on the
                 # density of the grid it was integrated on. No bounce is solved for it: it
@@ -297,6 +297,13 @@ def _estimate_dynamiczoomwindow_accuracy(
                 estimate["RH_half_support"] = _rh_on_halved_support(
                     temps, probability_values, action_values, hubble_values,
                     float(estimate["Tperc"]), pot, settings)
+        except errors.Timeout:
+            # The run deadline comes from a SIGALRM handler, so it can land inside the
+            # interpolations or the `calcMeanBubbleSeparation` call above. Swallowed by the
+            # fallback below it becomes a missing second estimate and the run carries on, so
+            # a point that never finished would be reported as one that did. The halved
+            # estimate is an optional extra; the deadline is not.
+            raise
         except Exception:
             pass
 
@@ -431,10 +438,16 @@ def _dynamiczoomwindow_accuracy_verdict(
 
     None means undecided, which is not the same claim as missed. Tperc and Tf can always be
     judged: when there is no previous estimate to difference against, each falls back to its
-    own bracket width, so a single profile still measures them. RH has no bracket measure.
-    Its uncertainty is a relative difference against a previous RH or it is infinite, and an
-    infinite one means nobody measured it. A profile that meets every target it could measure
-    and never measured RH is therefore returned as None rather than False.
+    own bracket width, so a single profile still measures them.
+
+    RH has no bracket measure, but since `RH_half_support` it has a self-contained one: the same
+    samples re-integrated on every second support point give a second RH, and the relative
+    difference between the two is an uncertainty a single profile can report. So RH is normally
+    judged like the other two now. Its uncertainty is still infinite where that halved estimate
+    cannot be built -- a support too short to halve, or one whose samples are unusable -- and an
+    infinite one still means nobody measured it. A profile that meets every target it could
+    measure and could not measure RH is returned as None rather than False, and that case is now
+    the exception rather than the rule.
 
     An RH that could not be determined at all is a different matter and counts as missed,
     because the value is absent rather than its reference.
