@@ -1658,6 +1658,36 @@ _APPROX_PERCOLATION_SCAN_RATIO = 1.15
 _APPROX_PERCOLATION_MAX_BLIND_STEPS = 20
 
 
+def _bracket_sign(value) -> float:
+    """The sign of a criterion value for bracketing: +1, -1, or 0 for no information.
+
+    The two infinities are not symmetric, and treating them as if they were puts back the
+    defect this walk exists to remove.
+
+    `-inf` is a definite answer. The criterion returns it for `T >= Tmax` and for
+    `T + dT >= Tmax` before computing any action, and again when an action is exactly zero
+    at either sample, and in each case it means "above the root". Discarding it skips the
+    sign test exactly where the criterion is most emphatic: with the hot root inside the
+    first step, at 110 against a `Tmax` of 120, requiring both ends finite returns 9.9977,
+    the artefact at the cold end of the band, and with a degenerate `-inf` one step above
+    a root at 60 it returns 9.99774. Counting it by its sign returns the root in both.
+
+    `+inf` carries no information. The criterion returns it at `T <= Tmin`, which is
+    construction rather than measurement, and wherever an action is not computable. Either
+    way, bracketing against it manufactures a root at the cold end of whatever interval it
+    is handed, which is how the estimate came to return 1.96582e-12 GeV. A stretch with no
+    computable action is bounded by `_APPROX_PERCOLATION_MAX_BLIND_STEPS` instead.
+
+    `brentq` tolerates an infinite value at a bracket end, measured for roots at 110, 118
+    and 119.9 of a `Tmax` of 120, and the whole-interval call this walk replaces handed it
+    `Tmax` with that same `-inf` at every point TransitionListener has ever run.
+    """
+    value = float(np.squeeze(value))
+    if np.isnan(value) or value == np.inf:
+        return 0.0
+    return 1.0 if value > 0.0 else (-1.0 if value < 0.0 else 0.0)
+
+
 def _approx_percolation_criterion(
     T: float, outdict: dict, pot, phase_sym, phase_bro, Tmax: float, Tmin: float, vw: float, verbose: bool = False
 ) -> float:
@@ -1817,28 +1847,12 @@ def calcApproxPercolation(
     )  # imported here because that module imports this one at load time
     hot = float(Tmax)
     f_hot = _approx_percolation_criterion(hot, *args)
-    if f_hot == -np.inf:
-        # The criterion returns `-inf` at `Tmax` by construction rather than by
-        # measurement: it answers "too hot" for `T >= Tmax`, and for `T + dT >= Tmax`,
-        # before computing an action. That sign is definite, so the first step of the walk
-        # has to be able to bracket against it. Left as `-inf` it fails the finiteness
-        # test below, the whole first step is skipped, and a root inside it -- anything
-        # within a factor `_APPROX_PERCOLATION_SCAN_RATIO` of `Tmax` -- is stepped over,
-        # after which the walk brackets a colder root and returns it with no complaint.
-        # That is the defect this walk exists to remove. Measured on the synthetic
-        # criterion of `tests/test_percolation_estimate_takes_the_hottest_root.py` with
-        # its hot root moved into the first step, at 110 against a `Tmax` of 120: 9.9977
-        # is returned, the artefact at the cold end of the band. `brentq` is still handed
-        # `Tmax` itself and evaluates the `-inf` there for itself, which is what the
-        # whole-interval call this walk replaces did at every point TransitionListener has
-        # ever run.
-        f_hot = -1.0
     cold = None
     probe = hot
     while probe > Tmin:
         probe = max(probe / _APPROX_PERCOLATION_SCAN_RATIO, Tmin)
         f_probe = _approx_percolation_criterion(probe, *args)
-        if np.isfinite(f_hot) and np.isfinite(f_probe) and f_hot * f_probe < 0:
+        if _bracket_sign(f_hot) * _bracket_sign(f_probe) < 0:
             cold = probe
             break
         # Stop once the walk leaves the band where a bubble can nucleate at all, but only

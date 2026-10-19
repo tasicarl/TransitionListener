@@ -172,6 +172,56 @@ class TheEstimateDeclinesWhenThereIsNoRoot(unittest.TestCase):
         self.assertGreater(len(p.probes), 1, "the walk never ran")
 
 
+class AMinusInfinityMidWalkDoesNotHideTheRoot(unittest.TestCase):
+    """A definite "too hot" one step above the root must still bracket it.
+
+    The criterion answers `-inf` without measuring anything for `T >= Tmax` and for
+    `T + dT >= Tmax`, and again when an action is exactly zero at either sample. Requiring
+    both ends of a step to be finite throws those answers away, and the walk steps over
+    any root that lies just below one of them. Carrying the structural `-inf` at `Tmax`
+    alone is not enough, because the same answer can appear at any step.
+
+    `+inf` is deliberately not treated this way: the criterion returns it at `T <= Tmin`
+    by construction and wherever an action cannot be computed, so bracketing against it
+    manufactures a root at the cold end, which is the defect the walk exists to remove.
+    `TheEstimateDeclinesWhenThereIsNoRoot` is what holds that line.
+    """
+
+    #: One step above `HOT_ROOT` on the geometric walk from `TMAX`.
+    BAD = 69.0
+
+    def test_a_degenerate_step_above_the_root_still_brackets_it(self):
+        def criterion(T, outdict, *a, **k):
+            T = float(np.squeeze(T))
+            if TMIN < T < TMAX:
+                outdict[T] = {"action": 100.0 * T}
+            if T >= TMAX:
+                return -np.inf
+            if T <= TMIN:
+                return np.inf
+            if abs(T - self.BAD) < 1.0:
+                return -np.inf
+            return -1.0 if T > HOT_ROOT else (+1.0 if T > COLD_ROOT else -1.0)
+
+        # The premise: the degenerate patch really does sit on a step of the walk, one
+        # step above the root, or the test cannot fail.
+        probe, steps = TMAX, []
+        for _ in range(8):
+            probe /= bd._APPROX_PERCOLATION_SCAN_RATIO
+            steps.append(probe)
+        self.assertTrue(
+            any(abs(t - self.BAD) < 1.0 for t in steps),
+            f"the walk does not land in the patch at {self.BAD}; steps are {steps}")
+
+        with _Patched(lambda T: 100.0 * T, criterion=criterion) as p:
+            Tperc = float(estimate())
+        self.assertGreater(len(p.probes), 1, "the walk never ran")
+        self.assertAlmostEqual(
+            Tperc, HOT_ROOT, delta=HOT_ROOT * 1e-2,
+            msg=f"the estimate returned {Tperc!r}; a -inf one step above the root hid it, "
+                f"and the artefact at {COLD_ROOT} was returned instead")
+
+
 class TheWalkStopsWhereNucleationDies(unittest.TestCase):
     """A criterion with no root must not be walked down to the floor of the tracing range.
 
