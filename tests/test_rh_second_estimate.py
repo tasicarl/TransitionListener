@@ -47,7 +47,12 @@ class HalvedSupportEstimateTests(unittest.TestCase):
         self.assertTrue(np.isfinite(value) and value > 0.0, value)
 
     def test_it_declines_a_support_too_short_to_halve(self):
-        """Seven points leave three after halving, below what a cubic interpolant needs.
+        """Seven points are declined by the cutoff on the full support, which is eight.
+
+        Not because the halving leaves too few: `_halved_support_mask(7)` keeps indices 0, 2, 4
+        and 6, so four points, which is exactly what a cubic interpolant needs. Eight is a
+        deliberate margin, leaving five, so the interpolant is not determined entirely by its own
+        knots and the difference measures the profile rather than the fit.
 
         Returning `nan` rather than a number keeps the caller's meaning intact: not measured,
         which is reported as an infinite uncertainty, rather than a measure of the

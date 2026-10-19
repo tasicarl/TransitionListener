@@ -400,8 +400,12 @@ def _rh_on_halved_support(temps, probabilities, actions, hubble, Tperc, pot, set
 
     temps = np.asarray(temps, dtype=float)
     if temps.size < 8:
-        # Halving a short support leaves too few points for a cubic interpolant, and the
-        # difference would measure the interpolation rather than the profile.
+        # The cutoff is on the full support, before halving, and eight is a deliberate margin
+        # rather than the strict minimum: `_halved_support_mask` keeps indices 0, 2, 4, ... plus
+        # the last, so eight points leave five and seven leave four. Four is exactly what a cubic
+        # interpolant needs, so a seven-point support would be interpolated by a curve determined
+        # entirely by its own knots and the difference would measure that fit rather than the
+        # profile. Requiring five leaves the interpolant at least one degree of freedom.
         return math.nan
     keep = _halved_support_mask(temps.size)
 
@@ -423,11 +427,13 @@ def _rh_on_halved_support(temps, probabilities, actions, hubble, Tperc, pot, set
             Tperc, float(sub_t[0]), Sint, Pint, Hint, None, None, verbose=False)
         value = float(separation * float(Hint(Tperc)))
     except errors.Timeout:
-        # The deadline is raised from a SIGALRM handler and can land in either interpolation or
-        # inside `calcMeanBubbleSeparation`. Returned as `nan` here it is indistinguishable from
-        # a support this estimate simply cannot carry, so the caller records "not measured" and
-        # the point is reported as finished. The guard at the call site cannot help: this handler
-        # catches the deadline first, so it has to be re-raised here.
+        # Propagated, not converted. The deadline is raised from a SIGALRM handler and can land
+        # in either interpolation or inside `calcMeanBubbleSeparation`; re-raising here lets it
+        # reach the caller and be reported as CLI code 16. Returning `nan` instead -- which is
+        # what the handler below does for an ordinary failure -- would make it indistinguishable
+        # from a support this estimate cannot carry, and the point would be reported as finished.
+        # It has to be re-raised *here* because this handler runs before the guard at the call
+        # site, which would otherwise never see it.
         raise
     except Exception:
         return math.nan
