@@ -109,6 +109,15 @@ class PercolationState:
     support_bank: np.ndarray | None = None
     free_support_bank: np.ndarray | None = None
     action_temperatures: np.ndarray | None = None
+    # True where `Sr` holds an action a bounce solve produced, False where it was carried
+    # forward from a warmer point because the fraction had already saturated and step 3
+    # stopped solving. `np.isfinite(Sr)` cannot answer this since the carry made the tail
+    # finite, and two consumers want different things from that array: `percIntegralODE`
+    # needs a usable number wherever it integrates, while
+    # `_cold_walk_has_left_the_bounce_region` needs to know where a solve was attempted and
+    # failed, which is what marks the edge of the bounce region. None where no profile has
+    # been built yet, and for the fixed-step backend, which never carries.
+    Sr_computed: np.ndarray | None = None
     cold_tail_last_temperature: float | None = None
     cold_tail_last_probability: float | None = None
     cold_tail_last_integral: float | None = None

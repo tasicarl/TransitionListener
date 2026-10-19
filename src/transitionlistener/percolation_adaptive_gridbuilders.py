@@ -398,7 +398,7 @@ def _nucleation_is_dead(temperature: float, action: float) -> bool:
 _COLD_WALK_MAX_FAILED_ACTIONS = 3
 
 
-def _cold_walk_has_left_the_bounce_region(actions) -> bool:
+def _cold_walk_has_left_the_bounce_region(actions, computed=None) -> bool:
     """True when the coldest support points no longer have a computable bounce.
 
     Below the transition the symmetric phase stops being metastable, so the bounce stops
@@ -419,10 +419,22 @@ def _cold_walk_has_left_the_bounce_region(actions) -> bool:
     values = np.asarray(actions, dtype=float)
     if values.size == 0:
         return False
-    finite = np.isfinite(values)
-    if not np.any(finite):
+    # What this test wants is "a bounce solve was attempted here and did not produce an
+    # action", which is what marks the edge of the bounce region. Finiteness stopped being
+    # able to answer that once step 3 began carrying the last usable action across the
+    # saturated tail: a carried entry is finite but no solve was attempted at it. Where the
+    # caller knows the provenance it passes it, and a carried entry counts as not solved,
+    # exactly as a `nan` did before the carry existed. Callers without it -- step 2, which
+    # never carries, and any direct caller -- fall back to finiteness, which is correct for
+    # an array whose entries were all either solved or left `nan`.
+    solved = np.isfinite(values)
+    if computed is not None:
+        provenance = np.asarray(computed, dtype=bool)
+        if provenance.size == values.size:
+            solved = solved & provenance
+    if not np.any(solved):
         return False
-    trailing = int(values.size - 1 - int(np.max(np.flatnonzero(finite))))
+    trailing = int(values.size - 1 - int(np.max(np.flatnonzero(solved))))
     return trailing >= int(_COLD_WALK_MAX_FAILED_ACTIONS)
 
 

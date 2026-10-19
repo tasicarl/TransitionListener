@@ -195,6 +195,7 @@ def _estimate_dynamiczoomwindow_accuracy(
         "Tf_uncertainty": math.inf,
         "RH": math.nan,
         "RH_uncertainty": math.inf,
+        "RH_half_support": math.nan,
         "Tperc_bracket_width": math.inf,
         "Tf_bracket_width": math.inf,
     }
@@ -241,6 +242,13 @@ def _estimate_dynamiczoomwindow_accuracy(
                 fill_value="extrapolate",
                 bounds_error=False,
             )
+        except errors.Timeout:
+            # Building the interpolants is where a SIGALRM most easily lands, since it is the
+            # first thing this function does with the profile. Caught here the deadline becomes
+            # `Pint = Sint = Hint = None`, every estimate below is skipped, and the point is
+            # reported as finished with a partial accuracy record. The guard further down cannot
+            # help: this handler runs first.
+            raise
         except Exception:
             Pint = Sint = Hint = None
     else:
@@ -257,6 +265,11 @@ def _estimate_dynamiczoomwindow_accuracy(
                 pot,
                 verbose=False,
             )
+        except errors.Timeout:
+            # Same reason: `calcTf` integrates, so the deadline can land inside it. Swallowed
+            # here it leaves `Tf` at whatever the crossing gave and the run continues, so a
+            # timed-out point reports an accuracy record it never finished computing.
+            raise
         except Exception:
             pass
 
@@ -284,6 +297,25 @@ def _estimate_dynamiczoomwindow_accuracy(
             rh_indicator = float(bubble_separation * float(Hint(float(estimate["Tperc"]))))
             if np.isfinite(rh_indicator) and rh_indicator > 0.0:
                 estimate["RH"] = rh_indicator
+                # The same quantity from half the support. `Tperc` and `Tf` each have a
+                # self-contained measure of their own convergence -- the width of the bracket
+                # they were found in -- and `RH` had none, so `acc_rh` could only be judged
+                # when an earlier iteration happened to leave a value to difference against,
+                # which on the 2HDM benchmark never happened: 164 of 164 resolved couplings
+                # reported an infinite RH uncertainty. Recomputing it on every second support
+                # point gives the same kind of measure, how much the answer depends on the
+                # density of the grid it was integrated on. No bounce is solved for it: it
+                # reuses the samples already in hand, so it costs three interpolations.
+                estimate["RH_half_support"] = _rh_on_halved_support(
+                    temps, probability_values, action_values, hubble_values,
+                    float(estimate["Tperc"]), pot, settings)
+        except errors.Timeout:
+            # The run deadline comes from a SIGALRM handler, so it can land inside the
+            # interpolations or the `calcMeanBubbleSeparation` call above. Swallowed by the
+            # fallback below it becomes a missing second estimate and the run carries on, so
+            # a point that never finished would be reported as one that did. The halved
+            # estimate is an optional extra; the deadline is not.
+            raise
         except Exception:
             pass
 
@@ -321,16 +353,91 @@ def _estimate_dynamiczoomwindow_accuracy(
         # Tperc and Tf do not have this hole: each falls back to its own bracket width. RH
         # has no bracket measure, so the honest value with nothing to compare against is
         # "unknown", which must not satisfy the target.
-        estimate["RH_uncertainty"] = (
-            math.inf
-            if previous_RH is None
-            or not np.isfinite(previous_RH)
-            or not np.isfinite(float(estimate["RH"]))
-            else abs(float(estimate["RH"]) - float(previous_RH))
-            / max(abs(float(estimate["RH"])), 1e-30)
-        )
+        # Two measures, and the larger wins, exactly as Tperc and Tf take the larger of
+        # their bracket width and their difference against the previous iteration. The
+        # halved-support value is the self-contained one and is what makes acc_rh judgeable
+        # on a first estimate; the difference against a previous RH is kept because it
+        # measures something the halving cannot, namely drift as the grid was refined.
+        rh_value = float(estimate["RH"])
+        candidates = []
+        half = float(estimate.get("RH_half_support", math.nan))
+        if np.isfinite(half):
+            candidates.append(abs(rh_value - half) / max(abs(rh_value), 1e-30))
+        if previous_RH is not None and np.isfinite(previous_RH):
+            candidates.append(abs(rh_value - float(previous_RH)) / max(abs(rh_value), 1e-30))
+        estimate["RH_uncertainty"] = max(candidates) if candidates else math.inf
 
     return estimate
+
+
+def _halved_support_mask(n: int) -> np.ndarray:
+    """Every second support point, with both ends kept.
+
+    The ends are kept so that the halved profile spans the same temperature range as the full
+    one. Dropping either would change the interval the bubble separation is integrated over,
+    and the difference between the two estimates would then measure the range rather than the
+    sampling density, which is the whole point of the comparison.
+    """
+    keep = np.zeros(int(n), dtype=bool)
+    keep[::2] = True          # the stride already includes index 0
+    keep[-1] = True           # the cold end only lands on the stride for odd n
+    return keep
+
+
+def _rh_on_halved_support(temps, probabilities, actions, hubble, Tperc, pot, settings):
+    """`RH` recomputed from every second support point, as a convergence measure.
+
+    Returns `nan` where the halved support cannot carry the calculation, which the caller
+    treats the same as having no second estimate: not measured rather than missed.
+
+    The halving keeps the first and last points so the integration range is unchanged, and
+    the quantity is built exactly as the full-support one is, through the same
+    `calcMeanBubbleSeparation` on the bag relation. What the difference between them measures
+    is the sensitivity of `RH` to how densely the profile was sampled, which is what
+    `acc_rh` is asking about.
+    """
+    from transitionlistener import bubbledynamics as bd
+
+    temps = np.asarray(temps, dtype=float)
+    if temps.size < 8:
+        # The cutoff is on the full support, before halving, and eight is a deliberate margin
+        # rather than the strict minimum: `_halved_support_mask` keeps indices 0, 2, 4, ... plus
+        # the last, so eight points leave five and seven leave four. Four is exactly what a cubic
+        # interpolant needs, so a seven-point support would be interpolated by a curve determined
+        # entirely by its own knots and the difference would measure that fit rather than the
+        # profile. Requiring five leaves the interpolant at least one degree of freedom.
+        return math.nan
+    keep = _halved_support_mask(temps.size)
+
+    sub_t = temps[keep]
+    sub_p = np.asarray(probabilities, dtype=float)[keep]
+    sub_s = np.asarray(actions, dtype=float)[keep]
+    sub_h = np.asarray(hubble, dtype=float)[keep]
+    ok_p, ok_s, ok_h = np.isfinite(sub_p), np.isfinite(sub_s), np.isfinite(sub_h)
+    if min(np.count_nonzero(ok_p), np.count_nonzero(ok_s), np.count_nonzero(ok_h)) < 4:
+        return math.nan
+    try:
+        Pint = interpolate.interp1d(sub_t[ok_p], sub_p[ok_p], kind="cubic",
+                                    fill_value=(0.0, 1.0), bounds_error=False)
+        Sint = interpolate.interp1d(sub_t[ok_s], sub_s[ok_s], kind="cubic",
+                                    fill_value=(-np.inf, np.inf), bounds_error=False)
+        Hint = interpolate.interp1d(sub_t[ok_h], sub_h[ok_h], kind="cubic",
+                                    fill_value="extrapolate", bounds_error=False)
+        separation = bd.calcMeanBubbleSeparation(
+            Tperc, float(sub_t[0]), Sint, Pint, Hint, None, None, verbose=False)
+        value = float(separation * float(Hint(Tperc)))
+    except errors.Timeout:
+        # Propagated, not converted. The deadline is raised from a SIGALRM handler and can land
+        # in either interpolation or inside `calcMeanBubbleSeparation`; re-raising here lets it
+        # reach the caller and be reported as CLI code 16. Returning `nan` instead -- which is
+        # what the handler below does for an ordinary failure -- would make it indistinguishable
+        # from a support this estimate cannot carry, and the point would be reported as finished.
+        # It has to be re-raised *here* because this handler runs before the guard at the call
+        # site, which would otherwise never see it.
+        raise
+    except Exception:
+        return math.nan
+    return value if np.isfinite(value) and value > 0.0 else math.nan
 
 
 def _dynamiczoomwindow_accuracy_reached(
@@ -356,10 +463,16 @@ def _dynamiczoomwindow_accuracy_verdict(
 
     None means undecided, which is not the same claim as missed. Tperc and Tf can always be
     judged: when there is no previous estimate to difference against, each falls back to its
-    own bracket width, so a single profile still measures them. RH has no bracket measure.
-    Its uncertainty is a relative difference against a previous RH or it is infinite, and an
-    infinite one means nobody measured it. A profile that meets every target it could measure
-    and never measured RH is therefore returned as None rather than False.
+    own bracket width, so a single profile still measures them.
+
+    RH has no bracket measure, but since `RH_half_support` it has a self-contained one: the same
+    samples re-integrated on every second support point give a second RH, and the relative
+    difference between the two is an uncertainty a single profile can report. So RH is normally
+    judged like the other two now. Its uncertainty is still infinite where that halved estimate
+    cannot be built -- a support too short to halve, or one whose samples are unusable -- and an
+    infinite one still means nobody measured it. A profile that meets every target it could
+    measure and could not measure RH is returned as None rather than False, and that case is now
+    the exception rather than the rule.
 
     An RH that could not be determined at all is a different matter and counts as missed,
     because the value is absent rather than its reference.
@@ -846,6 +959,7 @@ def _dynamiczoomwindow_range_targets(
     iterator: int,
     hot_head_needs_support: bool,
     maxit_margin: int,
+    actions_computed=None,
     cold_tail_last_temperature: float | None,
     cold_tail_last_probability: float | None,
     cold_tail_last_integral: float | None,
@@ -863,7 +977,8 @@ def _dynamiczoomwindow_range_targets(
     # further point there returns a non-finite action, is dropped by the percolation
     # integral and by the profile rebuild, and still costs a bounce solve. Stop expanding
     # and leave the controller to refine where an action can still be computed.
-    if cold_tail_unresolved and _cold_walk_has_left_the_bounce_region(actions):
+    if cold_tail_unresolved and _cold_walk_has_left_the_bounce_region(
+            actions, actions_computed):
         cold_tail_unresolved = False
 
     if (probabilities[0] > settings.f_start or hot_head_needs_support) and not cold_tail_unresolved:
@@ -1206,12 +1321,18 @@ def _compute_step3_profile(
     state.Pr.fill(0)
     state.Tb.fill(np.nan)
     state.Sr.fill(0)
+    # Provenance of every entry of `Sr`, so that a consumer asking "was a bounce solved here"
+    # does not have to infer it from the value being finite. The carry below makes the
+    # saturated tail finite on purpose, which is what the integral needs and what the
+    # bounce-boundary test must not mistake for a solve.
+    state.Sr_computed = np.zeros(TSYM.size, dtype=bool)
     profile_saturated = False
 
     for i, T in enumerate(TSYM):
         if not profile_saturated:
             eSYM = bd.energyDensity(pot, phase_symmetric, T)
             state.Sr[i] = bd.calcAction(pot, T, phase_symmetric, phase_broken, outdict)
+            state.Sr_computed[i] = True
             P = float(previous_probability[i]) if np.isfinite(previous_probability[i]) else 0.0
             # Only the transitioning sector and the radiation coupled to it are
             # reheated inside the bubbles; a decoupled bath keeps the background
@@ -1341,6 +1462,7 @@ def _compute_step3_profile(
                 if usable.size:
                     last_action = float(usable[-1])
             state.Sr[i] = last_action
+            # left False: carried, not solved
             state.Hr[i] = bd.HubbleParameter(bd.energyDensity(pot, phase_symmetric, T), CF)
 
         if i >= 1 and previous_probability[i] > settings.f_final and previous_probability[i - 1] > settings.f_final:
@@ -1594,6 +1716,7 @@ def _initial_percolation_scan_dynamiczoomwindow(
             iterator=iterator,
             hot_head_needs_support=hot_head_needs_support,
             maxit_margin=2,
+            actions_computed=state.Sr_computed,
             cold_tail_last_temperature=state.cold_tail_last_temperature,
             cold_tail_last_probability=state.cold_tail_last_probability,
             cold_tail_last_integral=state.cold_tail_last_integral,
@@ -2013,6 +2136,7 @@ def _refine_percolation_temperature_dynamiczoomwindow(
             iterator=iterator,
             hot_head_needs_support=hot_head_needs_support,
             maxit_margin=1,
+            actions_computed=state.Sr_computed,
             cold_tail_last_temperature=state.cold_tail_last_temperature,
             cold_tail_last_probability=state.cold_tail_last_probability,
             cold_tail_last_integral=state.cold_tail_last_integral,
