@@ -41,9 +41,14 @@ import sys
 #: Smallest slope away from ``phi_absMin`` a shooting trial can be started from. The value is
 #: the one this test has always carried; what changed is its use, from aborting the solve to
 #: rejecting the trial, and that it is now read against the direction the trial displaces the
-#: field in rather than against ``dV`` alone. It is an absolute floor rather than a fraction of
-#: the potential's scale because what it guards is the division in `initialConditions`, which
-#: underflows on its own terms.
+#: field in rather than against ``dV`` alone. It is an absolute floor, and only the underflow
+#: it was written for can reach it: `initialConditions` starts a trial from `exactSolution`,
+#: whose displacement from ``phi0`` is proportional to ``dV/d2V``, so a slope this small moves
+#: the field by nothing and the search for ``r0`` runs out to the floating-point range before
+#: failing. Its exact value is not what decides a solve, because a trial near it is rejected
+#: rather than fatal: on the quartic of `tests/test_unusable_slope_rejects_the_trial.py` the
+#: floor sits at ``x`` = 460.0, where ``dV`` is ``0.6 exp(-x)``, while the bisection's own
+#: trials run from ``x`` = 1.49 to 37.25.
 _MIN_USABLE_DV_FROM_ABSMIN = 1e-200
 if sys.version_info >= (3,0):
     xrange = range
@@ -786,7 +791,7 @@ class SingleFieldInstanton:
         # the interior points below are built from, so taking it would put a rejected trial
         # inside an accepted profile: on the quartic of
         # `tests/test_unusable_slope_rejects_the_trial.py`, with the last trial rejected,
-        # that returns an action of 8.27e+07 against 94.8357. The saved profile is
+        # that returns an action of 4.35e+12 against 94.8357. The saved profile is
         # re-integrated, and its interior filled in, from the trial that was kept. On every
         # other exit the saved and the current values are the same.
         epsabs_rf = None
@@ -848,10 +853,17 @@ class SingleFieldInstanton:
 
             if np.isnan(x):
                 # A `nan` `x` has to be caught here rather than beside the `r0_` test
-                # below, which a trial without a usable slope never reaches. No stopping
-                # test at the foot of the loop can fire on one -- `x == xmin` is false and
-                # `(xmax-xmin) < ...` is false -- so the bisection would repeat the same
-                # `nan` for ever. Reached with `xguess = nan`, which a model's
+                # below, which a trial without a usable slope never reaches. None of the
+                # three stopping tests at the foot of the loop can fire on one, because
+                # every comparison against a `nan` is false: `x == xmin`, `x == xmax` and
+                # `(xmax-xmin) < ...` are all false, so the bisection would repeat the
+                # same `nan` for ever. An infinite `x` needs no test of its own: the
+                # trial is rejected for want of a slope, that replaces the bracket end
+                # the trial lies on with the infinity itself, and the next `x` equals
+                # that end, so the loop stops after a single trial. Measured on the test
+                # quartic, an `xguess` of `+inf` and one of `-inf` both come back as
+                # `TooSmalldVError` having asked for one slope.
+                # A `nan` is reached with `xguess = nan`, which a model's
                 # `tunneling_findProfile_params` is free to pass; the profile kept so far
                 # is used, and if there is none the check after the loop reports it.
                 break
@@ -923,11 +935,10 @@ class SingleFieldInstanton:
                     # Use the last finite values instead
                     # (assuming there are such values). There need not be any now that a
                     # trial can be rejected for want of a usable slope: every earlier one
-                    # may have been, in which case this solve has no profile at all and is
-                    # the case the check after the loop reports. It used to assert `rf`,
-                    # which was sound while the first unusable slope raised instead.
-                    if rf is None:
-                        raise errors.TooSmalldVError
+                    # may have been, in which case this solve has no profile at all and
+                    # the check after the loop reports it, as it does for every other way
+                    # of leaving the loop without one. It used to assert `rf` here, which
+                    # was sound while the first unusable slope raised instead.
                     break
                 r0 = r0_
                 y0 = np.array([phi0, dphi0])

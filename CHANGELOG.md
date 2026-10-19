@@ -312,13 +312,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `lambda3` = 5.8191375291 with `V_spline_samples` = 1000, the spline returns -23.5875 at
   the path's true-vacuum endpoint at T = 60 GeV, -196.002 at 58 GeV and +7.79409 at
   55 GeV, against an analytic `grad V . dpath/dx` of +0.0117756, +0.0332661 and -0.0109657.
-  At the other endpoint the same spline is right to 1 per cent. `dV_from_absMin` covers the
-  neighbourhood of the minimum with a Taylor form out to `phi_eps` = 2.46e-04, which is
-  `1e-06` of the gap between the minima, while the spline's derivative becomes usable only
-  once `d2V delta_phi0` clears that error floor, about five times further out at this
-  benchmark. Between the two a bisection trial aborted the solve and `_find_profile`
-  reported the result as an infinite action. Whether a given temperature died depended on
-  whether a trial landed in that window, so the band had sharp, non-monotonic edges: at
+  At the other endpoint the same spline is right to between 0.02 and 1.0 per cent.
+  `dV_from_absMin` covers the neighbourhood of the minimum with a Taylor form out to
+  `phi_eps` = 2.46e-04, which is `1e-06` of the gap between the minima, while the spline's
+  derivative becomes usable only once `d2V delta_phi0` clears that error floor, about five
+  times further out at this benchmark. Between the two a bisection trial aborted the solve
+  and `_find_profile` reported the result as an infinite action. Whether a given
+  temperature died depended on whether a trial landed in that window, so the band had
+  sharp, non-monotonic edges: at
   that coupling the action came back at 61.54, 59, 57, 55 and 50 GeV and was absent at
   61.52, 61, 60, 58 and 56.
 
@@ -331,13 +332,57 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   fills from the slope at `phi(0)`. Of the twelve temperatures probed across the band, the
   seven that already had an action are unchanged to the last digit and the five that had
   none are back, on a smooth curve through them, with the dimensionless `dS_3/dT` falling
-  monotonically from 1299.5 to 459.7. At T = 61.52 GeV the recovered 15705.829340759480 agrees to
-  2.5e-06 with the 15705.790376807605 an analytic `SplinePath.dV` gives, the agreement the
-  two also show at T = 70 GeV where both already worked. The orientation of the minima no
-  longer decides whether a bounce exists: on the quartic
-  `0.25 phi^4 - (1+d)/3 phi^3 + d/2 phi^2` at d = 0.1, with the true vacuum at 1, the solve was refused outright and now gives
-  1.7132091393850302 against 1.7132017403828275 for the same potential mirrored through
-  `phi -> 1 - phi`.
+  monotonically from 1299.5 to 459.7. At T = 61.52 GeV the recovered 15705.829340759480
+  agrees to 2.5e-06 with the 15705.790376807605 an analytic `SplinePath.dV` gives, the
+  agreement the two also show at T = 70 GeV where both already worked. The orientation of
+  the minima no longer decides whether a bounce exists: on the quartic
+  `0.25 phi^4 - (1+d)/3 phi^3 + d/2 phi^2` at d = 0.1, with the true vacuum at 1, the solve
+  was refused outright and now gives 1.7132091393850302 against 1.7132017403828275 for the
+  same potential mirrored through `phi -> 1 - phi`. Both instanton examples in
+  `tunneling1D`'s own module docstring take that orientation,
+  `SingleFieldInstanton(1.0, 0.0, V, dV)`, and both raised `TooSmalldVError` on the first
+  trial; they now return a profile.
+
+- **The percolation estimate takes the hottest root of its criterion.**
+  `calcApproxPercolation` places the first grid of the adaptive solver, and it handed the
+  whole phase-overlap interval to `optimize.brentq`, which assumes one root. That interval
+  carries several: the criterion is positive below the percolation point and negative above
+  it; as `T` falls the rate vanishes, so
+  `crit = Gamma^(1/4) / (H betaH (I_perc / 8 pi v_w^3)^(1/4))` tends to zero and `crit - 1`
+  turns negative again at the cold end; and `T <= Tmin` returns `+inf` by construction.
+  Nothing exposed that while the shooting aborted on a wrong-sign slope, because
+  `if np.isinf(SdT) or np.isinf(S): return np.inf` fired inside the band where the bounce
+  would not solve and manufactured a sign change in roughly the right place. Measured at
+  `lambda3` = 5.815656566 over the interval [2.35254e-13, 121.839] GeV, the estimate
+  returned 61.5057 GeV before the shooting fix and 1.96582e-12 GeV after it, thirteen and a
+  half orders of magnitude too cold, and the first grid of the run that followed it was
+  placed there. The three trees cost 26, 94 and 48 cached action temperatures at that
+  coupling, and 41 of the 49 criterion calls of the middle one are below 1 GeV.
+
+  The hottest root is now bracketed by walking down from the top of the interval in steps of
+  `_APPROX_PERCOLATION_SCAN_RATIO` = 1.15 until the criterion changes sign, and only that
+  sub-bracket is handed to `brentq`. Percolation is the first temperature the universe meets
+  on the way down, so the hottest root is the one wanted and the others are artefacts of the
+  bracket. The criterion's value at the top of the interval is `-inf` by construction rather
+  than by measurement, since it answers "too hot" there before computing an action, so the
+  first step brackets against that as a definite sign; read as no sign at all, a root within
+  a factor 1.15 of the top is stepped over and a colder one returned in its place. The walk
+  stops where `S_3/T` passes `_NUCLEATION_DEAD_S_OVER_T`, the threshold the controller's
+  grid already uses, applied only once the walk has entered the band where nucleation is
+  possible, because `S_3/T` is large at both ends of the interval for opposite reasons. It
+  stops as well after `_APPROX_PERCOLATION_MAX_BLIND_STEPS` = 20 consecutive steps whose
+  action could not be computed, which the first stop cannot see because it has no `S_3/T` to
+  read: with no computable action anywhere, crossing that interval costs 243 steps and 484
+  action evaluations. Where there is no sign change at all the estimate raises
+  `PercolationApproximation1Error`, which `_initial_temperature_grid` already answers by
+  continuing from the hottest `TSYM` that brackets `Tb_criterion`. At
+  `lambda3` = 5.815656566 that is the right answer: the criterion is negative at all 23
+  temperatures between 92.1277 and 4.25635 GeV where the walk gets a finite value out of
+  it, the largest being -0.998905, so the 61.5057 GeV was an artefact as well. Where the
+  walk already worked the estimate is unchanged: at `lambda3` = 5.5 it returns 89.5357 GeV
+  from 14 criterion calls and 22 cached action
+  temperatures. `bubbledynamics_fixedstep.calcApproxPercolation` keeps the whole-interval
+  call, as the fixed-step solver is brought onto this implementation in a change of its own.
 
 - **The shooting bisection converges to a fraction of the `x` it brackets, not to an absolute
   window.** `findProfile` varies `x`, where the trial profile starts at

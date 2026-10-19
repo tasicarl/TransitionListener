@@ -313,9 +313,9 @@ class TheKeptProfileIsBuiltFromTheTrialItWasIntegratedFrom(unittest.TestCase):
     and then the loop's `delta_phi0` belongs to an `x` that was never integrated. Taking it
     there builds the inside of an accepted profile from the slope that was judged unusable,
     and `dV_from_absMin` is a function of `delta_phi0`, so the same wrong-sign value comes
-    back for it: on this quartic that returns an action of 8.27e+07 against 94.8357, with
-    no error raised. The solver carries the kept trial's `delta_phi0` alongside its `rf`
-    instead.
+    back for it: on this quartic that returns an action of 4345443482289.82 against
+    94.83569041562252, with no error raised. The solver carries the kept trial's
+    `delta_phi0` alongside its `rf` instead.
 
     The trial to reject is the last one of an unperturbed solve, read off that solve rather
     than assumed, so this follows the solver if the bisection changes.
