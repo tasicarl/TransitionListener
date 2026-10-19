@@ -50,6 +50,17 @@ import sys
 #: floor sits at ``x`` = 460.0, where ``dV`` is ``0.6 exp(-x)``, while the bisection's own
 #: trials run from ``x`` = 1.49 to 37.25.
 _MIN_USABLE_DV_FROM_ABSMIN = 1e-200
+
+#: How far the actions of the two trials the shooting brackets between may differ before the
+#: bounce counts as unresolved. The bisection narrows `x` until an undershoot and an
+#: overshoot sit either side of the solution, so at convergence both must give the same
+#: action; nothing checked that, and the profile handed on was simply whichever trial came
+#: last. Measured on the 2HDM at lambda3 = 5.816407666 with `TL_2HDM_BSMPT_highacc`, the two
+#: branches agree to 8.9e-06 at T = 60 GeV, 7.0e-04 at 40, 7.0e-03 at 25 and 3.2e-05 at 15,
+#: and disagree by 0.42 at T = 9.8514 GeV and 1.13 at 9.8546, where one branch returns a
+#: negative action. The threshold sits between the two populations, seven times the worst
+#: agreement seen and eight times below the smallest disagreement.
+_ACTION_BRACKET_TOL = 5.0e-2
 if sys.version_info >= (3,0):
     xrange = range
 
@@ -781,6 +792,9 @@ class SingleFieldInstanton:
             # The sign for delta_phi_cutoff doesn't matter
         # --
         rf = None
+        #: The last trial on each side of the bracket, so that the action can be checked for
+        #: convergence once the loop ends on something other than `converged`.
+        bracket_trials: dict = {}
         # `epsabs_rf` and `delta_phi0_rf` are the `epsabs` and the `delta_phi0` that belong
         # to `rf`, i.e. to the trial the kept `r0`, `y0` and `rf` came from. Both are
         # recomputed from the trial `x` at the top of every iteration, and the loop can
@@ -967,9 +981,11 @@ class SingleFieldInstanton:
             if ctype == "converged":
                 break
             elif ctype == "undershoot":  # x is too low
+                bracket_trials["undershoot"] = (r0, y0, rf, epsabs)
                 xmin = x
                 x = x*xincrease if xmax == np.inf else .5*(xmin+xmax)
             elif ctype == "overshoot":  # x is too high
+                bracket_trials["overshoot"] = (r0, y0, rf, epsabs)
                 xmax = x
                 x = .5*(xmin+xmax)
             # Check if we've reached xtol, as a fraction of the `x` the bracket holds rather
@@ -1019,6 +1035,37 @@ class SingleFieldInstanton:
             # no bounce to report. This is the case the unconditional raise above was
             # reaching for, and it keeps `TooSmalldVError` as the outcome for it.
             raise errors.TooSmalldVError
+
+        # A bisection that did not end on `converged` leaves an undershoot and an overshoot
+        # either side of the solution, and at convergence both must give the same action.
+        # The spread between them is recorded rather than acted on here, because
+        # `fullTunneling` calls this once per path-deformation iteration and the early ones
+        # legitimately bracket poorly: at T = 40 GeV on the 2HDM benchmark raising here
+        # refused a temperature whose final branches agree to 7.0e-04. The caller applies
+        # the test to the profile it keeps.
+        # Where they do not, the bounce is not resolved at this temperature, and the profile
+        # that would be returned is whichever trial happened to come last. Measured on the
+        # 2HDM at lambda3 = 5.816407666 with `TL_2HDM_BSMPT_highacc`: at T = 9.8546 GeV the
+        # bisection runs 296 integrations whose last six share one `x` while the verdict
+        # alternates, and the two branches give +3743.07 at a bubble radius of 1.206 and
+        # -501.35 at 3.214. A negative Euclidean action is impossible, so one of them is
+        # certainly wrong, and which one is returned changes between temperatures 2e-04 GeV
+        # apart. Reporting the failure lets the controller drop the sample, which is what it
+        # already does with an action it cannot compute; returning either number silently
+        # puts an `S_3/T` of 73 where the curve is near 440.
+        self.bracket_action_spread = 0.0
+        self.bracket_branch_actions = {}
+        if ctype != "converged" and len(bracket_trials) == 2:
+            branch_actions = {}
+            for side, (b_r0, b_y0, b_rf, b_epsabs) in bracket_trials.items():
+                branch_profile = self.integrateAndSaveProfile(
+                    np.linspace(b_r0, b_rf, npoints), b_y0, dr0, epsfrac, b_epsabs, drmin)
+                branch_actions[side] = float(np.squeeze(self.findAction(branch_profile)))
+            spread = abs(branch_actions["undershoot"] - branch_actions["overshoot"])
+            scale = max(abs(branch_actions["undershoot"]),
+                        abs(branch_actions["overshoot"]), np.finfo(float).tiny)
+            self.bracket_action_spread = float(spread / scale)
+            self.bracket_branch_actions = dict(branch_actions)
 
         # Integrate a second time, this time getting the points along the way
         R = np.linspace(r0, rf, npoints)

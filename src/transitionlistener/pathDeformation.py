@@ -1530,6 +1530,24 @@ def fullTunneling(
     )
     Phi = last_output.path.pts(last_output.profile1D.Phi)
     action = last_output.tobj.findAction(last_output.profile1D)
+    # The shooting brackets the bounce between an undershoot and an overshoot, and at
+    # convergence both must give the same action. `findProfile` records how far apart they
+    # were for the profile being kept here; a large spread means the bisection stalled and
+    # the profile returned is whichever trial came last. Measured on the 2HDM at
+    # lambda3 = 5.816407666 with `TL_2HDM_BSMPT_highacc`: the branches agree to 8.9e-06 at
+    # T = 60 GeV, 7.0e-04 at 40 and 7.0e-03 at 25, and disagree by 0.42 at 9.8514 and 1.13
+    # at 9.8546, where one branch returns a negative action. Reporting an unresolved bounce
+    # lets the controller drop the sample, as it already does for an action it cannot
+    # compute, instead of carrying a number decided by which trial ran last.
+    spread = float(getattr(last_output.tobj, "bracket_action_spread", 0.0) or 0.0)
+    if spread > tunneling1D._ACTION_BRACKET_TOL:
+        branches = getattr(last_output.tobj, "bracket_branch_actions", {}) or {}
+        raise errors.TunnelingError(
+            "The bounce is not resolved at this temperature: the shooting's undershoot "
+            f"gives an action of {branches.get('undershoot', float('nan')):.6g} and its "
+            f"overshoot {branches.get('overshoot', float('nan')):.6g}, a relative spread "
+            f"of {spread:.3g} against a tolerance of "
+            f"{tunneling1D._ACTION_BRACKET_TOL:g}.")
     return rtuple(last_output.profile1D, Phi, action, f_ratio, saved_steps)
 
 
