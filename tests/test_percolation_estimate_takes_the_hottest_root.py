@@ -222,6 +222,96 @@ class AMinusInfinityMidWalkDoesNotHideTheRoot(unittest.TestCase):
                 f"and the artefact at {COLD_ROOT} was returned instead")
 
 
+class AProbeExactlyOnTheRootIsTheAnswer(unittest.TestCase):
+    """A criterion that returns exactly zero at a probe has given the root.
+
+    `_bracket_sign` maps an exact zero to "no information", which is right for deciding a
+    bracket, since a zero sits on neither side of itself. Leaving the zero to the sign
+    test loses it twice over: the root is passed by, and the zero is then carried into
+    `f_hot`, after which every comparison is a product with zero and no later step can
+    bracket anything either. The walk runs to a stop and raises with the answer in hand.
+    """
+
+    def test_an_exact_zero_is_returned_rather_than_discarded(self):
+        # Put the zero on a step of the walk, so it is actually probed.
+        probe, exact = TMAX, None
+        for _ in range(6):
+            probe /= bd._APPROX_PERCOLATION_SCAN_RATIO
+            if probe < HOT_ROOT:
+                exact = probe
+                break
+        self.assertIsNotNone(exact, "no walk step lands below the hot root")
+
+        def criterion(T, outdict, *a, **k):
+            T = float(np.squeeze(T))
+            if TMIN < T < TMAX:
+                outdict[T] = {"action": 100.0 * T}
+            if T >= TMAX:
+                return -np.inf
+            if T <= TMIN:
+                return np.inf
+            if abs(T - exact) < 1e-9:
+                return 0.0
+            return -1.0 if T > HOT_ROOT else (+1.0 if T > COLD_ROOT else -1.0)
+
+        with _Patched(lambda T: 100.0 * T, criterion=criterion) as p:
+            Tperc = float(estimate())
+        self.assertGreater(len(p.probes), 1, "the walk never ran")
+        self.assertAlmostEqual(
+            Tperc, exact, delta=abs(exact) * 1e-09,
+            msg=f"the estimate returned {Tperc!r} rather than the exact root at {exact!r}")
+
+
+class AFailedProbeAfterALiveSampleDoesNotEndTheWalk(unittest.TestCase):
+    """Leaving the live band is a statement about physics, not about a failed solve.
+
+    The dead stop means `S_3/T` has passed the threshold at a temperature whose action is
+    in hand, so nothing colder can nucleate. A probe whose action could not be computed
+    says nothing about the physics there. Reaching the dead stop through one made a single
+    transient failure end the walk the moment it followed a live sample, which is what
+    `_APPROX_PERCOLATION_MAX_BLIND_STEPS` exists to prevent, and stepped over any sign
+    change below it.
+    """
+
+    def test_one_failed_solve_after_a_live_sample_does_not_hide_the_root(self):
+        # The failure sits on the step immediately above the root, so a walk that stops
+        # on it returns the cold artefact instead.
+        probe, bad = TMAX, None
+        for _ in range(10):
+            probe /= bd._APPROX_PERCOLATION_SCAN_RATIO
+            if probe > HOT_ROOT:
+                bad = probe
+            else:
+                break
+        self.assertIsNotNone(bad, "no walk step sits just above the root")
+
+        def action(T):
+            return None if abs(T - bad) < 1e-9 else 100.0 * T
+
+        def criterion(T, outdict, *a, **k):
+            T = float(np.squeeze(T))
+            a_val = action(T)
+            if TMIN < T < TMAX and a_val is not None:
+                outdict[T] = {"action": float(a_val)}
+            if T >= TMAX:
+                return -np.inf
+            if T <= TMIN:
+                return np.inf
+            return -1.0 if T > HOT_ROOT else (+1.0 if T > COLD_ROOT else -1.0)
+
+        with _Patched(lambda T: 100.0 * T, criterion=criterion) as p:
+            Tperc = float(estimate())
+        # The premise: a live sample really does precede the failure, or the stop under
+        # test is never reached.
+        self.assertGreater(
+            len([t for t in p.probes if t > bad]), 0,
+            "no probe preceded the failed one, so no live sample was entered")
+        self.assertAlmostEqual(
+            Tperc, HOT_ROOT, delta=HOT_ROOT * 1e-2,
+            msg=f"the estimate returned {Tperc!r}; one failed solve above the root ended "
+                f"the walk and the artefact at {COLD_ROOT} was returned")
+
+
 class TheWalkStopsWhereNucleationDies(unittest.TestCase):
     """A criterion with no root must not be walked down to the floor of the tracing range.
 

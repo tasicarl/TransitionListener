@@ -1852,6 +1852,15 @@ def calcApproxPercolation(
     while probe > Tmin:
         probe = max(probe / _APPROX_PERCOLATION_SCAN_RATIO, Tmin)
         f_probe = _approx_percolation_criterion(probe, *args)
+        # A probe that lands exactly on the root is the answer, and must be taken here.
+        # `_bracket_sign` maps an exact zero to "no information", which is right for a
+        # bracket -- a zero cannot sit on either side of itself -- but leaving it to the
+        # sign test would discard the root and, worse, carry the zero into `f_hot`, after
+        # which every later comparison is a product with zero and the walk can never
+        # bracket anything again. It would then run to a dead or blind stop and raise,
+        # having had the answer in hand.
+        if float(np.squeeze(f_probe)) == 0.0:
+            return np.squeeze(probe)
         if _bracket_sign(f_hot) * _bracket_sign(f_probe) < 0:
             cold = probe
             break
@@ -1875,12 +1884,20 @@ def calcApproxPercolation(
         # between the two. It reads a non-finite action as "not dead", which is right for
         # a grid point and not what this walk needs, so finiteness is required separately.
         live = computable and probe > 0 and not _nucleation_is_dead(probe, S_probe)
-        if live:
-            entered_live = True
-        elif entered_live:
-            break
+        # The two stops answer different questions and must not be reached through each
+        # other. Leaving the live band is a statement about the *physics* at a temperature
+        # whose action is in hand: `S_3/T` has passed the threshold, so nothing colder can
+        # nucleate. A probe whose action could not be computed says nothing about the
+        # physics there, and reaching the dead stop through one made a single transient
+        # failed solve end the walk the moment it followed a live sample, which is the
+        # opposite of what `_APPROX_PERCOLATION_MAX_BLIND_STEPS` is for and would step over
+        # any sign change below it.
         if computable:
             blind_steps = 0
+            if live:
+                entered_live = True
+            elif entered_live:
+                break
         else:
             blind_steps += 1
             if blind_steps >= _APPROX_PERCOLATION_MAX_BLIND_STEPS:
