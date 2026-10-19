@@ -37,6 +37,14 @@ from .helper_functions import rkqs, IntegrationError
 from .helper_functions import cubicInterpFunction
 
 import sys
+
+#: Smallest slope away from ``phi_absMin`` a shooting trial can be started from. The value is
+#: the one this test has always carried; what changed is its use, from aborting the solve to
+#: rejecting the trial, and that it is now read against the direction the trial displaces the
+#: field in rather than against ``dV`` alone. It is an absolute floor rather than a fraction of
+#: the potential's scale because what it guards is the division in `initialConditions`, which
+#: underflows on its own terms.
+_MIN_USABLE_DV_FROM_ABSMIN = 1e-200
 if sys.version_info >= (3,0):
     xrange = range
 
@@ -768,13 +776,21 @@ class SingleFieldInstanton:
             # The sign for delta_phi_cutoff doesn't matter
         # --
         rf = None
-        # `epsabs_rf` is the `epsabs` that belongs to `rf`. `epsabs` is recomputed from the
-        # trial `x` at the top of every iteration, so at the `break` below -- where a
-        # non-finite `r0_` or `x` makes the loop fall back on the last finite `r0`, `y0` and
-        # `rf` -- the current `epsabs` belongs to the trial that was just discarded, and can
-        # be non-finite itself. The saved profile is re-integrated from the values that were
-        # kept, so it is held to their tolerance. On every other exit the two are the same.
+        # `epsabs_rf` and `delta_phi0_rf` are the `epsabs` and the `delta_phi0` that belong
+        # to `rf`, i.e. to the trial the kept `r0`, `y0` and `rf` came from. Both are
+        # recomputed from the trial `x` at the top of every iteration, and the loop can
+        # leave on an iteration whose trial contributed nothing: a non-finite `x` or `r0_`
+        # breaks out of it, and a trial without a usable slope is rejected without being
+        # integrated at all. The current `epsabs` can then be non-finite, and the current
+        # `delta_phi0` can be the one whose slope was judged unusable -- which is the slope
+        # the interior points below are built from, so taking it would put a rejected trial
+        # inside an accepted profile: on the quartic of
+        # `tests/test_unusable_slope_rejects_the_trial.py`, with the last trial rejected,
+        # that returns an action of 8.27e+07 against 94.8357. The saved profile is
+        # re-integrated, and its interior filled in, from the trial that was kept. On every
+        # other exit the saved and the current values are the same.
         epsabs_rf = None
+        delta_phi0_rf = None
         while True:
             delta_phi0 = np.exp(-x)*delta_phi
             # `epsabs` has to be a fraction of the field range the integration covers, and
@@ -818,53 +834,114 @@ class SingleFieldInstanton:
             # `tests/test_bisection_bracket_scale.py` at the configured `xtol = 1e-10` the
             # smallest `x` tried is 1.4e-10 and the accepted one 4.2e-10. Both are six orders
             # above the floor. Reaching it needs an `xguess` that small, which a model's
-            # `tunneling_findProfile_params` is free to set, and `dV_from_absMin` then refuses
-            # the trial before any integration: on a quartic with minima at 0 and 1 an
-            # `xguess` of 1e-18 raises `TooSmalldVError` with no call to `integrateProfile`.
+            # `tunneling_findProfile_params` is free to set, and such a trial has no usable
+            # slope: `delta_phi0` rounds to `delta_phi`, so `phi0` is `phi_metaMin`, where
+            # the potential's slope vanishes because it is a minimum too. It is rejected
+            # before any integration and bounds `x` from below, so the bisection climbs away
+            # from the floor rather than integrating at it. On the quartic with minima at 0
+            # and 1 of `tests/test_unusable_slope_rejects_the_trial.py` an `xguess` of 1e-18
+            # reaches the same bounce as the default guess, 94.8357891373604 against
+            # 94.83569041562252, and the smallest `x` handed to `integrateProfile` is 1.49.
             phi_scale = max(excursion, abs(delta_phi) * np.finfo(float).eps)
             epsabs = abs(np.array([phi_scale, phi_scale/self.rscale])*phitol)
             integration_args = (dr0, epsfrac, epsabs, drmin, rmax)
 
-            # The below part is new and tries to avoid
-            # the problem of having a too small dV
-            # when the bubble is thin-walled. This makes the
-            # integration more stable. There are still cases
-            # where it fails, but this is a good start. Those cases
-            # seem to be when the bubble is extremely thin-walled.
+            if np.isnan(x):
+                # A `nan` `x` has to be caught here rather than beside the `r0_` test
+                # below, which a trial without a usable slope never reaches. No stopping
+                # test at the foot of the loop can fire on one -- `x == xmin` is false and
+                # `(xmax-xmin) < ...` is false -- so the bisection would repeat the same
+                # `nan` for ever. Reached with `xguess = nan`, which a model's
+                # `tunneling_findProfile_params` is free to pass; the profile kept so far
+                # is used, and if there is none the check after the loop reports it.
+                break
+
+            # A trial needs a slope at `phi0` that drives the field away from
+            # `phi_absMin`; without one there is nothing for `initialConditions` to start
+            # from. That is the thin-walled case this test was written for, where
+            # `delta_phi0` is so small that `dV` underflows. It is not the only way to lose
+            # the slope, and the others are not small: `dV` can come back with the wrong
+            # sign, or as `nan`.
+            #
+            # A wrong sign is what the path's own potential produces near the true vacuum.
+            # `SplinePath.dV` differentiates a cubic spline through sampled `V` whenever
+            # `V_spline_samples` is set, and that spline ripples. Measured on the 2HDM at
+            # lambda3 = 5.8191375291 with `TL_2HDM_BSMPT_highacc`, V samples uniformly
+            # spaced at 0.24627 in path length: the ripple in `V` is 2 to 3 over a half
+            # spacing, so the derivative carries an absolute error near 20, against an
+            # analytic `grad V . dpath/dx` of +0.0118 at the endpoint itself. The spline
+            # returns -23.5875 there at T = 60 GeV, -196.002 at 58 GeV and +7.79409 at
+            # 55 GeV: the sign is set by where the samples fall. Because the true
+            # derivative vanishes at a minimum, no sampling density removes this; the
+            # relative error always diverges as the endpoint is approached.
+            #
+            # `dV_from_absMin` covers the region with a Taylor form, but only out to
+            # `phi_eps`, while the spline's derivative becomes usable only once
+            # `d2V delta_phi0` clears the error floor, five times further out at that
+            # benchmark. In between the returned `dV` is negative, and a bisection trial
+            # landing there used to abort the whole solve, which `_find_profile` reports
+            # as an infinite action. The bounce itself is unaffected: it converges at
+            # `x` near 3.8, `delta_phi0` near 5.67, where the spline's `dV` agrees with
+            # the analytic one to 1e-5. Only stray trials visit the unsound region, and
+            # they fell in a band of temperatures with sharp non-monotonic edges, because
+            # whether a trial lands inside it is an accident of the bisection path.
+            #
+            # So an unusable slope is a verdict on this `x`, not on the solve. It is
+            # rejected the way an over- or undershoot is, and the bisection carries on.
+            # Which bracket end it replaces follows from where `phi0` sits: nearer
+            # `phi_absMin` the trial bounds `x` from above, nearer `phi_metaMin` from
+            # below.
+            #
+            # What has to be positive is the slope that drives the field *away* from
+            # `phi_absMin`, which is `dV` times the direction `delta_phi0` points in, not
+            # `dV` itself. The two agree only while `phi_metaMin > phi_absMin`, which is the
+            # orientation every TransitionListener run takes, because `fullTunneling`
+            # measures the field coordinate as path length from the true vacuum. They differ
+            # for a descending one, and testing `dV` alone refuses every trial there: on the
+            # quartic `0.25 phi^4 - (1+d)/3 phi^3 + d/2 phi^2` with d = 0.1, whose minima
+            # are at 0 and 1, `phi_absMin = 1, phi_metaMin = 0` raises on the first trial
+            # while the same potential mirrored through `phi -> 1 - phi` solves. Taking the
+            # direction into account makes the two orientations agree, and leaves the
+            # ascending one untouched.
             phi0 = self.phi_absMin + delta_phi0
             dV = self.dV_from_absMin(delta_phi0)
-            if dV < 1e-200:  # Sometimes we need such a really small dV!
-                # The derivative of the potential is too small, we are too close to
-                # the minimum. This is a problem for the integration.
-                raise errors.TooSmalldVError
+            slope_away_from_absMin = dV * np.sign(delta_phi0)
+            if slope_away_from_absMin > _MIN_USABLE_DV_FROM_ABSMIN:
+                try:
+                    r0_, phi0, dphi0 = self.initialConditions(
+                        delta_phi0, rmin, delta_phi_cutoff)
+                except errors.TunnelingError as e:
+                    msg = (
+                        "An error occurred in findProfile due to the initial "
+                        "conditions computation. This is likely due to the bubble "
+                        "being too thin-walled. "
+                        + str(e)
+                    )
+                    raise errors.TunnelingError(msg)
 
-            try:
-                r0_, phi0, dphi0 = self.initialConditions(
-                    delta_phi0, rmin, delta_phi_cutoff)
-            except errors.TunnelingError as e:
-                msg = (
-                    "An error occurred in findProfile due to the initial "
-                    "conditions computation. This is likely due to the bubble "
-                    "being too thin-walled. "
-                    + str(e)
-                )
-                raise errors.TunnelingError(msg)
-                
-            if not np.isfinite(r0_) or not np.isfinite(x):
-                # Use the last finite values instead
-                # (assuming there are such values)
-                assert rf is not None, "Failed to retrieve initial "\
-                    "conditions on the first try."
-                break
-            r0 = r0_
-            y0 = np.array([phi0, dphi0])
-            try:
-                rf, yf, ctype = self.integrateProfile(r0, y0, *integration_args)
-            except IntegrationError as e:
-                raise errors.TunnelingError(
-                    "Integration failed: " + str(e))
-            epsabs_rf = epsabs
-                
+                if not np.isfinite(r0_) or not np.isfinite(x):
+                    # Use the last finite values instead
+                    # (assuming there are such values). There need not be any now that a
+                    # trial can be rejected for want of a usable slope: every earlier one
+                    # may have been, in which case this solve has no profile at all and is
+                    # the case the check after the loop reports. It used to assert `rf`,
+                    # which was sound while the first unusable slope raised instead.
+                    if rf is None:
+                        raise errors.TooSmalldVError
+                    break
+                r0 = r0_
+                y0 = np.array([phi0, dphi0])
+                try:
+                    rf, yf, ctype = self.integrateProfile(r0, y0, *integration_args)
+                except IntegrationError as e:
+                    raise errors.TunnelingError(
+                        "Integration failed: " + str(e))
+                epsabs_rf = epsabs
+                delta_phi0_rf = delta_phi0
+            else:
+                ctype = ("overshoot" if abs(delta_phi0) < 0.5*abs(delta_phi)
+                         else "undershoot")
+
             # Check for overshoot, undershoot
             if ctype == "converged":
                 break
@@ -916,6 +993,12 @@ class SingleFieldInstanton:
             if (xmax-xmin) < xtol * min(max(abs(x), abs(xmin)), 1.0):
                 break
 
+        if rf is None:
+            # No trial ever had a usable slope, so there is no profile to re-integrate and
+            # no bounce to report. This is the case the unconditional raise above was
+            # reaching for, and it keeps `TooSmalldVError` as the outcome for it.
+            raise errors.TooSmalldVError
+
         # Integrate a second time, this time getting the points along the way
         R = np.linspace(r0, rf, npoints)
         profile = self.integrateAndSaveProfile(R, y0, dr0,
@@ -937,9 +1020,9 @@ class SingleFieldInstanton:
                 R_int[0] = 0.0  # enforce this exactly
             Phi_int = np.empty_like(R_int)
             dPhi_int = np.empty_like(R_int)
-            Phi_int[0] = self.phi_absMin + delta_phi0
+            Phi_int[0] = self.phi_absMin + delta_phi0_rf
             dPhi_int[0] = 0.0
-            dV = self.dV_from_absMin(delta_phi0)
+            dV = self.dV_from_absMin(delta_phi0_rf)
             d2V = self.d2V(Phi_int[0])
             for i in range(1,len(R_int)):
                 Phi_int[i], dPhi_int[i] = self.exactSolution(

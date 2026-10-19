@@ -301,6 +301,44 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A shooting trial without a usable slope is rejected; the solve carries on.** Before
+  integrating a trial, `findProfile` asks `dV_from_absMin` for the slope at
+  `phi(0) = phi_absMin + delta_phi0`, and it refused the whole solve on `dV < 1e-200`,
+  which compares a signed quantity against a magnitude floor. The test was written for a
+  thin-walled bubble, where `delta_phi0` is small enough that `dV` underflows, and it fired
+  on every negative `dV` as well. A negative one is what the path's own potential gives
+  near the true vacuum, where `SplinePath.dV` differentiates a cubic spline through sampled
+  `V` whose ripple is large compared with a derivative that vanishes there: on the 2HDM at
+  `lambda3` = 5.8191375291 with `V_spline_samples` = 1000, the spline returns -23.5875 at
+  the path's true-vacuum endpoint at T = 60 GeV, -196.002 at 58 GeV and +7.79409 at
+  55 GeV, against an analytic `grad V . dpath/dx` of +0.0117756, +0.0332661 and -0.0109657.
+  At the other endpoint the same spline is right to 1 per cent. `dV_from_absMin` covers the
+  neighbourhood of the minimum with a Taylor form out to `phi_eps` = 2.46e-04, which is
+  `1e-06` of the gap between the minima, while the spline's derivative becomes usable only
+  once `d2V delta_phi0` clears that error floor, about five times further out at this
+  benchmark. Between the two a bisection trial aborted the solve and `_find_profile`
+  reported the result as an infinite action. Whether a given temperature died depended on
+  whether a trial landed in that window, so the band had sharp, non-monotonic edges: at
+  that coupling the action came back at 61.54, 59, 57, 55 and 50 GeV and was absent at
+  61.52, 61, 60, 58 and 56.
+
+  The slope is now read away from `phi_absMin`, as `dV * sign(delta_phi0)`, and a trial
+  without one is rejected the way an over- or undershoot is: it bounds `x` from above when
+  `phi0` is nearer `phi_absMin` and from below when it is nearer `phi_metaMin`. A solve in
+  which no trial ever had a usable slope still reports `TooSmalldVError`, and so does one
+  whose `x` stops being a number. The profile returned is built from the trial it was
+  integrated from throughout, including the points interior to `R[0]`, which `exactSolution`
+  fills from the slope at `phi(0)`. Of the twelve temperatures probed across the band, the
+  seven that already had an action are unchanged to the last digit and the five that had
+  none are back, on a smooth curve through them, with the dimensionless `dS_3/dT` falling
+  monotonically from 1299.5 to 459.7. At T = 61.52 GeV the recovered 15705.829340759480 agrees to
+  2.5e-06 with the 15705.790376807605 an analytic `SplinePath.dV` gives, the agreement the
+  two also show at T = 70 GeV where both already worked. The orientation of the minima no
+  longer decides whether a bounce exists: on the quartic
+  `0.25 phi^4 - (1+d)/3 phi^3 + d/2 phi^2` at d = 0.1, with the true vacuum at 1, the solve was refused outright and now gives
+  1.7132091393850302 against 1.7132017403828275 for the same potential mirrored through
+  `phi -> 1 - phi`.
+
 - **The shooting bisection converges to a fraction of the `x` it brackets, not to an absolute
   window.** `findProfile` varies `x`, where the trial profile starts at
   `phi(0) = phi_absMin + exp(-x) delta_phi`, so for a small excursion `x` is the fraction of the
