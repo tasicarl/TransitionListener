@@ -236,11 +236,19 @@ class TheSavedProfileKeepsTheToleranceOfTheTrialItReIntegrates(unittest.TestCase
                          f"the discarded iteration still integrated a profile: {seen}")
         self.assertGreater(len(set(seen["trials"])), 1,
                            f"`epsabs` did not change between trials: {seen}")
-        self.assertEqual(len(seen["saved"]), 1, f"{seen}")
-        self.assertEqual(
-            seen["saved"][0], seen["trials"][-1],
-            msg="the saved profile was held to a tolerance no trial was integrated with: "
+        # A solve that ends on something other than `converged` also re-integrates each
+        # bracketing trial once, to measure whether the two sides agree on the action, so
+        # the number of saved profiles is not the quantity to assert on. Every one of them
+        # has to carry the tolerance of the trial it re-integrates, and the last one is the
+        # profile `findProfile` returns.
+        self.assertLessEqual(
+            set(seen["saved"]), set(seen["trials"]),
+            msg="a profile was saved at a tolerance no trial was integrated with: "
                 f"{seen}")
+        self.assertEqual(
+            seen["saved"][-1], seen["trials"][-1],
+            msg="the returned profile was held to a tolerance that belongs to another "
+                f"trial: {seen}")
 
 
 class TheRunsDeadlineSurvivesTheInitialConditions(unittest.TestCase):

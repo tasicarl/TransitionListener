@@ -864,6 +864,13 @@ class SingleFieldInstanton:
             phi_scale = max(excursion, abs(delta_phi) * np.finfo(float).eps)
             epsabs = abs(np.array([phi_scale, phi_scale/self.rscale])*phitol)
             integration_args = (dr0, epsfrac, epsabs, drmin, rmax)
+            #: The profile this trial integrated, or `None` where it was rejected without
+            #: being integrated. The verdict below is still set on a rejected trial, so
+            #: without this the bracket would be filled from whichever earlier trial last
+            #: left `r0`, `y0` and `rf` behind -- the same substitution of one trial's
+            #: profile for another's that `epsabs_rf` exists to prevent -- and on a first
+            #: trial with no usable slope those names are not bound at all.
+            trial_profile = None
 
             if np.isnan(x):
                 # A `nan` `x` has to be caught here rather than beside the `r0_` test
@@ -973,6 +980,7 @@ class SingleFieldInstanton:
                         "Integration failed: " + str(e))
                 epsabs_rf = epsabs
                 delta_phi0_rf = delta_phi0
+                trial_profile = (r0, y0, rf, epsabs)
             else:
                 ctype = ("overshoot" if abs(delta_phi0) < 0.5*abs(delta_phi)
                          else "undershoot")
@@ -981,11 +989,13 @@ class SingleFieldInstanton:
             if ctype == "converged":
                 break
             elif ctype == "undershoot":  # x is too low
-                bracket_trials["undershoot"] = (r0, y0, rf, epsabs)
+                if trial_profile is not None:
+                    bracket_trials["undershoot"] = trial_profile
                 xmin = x
                 x = x*xincrease if xmax == np.inf else .5*(xmin+xmax)
             elif ctype == "overshoot":  # x is too high
-                bracket_trials["overshoot"] = (r0, y0, rf, epsabs)
+                if trial_profile is not None:
+                    bracket_trials["overshoot"] = trial_profile
                 xmax = x
                 x = .5*(xmin+xmax)
             # Check if we've reached xtol, as a fraction of the `x` the bracket holds rather
