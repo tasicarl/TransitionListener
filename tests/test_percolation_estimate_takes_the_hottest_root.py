@@ -445,6 +445,60 @@ class ARootInsideTheFirstStepIsNotSteppedOver(unittest.TestCase):
             "the walk probed below the colder root, so it stepped over the hot one")
 
 
+class AFailedProbeBetweenTwoSignedOnesDoesNotHideTheRoot(unittest.TestCase):
+    """A `+inf` probe must not become the bracket's hot end.
+
+    `_bracket_sign` maps `+inf` to zero, because an action that could not be computed says
+    nothing about which side of the root its temperature is on. Letting such a probe take
+    `f_hot` makes every later comparison a product with zero, so a finite negative sample,
+    then a failed solve, then a finite positive sample brackets nothing and the root
+    between the first and the third is stepped over. The blind step still has to be
+    counted, or a run of failures would never end the walk.
+    """
+
+    def criterion(self, seen):
+        """Fails once, on the first probe that lands below the hot root.
+
+        Keyed on the walk's own order rather than on a temperature window: the walk steps
+        geometrically, so a window narrow enough to catch one probe is easily stepped over
+        entirely and the fixture would then exercise nothing. Failing the first sub-root
+        probe puts the `+inf` exactly between the last negative sample and the first
+        positive one, which is the arrangement under test.
+        """
+        inner = _make_criterion(lambda T: 100.0)
+
+        def criterion(T, outdict, *args, **kwargs):
+            T = float(np.squeeze(T))
+            if TMIN < T < HOT_ROOT and not seen:
+                seen.append(T)
+                return np.inf
+            return inner(T, outdict, *args, **kwargs)
+
+        return criterion
+
+    def test_the_fixture_fails_once_below_the_root(self):
+        seen = []
+        with _Patched(lambda T: 100.0, criterion=self.criterion(seen)):
+            estimate()
+        self.assertEqual(
+            len(seen), 1,
+            msg=f"the fixture was meant to fail exactly once below the root, it failed "
+                f"{len(seen)} time(s)")
+        self.assertLess(seen[0], HOT_ROOT)
+        self.assertGreater(seen[0], COLD_ROOT,
+                           msg="the failure has to fall between the two roots")
+
+    def test_the_root_is_still_found(self):
+        with _Patched(lambda T: 100.0, criterion=self.criterion([])):
+            got = float(np.squeeze(estimate()))
+        self.assertGreater(
+            got, COLD_ROOT,
+            msg=f"the estimate fell to {got}, below the hot root at {HOT_ROOT}")
+        self.assertAlmostEqual(
+            got, HOT_ROOT, delta=0.05 * HOT_ROOT,
+            msg=f"the estimate is {got}, not the hot root at {HOT_ROOT}")
+
+
 class TheWalkStopsWhereNoActionCanBeComputed(unittest.TestCase):
     """A probe without a computable action can bracket nothing, and must not be paid for.
 

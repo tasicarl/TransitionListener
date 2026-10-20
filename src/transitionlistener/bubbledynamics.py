@@ -1902,7 +1902,17 @@ def calcApproxPercolation(
             blind_steps += 1
             if blind_steps >= _APPROX_PERCOLATION_MAX_BLIND_STEPS:
                 break
-        hot, f_hot = probe, f_probe
+        # Only a probe that carries a sign becomes the bracket's hot end. A `+inf` from an
+        # action that could not be computed has `_bracket_sign` zero, and letting it take
+        # `f_hot` makes every later comparison a product with zero, so the walk steps over
+        # the next sign change exactly as the exact-zero case above would: a finite
+        # negative sample, then a failed solve, then a finite positive sample brackets
+        # nothing, and the root between the first and the third is lost. Keeping the last
+        # informative endpoint costs nothing -- the blind step is still counted above, so a
+        # run of uncomputable probes still ends the walk -- and leaves `brentq` a bracket
+        # whose ends are both signed.
+        if _bracket_sign(f_probe) != 0.0:
+            hot, f_hot = probe, f_probe
     if cold is None:
         raise errors.PercolationApproximation1Error(
             "The percolation approximation found no sign change between "

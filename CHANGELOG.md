@@ -372,7 +372,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   possible, because `S_3/T` is large at both ends of the interval for opposite reasons. It
   stops as well after `_APPROX_PERCOLATION_MAX_BLIND_STEPS` = 20 consecutive steps whose
   action could not be computed, which the first stop cannot see because it has no `S_3/T` to
-  read: with no computable action anywhere, crossing that interval costs 243 steps and 484
+  read. Only a probe that carries a sign becomes the bracket's hot end: an action that could
+  not be computed answers `+inf`, whose bracket sign is zero, and letting it take that place
+  makes every later comparison a product with zero, so a finite negative sample, a failed
+  solve and a finite positive sample bracket nothing and the root between the first and the
+  third is stepped over. The blind step is still counted, so a run of failures still ends
+  the walk. Measured: with no computable action anywhere, crossing that interval costs 243 steps and 484
   action evaluations. Where there is no sign change at all the estimate raises
   `PercolationApproximation1Error`, which `_initial_temperature_grid` already answers by
   continuing from the hottest `TSYM` that brackets `Tb_criterion`. At
