@@ -546,12 +546,60 @@ def traceMinimum(
     return _traceMinimum_rval(X, T, dXdT, overX, overT)
 
 
+def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
+                          invGroupElements) -> np.ndarray | None:
+    r"""The one symmetry transformation that puts a whole traced phase on its canonical image.
+
+    Below the temperature at which the origin tilts over, which image of the displaced
+    minimum the field sits in is settled by the sign of a numerical step, not by the
+    potential: the images are exactly degenerate. Tracing therefore returns a phase on
+    either image, and two seeds that reach the same physical phase on opposite images give
+    two phases that `removeRedundantPhases` cannot tell are one, because it compares field
+    values. The pair is then carried through as separate phases and the transition can be
+    built between a high phase on one image and a low phase on the other, whose field
+    separation and bounce action are those of no physical path. On the 2HDM at
+    `lambda3 = 5.868` that gave `S_3/T = 336.6` at `T = 30.0` GeV against `152.6` and
+    `153.3` at the neighbouring couplings, and no percolation at all.
+
+    `applySymmetries` chooses the image of a single point. Applied node by node it can send
+    neighbouring nodes of one trace to different images, putting a step into a phase that is
+    smooth, so the transformation is chosen once here and applied to every node. It is read
+    off the node furthest from the origin, where the sign of each field component is
+    resolved and the choice is therefore least ambiguous: near the origin every image of a
+    node is the same point to within the tracing accuracy.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        The traced field values, one row per temperature.
+    applySymmetries : callable or None
+        Maps a point onto the canonical image, as `generic_potential.applySymmetries` does.
+    invGroupElements : list[np.ndarray]
+        The transformations the potential is invariant under, right-multiplying a point.
+
+    Returns
+    -------
+    np.ndarray or None
+        The transformation to apply to the whole trace, or None where there is nothing to do.
+    """
+    if applySymmetries is None or len(invGroupElements) == 0:
+        return None
+    X = np.atleast_2d(np.asarray(X, dtype=float))
+    reference = X[np.argmax(np.linalg.norm(X, axis=-1))]
+    canonical = np.asarray(applySymmetries(reference), dtype=float)
+    # Which transformation that is, by matching its action on the reference node. The
+    # measure is not recomputed here so that the image this returns is the one
+    # `applySymmetries` chooses, whatever measure it uses.
+    distances = [float(np.linalg.norm(reference @ g - canonical)) for g in invGroupElements]
+    return invGroupElements[int(np.argmin(distances))]
+
+
 def traceMultiMin(
     f: Callable, df_dx: Callable, d2f_dxdt: Callable, d2f_dx2: Callable,
     points: list, tLow: float, tHigh: float, deltaX_target: float,
     verbose: bool = False, conversionFactor: float = 1, dtstart: float = 1e-3,
     tjump: float = 1e-3, forbidCrit: Callable | None = None, applySymmetries: Callable | None = None,
-    single_trace_args: dict = {}, local_min_args: dict = {},
+    invGroupElements=(), single_trace_args: dict = {}, local_min_args: dict = {},
 ) -> dict[int, PhaseInfo]:
     """
     Trace multiple minima `xmin(t)` of the function `f(x,t)`.
@@ -755,6 +803,13 @@ def traceMultiMin(
                 X = np.append(X_down, X_up[1:], 0)
                 T = np.append(T_down, T_up[1:], 0)
                 dXdT = np.append(dXdT_down, dXdT_up[1:], 0)
+            # On the image the seed was mapped into, so that two seeds reaching one
+            # physical phase on opposite images give traces that can be recognised as one.
+            # Before the forbidden-region test, which reads field values and so would
+            # otherwise answer for an image the phase is not stored on.
+            image = canonicalImageElement(X, applySymmetries, invGroupElements)
+            if image is not None:
+                X, dXdT = X @ image, dXdT @ image
             if forbidCrit is not None and (forbidCrit(X[0]) or forbidCrit(X[-1])):
                 # The phase is forbidden.
                 # Don't add it, and make it a dead-end.
@@ -1489,6 +1544,7 @@ class Phases:
             verbose=verbose,
             conversionFactor=self.conversionFactor,
             applySymmetries=pot.applySymmetries,
+            invGroupElements=getattr(pot, "invGroupElements", []),
             tLow=tstart,
             tHigh=tstop,
             deltaX_target=100 * self.x_eps,
