@@ -301,6 +301,57 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A traced phase is stored on one image of the potential's symmetry.** Below the
+  temperature at which the origin tilts over, the displaced minima are exactly degenerate
+  images of one another, so which one a trace walks into is settled by the sign of a
+  numerical step and not by the potential. Two seeds that reach the same physical phase on
+  opposite images give two phases that `removeRedundantPhases` cannot tell are one, because
+  it compares field values, and the transition can then be built from a high phase on one
+  image to a low phase on the other, over a path the potential does not have. On the 2HDM
+  at `lambda3` = 5.868 the high phase sat at `phi` = (-27.416, -15.335) GeV against
+  (+27.354, +15.321) GeV and (+27.479, +15.349) GeV at the neighbouring couplings, with the
+  broken minimum at (+11.48, +246.33) GeV in all three: a field separation of 264.54 GeV
+  against 231.55 GeV, and `S_3/T` = 336.6 against 152.6 and 153.3 at T = 30.0 GeV. The
+  smallest `S_3/T` over the cache was 246.4 against a nucleation criterion near 155, so the
+  rate never rose, the percolation probability stayed at zero over all 197 accepted support
+  points, and the point returned error 8 between two couplings that behaved. The
+  transformation is now read off the node of the trace furthest from the origin, where
+  every field component has a resolved sign, and applied to the whole phase, to `X` and
+  `dXdT` alike; one transformation for the trace rather than one per point, which would
+  send neighbouring nodes of a smooth phase to different images.
+
+- **The tracer stops where the point it carries is no longer a minimum, and steps off a
+  saddle when seeding a phase.** The test in `traceMinimum` was written as
+  `negeig is True` against a `numpy.bool_`, which is never the `True` singleton, so it
+  never fired and the trace walked on through temperatures where its point was a saddle.
+  On the 2HDM at `lambda3` = 5.813 that left 7 of the 61 nodes of the high-temperature
+  phase at the origin between T = 8.5 and 39.0 GeV, where the smallest eigenvalue of the
+  Hessian runs down to -377.8 GeV^2, and the bounce was computed from a false vacuum that
+  is a saddle. `forbidPhaseCrit` was compared the same way and is now read by value as
+  well; the criterion shipped with the dark U(1) models returns a `numpy.bool_`, so it had
+  been skipping nothing. A minimiser cannot leave a stationary point that symmetry holds
+  the gradient at, so `descendFromSaddle` steps off it along the most negative curvature
+  direction, in both signs, and returns the nearest minimum: the origin tilting over below
+  some temperature is the generic behaviour of a thermal mass term with
+  `m_eff^2(T) = -|m^2| + c T^2`, and in a strongly supercooled transition the universe
+  reaches that temperature while still in the high-temperature phase, so the displaced
+  minimum is the false vacuum the bounce has to be computed from. Phases the tracer
+  stopped and restarted either side of such a merge are put back together by
+  `mergePhasesMeetingAtAPoint`, which joins pieces separated by no more than 1e-3 of the
+  traced span whose endpoints across the gap agree to better than `diftol`; the redundancy
+  pass that follows works on phases overlapping in temperature and cannot see a pair
+  separated by a gap. The computable corner of the 2HDM benchmark extends from
+  `lambda3` = 5.818 to 5.866 on these changes, 19 couplings gained and none lost.
+
+- **A bounce whose bracketing trials disagree on the action is reported as unresolved.**
+  `bounceAction` returned whatever its last bracketing trial gave, so a solve that had not
+  converged still produced a number, and that number is not the action of any bounce. Such
+  a sample is now reported as unresolved and dropped on its own rather than the whole
+  coupling being abandoned, and the percolation integral is built from the samples that did
+  resolve. A bracketing trial is also recorded only from a trial that was integrated:
+  the previous code could store a previous iteration's profile against the current trial's
+  radius, or reach an unbound `r0` and raise.
+
 - **A shooting trial without a usable slope is rejected; the solve carries on.** Before
   integrating a trial, `findProfile` asks `dV_from_absMin` for the slope at
   `phi(0) = phi_absMin + delta_phi0`, and it refused the whole solve on `dV < 1e-200`,
