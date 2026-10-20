@@ -277,6 +277,60 @@ def findApproxLocalMin(f: Callable, x1: np.ndarray, x2: np.ndarray, args=(), n=1
 _traceMinimum_rval = namedtuple("traceMinimum_rval", "X T dXdT overX overT")
 
 
+def descendFromSaddle(
+    x: np.ndarray,
+    t: float,
+    f: Callable,
+    df_dx: Callable,
+    d2f_dx2: Callable,
+    xeps: float,
+    step: float,
+    max_displacement: float,
+) -> np.ndarray:
+    r"""Return a minimum near `x`, having stepped off it where it is a saddle.
+
+    A potential with a reflection symmetry has a stationary point at the origin at every
+    temperature, so a minimiser seeded there returns it whether or not it is a minimum:
+    the gradient vanishes by symmetry and there is no direction for the minimiser to
+    take. The thermal mass term tilts the origin over below some temperature, because
+    ``m_eff^2(T) = -|m^2| + c T^2`` changes sign, and the field then sits in a displaced
+    minimum instead. In a strongly supercooled transition the barrier is nearly
+    temperature independent, so the universe reaches that temperature while still in the
+    high-temperature phase, and the displaced minimum is the false vacuum the bounce has
+    to start from.
+
+    Stepping along the eigenvector of the most negative curvature and re-minimising finds
+    it. The step is tried in both directions, since the two are equivalent under the
+    symmetry only until the minimiser has moved, and it grows from the tracer's own
+    resolution so that the nearest minimum is the one returned. `max_displacement` bounds
+    the search, so that a saddle whose descent leads far away does not deliver a distant
+    minimum, such as the true vacuum, in place of the phase being traced.
+
+    Returns `x` unchanged where the Hessian there is already positive definite, and where
+    no minimum is found within the bound; the caller decides what to do with a point that
+    is still not a minimum.
+    """
+    x = np.asarray(x, dtype=float)
+    hess = np.atleast_2d(np.squeeze(d2f_dx2(x, t)))
+    eigval, eigvec = linalg.eigh(hess)
+    if eigval[0] > 0.0:
+        return x
+    direction = np.asarray(eigvec[:, 0], dtype=float).reshape(np.shape(x))
+    delta = max(abs(step), abs(xeps))
+    while delta <= max_displacement:
+        for sign in (1.0, -1.0):
+            trial = traceLocalMinimum(f, x + sign * delta * direction, t,
+                                      df_dx, d2f_dx2, xeps)
+            trial = np.asarray(trial, dtype=float)
+            if np.sum((trial - x) ** 2) ** 0.5 > max_displacement:
+                continue
+            trial_eig = linalg.eigvalsh(np.atleast_2d(np.squeeze(d2f_dx2(trial, t))))
+            if trial_eig[0] > 0.0:
+                return trial
+        delta *= 2.0
+    return x
+
+
 def traceMinimum(
     f : Callable, df_dx : Callable, d2f_dxdt : Callable, d2f_dx2 : Callable, 
     x0 : np.ndarray, t0 : float, tstop : float, dtstart : float, deltaX_target : float,
@@ -393,7 +447,18 @@ def traceMinimum(
         tnext = t + dt
         xnext = fmin(x + dxdt * dt, tnext)
         dxdt_next, negeig = dxmindt(xnext, tnext)
-        if dxdt_next is None or negeig is True:
+        # `negeig` is compared by value, not against the `True` singleton. `dxmindt`
+        # builds it from `(eigs <= 0).any()`, which is a `numpy.bool_`, and
+        # `numpy.bool_(True) is True` is False, so an identity test here never fired and
+        # the saddle check below was dead: a phase was traced through temperatures where
+        # the Hessian has a negative eigenvalue and the phase does not exist. On the 2HDM
+        # at lambda3 = 5.813 the high-temperature phase was traced from T = 121.9 GeV down
+        # to 0, straight through the window from 39.0 GeV down, keeping 7 of its 61 nodes
+        # at the origin where the smallest eigenvalue reaches -377.8 GeV^2. The bounce was
+        # then computed from a false vacuum that is a saddle, which put `S_3/T` at T = 37
+        # GeV at 148.5 against 135.8 at the neighbouring coupling, where the trace stopped
+        # for an unrelated reason.
+        if dxdt_next is None or bool(negeig):
             # We got stuck on a saddle, so there must be a phase transition
             # there.
             dt *= 0.5
@@ -544,6 +609,17 @@ def traceMultiMin(
     def fmin(x, t):
         return traceLocalMinimum(f, x, t, df_dx, d2f_dx2, xeps)
 
+    # The displaced minimum a tilted-over origin rolls into sits at a field value set by
+    # the potential, not by the tracing resolution: `deltaX_target` is 0.1 GeV on the
+    # 2HDM benchmark while the displacement is 8.6 GeV at T = 37 GeV. The zero-temperature
+    # minima handed in as starting points carry the only field scale available here, and
+    # bounding the descent by a quarter of it keeps the search clear of the true vacuum.
+    # The search returns the nearest minimum, so the factor is not a sensitive choice:
+    # a quarter and a half give the same phases on the 2HDM couplings this was tested on.
+    field_scale = max((np.sum(np.asarray(x0, dtype=float) ** 2) ** 0.5 for x0, _ in points),
+                      default=0.0)
+    max_descent = 0.25 * field_scale
+
     dtstart = dtstart * (tHigh - tLow)
     tjump = tjump * (tHigh - tLow)
     phases = {}
@@ -558,6 +634,17 @@ def traceMultiMin(
         if applySymmetries is not None:
             x1 = applySymmetries(x1)
         x1 = fmin(x1, t1)  # make sure we start as accurately as possible.
+        # Accuracy alone cannot get the minimiser off a saddle that symmetry puts the
+        # gradient to zero at, so step off it explicitly and trace the minimum the field
+        # actually sits in. Where the point is still not a minimum, there is no phase to
+        # trace from it: seeding one anyway is what used to put nodes into a phase at
+        # temperatures where it does not exist, and the bounce was then computed from a
+        # false vacuum that is a saddle. On the 2HDM at lambda3 = 5.813 that left 7 of the
+        # 61 nodes of the high-temperature phase at the origin between T = 8.5 and 39.0
+        # GeV, where the smallest eigenvalue of the Hessian runs down to -377.8 GeV^2.
+        x1 = descendFromSaddle(x1, t1, f, df_dx, d2f_dx2, xeps, deltaX_target, max_descent)
+        if linalg.eigvalsh(np.atleast_2d(np.squeeze(d2f_dx2(x1, t1))))[0] <= 0.0:
+            continue
         # Check to see if this point is outside the bounds
         if t1 < tLow or (t1 == tLow and dt1 < 0):
             continue
