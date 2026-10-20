@@ -11,6 +11,7 @@ Authors:
     Carlo Tasillo <carlo.tasillo@ific.uv.es>
 """
 
+import itertools
 import numpy as np
 from dataclasses import dataclass
 from scipy import optimize
@@ -642,7 +643,18 @@ def traceMultiMin(
         # false vacuum that is a saddle. On the 2HDM at lambda3 = 5.813 that left 7 of the
         # 61 nodes of the high-temperature phase at the origin between T = 8.5 and 39.0
         # GeV, where the smallest eigenvalue of the Hessian runs down to -377.8 GeV^2.
-        x1 = descendFromSaddle(x1, t1, f, df_dx, d2f_dx2, xeps, deltaX_target, max_descent)
+        descended = descendFromSaddle(x1, t1, f, df_dx, d2f_dx2, xeps, deltaX_target,
+                                      max_descent)
+        if applySymmetries is not None and not np.array_equal(descended, x1):
+            # The descent leaves the quadrant the candidate was mapped into, and which
+            # image of the displaced minimum it lands in is decided by the sign of an
+            # eigenvector. That sign is not free: the broken minimum this phase tunnels to
+            # sits at a definite point, so one image is nearer to it than its mirror and
+            # carries the lower action. On the 2HDM at T = 37 GeV the two give field
+            # separations of 241.93 and 251.57 GeV, and `S_3/T` of 135.8 and 151.7.
+            # Mapping back puts every coupling in the same image as the broken minimum.
+            descended = applySymmetries(descended)
+        x1 = descended
         if linalg.eigvalsh(np.atleast_2d(np.squeeze(d2f_dx2(x1, t1))))[0] <= 0.0:
             continue
         # Check to see if this point is outside the bounds
@@ -1153,6 +1165,70 @@ def _merge_branch_overlap(
     return True
 
 
+def mergePhasesMeetingAtAPoint(
+    phases: dict[int | str, PhaseInfo],
+    diftol: float,
+    verbose: bool = False,
+    conversionFactor: float = 1.0,
+    gap_fraction: float = 1.0e-3,
+) -> None:
+    """Join phases the tracer stopped and restarted at a second-order merge.
+
+    A minimum that moves continuously into another as the temperature rises is one phase.
+    The tracer stops where the Hessian loses positivity, which is exactly that point, and
+    whether it then steps across the merge or restarts just below it is decided by where
+    its step happens to land. On the 2HDM the same structure comes out as one phase at
+    lambda3 = 5.813 and as two pieces 4.5 MeV apart at 5.8145.
+
+    Leaving the two separate does not make the answer imprecise, it loses the coupling:
+    a pair of phases has to be degenerate somewhere in its common temperature range for a
+    critical temperature to exist, and the degeneracy with the broken minimum sits at
+    96.97 GeV, well above the 39.60 GeV where the split falls. No tunnelling candidate is
+    then offered and the chain ends with `NoViablePhasePairError`.
+
+    Two pieces are joined when the gap between them is a thousandth of the range they
+    span and their endpoints across it agree to better than `diftol`. The field test is
+    what separates this from a first-order transition, where the two phases differ by far
+    more than `diftol`: 246 GeV against 1 GeV on the 2HDM. The gap test only keeps the
+    join local.
+    """
+    while True:
+        for key1, key2 in itertools.permutations(list(phases.keys()), 2):
+            if key1 not in phases or key2 not in phases:
+                continue
+            lower, upper = phases[key1], phases[key2]
+            gap = float(upper.Tmin) - float(lower.Tmax)
+            if gap < 0.0:
+                continue  # they overlap; removeRedundantPhases decides what to do
+            span = max(float(lower.Tmax) - float(lower.Tmin),
+                       float(upper.Tmax) - float(upper.Tmin))
+            if gap > gap_fraction * span:
+                continue
+            mismatch = float(np.linalg.norm(np.asarray(upper.X[0], dtype=float)
+                                            - np.asarray(lower.X[-1], dtype=float)))
+            if mismatch >= diftol:
+                continue
+            if verbose:
+                console.print(
+                    f"Phases {lower.key} and {upper.key} meet at "
+                    f"T = {float(lower.Tmax) * conversionFactor} GeV with a gap of "
+                    f"{gap * conversionFactor} GeV and a field-space mismatch of "
+                    f"{mismatch * conversionFactor} GeV. They are one phase traced in "
+                    "two pieces, and are joined."
+                )
+            T = np.append(lower.T, upper.T, axis=0)
+            X = np.append(lower.X, upper.X, axis=0)
+            dXdT = np.append(lower.dXdT, upper.dXdT, axis=0)
+            newkey = f"{lower.key}-{upper.key}"
+            newphase = PhaseInfo(newkey, X, T, dXdT)
+            phases[newkey] = newphase
+            _removeRedundantPhase(phases, lower, newphase)
+            _removeRedundantPhase(phases, upper, newphase)
+            break
+        else:
+            return
+
+
 def removeRedundantPhases(
     f: Callable,
     df_dx: np.ndarray,
@@ -1415,6 +1491,15 @@ class Phases:
                           style="bold green")
 
             
+        # Before judging phases redundant against one another, put back together any that
+        # are one phase the tracer stopped and restarted at a second-order merge. The
+        # redundancy pass works on phases that overlap in temperature and cannot see a
+        # pair separated by a gap.
+        mergePhasesMeetingAtAPoint(
+            phases, diftol=self.diftol, verbose=verbose,
+            conversionFactor=self.conversionFactor
+        )
+
         removeRedundantPhases(
             pot.Vtot, pot.gradV, pot.d2V, phases, self.x_eps * 1e-2, diftol=self.diftol,
             verbose=verbose, conversionFactor=self.conversionFactor
