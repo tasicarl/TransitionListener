@@ -288,6 +288,49 @@ class ASeedThatIsStillASaddleStartsNoPhase(unittest.TestCase):
                         f"smallest eigenvalue is {smallest_eigenvalue(x, t)}")
 
 
+class AForbiddenCandidateIsSkipped(unittest.TestCase):
+    """`forbidCrit` is model-supplied and the shipped ones return a `numpy.bool_`.
+
+    `TL_dark_U1.forbidPhaseCrit` is `(np.array([X])[..., 0] < -5.).any()`, which an
+    identity test against `True` never matches, so the criterion that is there to stop a
+    Z2-symmetric model double-counting its phases skipped nothing.
+    """
+
+    @staticmethod
+    def forbid_negative_x(x):
+        """A `numpy.bool_`, as every shipped implementation of this hook returns."""
+        return (np.asarray(x, dtype=float)[..., 0] < 0.0).any()
+
+    def test_the_hook_returns_a_numpy_bool(self):
+        got = self.forbid_negative_x(np.array([-1.0, 0.0]))
+        self.assertIsInstance(got, np.bool_)
+        self.assertIsNot(got, True, msg="this fixture no longer reproduces the case")
+
+    def test_no_traced_phase_starts_in_the_forbidden_region(self):
+        seeds = []
+        real = ph.traceMinimum
+
+        def spy(f, df_dx, d2f_dxdt, d2f_dx2, x0, t0, *a, **k):
+            seeds.append(np.asarray(x0, dtype=float).copy())
+            return real(f, df_dx, d2f_dxdt, d2f_dx2, x0, t0, *a, **k)
+
+        ph.traceMinimum = spy
+        try:
+            ph.traceMultiMin(
+                V, dV, d2V_dxdt, d2V,
+                [[-displaced_minimum(0.5 * T0), 0.5 * T0]],
+                tLow=0.05 * T0, tHigh=3.0 * T0, deltaX_target=0.1,
+                forbidCrit=self.forbid_negative_x,
+            )
+        finally:
+            ph.traceMinimum = real
+        forbidden = [x for x in seeds if bool(self.forbid_negative_x(x))]
+        self.assertEqual(
+            [list(np.round(x, 5)) for x in forbidden], [],
+            msg=f"{len(forbidden)} of {len(seeds)} traces were started from a point the "
+                "model forbids")
+
+
 def _phase(key, T, X):
     T = np.asarray(T, dtype=float)
     X = np.atleast_2d(np.asarray(X, dtype=float))

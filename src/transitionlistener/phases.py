@@ -666,7 +666,13 @@ def traceMultiMin(
             continue
         if t1 > tHigh or (t1 == tHigh and dt1 > 0):
             continue
-        if forbidCrit is not None and forbidCrit(x1) is True:
+        # By value, for the same reason as the saddle flag above: the shipped
+        # `forbidPhaseCrit` of the dark U(1) models returns
+        # `(np.array([X])[..., 0] < -5.).any()`, a `numpy.bool_`, which is never the `True`
+        # singleton, so this skipped nothing. The end-of-trace test at the foot of this
+        # function uses truthiness and did fire, so a phase whose endpoints are forbidden
+        # was still dropped; one that only passes through the forbidden region was not.
+        if forbidCrit is not None and bool(forbidCrit(x1)):
             continue
         # Check to see if it's redudant with another phase
         for i, phase in enumerate(phases.values()):
