@@ -1542,7 +1542,11 @@ def fullTunneling(
     spread = float(getattr(last_output.tobj, "bracket_action_spread", 0.0) or 0.0)
     if spread > tunneling1D._ACTION_BRACKET_TOL:
         branches = getattr(last_output.tobj, "bracket_branch_actions", {}) or {}
-        raise errors.TunnelingError(
+        # `InfiniteActionError`, not `TunnelingError`: the first is the signal the callers
+        # already read as "no action at this temperature" and drop the sample for, while
+        # the second leaves `fullTunneling` and ends the whole point as CLI code 11. One
+        # temperature the shooting cannot resolve is not a reason to abandon a coupling.
+        raise errors.InfiniteActionError(
             "The bounce is not resolved at this temperature: the shooting's undershoot "
             f"gives an action of {branches.get('undershoot', float('nan')):.6g} and its "
             f"overshoot {branches.get('overshoot', float('nan')):.6g}, a relative spread "
