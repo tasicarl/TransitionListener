@@ -546,6 +546,11 @@ def traceMinimum(
     return _traceMinimum_rval(X, T, dXdT, overX, overT)
 
 
+#: How closely one element of the symmetry group has to reproduce the image
+#: `applySymmetries` returns for that element to be taken as the map it applied.
+_IMAGE_MATCH_RTOL = 1.0e-8
+
+
 def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
                           invGroupElements) -> np.ndarray | None:
     r"""The one symmetry transformation that puts a whole traced phase on its canonical image.
@@ -591,7 +596,17 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
     # measure is not recomputed here so that the image this returns is the one
     # `applySymmetries` chooses, whatever measure it uses.
     distances = [float(np.linalg.norm(reference @ g - canonical)) for g in invGroupElements]
-    return invGroupElements[int(np.argmin(distances))]
+    nearest = int(np.argmin(distances))
+    # Only where that transformation accounts for the image chosen. A model free to
+    # override `applySymmetries` may return a point that no single element of the group
+    # carries the reference to, and the nearest element is then not the map that was
+    # applied; transforming the phase by it would move the phase somewhere the potential
+    # does not relate to where it was traced. Leaving the trace alone loses the
+    # deduplication, which `removeRedundantPhases` may still catch, rather than
+    # introducing a phase that is wrong.
+    if distances[nearest] > _IMAGE_MATCH_RTOL * max(float(np.linalg.norm(reference)), 1.0):
+        return None
+    return invGroupElements[nearest]
 
 
 def traceMultiMin(

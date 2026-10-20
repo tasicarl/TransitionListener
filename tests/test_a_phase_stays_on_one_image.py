@@ -335,5 +335,53 @@ class TheGroupReachesTheTracer(unittest.TestCase):
         np.testing.assert_allclose(with_group, -without_group, rtol=1e-6)
 
 
+class AMapThatIsNotAGroupActionIsDeclined(unittest.TestCase):
+    """A symmetry map no element of the group accounts for leaves the trace alone.
+
+    `applySymmetries` is a method of the potential and a model may override it. Where what
+    it returns is not the reference node carried by any one element, the nearest element is
+    not the map it applied, and using it would move the phase to a point the potential does
+    not relate to the one that was traced. Losing the deduplication is recoverable;
+    `removeRedundantPhases` may still catch it. A phase moved to the wrong place is not.
+    """
+
+    GROUP = [IDENTITY, FLIP_BOTH]
+
+    def test_an_image_outside_the_group_is_not_applied(self):
+        X = np.array([[-1.0, -0.5], [-2.0, -1.0]])
+        # a rotation by a quarter turn, which neither element of the group performs
+        rotated = lambda x: np.asarray(x, dtype=float) @ np.array([[0.0, -1.0], [1.0, 0.0]])
+        self.assertIsNone(ph.canonicalImageElement(X, rotated, self.GROUP))
+
+    def test_a_scaled_image_is_not_applied(self):
+        """A map that rescales is not a symmetry of the potential, whatever its direction."""
+        X = np.array([[-1.0, -0.5], [-2.0, -1.0]])
+        self.assertIsNone(
+            ph.canonicalImageElement(X, lambda x: -2.0 * np.asarray(x, dtype=float),
+                                     self.GROUP))
+
+    def test_a_phase_at_the_origin_is_judged_on_an_absolute_floor(self):
+        """The tolerance is relative to the field scale, and needs a floor at zero scale.
+
+        A phase that sits at the origin has no field scale, so a purely relative tolerance
+        is zero there and any map that does not return the origin exactly would be refused,
+        including the identity on a point displaced by rounding. The symmetric phase of a
+        conformal model is traced at the origin to within the tracing accuracy, so this is
+        the case to get right rather than a contrived one.
+        """
+        X = np.zeros((3, 2))
+        displaced = lambda x: np.full(2, 1.0e-9)
+        got = ph.canonicalImageElement(X, displaced, self.GROUP)
+        self.assertIsNotNone(
+            got, msg="a phase at the origin was refused for a 1e-09 displacement")
+        np.testing.assert_allclose(got, IDENTITY)
+
+    def test_the_group_action_itself_is_still_applied(self):
+        """The guard must not refuse the map the shipped `applySymmetries` performs."""
+        X = np.array([[-1.0, -0.5], [-2.0, -1.0]])
+        got = ph.canonicalImageElement(X, canonical_under(self.GROUP), self.GROUP)
+        np.testing.assert_allclose(got, FLIP_BOTH)
+
+
 if __name__ == "__main__":
     unittest.main()
