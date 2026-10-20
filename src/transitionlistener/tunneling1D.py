@@ -918,7 +918,17 @@ class SingleFieldInstanton:
             phi0 = self.phi_absMin + delta_phi0
             dV = self.dV_from_absMin(delta_phi0)
             slope_away_from_absMin = dV * np.sign(delta_phi0)
-            if slope_away_from_absMin > _MIN_USABLE_DV_FROM_ABSMIN:
+            # Finiteness is tested on its own rather than left to the floor below. A `nan`
+            # slope fails `> _MIN_USABLE_DV_FROM_ABSMIN` and is rejected, but only because
+            # every comparison against a `nan` is false; an infinite one *passes* it and
+            # carries into `initialConditions`, whose `phi0` and `dphi0` then reach
+            # `integrateProfile` as the starting values of an integration that cannot mean
+            # anything. `SplinePath.dV` differentiates a spline through sampled `V` and can
+            # return either where the sampling is degenerate, so both have to be refused
+            # here, where the trial is still rejectable and the bisection can bound `x`
+            # from the side it sits on.
+            if (np.isfinite(slope_away_from_absMin)
+                    and slope_away_from_absMin > _MIN_USABLE_DV_FROM_ABSMIN):
                 try:
                     r0_, phi0, dphi0 = self.initialConditions(
                         delta_phi0, rmin, delta_phi_cutoff)

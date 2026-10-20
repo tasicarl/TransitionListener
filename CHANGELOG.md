@@ -325,7 +325,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
   The slope is now read away from `phi_absMin`, as `dV * sign(delta_phi0)`, and a trial
   without one is rejected the way an over- or undershoot is: it bounds `x` from above when
-  `phi0` is nearer `phi_absMin` and from below when it is nearer `phi_metaMin`. A solve in
+  `phi0` is nearer `phi_absMin` and from below when it is nearer `phi_metaMin`. Finiteness
+  is tested on its own and not left to the floor: a `nan` slope fails the comparison
+  already, but only because every comparison against a `nan` is false, while an infinite
+  one passes any floor and carried into `initialConditions`, whose `phi0` and `dphi0` then
+  reached `integrateProfile` as the starting values of an integration that cannot mean
+  anything. A solve in
   which no trial ever had a usable slope still reports `TooSmalldVError`, and so does one
   whose `x` stops being a number. The profile returned is built from the trial it was
   integrated from throughout, including the points interior to `R[0]`, which `exactSolution`

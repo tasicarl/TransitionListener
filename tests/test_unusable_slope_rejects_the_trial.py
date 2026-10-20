@@ -377,6 +377,80 @@ class TheKeptProfileIsBuiltFromTheTrialItWasIntegratedFrom(unittest.TestCase):
                 f"{found!r}")
 
 
+class ANonFiniteSlopeNeverReachesTheIntegration(unittest.TestCase):
+    """An infinite slope passes a floor test; only a finiteness test refuses it.
+
+    `nan > _MIN_USABLE_DV_FROM_ABSMIN` is false, so a `nan` slope is rejected already, but
+    by the accident that every comparison against a `nan` is false. `+inf` is greater than
+    any floor, so it passed into `initialConditions`, and the `phi0` and `dphi0` it returns
+    then reached `integrateProfile` as the starting values of an integration that cannot
+    mean anything. `SplinePath.dV` differentiates a spline through sampled `V` and returns
+    either where the sampling is degenerate.
+    """
+
+    #: Displacement whose slope is replaced, chosen to be the first trial's.
+    WHERE = 0.5
+
+    def _run(self, bad_value):
+        instanton = ascending_instanton()
+        real_slope = instanton.dV_from_absMin
+        seen = {"replaced": 0}
+
+        def slope(delta_phi0):
+            value = real_slope(delta_phi0)
+            if abs(abs(float(np.squeeze(delta_phi0))) - self.WHERE) < 1e-09:
+                seen["replaced"] += 1
+                return bad_value
+            return value
+
+        instanton.dV_from_absMin = slope
+        starts = []
+        real_integrate = instanton.integrateProfile
+
+        def integrate(r0, y0, *a, **k):
+            starts.append((float(np.squeeze(r0)),
+                           [float(v) for v in np.atleast_1d(np.squeeze(y0))]))
+            return real_integrate(r0, y0, *a, **k)
+
+        instanton.integrateProfile = integrate
+        try:
+            action = float(instanton.findAction(
+                instanton.findProfile(xguess=-np.log(self.WHERE))))
+        finally:
+            del instanton.dV_from_absMin
+            del instanton.integrateProfile
+        return action, starts, seen
+
+    def test_the_fixture_replaces_a_slope_that_is_actually_asked_for(self):
+        _, _, seen = self._run(np.inf)
+        self.assertGreater(
+            seen["replaced"], 0,
+            msg=f"no trial was taken at |delta_phi0| = {self.WHERE}, so nothing was tested")
+
+    def test_an_infinite_slope_starts_no_integration(self):
+        _, starts, _ = self._run(np.inf)
+        bad = [s for s in starts if not all(np.isfinite(v) for v in s[1])
+               or not np.isfinite(s[0])]
+        self.assertEqual(
+            bad, [],
+            msg=f"{len(bad)} integration(s) were started from non-finite values, e.g. {bad[:1]}")
+
+    def test_a_nan_slope_starts_no_integration(self):
+        _, starts, _ = self._run(np.nan)
+        bad = [s for s in starts if not all(np.isfinite(v) for v in s[1])
+               or not np.isfinite(s[0])]
+        self.assertEqual(bad, [], msg=f"integration started from {bad[:1]}")
+
+    def test_the_bounce_is_still_found(self):
+        """Rejecting the trial must cost the trial, not the solve."""
+        reference = action_of(ascending_instanton())
+        action, _, _ = self._run(np.inf)
+        self.assertAlmostEqual(
+            action, reference, delta=1e-03 * abs(reference),
+            msg=f"the action moved from {reference} to {action} when one trial's slope "
+                "was replaced by an infinity")
+
+
 class _TrialBudgetExhausted(Exception):
     """Raised by this module when the bisection will not stop, so a hang fails instead."""
 
