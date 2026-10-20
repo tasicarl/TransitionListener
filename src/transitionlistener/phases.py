@@ -590,7 +590,17 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
     if applySymmetries is None or len(invGroupElements) == 0:
         return None
     X = np.atleast_2d(np.asarray(X, dtype=float))
-    reference = X[np.argmax(np.linalg.norm(X, axis=-1))]
+    # Among the nodes that are finite. `np.argmax` returns the position of a `nan`, so a
+    # single non-finite node would otherwise be taken as the reference, and every
+    # comparison against it is then `nan`: `argmin` returns the first element and the
+    # tolerance test below is false, so the first transformation of the group would be
+    # applied to the whole phase. For the 2HDM that element is the flip, which would put
+    # the phase on the mirror image this function exists to keep it off.
+    norms = np.linalg.norm(X, axis=-1)
+    usable = np.isfinite(norms)
+    if not usable.any():
+        return None
+    reference = X[np.flatnonzero(usable)[np.argmax(norms[usable])]]
     canonical = np.asarray(applySymmetries(reference), dtype=float)
     # Which transformation that is, by matching its action on the reference node. The
     # measure is not recomputed here so that the image this returns is the one

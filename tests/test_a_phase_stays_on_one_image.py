@@ -131,6 +131,26 @@ class TheElementIsReadOffTheBestResolvedNode(unittest.TestCase):
         X = np.array([[1.0e-9, 1.0e-9], [2.0e-9, 1.0e-9], [-2.0, -1.0]])
         np.testing.assert_allclose(self.element(X), FLIP_BOTH)
 
+    def test_a_node_that_is_not_finite_does_not_become_the_reference(self):
+        """`np.argmax` returns the position of a `nan`, which would decide the image.
+
+        Every comparison against a `nan` reference is `nan`, `argmin` then returns the
+        first element of the group and the tolerance test is false, so that element would
+        be applied to the whole phase. The trace here is on the canonical image already and
+        has to be left there; the group is ordered as `generic_potential` builds it for the
+        2HDM, with the flip first, so taking the first element would mirror the phase.
+        """
+        group = [FLIP_BOTH, IDENTITY]
+        X = np.array([[1.0, 0.5], [np.nan, np.nan], [2.0, 1.0]])
+        got = ph.canonicalImageElement(X, canonical_under(group), group)
+        np.testing.assert_allclose(got, IDENTITY)
+
+    def test_a_trace_with_no_finite_node_is_declined(self):
+        """There is no node to read the image off, so the trace is left as it is."""
+        group = [FLIP_BOTH, IDENTITY]
+        X = np.full((3, 2), np.nan)
+        self.assertIsNone(ph.canonicalImageElement(X, canonical_under(group), group))
+
     def test_the_whole_trace_moves_rigidly(self):
         """Every node is transformed by the same element, so no step is introduced."""
         X = np.array([[-1.0e-9, 1.0e-9], [-1.0, -0.5], [-2.0, -1.0], [-1.5, -0.75]])
