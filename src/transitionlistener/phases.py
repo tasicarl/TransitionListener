@@ -612,14 +612,18 @@ def traceMultiMin(
 
     # The displaced minimum a tilted-over origin rolls into sits at a field value set by
     # the potential, not by the tracing resolution: `deltaX_target` is 0.1 GeV on the
-    # 2HDM benchmark while the displacement is 8.6 GeV at T = 37 GeV. The zero-temperature
-    # minima handed in as starting points carry the only field scale available here, and
-    # bounding the descent by a quarter of it keeps the search clear of the true vacuum.
-    # The search returns the nearest minimum, so the factor is not a sensitive choice:
-    # a quarter and a half give the same phases on the 2HDM couplings this was tested on.
+    # 2HDM benchmark while the displacement is 8.6 GeV at T = 37 GeV. Bounding the descent
+    # by a quarter of the largest field value seen keeps the search clear of a distant
+    # minimum such as the true vacuum. The search returns the nearest minimum, so the
+    # factor is not a sensitive choice: a quarter and a half give the same phases on the
+    # 2HDM couplings this was tested on.
+    # The starting points are the zero-temperature minima, which carry the field scale:
+    # 246.2 GeV on the 2HDM. A model whose zero-temperature minimum is the origin offers
+    # no field scale at all, and the only other scale in the problem is the temperature
+    # range, which is in the same units as the field here.
     field_scale = max((np.sum(np.asarray(x0, dtype=float) ** 2) ** 0.5 for x0, _ in points),
                       default=0.0)
-    max_descent = 0.25 * field_scale
+    max_descent = 0.25 * (field_scale if field_scale > 0.0 else abs(tHigh - tLow))
 
     dtstart = dtstart * (tHigh - tLow)
     tjump = tjump * (tHigh - tLow)
