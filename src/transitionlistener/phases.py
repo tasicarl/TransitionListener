@@ -301,9 +301,10 @@ def descendFromSaddle(
     to start from.
 
     Stepping along the eigenvector of the most negative curvature and re-minimising finds
-    it. The step is tried in both directions, since the two are equivalent under the
-    symmetry only until the minimiser has moved, and it grows from the tracer's own
-    resolution so that the nearest minimum is the one returned. `max_displacement` bounds
+    it. Both directions are tried at each step size and the nearer of what they find is
+    returned, since the two are equivalent under the symmetry only until the minimiser has
+    moved and the sign of an eigenvector is arbitrary; the step grows from the tracer's own
+    resolution, so the first step size that finds anything gives the nearest minimum. `max_displacement` bounds
     the search, so that a saddle whose descent leads far away does not deliver a distant
     minimum, such as the true vacuum, in place of the phase being traced.
 
@@ -319,15 +320,26 @@ def descendFromSaddle(
     direction = np.asarray(eigvec[:, 0], dtype=float).reshape(np.shape(x))
     delta = max(abs(step), abs(xeps))
     while delta <= max_displacement:
+        # Both directions at this step size, and the nearer of whatever they find. Taking
+        # the first that succeeds makes the answer depend on the arbitrary sign of an
+        # eigenvector rather than on distance, and where the two directions lead to
+        # different minima the farther one can then be returned: the phase being traced is
+        # the one the field is nearest to.
+        found = []
         for sign in (1.0, -1.0):
             trial = traceLocalMinimum(f, x + sign * delta * direction, t,
                                       df_dx, d2f_dx2, xeps)
             trial = np.asarray(trial, dtype=float)
-            if np.sum((trial - x) ** 2) ** 0.5 > max_displacement:
+            distance = float(np.sum((trial - x) ** 2) ** 0.5)
+            if distance > max_displacement:
                 continue
             trial_eig = linalg.eigvalsh(np.atleast_2d(np.squeeze(d2f_dx2(trial, t))))
             if trial_eig[0] > 0.0:
-                return trial
+                found.append((distance, trial))
+        if found:
+            # The smallest distance, and on a tie the first direction, so that a symmetric
+            # saddle still answers deterministically.
+            return min(found, key=lambda pair: pair[0])[1]
         delta *= 2.0
     return x
 

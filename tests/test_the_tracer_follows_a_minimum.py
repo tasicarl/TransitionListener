@@ -331,6 +331,92 @@ class AForbiddenCandidateIsSkipped(unittest.TestCase):
                 "model forbids")
 
 
+class TheDescentReturnsTheNearerMinimum(unittest.TestCase):
+    """Which side of a saddle the descent lands on may not depend on an eigenvector's sign.
+
+    `linalg.eigh` fixes the sign of its eigenvectors by a convention, not by the physics, so
+    taking the first direction that finds a minimum decides the answer arbitrarily. Where
+    the two directions lead to minima at different distances, the phase being traced is the
+    nearer one; the farther one can be a different phase entirely.
+
+    The potential is one-dimensional and asymmetric, with a saddle at the origin and two
+    minima at known, unequal distances:
+
+        V(x) = x^4 / 4 - x^2 / 2 + g x^3 / 3
+
+    whose stationary points are the roots of `x (x^2 + g x - 1)`. Both signs of `g` are
+    used, so that the nearer minimum lies on the positive side in one case and the negative
+    side in the other. One sign alone cannot tell the rule from the direction that happens
+    to be tried first.
+    """
+
+    @staticmethod
+    def _potential(g):
+        def V(x, t):
+            x = np.asarray(x, dtype=float)
+            return x[..., 0] ** 4 / 4.0 - x[..., 0] ** 2 / 2.0 + g * x[..., 0] ** 3 / 3.0
+
+        def dV(x, t):
+            x = np.asarray(x, dtype=float)
+            return np.array([x[..., 0] ** 3 - x[..., 0] + g * x[..., 0] ** 2])
+
+        def d2V(x, t):
+            x = np.asarray(x, dtype=float)
+            return np.array([[3.0 * x[..., 0] ** 2 - 1.0 + 2.0 * g * x[..., 0]]])
+        return V, dV, d2V
+
+    @staticmethod
+    def _minima(g):
+        """The two roots of `x^2 + g x - 1`, nearer first."""
+        root = np.sqrt(g ** 2 + 4.0)
+        pair = (0.5 * (-g + root), 0.5 * (-g - root))
+        return min(pair, key=abs), max(pair, key=abs)
+
+    def test_the_fixture_is_what_the_arithmetic_says(self):
+        """Checked before it is used to judge anything, and that the two signs differ."""
+        near_signs = set()
+        for g in (0.6, -0.6):
+            V, dV, d2V = self._potential(g)
+            near, far = self._minima(g)
+            for root in (near, far):
+                self.assertAlmostEqual(float(dV(np.array([root]), 0.0)[0]), 0.0, places=12)
+                self.assertGreater(float(np.squeeze(d2V(np.array([root]), 0.0))), 0.0)
+            self.assertLess(abs(near), abs(far))
+            near_signs.add(np.sign(near))
+        self.assertEqual(near_signs, {1.0, -1.0},
+                         msg="both orientations are needed, or the test cannot tell the "
+                             "nearest-minimum rule from the order the directions are tried")
+
+    def test_the_nearer_minimum_is_returned_whichever_side_it_is_on(self):
+        for g in (0.6, -0.6):
+            with self.subTest(g=g):
+                V, dV, d2V = self._potential(g)
+                near, _ = self._minima(g)
+                got = float(np.atleast_1d(ph.descendFromSaddle(
+                    np.array([0.0]), 0.0, V, dV, d2V,
+                    xeps=1e-8, step=1e-3, max_displacement=4.0))[0])
+                self.assertAlmostEqual(
+                    got, near, places=4,
+                    msg=f"g = {g}: landed on {got}, and the nearer minimum is {near}")
+
+    def test_a_point_that_is_already_a_minimum_is_left_alone(self):
+        V, dV, d2V = self._potential(0.6)
+        start = np.array([self._minima(0.6)[0]])
+        got = ph.descendFromSaddle(start, 0.0, V, dV, d2V,
+                                   xeps=1e-8, step=1e-3, max_displacement=4.0)
+        np.testing.assert_allclose(np.atleast_1d(got), start, atol=0.0)
+
+    def test_a_minimum_beyond_the_bound_is_not_taken(self):
+        for g in (0.6, -0.6):
+            with self.subTest(g=g):
+                V, dV, d2V = self._potential(g)
+                near, far = self._minima(g)
+                got = float(np.atleast_1d(ph.descendFromSaddle(
+                    np.array([0.0]), 0.0, V, dV, d2V, xeps=1e-8, step=1e-3,
+                    max_displacement=0.5 * (abs(near) + abs(far))))[0])
+                self.assertAlmostEqual(got, near, places=4)
+
+
 def _phase(key, T, X):
     T = np.asarray(T, dtype=float)
     X = np.atleast_2d(np.asarray(X, dtype=float))

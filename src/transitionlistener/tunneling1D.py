@@ -980,7 +980,7 @@ class SingleFieldInstanton:
                         "Integration failed: " + str(e))
                 epsabs_rf = epsabs
                 delta_phi0_rf = delta_phi0
-                trial_profile = (r0, y0, rf, epsabs)
+                trial_profile = (r0, y0, rf, epsabs, delta_phi0)
             else:
                 ctype = ("overshoot" if abs(delta_phi0) < 0.5*abs(delta_phi)
                          else "undershoot")
@@ -1067,9 +1067,14 @@ class SingleFieldInstanton:
         self.bracket_branch_actions = {}
         if ctype != "converged" and len(bracket_trials) == 2:
             branch_actions = {}
-            for side, (b_r0, b_y0, b_rf, b_epsabs) in bracket_trials.items():
+            for side, (b_r0, b_y0, b_rf, b_epsabs, b_dphi0) in bracket_trials.items():
+                b_R = np.linspace(b_r0, b_rf, npoints)
                 branch_profile = self.integrateAndSaveProfile(
-                    np.linspace(b_r0, b_rf, npoints), b_y0, dr0, epsfrac, b_epsabs, drmin)
+                    b_R, b_y0, dr0, epsfrac, b_epsabs, drmin)
+                # With its own interior, so that the two branches are compared as whole
+                # bounces rather than as the parts of them outside different radii.
+                branch_profile = self._withInteriorPoints(
+                    b_R, branch_profile, b_dphi0, max_interior_pts)
                 branch_actions[side] = float(np.squeeze(self.findAction(branch_profile)))
             spread = abs(branch_actions["undershoot"] - branch_actions["overshoot"])
             scale = max(abs(branch_actions["undershoot"]),
@@ -1081,35 +1086,48 @@ class SingleFieldInstanton:
         R = np.linspace(r0, rf, npoints)
         profile = self.integrateAndSaveProfile(R, y0, dr0,
                                                epsfrac, epsabs_rf, drmin)
-        # Make points interior to the bubble.
+        profile = self._withInteriorPoints(R, profile, delta_phi0_rf, max_interior_pts)
+        return profile
+
+    def _withInteriorPoints(self, R, profile, delta_phi0, max_interior_pts):
+        """Prepend the exact interior of the bubble, from `r = 0` out to `R[0]`.
+
+        Factored out so that the bracketing branches and the profile that is returned are
+        built the same way. They were not: a branch was integrated from its own starting
+        radius and its action taken there, while the profile returned here carries the
+        interior as well. The two branches of a bisection that has stalled can start at
+        quite different radii, 1.206 and 3.214 on the 2HDM at `lambda3 = 5.816407666`, so
+        the interior each of them omits differs, and the disagreement measured between
+        their actions was partly that difference rather than the bounce being unresolved.
+        """
         if max_interior_pts is None:
             max_interior_pts = len(R) // 2
-        if max_interior_pts > 0:
-            dx0 = R[1]-R[0]
-            if R[0] / dx0 <= max_interior_pts:
-                n = int(np.ceil(R[0]/dx0))
-                R_int = np.linspace(0, R[0], n+1)[:-1]
-            else:
-                n = max_interior_pts
-                # R[0] = dx0 * (n + a*n*(n+1)/2)
-                a = (R[0]/dx0 - n) * 2/(n*(n+1))
-                N = np.arange(1,n+1)[::-1]
-                R_int = R[0] - dx0*(N + 0.5*a*N*(N+1))
-                R_int[0] = 0.0  # enforce this exactly
-            Phi_int = np.empty_like(R_int)
-            dPhi_int = np.empty_like(R_int)
-            Phi_int[0] = self.phi_absMin + delta_phi0_rf
-            dPhi_int[0] = 0.0
-            dV = self.dV_from_absMin(delta_phi0_rf)
-            d2V = self.d2V(Phi_int[0])
-            for i in range(1,len(R_int)):
-                Phi_int[i], dPhi_int[i] = self.exactSolution(
-                    R_int[i], Phi_int[0], dV, d2V)
-            R = np.append(R_int, profile.R)
-            Phi = np.append(Phi_int, profile.Phi)
-            dPhi = np.append(dPhi_int, profile.dPhi)
-            profile = self.profile_rval(R,Phi,dPhi, profile.Rerr)
-        return profile
+        if max_interior_pts <= 0:
+            return profile
+        dx0 = R[1]-R[0]
+        if R[0] / dx0 <= max_interior_pts:
+            n = int(np.ceil(R[0]/dx0))
+            R_int = np.linspace(0, R[0], n+1)[:-1]
+        else:
+            n = max_interior_pts
+            # R[0] = dx0 * (n + a*n*(n+1)/2)
+            a = (R[0]/dx0 - n) * 2/(n*(n+1))
+            N = np.arange(1,n+1)[::-1]
+            R_int = R[0] - dx0*(N + 0.5*a*N*(N+1))
+            R_int[0] = 0.0  # enforce this exactly
+        Phi_int = np.empty_like(R_int)
+        dPhi_int = np.empty_like(R_int)
+        Phi_int[0] = self.phi_absMin + delta_phi0
+        dPhi_int[0] = 0.0
+        dV = self.dV_from_absMin(delta_phi0)
+        d2V = self.d2V(Phi_int[0])
+        for i in range(1,len(R_int)):
+            Phi_int[i], dPhi_int[i] = self.exactSolution(
+                R_int[i], Phi_int[0], dV, d2V)
+        R_full = np.append(R_int, profile.R)
+        Phi = np.append(Phi_int, profile.Phi)
+        dPhi = np.append(dPhi_int, profile.dPhi)
+        return self.profile_rval(R_full, Phi, dPhi, profile.Rerr)
 
     def findAction(self, profile):
         R"""
