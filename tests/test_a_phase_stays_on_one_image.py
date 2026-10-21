@@ -28,6 +28,7 @@ noise of order 1e-5, and the measure below reads that sign.
 
 Part of TransitionListener v2
 """
+import inspect
 import unittest
 
 import numpy as np
@@ -401,6 +402,51 @@ class AMapThatIsNotAGroupActionIsDeclined(unittest.TestCase):
         X = np.array([[-1.0, -0.5], [-2.0, -1.0]])
         got = ph.canonicalImageElement(X, canonical_under(self.GROUP), self.GROUP)
         np.testing.assert_allclose(got, FLIP_BOTH)
+
+
+class TheNewOptionDoesNotDisturbTheExistingSignature(unittest.TestCase):
+    """`traceMultiMin` is a public helper and callers may pass its arguments positionally.
+
+    `invGroupElements` was first inserted before `single_trace_args`, which silently
+    rebound every positional call that supplied either trailing dictionary: what the caller
+    meant as `single_trace_args` arrived as the symmetry group, and `local_min_args` as
+    `single_trace_args`. Nothing would raise; the trace would simply run with the wrong
+    settings. It is keyword-only now, after the existing parameters.
+    """
+
+    def test_the_trailing_dictionaries_keep_their_positions(self):
+        parameters = inspect.signature(ph.traceMultiMin).parameters
+        positional = [name for name, p in parameters.items()
+                      if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+        self.assertEqual(positional[-2:], ["single_trace_args", "local_min_args"],
+                         msg=f"the positional tail is {positional[-2:]}")
+
+    def test_the_group_cannot_be_passed_positionally(self):
+        parameters = inspect.signature(ph.traceMultiMin).parameters
+        self.assertEqual(parameters["invGroupElements"].kind,
+                         inspect.Parameter.KEYWORD_ONLY)
+
+    def test_a_positional_call_still_reaches_the_tracer(self):
+        """Driven, not only inspected: the arguments have to arrive where they are meant."""
+        seen = {}
+        original = ph.traceMinimum
+
+        def spy(*args, **kwargs):
+            seen.update(kwargs)
+            return original(*args, **kwargs)
+
+        ph.traceMinimum = spy
+        try:
+            ph.traceMultiMin(V, dV, d2V_dxdt, d2V, [[np.zeros(2), 2.5 * T0]],
+                             0.05 * T0, 3.0 * T0, 0.1,
+                             False, 1.0, 1e-3, 1e-3, None,
+                             canonical_under([IDENTITY, FLIP_BOTH]),
+                             {"dtabsMax": 7.0}, {},
+                             invGroupElements=[IDENTITY, FLIP_BOTH])
+        finally:
+            ph.traceMinimum = original
+        self.assertEqual(seen.get("dtabsMax"), 7.0,
+                         msg="the positional single_trace_args did not reach traceMinimum")
 
 
 if __name__ == "__main__":

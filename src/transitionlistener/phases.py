@@ -636,7 +636,8 @@ def traceMultiMin(
     points: list, tLow: float, tHigh: float, deltaX_target: float,
     verbose: bool = False, conversionFactor: float = 1, dtstart: float = 1e-3,
     tjump: float = 1e-3, forbidCrit: Callable | None = None, applySymmetries: Callable | None = None,
-    invGroupElements=(), single_trace_args: dict = {}, local_min_args: dict = {},
+    single_trace_args: dict = {}, local_min_args: dict = {},
+    *, invGroupElements=(),
 ) -> dict[int, PhaseInfo]:
     """
     Trace multiple minima `xmin(t)` of the function `f(x,t)`.
