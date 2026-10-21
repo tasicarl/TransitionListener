@@ -340,7 +340,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `mergePhasesMeetingAtAPoint`, which joins pieces separated by no more than 1e-3 of the
   traced span whose endpoints across the gap agree to better than `diftol`; the redundancy
   pass that follows works on phases overlapping in temperature and cannot see a pair
-  separated by a gap. The computable corner of the 2HDM benchmark extends from
+  separated by a gap. The span is the range the two pieces cover together, from the cold
+  end of the lower one to the hot end of the upper one, and where they meet at exactly one
+  temperature the shared node is kept once, because the interpolator behind `PhaseInfo`
+  refuses a repeated temperature. The computable corner of the 2HDM benchmark extends from
   `lambda3` = 5.818 to 5.866 on these changes, 19 couplings gained and none lost.
 
 - **A bounce whose bracketing trials disagree on the action is reported as unresolved.**
@@ -350,7 +353,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   coupling being abandoned, and the percolation integral is built from the samples that did
   resolve. A bracketing trial is also recorded only from a trial that was integrated:
   the previous code could store a previous iteration's profile against the current trial's
-  radius, or reach an unbound `r0` and raise.
+  radius, or reach an unbound `r0` and raise. A branch whose action is not finite counts as
+  unresolved as well. The relative spread between two infinite branches is `nan`, and every
+  comparison against a `nan` is false, so the sample would have been accepted on the one
+  input where the two branches could not be compared at all.
 
 - **A shooting trial without a usable slope is rejected; the solve carries on.** Before
   integrating a trial, `findProfile` asks `dV_from_absMin` for the slope at

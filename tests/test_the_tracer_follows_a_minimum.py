@@ -456,6 +456,37 @@ class PhasesTracedInTwoPiecesArePutBackTogether(unittest.TestCase):
         ph.mergePhasesMeetingAtAPoint(phases, diftol=1.0)
         self.assertEqual(len(phases), 2, msg=f"the pair was joined: {list(phases)}")
 
+    def test_the_gap_is_judged_against_what_the_pair_spans(self):
+        """Not against the wider of the two pieces, which is what the rule used to use.
+
+        Both pieces are 1.0 wide and the gap is 1.5e-3. Measured against the wider piece
+        that is 1.5 thousandths and the pair stays split; measured against the 2.0015 the
+        two span together, which is the range the docstring names, it is 0.75 thousandths
+        and they are joined.
+        """
+        phases = {0: _phase(0, [1.0, 1.5, 2.0], [[0.30, 0.0], [0.20, 0.0], [0.10, 0.0]]),
+                  1: _phase(1, [2.0015, 2.5015, 3.0015],
+                            [[0.11, 0.0], [0.05, 0.0], [0.0, 0.0]])}
+        ph.mergePhasesMeetingAtAPoint(phases, diftol=1.0)
+        self.assertEqual(len(phases), 1, msg=f"expected one phase, got {list(phases)}")
+
+    def test_pieces_that_meet_at_one_temperature_are_joined(self):
+        """A zero gap is the case the join exists for, and it used to raise.
+
+        `PhaseInfo` builds a PchipInterpolator, which refuses a repeated node, so appending
+        both pieces whole put the shared temperature in twice and the merge died inside
+        scipy rather than returning one phase.
+        """
+        phases = {0: _phase(0, [1.0, 2.0, 3.0], [[0.30, 0.0], [0.20, 0.0], [0.10, 0.0]]),
+                  1: _phase(1, [3.0, 4.0, 5.0], [[0.10, 0.0], [0.05, 0.0], [0.0, 0.0]])}
+        ph.mergePhasesMeetingAtAPoint(phases, diftol=1.0)
+        self.assertEqual(len(phases), 1, msg=f"expected one phase, got {list(phases)}")
+        joined = next(iter(phases.values()))
+        T = np.asarray(joined.T, dtype=float)
+        self.assertEqual(len(T), 5, msg=f"the shared node was kept twice: {T!r}")
+        self.assertTrue(np.all(np.diff(T) > 0.0),
+                        msg=f"the joined temperatures are not strictly increasing: {T!r}")
+
     def test_overlapping_phases_are_left_to_the_redundancy_pass(self):
         phases = {0: _phase(0, [1.0, 2.0, 3.0], [[0.30, 0.0], [0.20, 0.0], [0.10, 0.0]]),
                   1: _phase(1, [2.5, 4.0, 5.0], [[0.15, 0.0], [0.05, 0.0], [0.0, 0.0]])}

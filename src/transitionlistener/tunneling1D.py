@@ -61,6 +61,23 @@ _MIN_USABLE_DV_FROM_ABSMIN = 1e-200
 #: negative action. The threshold sits between the two populations, seven times the worst
 #: agreement seen and eight times below the smallest disagreement.
 _ACTION_BRACKET_TOL = 5.0e-2
+
+
+def _bracketSpread(undershoot: float, overshoot: float) -> float:
+    """How far apart the two bracketing branches are, relative to the larger of them.
+
+    A branch whose action is not finite has not resolved the bounce either, and a relative
+    spread cannot say so: `inf - inf` and `inf / inf` are both `nan`, and `nan > tol` is
+    false, so the caller would accept the sample on its worst input. Non-finite is reported
+    as an infinite spread, which the caller refuses.
+    """
+    if not (np.isfinite(undershoot) and np.isfinite(overshoot)):
+        return float("inf")
+    spread = abs(undershoot - overshoot)
+    scale = max(abs(undershoot), abs(overshoot), np.finfo(float).tiny)
+    return float(spread / scale)
+
+
 if sys.version_info >= (3,0):
     xrange = range
 
@@ -1076,10 +1093,8 @@ class SingleFieldInstanton:
                 branch_profile = self._withInteriorPoints(
                     b_R, branch_profile, b_dphi0, max_interior_pts)
                 branch_actions[side] = float(np.squeeze(self.findAction(branch_profile)))
-            spread = abs(branch_actions["undershoot"] - branch_actions["overshoot"])
-            scale = max(abs(branch_actions["undershoot"]),
-                        abs(branch_actions["overshoot"]), np.finfo(float).tiny)
-            self.bracket_action_spread = float(spread / scale)
+            self.bracket_action_spread = _bracketSpread(
+                branch_actions["undershoot"], branch_actions["overshoot"])
             self.bracket_branch_actions = dict(branch_actions)
 
         # Integrate a second time, this time getting the points along the way

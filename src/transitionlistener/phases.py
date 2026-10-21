@@ -1303,8 +1303,11 @@ def mergePhasesMeetingAtAPoint(
             gap = float(upper.Tmin) - float(lower.Tmax)
             if gap < 0.0:
                 continue  # they overlap; removeRedundantPhases decides what to do
-            span = max(float(lower.Tmax) - float(lower.Tmin),
-                       float(upper.Tmax) - float(upper.Tmin))
+            # The range the two pieces span together, outer endpoint to outer endpoint,
+            # which is what the rule above is written against. Taking the wider of the two
+            # pieces instead refused a pair of short pieces whose gap is small on the scale
+            # of the structure they belong to, and left the coupling split.
+            span = float(upper.Tmax) - float(lower.Tmin)
             if gap > gap_fraction * span:
                 continue
             mismatch = float(np.linalg.norm(np.asarray(upper.X[0], dtype=float)
@@ -1319,9 +1322,15 @@ def mergePhasesMeetingAtAPoint(
                     f"{mismatch * conversionFactor} GeV. They are one phase traced in "
                     "two pieces, and are joined."
                 )
-            T = np.append(lower.T, upper.T, axis=0)
-            X = np.append(lower.X, upper.X, axis=0)
-            dXdT = np.append(lower.dXdT, upper.dXdT, axis=0)
+            # Where the pieces meet exactly, the shared temperature stands in both of
+            # them. `PhaseInfo` builds a PchipInterpolator, which refuses a repeated node,
+            # so the join would raise instead of putting the phase back together.
+            first = 1 if gap <= 0.0 else 0
+            if len(upper.T) - first < 1:
+                continue
+            T = np.append(lower.T, upper.T[first:], axis=0)
+            X = np.append(lower.X, upper.X[first:], axis=0)
+            dXdT = np.append(lower.dXdT, upper.dXdT[first:], axis=0)
             newkey = f"{lower.key}-{upper.key}"
             newphase = PhaseInfo(newkey, X, T, dXdT)
             phases[newkey] = newphase

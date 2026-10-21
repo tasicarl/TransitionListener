@@ -162,10 +162,48 @@ class AnUnresolvedBounceIsReportedAsNoAction(unittest.TestCase):
             "the coupling would catch it too")
         self.assertEqual(getattr(errors.TunnelingError(), "errorcode", None), 11)
 
+    def test_a_spread_that_is_not_a_number_is_refused(self):
+        """`nan > tol` is false, so the check has to be written the other way round."""
+        with self.assertRaises(errors.InfiniteActionError):
+            self._tunnel_with_spread(float("nan"))
+
+    def test_an_infinite_spread_is_refused(self):
+        with self.assertRaises(errors.InfiniteActionError):
+            self._tunnel_with_spread(float("inf"))
+
     def test_a_spread_inside_the_tolerance_returns_an_action(self):
         result = self._tunnel_with_spread(tunneling1D._ACTION_BRACKET_TOL * 0.1)
         self.assertTrue(np.isfinite(result.action) and result.action > 0.0,
                         f"a resolved bounce returned {result.action!r}")
+
+
+class ABranchWithoutAFiniteActionIsUnresolved(unittest.TestCase):
+    """A branch that returned `inf` or `nan` has not resolved the bounce either.
+
+    The relative spread cannot report that on its own: `inf - inf` and `inf / inf` are both
+    `nan`, and every comparison against `nan` is false, so a sample whose branches could not
+    even be compared would be accepted. It is reported as an infinite spread instead.
+    """
+
+    def test_two_infinite_branches_do_not_cancel_into_a_passing_spread(self):
+        self.assertEqual(tunneling1D._bracketSpread(float("inf"), float("inf")),
+                         float("inf"))
+
+    def test_one_branch_that_is_not_a_number_is_enough(self):
+        for pair in ((float("nan"), 3215.07), (3215.07, float("nan")),
+                     (float("inf"), 3215.07), (3215.07, float("-inf"))):
+            with self.subTest(pair=pair):
+                self.assertEqual(tunneling1D._bracketSpread(*pair), float("inf"))
+
+    def test_finite_branches_still_give_the_relative_difference(self):
+        a, b = 4061.24, 3215.07
+        self.assertAlmostEqual(tunneling1D._bracketSpread(a, b), (a - b) / a, places=12)
+
+    def test_two_branches_that_agree_give_zero(self):
+        self.assertEqual(tunneling1D._bracketSpread(3215.07, 3215.07), 0.0)
+
+    def test_two_zero_actions_do_not_divide_by_zero(self):
+        self.assertEqual(tunneling1D._bracketSpread(0.0, 0.0), 0.0)
 
 
 class TheToleranceSeparatesTheTwoMeasuredPopulations(unittest.TestCase):

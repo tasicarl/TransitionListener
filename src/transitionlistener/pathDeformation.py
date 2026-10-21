@@ -1540,7 +1540,9 @@ def fullTunneling(
     # lets the controller drop the sample, as it already does for an action it cannot
     # compute, instead of carrying a number decided by which trial ran last.
     spread = float(getattr(last_output.tobj, "bracket_action_spread", 0.0) or 0.0)
-    if spread > tunneling1D._ACTION_BRACKET_TOL:
+    # Written as a refused comparison rather than `spread > tol`, so that a spread which is
+    # not a number, from a branch action that was not finite, is refused instead of passing.
+    if not (spread <= tunneling1D._ACTION_BRACKET_TOL):
         branches = getattr(last_output.tobj, "bracket_branch_actions", {}) or {}
         # `InfiniteActionError`, not `TunnelingError`: the first is the signal the callers
         # already read as "no action at this temperature" and drop the sample for, while
