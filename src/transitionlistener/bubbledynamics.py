@@ -1637,6 +1637,57 @@ def approxNucleationCriterion(T_DS: float, S: float, pot, phase_sym, phase_bro) 
     return crit
 
 
+#: Step of the geometric walk that brackets the hottest root of the percolation criterion.
+#: Small enough not to step over the root where it sits close to `Tmax`, large enough that
+#: the walk costs a handful of action evaluations rather than a scan of the whole interval.
+_APPROX_PERCOLATION_SCAN_RATIO = 1.15
+
+#: How many steps of that walk may pass without a computable action before the estimate
+#: declines. Such a step cannot bracket anything -- the criterion returns `+inf` for it, so
+#: it carries no sign -- and `S_3/T` cannot be read from it either, so the nucleation-dead
+#: stop below cannot bound the walk on its own: with every action non-finite the walk pays
+#: for the whole interval, 243 steps and 484 action evaluations over the 2HDM's
+#: [2.35254e-13, 121.839] GeV. The bound counts *consecutive* such steps, so the stretch
+#: above the critical temperature, where the broken phase is still the metastable one and
+#: `bounceAction` returns `inf` by construction, is walked through rather than stopped at.
+#: Measured on the 2HDM, that stretch is one step at lambda3 = 5.815656566, where the
+#: walk's first probe at 105.947 GeV has no computable action and its second at 92.1277 GeV
+#: has one at S_3/T = 5462, and no steps at all at lambda3 = 5.5, where the first probe at
+#: 107.943 GeV already has an action at S_3/T = 8345. Twenty steps is a factor 16.4 in
+#: temperature against those, and 40 action evaluations against the 484.
+_APPROX_PERCOLATION_MAX_BLIND_STEPS = 20
+
+
+def _bracket_sign(value) -> float:
+    """The sign of a criterion value for bracketing: +1, -1, or 0 for no information.
+
+    The two infinities are not symmetric, and treating them as if they were puts back the
+    defect this walk exists to remove.
+
+    `-inf` is a definite answer. The criterion returns it for `T >= Tmax` and for
+    `T + dT >= Tmax` before computing any action, and again when an action is exactly zero
+    at either sample, and in each case it means "above the root". Discarding it skips the
+    sign test exactly where the criterion is most emphatic: with the hot root inside the
+    first step, at 110 against a `Tmax` of 120, requiring both ends finite returns 9.9977,
+    the artefact at the cold end of the band, and with a degenerate `-inf` one step above
+    a root at 60 it returns 9.99774. Counting it by its sign returns the root in both.
+
+    `+inf` carries no information. The criterion returns it at `T <= Tmin`, which is
+    construction rather than measurement, and wherever an action is not computable. Either
+    way, bracketing against it manufactures a root at the cold end of whatever interval it
+    is handed, which is how the estimate came to return 1.96582e-12 GeV. A stretch with no
+    computable action is bounded by `_APPROX_PERCOLATION_MAX_BLIND_STEPS` instead.
+
+    `brentq` tolerates an infinite value at a bracket end, measured for roots at 110, 118
+    and 119.9 of a `Tmax` of 120, and the whole-interval call this walk replaces handed it
+    `Tmax` with that same `-inf` at every point TransitionListener has ever run.
+    """
+    value = float(np.squeeze(value))
+    if np.isnan(value) or value == np.inf:
+        return 0.0
+    return 1.0 if value > 0.0 else (-1.0 if value < 0.0 else 0.0)
+
+
 def _approx_percolation_criterion(
     T: float, outdict: dict, pot, phase_sym, phase_bro, Tmax: float, Tmin: float, vw: float, verbose: bool = False
 ) -> float:
@@ -1762,23 +1813,126 @@ def calcApproxPercolation(
             f"the phase-overlap interval [{tmin:.8g}, {tmax:.8g}]."
         )
 
+    # The approximation is only used to place the first adaptive step size grid. If it
+    # fails to bracket a root, fail fast and let the caller choose a controlled fallback
+    # instead of spending many hidden action evaluations.
+    #
+    # Find the *hottest* temperature at which the criterion is met, by walking down from
+    # `Tmax` until it changes sign, and only then handing that sub-bracket to `brentq`.
+    #
+    # Handing `brentq` the whole interval does not work, because the interval carries more
+    # than one root and `brentq` assumes one. The criterion is positive below the
+    # percolation point and negative above it, but as `T` falls the rate vanishes, so it
+    # turns negative again at the cold end, and `T <= Tmin` returns `+inf` by construction.
+    # On the 2HDM at lambda3 = 5.815656566 that interval runs from 121.839 down to
+    # 2.35254e-13 GeV, and at lambda3 = 5.5 from 124.135 down to the same floor.
+    # Percolation is the first temperature the universe meets on the way down, so the
+    # hottest root is the one wanted and the others are artefacts of the bracket.
+    #
+    # The walk is geometric at `_APPROX_PERCOLATION_SCAN_RATIO` per step, which costs two
+    # action evaluations each and reaches the root in a handful of steps because the root
+    # sits within a factor of a few of `Tmax`: on the 2HDM at lambda3 = 5.5 it brackets a
+    # root at 89.5357 GeV between its second and third steps, 93.8636 and 81.6205 GeV,
+    # below the top of the interval at 124.135 GeV, and the whole estimate costs 14
+    # criterion calls and 22 cached action temperatures. It stops where no bubble can
+    # nucleate at any Hubble rate, since no root below that is physical, and separately
+    # after `_APPROX_PERCOLATION_MAX_BLIND_STEPS` consecutive steps whose action could not
+    # be computed, which is the case the first stop cannot see because it has no `S_3/T`
+    # to read.
+    args = (outdict, pot, phase_sym, phase_bro, Tmax, Tmin, vw, verbose)
+    entered_live = False
+    blind_steps = 0
+    from transitionlistener.percolation_adaptive_gridbuilders import (
+        _nucleation_is_dead,
+    )  # imported here because that module imports this one at load time
+    hot = float(Tmax)
+    f_hot = _approx_percolation_criterion(hot, *args)
+    cold = None
+    probe = hot
+    while probe > Tmin:
+        probe = max(probe / _APPROX_PERCOLATION_SCAN_RATIO, Tmin)
+        f_probe = _approx_percolation_criterion(probe, *args)
+        # A probe that lands exactly on the root is the answer, and must be taken here.
+        # `_bracket_sign` maps an exact zero to "no information", which is right for a
+        # bracket -- a zero cannot sit on either side of itself -- but leaving it to the
+        # sign test would discard the root and, worse, carry the zero into `f_hot`, after
+        # which every later comparison is a product with zero and the walk can never
+        # bracket anything again. It would then run to a dead or blind stop and raise,
+        # having had the answer in hand.
+        if float(np.squeeze(f_probe)) == 0.0:
+            return np.squeeze(probe)
+        if _bracket_sign(f_hot) * _bracket_sign(f_probe) < 0:
+            cold = probe
+            break
+        # Stop once the walk leaves the band where a bubble can nucleate at all, but only
+        # on the cold side of it. `S_3/T` is large at both ends for opposite reasons: the
+        # action diverges as `T` approaches the critical temperature from below, so the hot
+        # end is large because the transition has not started, and the cold end is large
+        # because the rate has died. Testing it before the walk has entered the live band
+        # stops at the first probe, which is what reading `Tmax` as "too cold" would mean.
+        # Read the action the criterion has just cached rather than asking for it again:
+        # `calcAction` keys `outdict` by `T`, and the criterion evaluated this `probe` on
+        # the line above. A criterion that returned before computing one, at or outside the
+        # bracket ends, leaves no entry, and the walk then carries on rather than treating
+        # the absence as a dead temperature, counting it instead as a step without a
+        # computable action, which is what it is.
+        entry = outdict.get(probe)
+        S_probe = entry.get("action") if isinstance(entry, dict) else None
+        computable = S_probe is not None and np.isfinite(S_probe)
+        # `_nucleation_is_dead` is the same test the controller's grid uses, read from
+        # where it is defined rather than repeated here, so the threshold cannot drift
+        # between the two. It reads a non-finite action as "not dead", which is right for
+        # a grid point and not what this walk needs, so finiteness is required separately.
+        live = computable and probe > 0 and not _nucleation_is_dead(probe, S_probe)
+        # The two stops answer different questions and must not be reached through each
+        # other. Leaving the live band is a statement about the *physics* at a temperature
+        # whose action is in hand: `S_3/T` has passed the threshold, so nothing colder can
+        # nucleate. A probe whose action could not be computed says nothing about the
+        # physics there, and reaching the dead stop through one made a single transient
+        # failed solve end the walk the moment it followed a live sample, which is the
+        # opposite of what `_APPROX_PERCOLATION_MAX_BLIND_STEPS` is for and would step over
+        # any sign change below it.
+        if computable:
+            blind_steps = 0
+            if live:
+                entered_live = True
+            elif entered_live:
+                break
+        else:
+            blind_steps += 1
+            if blind_steps >= _APPROX_PERCOLATION_MAX_BLIND_STEPS:
+                break
+        # Only a probe that carries a sign becomes the bracket's hot end. A `+inf` from an
+        # action that could not be computed has `_bracket_sign` zero, and letting it take
+        # `f_hot` makes every later comparison a product with zero, so the walk steps over
+        # the next sign change exactly as the exact-zero case above would: a finite
+        # negative sample, then a failed solve, then a finite positive sample brackets
+        # nothing, and the root between the first and the third is lost. Keeping the last
+        # informative endpoint costs nothing -- the blind step is still counted above, so a
+        # run of uncomputable probes still ends the walk -- and leaves `brentq` a bracket
+        # whose ends are both signed.
+        if _bracket_sign(f_probe) != 0.0:
+            hot, f_hot = probe, f_probe
+    if cold is None:
+        raise errors.PercolationApproximation1Error(
+            "The percolation approximation found no sign change between "
+            f"{Tmax:.8g} and {Tmin:.8g} GeV."
+        )
     try:
-        # The approximation is only used to place the first adaptive step size grid.
-        # If it fails to bracket a root, fail fast and let the caller choose a
-        # controlled fallback instead of spending many hidden action evaluations.
         Tperc = optimize.brentq(
             _approx_percolation_criterion,
-            Tmax,
-            Tmin,
+            hot,
+            cold,
             rtol=1e-3,
-            args=(outdict, pot, phase_sym, phase_bro, Tmax, Tmin, vw, verbose),
+            args=args,
         )
     except ValueError as err:
         if verbose:
             print("Brentq failed in percolation approximation 1: ", err)
         raise errors.PercolationApproximation1Error(
-            "Standard percolation approximation failed to bracket a root in "
-            f"[{Tmin:.8g}, {Tmax:.8g}]: {err}"
+            "Standard percolation approximation failed to bracket a root between "
+            f"{cold:.8g} and {hot:.8g} GeV, the step of the walk that changed sign "
+            f"inside the phase-overlap interval [{Tmin:.8g}, {Tmax:.8g}]: {err}"
         ) from err
     return np.squeeze(Tperc)
 
