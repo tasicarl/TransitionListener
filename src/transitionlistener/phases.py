@@ -344,6 +344,13 @@ def descendFromSaddle(
     return x
 
 
+#: How negative the smallest Hessian eigenvalue at a trace's endpoint has to be, as a
+#: fraction of the curvature at the node before it, before that endpoint is refused as not
+#: a minimum. Measured: round-off at the cold end of the conformal dark U(1) gives 1.1e-03,
+#: a real saddle on the test potential gives 1.05, and this sits between them.
+_ENDPOINT_CURVATURE_RTOL = 1.0e-2
+
+
 def traceMinimum(
     f : Callable, df_dx : Callable, d2f_dxdt : Callable, d2f_dx2 : Callable, 
     x0 : np.ndarray, t0 : float, tstop : float, dtstart : float, deltaX_target : float,
@@ -514,9 +521,24 @@ def traceMinimum(
             # trace could be a saddle while every other node was tested. A trace seeded at
             # or beyond its own `tstop` takes this as its only step, and the whole phase is
             # then that one node.
-            dxdt_next, negeig_next = dxmindt(xnext, tstop)
+            dxdt_next, _ = dxmindt(xnext, tstop)
             tnext = tstop
-            if dxdt_next is None or bool(negeig_next):
+            # Whether the endpoint is a minimum is judged against the curvature the trace
+            # has been seeing, not against zero. `dxmindt` asks `(eigs <= 0).any()`, and at
+            # the cold end of a conformal model the curvature is numerically zero and its
+            # sign is round-off: on the shipped dark U(1) example at g = 0.7, v = 0.1, the
+            # trace to T = 0 ends on a Hessian eigenvalue of -4.2e-09 one step after
+            # +4.0e-06, and refusing that node loses the zero-temperature minimum and the
+            # run dies with `WrongT0MinimumError`. A genuine saddle is nothing like that
+            # small: on the test potential whose minimum destabilises with rising
+            # temperature the endpoint sits at -0.41 against +0.39 at the node before it.
+            # The two populations are three orders apart in `|eig_end| / |eig_prev|`, 1.1e-03
+            # against 1.05, and the threshold is set between them.
+            _eig_prev = np.linalg.eigvalsh(np.atleast_2d(np.squeeze(d2f_dx2(x, t))))
+            _eig_next = np.linalg.eigvalsh(np.atleast_2d(np.squeeze(d2f_dx2(xnext, tstop))))
+            _scale = float(np.max(np.abs(_eig_prev))) if _eig_prev.size else 0.0
+            _not_a_minimum = float(_eig_next.min()) < -_ENDPOINT_CURVATURE_RTOL * _scale
+            if dxdt_next is None or _not_a_minimum:
                 # No usable slope at the endpoint, or it is not a minimum. The trace ends
                 # at the last node that was one, rather than reaching `tstop`.
                 return True
