@@ -329,7 +329,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   Hessian runs down to -377.8 GeV^2, and the bounce was computed from a false vacuum that
   is a saddle. `forbidPhaseCrit` was compared the same way and is now read by value as
   well; the criterion shipped with the dark U(1) models returns a `numpy.bool_`, so it had
-  been skipping nothing. A minimiser cannot leave a stationary point that symmetry holds
+  been skipping nothing. The step that lands exactly on `tstop` goes through a separate
+  path, which read the slope and the saddle flag at the node *before* the endpoint and
+  then never looked at the flag, so the one node that ends a phase was the only one not
+  tested: a trace seeded at or beyond its own `tstop` returned a single node that is not a
+  minimum, and on a potential whose minimum destabilises with rising temperature a trace
+  ended at a point whose smallest Hessian eigenvalue is `-0.41`. Reading at the node that
+  is kept also corrects the derivative stored there, which agrees with the closed form to
+  `1.5e-04` instead of `3.1e-02` where the minimum moves with temperature. A minimiser cannot leave a stationary point that symmetry holds
   the gradient at, so `descendFromSaddle` steps off it along the most negative curvature
   direction, in both signs, and returns the nearest minimum: the origin tilting over below
   some temperature is the generic behaviour of a thermal mass term with
@@ -356,7 +363,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   radius, or reach an unbound `r0` and raise. A branch whose action is not finite counts as
   unresolved as well. The relative spread between two infinite branches is `nan`, and every
   comparison against a `nan` is false, so the sample would have been accepted on the one
-  input where the two branches could not be compared at all.
+  input where the two branches could not be compared at all. So does a solve that never
+  bracketed: the spread began at zero, so an exit that recorded fewer than two integrated
+  sides left it there and the caller read the absence of a comparison as agreement. It
+  begins at infinity for any exit that is not a convergence and is overwritten only once
+  both branch actions exist.
 
 - **A shooting trial without a usable slope is rejected; the solve carries on.** Before
   integrating a trial, `findProfile` asks `dV_from_absMin` for the slope at

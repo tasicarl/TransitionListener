@@ -423,6 +423,90 @@ def _phase(key, T, X):
     return ph.PhaseInfo(key, X, T, np.zeros_like(X))
 
 
+def V_up(x, t):
+    """A minimum at the origin that destabilises as the temperature rises, not falls."""
+    x = np.asarray(x, dtype=float)
+    return (0.5 * (M2 - C * t ** 2) * x[..., 0] ** 2
+            + 0.25 * LAM * x[..., 0] ** 4
+            + 0.5 * K * x[..., 1] ** 2)
+
+
+def dV_up(x, t):
+    x = np.asarray(x, dtype=float)
+    return np.array([(M2 - C * t ** 2) * x[..., 0] + LAM * x[..., 0] ** 3,
+                     K * x[..., 1]])
+
+
+def d2V_up(x, t):
+    x = np.asarray(x, dtype=float)
+    return np.array([[(M2 - C * t ** 2) + 3.0 * LAM * x[..., 0] ** 2, 0.0],
+                     [0.0, K]])
+
+
+def d2V_up_dxdt(x, t):
+    x = np.asarray(x, dtype=float)
+    return np.array([-2.0 * C * t * x[..., 0], 0.0])
+
+
+def smallest_eigenvalue_up(x, t):
+    return float(np.linalg.eigvalsh(np.atleast_2d(np.squeeze(d2V_up(x, t))))[0])
+
+
+class TheNodeThatEndsATraceIsTestedLikeEveryOther(unittest.TestCase):
+    """The step that lands exactly on `tstop` goes through `check`, not through `trace`.
+
+    `check` read the slope and the saddle flag at `x`, the node before the endpoint, which
+    the trace had already accepted, and then never looked at the flag. So the one node that
+    ends a phase was the only one not tested, and a trace reaching `tstop` could finish on
+    a point that is not a minimum.
+
+    The potential here loses its minimum as the temperature rises, which is what puts the
+    endpoint on the wrong side of the merge while the node before it is still fine.
+    """
+
+    SEED = np.array([0.0, 0.0])
+    T_SEED = 1.90          # the origin is a minimum here
+    T_STOP = 2.10          # and a saddle here
+
+    def test_the_fixture_puts_a_saddle_at_the_stop_and_a_minimum_at_the_seed(self):
+        self.assertGreater(smallest_eigenvalue_up(self.SEED, self.T_SEED), 0.0)
+        self.assertLess(smallest_eigenvalue_up(self.SEED, self.T_STOP), 0.0)
+
+    def test_no_traced_node_is_a_saddle_including_the_one_that_ends_it(self):
+        X, T = ph.traceMinimum(V_up, dV_up, d2V_up_dxdt, d2V_up, self.SEED,
+                               self.T_SEED, self.T_STOP, -0.1, 0.1)[:2]
+        T = np.asarray(T, dtype=float)
+        bad = [(float(t), smallest_eigenvalue_up(x, t))
+               for x, t in zip(np.atleast_2d(X), T)
+               if smallest_eigenvalue_up(x, t) < 0.0]
+        self.assertEqual(bad, [], msg=f"the trace ends on a saddle: {bad}")
+
+    def test_the_slope_stored_at_the_endpoint_describes_the_endpoint(self):
+        """`check` read it at the node before, which is a different point in field space.
+
+        Traced down the displaced branch, where the minimum moves with the temperature, so
+        the two points differ. The closed form is `d/dt sqrt((M2 - C t^2)/LAM)`. Read at
+        the endpoint the stored slope agrees with it to 1.5e-04; read at the node before,
+        to 3.1e-02, a factor of two hundred.
+        """
+        tstop = 1.0
+        X, T, dXdT = ph.traceMinimum(V, dV, d2V_dxdt, d2V, displaced_minimum(1.5),
+                                     1.5, tstop, -0.05, 0.05)[:3]
+        T = np.asarray(T, dtype=float)
+        self.assertAlmostEqual(float(T.min()), tstop, places=12,
+                               msg="the trace did not reach its stop, so this tests nothing")
+        exact = -C * T.min() / (LAM * displaced_minimum(T.min())[0])
+        got = float(np.atleast_2d(dXdT)[-1][0])
+        self.assertLess(abs(got - exact) / abs(exact), 1.0e-3,
+                        msg=f"the endpoint slope is {got} against {exact} in closed form")
+
+    def test_the_trace_stops_short_of_the_stop_rather_than_ending_on_a_saddle(self):
+        T = np.asarray(ph.traceMinimum(V_up, dV_up, d2V_up_dxdt, d2V_up, self.SEED,
+                                       self.T_SEED, self.T_STOP, -0.1, 0.1)[1], dtype=float)
+        self.assertLess(T.max(), self.T_STOP,
+                        msg=f"the trace reached {T.max()}, which is the stop itself")
+
+
 class PhasesTracedInTwoPiecesArePutBackTogether(unittest.TestCase):
     """One minimum that the tracer stopped and restarted at a second-order merge.
 

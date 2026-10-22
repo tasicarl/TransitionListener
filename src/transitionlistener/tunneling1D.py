@@ -1080,7 +1080,12 @@ class SingleFieldInstanton:
         # apart. Reporting the failure lets the controller drop the sample, which is what it
         # already does with an action it cannot compute; returning either number silently
         # puts an `S_3/T` of 73 where the curve is near 440.
-        self.bracket_action_spread = 0.0
+        # A solve that did not converge is unresolved until two integrated branches have
+        # been compared and found to agree. Starting the spread at zero made the opposite
+        # assumption: a bisection that ended with only one side ever integrated, so that
+        # there was no pair to compare, left the spread at zero and `fullTunneling` took the
+        # last profile as resolved on the strength of a test that had not been run.
+        self.bracket_action_spread = 0.0 if ctype == "converged" else float("inf")
         self.bracket_branch_actions = {}
         if ctype != "converged" and len(bracket_trials) == 2:
             branch_actions = {}

@@ -177,6 +177,50 @@ class AnUnresolvedBounceIsReportedAsNoAction(unittest.TestCase):
                         f"a resolved bounce returned {result.action!r}")
 
 
+class ABisectionThatNeverBracketsIsUnresolved(unittest.TestCase):
+    """One integrated side is not a comparison, and must not read as agreement.
+
+    The spread used to start at zero, so a solve that ended without ever bracketing the
+    bounce -- every trial an undershoot, or one side's trial never integrated -- left it
+    at zero and the caller took the profile as resolved on the strength of a test that had
+    not been run. It starts at infinity now for any exit that is not a convergence, and is
+    overwritten only once both branch actions exist.
+    """
+
+    def _never_brackets(self):
+        """The real solver, with every verdict forced to the same side."""
+        real = tunneling1D.SingleFieldInstanton.integrateProfile
+
+        def always_undershoot(inst, r0, y0, *a, **k):
+            rf, yf, _ = real(inst, r0, y0, *a, **k)
+            return rf, yf, "undershoot"
+
+        V, dV, d2V = quartic()
+        inst = tunneling1D.SingleFieldInstanton(0.0, 1.0, V, dV, d2V)
+        with mock.patch.object(tunneling1D.SingleFieldInstanton, "integrateProfile",
+                               always_undershoot):
+            try:
+                inst.findProfile()
+            except Exception:
+                pass
+        return inst
+
+    def test_no_pair_was_compared(self):
+        self.assertEqual(dict(self._never_brackets().bracket_branch_actions), {})
+
+    def test_the_spread_is_not_zero(self):
+        inst = self._never_brackets()
+        self.assertNotEqual(inst.bracket_action_spread, 0.0)
+        self.assertGreater(inst.bracket_action_spread, tunneling1D._ACTION_BRACKET_TOL)
+
+    def test_a_converged_solve_still_reports_no_spread(self):
+        """The guard must not turn an ordinary converged bounce into a refusal."""
+        V, dV, d2V = quartic()
+        inst = tunneling1D.SingleFieldInstanton(0.0, 1.0, V, dV, d2V)
+        inst.findProfile()
+        self.assertEqual(inst.bracket_action_spread, 0.0)
+
+
 class ABranchWithoutAFiniteActionIsUnresolved(unittest.TestCase):
     """A branch that returned `inf` or `nan` has not resolved the bounce either.
 

@@ -497,7 +497,7 @@ def traceMinimum(
                 overX, overT = xnext, tnext
 
     def check():
-        nonlocal x, t, dt, dxdt, xerr, overX, overT, negeig
+        nonlocal x, t, dt, dxdt, xerr, overX, overT
         # Now do some checks on dt.
         if abs(dt) < abs(dtmin):
             # Found a transition! Or at least a point where the step is really
@@ -508,11 +508,17 @@ def traceMinimum(
             # Reached tstop, but we want to make sure we stop right at tstop.
             dt = tstop - t
             xnext = fmin(x + dxdt * dt, tstop)
-            dxdt_next, negeig = dxmindt(x, tstop)
+            # At `xnext`, the point this is about to keep, and not at `x`, the node before
+            # it. Read at `x` the slope and the flag describe a point the trace has already
+            # accepted, and the flag was then not read at all, so the one node that ends the
+            # trace could be a saddle while every other node was tested. A trace seeded at
+            # or beyond its own `tstop` takes this as its only step, and the whole phase is
+            # then that one node.
+            dxdt_next, negeig_next = dxmindt(xnext, tstop)
             tnext = tstop
-            if dxdt_next is None:
-                # Cannot evaluate the next slope reliably; stop the trace here.
-                X[-1], T[-1], dXdT[-1] = xnext, tnext, dxdt
+            if dxdt_next is None or bool(negeig_next):
+                # No usable slope at the endpoint, or it is not a minimum. The trace ends
+                # at the last node that was one, rather than reaching `tstop`.
                 return True
             # Here it previously doesn't check if we have a phase transition between
             # tstop and t. This can happend. Therefore implement a

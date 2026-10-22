@@ -153,14 +153,23 @@ class TheElementIsReadOffTheBestResolvedNode(unittest.TestCase):
         self.assertIsNone(ph.canonicalImageElement(X, canonical_under(group), group))
 
     def test_the_whole_trace_moves_rigidly(self):
-        """Every node is transformed by the same element, so no step is introduced."""
+        """Every node is transformed by the same element, so no step is introduced.
+
+        Checked against values worked out by hand rather than against the element the
+        function returned. Comparing `X @ got` with `row @ got` row by row is the same
+        arithmetic on both sides and passes whatever `got` is, including the identity.
+        """
         X = np.array([[-1.0e-9, 1.0e-9], [-1.0, -0.5], [-2.0, -1.0], [-1.5, -0.75]])
+        # The node furthest from the origin is (-2, -1). Of the four elements, only the
+        # simultaneous flip sends it to the quadrant the measure prefers, so the whole
+        # trace must come back negated.
         got = self.element(X)
-        moved = X @ got
-        for row, image in zip(X, moved):
-            np.testing.assert_allclose(image, row @ got, atol=0.0)
-        self.assertAlmostEqual(float(np.linalg.norm(moved[-1])),
-                              float(np.linalg.norm(X[-1])), places=12)
+        np.testing.assert_allclose(got, FLIP_BOTH, atol=0.0)
+        np.testing.assert_allclose(X @ got, -X, atol=0.0)
+        np.testing.assert_allclose(
+            X @ got,
+            np.array([[1.0e-9, -1.0e-9], [1.0, 0.5], [2.0, 1.0], [1.5, 0.75]]),
+            atol=0.0)
 
     def test_the_group_of_the_two_higgs_doublet_model_keeps_the_second_field_positive(self):
         """With only the simultaneous flip, the measure is decided by the last component.
