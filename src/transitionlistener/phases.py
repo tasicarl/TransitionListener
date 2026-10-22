@@ -344,13 +344,6 @@ def descendFromSaddle(
     return x
 
 
-#: How negative the smallest Hessian eigenvalue at a trace's endpoint has to be, as a
-#: fraction of the curvature at the node before it, before that endpoint is refused as not
-#: a minimum. Measured: round-off at the cold end of the conformal dark U(1) gives 1.1e-03,
-#: a real saddle on the test potential gives 1.05, and this sits between them.
-_ENDPOINT_CURVATURE_RTOL = 1.0e-2
-
-
 def traceMinimum(
     f : Callable, df_dx : Callable, d2f_dxdt : Callable, d2f_dx2 : Callable, 
     x0 : np.ndarray, t0 : float, tstop : float, dtstart : float, deltaX_target : float,
@@ -523,24 +516,27 @@ def traceMinimum(
             # then that one node.
             dxdt_next, _ = dxmindt(xnext, tstop)
             tnext = tstop
-            # Whether the endpoint is a minimum is judged against the curvature the trace
-            # has been seeing, not against zero. `dxmindt` asks `(eigs <= 0).any()`, and at
-            # the cold end of a conformal model the curvature is numerically zero and its
-            # sign is round-off: on the shipped dark U(1) example at g = 0.7, v = 0.1, the
-            # trace to T = 0 ends on a Hessian eigenvalue of -4.2e-09 one step after
-            # +4.0e-06, and refusing that node loses the zero-temperature minimum and the
-            # run dies with `WrongT0MinimumError`. A genuine saddle is nothing like that
-            # small: on the test potential whose minimum destabilises with rising
-            # temperature the endpoint sits at -0.41 against +0.39 at the node before it.
-            # The two populations are three orders apart in `|eig_end| / |eig_prev|`, 1.1e-03
-            # against 1.05, and the threshold is set between them.
-            _eig_prev = np.linalg.eigvalsh(np.atleast_2d(np.squeeze(d2f_dx2(x, t))))
-            _eig_next = np.linalg.eigvalsh(np.atleast_2d(np.squeeze(d2f_dx2(xnext, tstop))))
-            _scale = float(np.max(np.abs(_eig_prev))) if _eig_prev.size else 0.0
-            _not_a_minimum = float(_eig_next.min()) < -_ENDPOINT_CURVATURE_RTOL * _scale
-            if dxdt_next is None or _not_a_minimum:
-                # No usable slope at the endpoint, or it is not a minimum. The trace ends
-                # at the last node that was one, rather than reaching `tstop`.
+            # The saddle flag is deliberately not applied here, and the slope is read at
+            # `xnext` only so that what is stored describes the node that is kept.
+            #
+            # Applying it was tried and withdrawn. At the cold end of a conformal model the
+            # curvature is numerically zero and the sign of the smallest eigenvalue is
+            # round-off: on the shipped dark U(1) at g = 0.7, v = 0.1 the endpoint sits at
+            # -4.23e-09 one step after +4.00e-06, so `(eigs <= 0).any()` calls it a saddle,
+            # the trace stops short of T = 0 and the run dies with `WrongT0MinimumError`.
+            # Scaling the test by the curvature at the node before it passed here at a ratio
+            # of 1.1e-03 against a threshold of 1e-2, and still failed on the CI runner,
+            # because the quantity being thresholded is that machine's round-off. The same
+            # scaling is wrong in the other direction too: measured against the largest
+            # eigenvalue it would accept a genuine soft mode, eigenvalues [1e-3, 1e6] with
+            # an endpoint at -1e-4 passing a threshold of -1e4.
+            #
+            # So the endpoint is accepted on the slope alone, as it was before this branch.
+            # A trace can still finish on a point that is not a minimum; what is needed is a
+            # test of that which does not rest on the sign of a number that is noise.
+            if dxdt_next is None:
+                # No usable slope at the endpoint; the trace ends at the last node that had
+                # one rather than reaching `tstop`.
                 return True
             # Here it previously doesn't check if we have a phase transition between
             # tstop and t. This can happend. Therefore implement a
@@ -1089,17 +1085,35 @@ def _removeRedundantPhase(phases: dict[int | str, PhaseInfo],
     redundant_with_phase : PhaseInfo
         The phase with which the removed phase is redundant.
     """
-    for key in removed_phase.low_trans:
+    # A link is only cleared from the side this walks. `addLinkFrom` writes both sides, but
+    # a phase removed earlier can leave its key behind in a neighbour that was not reached
+    # from its own sets, and then `phases[key]` raises. Merging two pieces removes both of
+    # them in turn, which is exactly where a key left behind by the first removal is met by
+    # the second: with `upper.low_trans` holding `lower.key` and `lower.high_trans` not
+    # holding `upper.key`, the second call raised `KeyError: 0`.
+    for key in list(removed_phase.low_trans):
         if key != redundant_with_phase.key:
-            p = phases[key]
+            p = phases.get(key)
+            if p is None:
+                removed_phase.low_trans.discard(key)
+                continue
             p.high_trans.discard(removed_phase.key)
             redundant_with_phase.addLinkFrom(p)
 
-    for key in removed_phase.high_trans:
+    for key in list(removed_phase.high_trans):
         if key != redundant_with_phase.key:
-            p = phases[key]
+            p = phases.get(key)
+            if p is None:
+                removed_phase.high_trans.discard(key)
+                continue
             p.low_trans.discard(removed_phase.key)
             redundant_with_phase.addLinkFrom(p)
+    # Any phase still pointing at the one being removed loses that link, whether or not it
+    # was reachable from the removed phase's own sets.
+    for p in phases.values():
+        if p is not removed_phase:
+            p.low_trans.discard(removed_phase.key)
+            p.high_trans.discard(removed_phase.key)
     del phases[removed_phase.key]
 
 

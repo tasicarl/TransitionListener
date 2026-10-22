@@ -469,17 +469,27 @@ class TheNodeThatEndsATraceIsTestedLikeEveryOther(unittest.TestCase):
     T_STOP = 2.10          # and a saddle here
 
     def test_the_fixture_puts_a_saddle_at_the_stop_and_a_minimum_at_the_seed(self):
+        """Kept as the record of what the withdrawn test was about."""
         self.assertGreater(smallest_eigenvalue_up(self.SEED, self.T_SEED), 0.0)
         self.assertLess(smallest_eigenvalue_up(self.SEED, self.T_STOP), 0.0)
 
-    def test_no_traced_node_is_a_saddle_including_the_one_that_ends_it(self):
+    def test_the_endpoint_is_accepted_on_its_slope_alone(self):
+        """The saddle flag is not applied at the endpoint, and this says so out loud.
+
+        Applying it broke the shipped dark U(1) example, whose trace to T = 0 ends on a
+        Hessian eigenvalue of -4.2e-09 one step after +4.0e-06: the sign there is round-off,
+        not a saddle. Scaling the test by the curvature at the previous node passed locally
+        at a ratio of 1.1e-03 against a threshold of 1e-2 and still failed on another
+        machine. This test fixes the behaviour that was restored, so that putting the check
+        back is a deliberate act with a failing test to answer, not a quiet change.
+        """
         X, T = ph.traceMinimum(V_up, dV_up, d2V_up_dxdt, d2V_up, self.SEED,
                                self.T_SEED, self.T_STOP, -0.1, 0.1)[:2]
         T = np.asarray(T, dtype=float)
-        bad = [(float(t), smallest_eigenvalue_up(x, t))
-               for x, t in zip(np.atleast_2d(X), T)
-               if smallest_eigenvalue_up(x, t) < 0.0]
-        self.assertEqual(bad, [], msg=f"the trace ends on a saddle: {bad}")
+        self.assertAlmostEqual(float(T.max()), self.T_STOP, places=12,
+                               msg="the trace no longer reaches its stop")
+        self.assertLess(smallest_eigenvalue_up(np.atleast_2d(X)[-1], T.max()), 0.0,
+                        msg="the fixture no longer puts a saddle at the stop")
 
     def test_the_slope_stored_at_the_endpoint_describes_the_endpoint(self):
         """`check` read it at the node before, which is a different point in field space.
@@ -499,12 +509,6 @@ class TheNodeThatEndsATraceIsTestedLikeEveryOther(unittest.TestCase):
         got = float(np.atleast_2d(dXdT)[-1][0])
         self.assertLess(abs(got - exact) / abs(exact), 1.0e-3,
                         msg=f"the endpoint slope is {got} against {exact} in closed form")
-
-    def test_the_trace_stops_short_of_the_stop_rather_than_ending_on_a_saddle(self):
-        T = np.asarray(ph.traceMinimum(V_up, dV_up, d2V_up_dxdt, d2V_up, self.SEED,
-                                       self.T_SEED, self.T_STOP, -0.1, 0.1)[1], dtype=float)
-        self.assertLess(T.max(), self.T_STOP,
-                        msg=f"the trace reached {T.max()}, which is the stop itself")
 
 
 class PhasesTracedInTwoPiecesArePutBackTogether(unittest.TestCase):
@@ -570,6 +574,47 @@ class PhasesTracedInTwoPiecesArePutBackTogether(unittest.TestCase):
         self.assertEqual(len(T), 5, msg=f"the shared node was kept twice: {T!r}")
         self.assertTrue(np.all(np.diff(T) > 0.0),
                         msg=f"the joined temperatures are not strictly increasing: {T!r}")
+
+    def test_a_link_to_a_phase_already_removed_does_not_raise(self):
+        """Joining removes both pieces in turn, and the second met the first's leftovers.
+
+        `_removeRedundantPhase` clears a link only from the side it walks, so a neighbour
+        can keep pointing at a phase that is gone. Merging is where that shows: with
+        `upper.low_trans` holding `lower.key` while `lower.high_trans` does not hold
+        `upper.key`, the second removal indexed a deleted phase and raised `KeyError: 0`.
+        """
+        for name, wire in (
+            ("both sides", lambda lo, up: (lo.high_trans.add(up.key),
+                                           up.low_trans.add(lo.key))),
+            ("only the upper piece", lambda lo, up: (up.low_trans.add(lo.key),)),
+            ("only the lower piece", lambda lo, up: (lo.high_trans.add(up.key),)),
+            ("a key no phase has", lambda lo, up: (up.low_trans.add(lo.key),
+                                                   up.low_trans.add(99))),
+        ):
+            with self.subTest(name):
+                lower = _phase(0, [1.0, 2.0, 3.0],
+                               [[0.30, 0.0], [0.20, 0.0], [0.10, 0.0]])
+                upper = _phase(1, [3.001, 4.0, 5.0],
+                               [[0.11, 0.0], [0.05, 0.0], [0.0, 0.0]])
+                phases = {0: lower, 1: upper}
+                wire(lower, upper)
+                ph.mergePhasesMeetingAtAPoint(phases, diftol=1.0)
+                self.assertEqual(len(phases), 1,
+                                 msg=f"{name}: expected one phase, got {list(phases)}")
+
+    def test_a_removed_phase_leaves_no_link_behind(self):
+        """Whatever still points at it loses the link, reachable from it or not."""
+        lower = _phase(0, [1.0, 2.0, 3.0], [[0.30, 0.0], [0.20, 0.0], [0.10, 0.0]])
+        upper = _phase(1, [3.001, 4.0, 5.0], [[0.11, 0.0], [0.05, 0.0], [0.0, 0.0]])
+        other = _phase(2, [9.0, 10.0, 11.0], [[0.9, 0.0], [0.8, 0.0], [0.7, 0.0]])
+        phases = {0: lower, 1: upper, 2: other}
+        lower.high_trans.add(upper.key)
+        upper.low_trans.add(lower.key)
+        other.low_trans.add(lower.key)          # not reachable from `lower`
+        ph.mergePhasesMeetingAtAPoint(phases, diftol=1.0)
+        for key, phase in phases.items():
+            self.assertNotIn(0, phase.low_trans, msg=f"{key} still links to the removed 0")
+            self.assertNotIn(0, phase.high_trans, msg=f"{key} still links to the removed 0")
 
     def test_overlapping_phases_are_left_to_the_redundancy_pass(self):
         phases = {0: _phase(0, [1.0, 2.0, 3.0], [[0.30, 0.0], [0.20, 0.0], [0.10, 0.0]]),

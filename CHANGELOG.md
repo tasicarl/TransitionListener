@@ -330,13 +330,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   is a saddle. `forbidPhaseCrit` was compared the same way and is now read by value as
   well; the criterion shipped with the dark U(1) models returns a `numpy.bool_`, so it had
   been skipping nothing. The step that lands exactly on `tstop` goes through a separate
-  path, which read the slope and the saddle flag at the node *before* the endpoint and
-  then never looked at the flag, so the one node that ends a phase was the only one not
-  tested: a trace seeded at or beyond its own `tstop` returned a single node that is not a
-  minimum, and on a potential whose minimum destabilises with rising temperature a trace
-  ended at a point whose smallest Hessian eigenvalue is `-0.41`. Reading at the node that
-  is kept also corrects the derivative stored there, which agrees with the closed form to
-  `1.5e-04` instead of `3.1e-02` where the minimum moves with temperature. A minimiser cannot leave a stationary point that symmetry holds
+  path, which read the slope at the node *before* the endpoint. It is read at the endpoint
+  now, which corrects the derivative stored there: it agrees with the closed form to
+  `1.5e-04` instead of `3.1e-02` where the minimum moves with temperature. The saddle flag
+  is deliberately **not** applied at that endpoint. Applying it was tried and withdrawn,
+  because at the cold end of a conformal model the curvature is numerically zero and the
+  sign of the smallest eigenvalue is round-off: the shipped dark U(1) example ends its
+  trace on `-4.23e-09` one step after `+4.00e-06`, so the endpoint was refused, the phase
+  stopped short of `T = 0` and the run died with `WrongT0MinimumError`. Scaling the test by
+  the curvature at the previous node passed on one machine at a ratio of `1.1e-03` against
+  a threshold of `1e-2` and still failed on another, because what is being thresholded is
+  that machine's round-off. A trace can still end on a point that is not a minimum; what is
+  needed is a test of that which does not rest on the sign of a number that is noise. A minimiser cannot leave a stationary point that symmetry holds
   the gradient at, so `descendFromSaddle` steps off it along the most negative curvature
   direction, in both signs, and returns the nearest minimum: the origin tilting over below
   some temperature is the generic behaviour of a thermal mass term with
@@ -350,8 +355,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   separated by a gap. The span is the range the two pieces cover together, from the cold
   end of the lower one to the hot end of the upper one, and where they meet at exactly one
   temperature the shared node is kept once, because the interpolator behind `PhaseInfo`
-  refuses a repeated temperature. The computable corner of the 2HDM benchmark extends from
-  `lambda3` = 5.818 to 5.866 on these changes, 19 couplings gained and none lost.
+  refuses a repeated temperature. Joining removes both pieces in turn, and the second
+  removal used to index a phase the first had deleted: `_removeRedundantPhase` clears a
+  link only from the side it walks, so a neighbour can keep pointing at a phase that is
+  gone. With `upper.low_trans` holding `lower.key` while `lower.high_trans` did not hold
+  `upper.key`, that raised `KeyError`. A key whose phase has gone is now dropped, and after
+  a removal every remaining phase loses that key from both of its link sets. The computable corner of the 2HDM benchmark extends from
+  `lambda3` = 5.803030 to 5.867765 on these changes. Counted at the published couplings
+  themselves rather than inferred from a neighbour, which matters because a change of 1e-10
+  in `lambda3` can flip the outcome at this end: of the 186 couplings both runs computed,
+  31 are gained and none is lost. Five of them are couplings whose published run ended in a
+  timeout, and they now finish in 29 to 33 min against 81 to 111.
 
 - **A bounce whose bracketing trials disagree on the action is reported as unresolved.**
   `bounceAction` returned whatever its last bracketing trial gave, so a solve that had not
