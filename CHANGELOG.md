@@ -301,6 +301,118 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A traced phase is stored on one image of the potential's symmetry.** Below the
+  temperature at which the origin tilts over, the displaced minima are exactly degenerate
+  images of one another, so which one a trace walks into is settled by the sign of a
+  numerical step and not by the potential. Two seeds that reach the same physical phase on
+  opposite images give two phases that `removeRedundantPhases` cannot tell are one, because
+  it compares field values, and the transition can then be built from a high phase on one
+  image to a low phase on the other, over a path the potential does not have. On the 2HDM
+  at `lambda3` = 5.868 the high phase sat at `phi` = (-27.416, -15.335) GeV against
+  (+27.354, +15.321) GeV and (+27.479, +15.349) GeV at the neighbouring couplings, with the
+  broken minimum at (+11.48, +246.33) GeV in all three: a field separation of 264.54 GeV
+  against 231.55 GeV, and `S_3/T` = 336.6 against 152.6 and 153.3 at T = 30.0 GeV. The
+  smallest `S_3/T` over the cache was 246.4 against a nucleation criterion near 155, so the
+  rate never rose, the percolation probability stayed at zero over all 197 accepted support
+  points, and the point returned error 8 between two couplings that behaved. The
+  transformation is now read off the node of the trace furthest from the origin, where
+  every field component has a resolved sign, and applied to the whole phase, to `X` and
+  `dXdT` alike; one transformation for the trace rather than one per point, which would
+  send neighbouring nodes of a smooth phase to different images. The test that the group
+  element chosen really accounts for the image `applySymmetries` returned is a refused
+  comparison rather than `distance > tol`: a model overriding `applySymmetries` to return a
+  non-finite point makes every distance `nan`, every `nan > tol` false, and `np.argmin` over
+  `nan` picks the first element of the group, which for the real 2HDM is the flip, so the
+  phase would have been mirrored on exactly the input saying the map cannot be trusted.
+
+- **The tracer stops where the point it carries is no longer a minimum, and steps off a
+  saddle when seeding a phase.** The test in `traceMinimum` was written as
+  `negeig is True` against a `numpy.bool_`, which is never the `True` singleton, so it
+  never fired and the trace walked on through temperatures where its point was a saddle.
+  On the 2HDM at `lambda3` = 5.813 that left 7 of the 61 nodes of the high-temperature
+  phase at the origin between T = 8.5 and 39.0 GeV, where the smallest eigenvalue of the
+  Hessian runs down to -377.8 GeV^2, and the bounce was computed from a false vacuum that
+  is a saddle. `forbidPhaseCrit` was compared the same way and is now read by value as
+  well; the criterion shipped with the dark U(1) models returns a `numpy.bool_`, so it had
+  been skipping nothing. The step that lands exactly on `tstop` goes through a separate
+  path, which read the slope at the node *before* the endpoint. It is read at the endpoint
+  now, which corrects the derivative stored there: it agrees with the closed form to
+  `1.5e-04` instead of `3.1e-02` where the minimum moves with temperature. The saddle flag
+  is deliberately **not** applied at that endpoint. Applying it was tried and withdrawn:
+  the shipped dark U(1) example ends its trace at the origin, where `d2V` reports
+  `-4.23e-09` in the model's internal units, so the endpoint was refused, the phase stopped
+  short of `T = 0` and the
+  run died with `WrongT0MinimumError`. That number is not the curvature. `d2V` is a finite
+  difference of step `x_eps`, a conformal potential has no quadratic term at its origin, and
+  the difference returns the step squared times the quartic. In this model's internal units,
+  which the tracer works in and where `conversionFactor` is 1e-4, so that the internal
+  temperature 1e-6 is 1e-10 GeV and the internal field 1000 is the 0.1 GeV vev: at the internal
+  temperature 1e-6, halving `x_eps` from `4e-3` divides it by exactly 4 at every step down to
+  `2.5e-4`, `-6.771e-08`, `-1.693e-08`, `-4.232e-09`, `-1.058e-09`, `-2.645e-10`, extrapolating
+  to zero. The same variation leaves the broken phase's endpoint at the internal field 1000 at
+  `+9160`, and the origin above the crossing converges towards `1.074e-05`.
+  Scaling the test by the curvature at the previous node does not help, since that quantity
+  carries the same step dependence: it passed on one machine at a ratio of `1.1e-03` against
+  a threshold of `1e-2` and failed on another. A trace can still end on a point that is not a
+  minimum. The test that would decide it is the curvature evaluated at two steps, asked
+  whether it scales with the step, which separates a flat direction from a saddle without
+  thresholding an absolute number. A minimiser cannot leave a stationary point that symmetry holds
+  the gradient at, so `descendFromSaddle` steps off it along the most negative curvature
+  direction, in both signs, and returns the nearest minimum: the origin tilting over below
+  some temperature is the generic behaviour of a thermal mass term with
+  `m_eff^2(T) = -|m^2| + c T^2`, and in a strongly supercooled transition the universe
+  reaches that temperature while still in the high-temperature phase, so the displaced
+  minimum is the false vacuum the bounce has to be computed from. Phases the tracer
+  stopped and restarted either side of such a merge are put back together by
+  `mergePhasesMeetingAtAPoint`, which joins pieces separated by no more than 1e-3 of the
+  traced span whose endpoints across the gap agree to better than `diftol`; the redundancy
+  pass that follows works on phases overlapping in temperature and cannot see a pair
+  separated by a gap. The span is the range the two pieces cover together, from the cold
+  end of the lower one to the hot end of the upper one, and where they meet at exactly one
+  temperature the shared node is kept once, because the interpolator behind `PhaseInfo`
+  refuses a repeated temperature. Joining removes both pieces in turn, and the second
+  removal used to index a phase the first had deleted: `_removeRedundantPhase` clears a
+  link only from the side it walks, so a neighbour can keep pointing at a phase that is
+  gone. With `upper.low_trans` holding `lower.key` while `lower.high_trans` did not hold
+  `upper.key`, that raised `KeyError`. A key whose phase has gone is now dropped, and after
+  a removal every remaining phase loses that key from both of its link sets. The computable corner of the 2HDM benchmark now reaches
+  `lambda3` = 5.867765 on these changes, against 5.816408 in the published scan. Counted at
+  the published couplings themselves rather than inferred from a neighbour, which matters
+  because a change of 1e-10 in `lambda3` can flip the outcome at this end: of the 186
+  published couplings the new scan also covers, 185 distinct couplings with one of them run at
+  both precision settings, 31 are gained and none is lost, and the published run produced a
+  value at the remaining 155. The gained ones run from `lambda3` = 5.803030 to 5.866162. The
+  corner reaches past the last gained one because 5.867765 has no published counterpart to be
+  gained from: the published grid steps from 5.866162 to 5.868687 and returns error 8 at both.
+  Five of the gained couplings had a published run that ended in a timeout, and they now finish
+  in 29 to 33 min against 81 to 111.
+
+- **A bounce whose bracketing trials disagree on the action is reported as unresolved.**
+  `bounceAction` returned whatever its last bracketing trial gave, so a solve that had not
+  converged still produced a number, and that number is not the action of any bounce. Such
+  a sample is now reported as unresolved and dropped on its own rather than the whole
+  coupling being abandoned, and the percolation integral is built from the samples that did
+  resolve. A bracketing trial is also recorded only from a trial that was integrated:
+  the previous code could store a previous iteration's profile against the current trial's
+  radius, or reach an unbound `r0` and raise. A branch whose action is not finite counts as
+  unresolved as well. The relative spread between two infinite branches is `nan`, and every
+  comparison against a `nan` is false, so the sample would have been accepted on the one
+  input where the two branches could not be compared at all. So does a branch whose action is
+  not positive: the Euclidean action of a bounce is positive, so a branch returning zero or
+  less has not found one, and two such branches agree with each other exactly, giving a spread
+  of zero. The action finally returned is checked the same way on every path, because a
+  converged solve records no spread at all and would otherwise skip the gate: a non-positive
+  action reaching the caller is replaced there by zero and labelled `trantype` 2, a
+  second-order transition, so a solver failure would have been delivered as a physical
+  result. That check asks for a finite action as well as a positive one. `+inf > 0` is true,
+  so testing positivity alone returned an infinite action as a resolved bounce, which the
+  caller reports as `trantype` 1, a first-order transition of infinite action, where the code
+  says an infinite action with `trantype` 0 and no instanton. So does a solve that never
+  bracketed: the spread began at zero, so an exit that recorded fewer than two integrated
+  sides left it there and the caller read the absence of a comparison as agreement. It
+  begins at infinity for any exit that is not a convergence and is overwritten only once
+  both branch actions exist.
+
 - **A shooting trial without a usable slope is rejected; the solve carries on.** Before
   integrating a trial, `findProfile` asks `dV_from_absMin` for the slope at
   `phi(0) = phi_absMin + delta_phi0`, and it refused the whole solve on `dV < 1e-200`,

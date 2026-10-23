@@ -50,6 +50,45 @@ import sys
 #: floor sits at ``x`` = 460.0, where ``dV`` is ``0.6 exp(-x)``, while the bisection's own
 #: trials run from ``x`` = 1.49 to 37.25.
 _MIN_USABLE_DV_FROM_ABSMIN = 1e-200
+
+#: How far the actions of the two trials the shooting brackets between may differ before the
+#: bounce counts as unresolved. The bisection narrows `x` until an undershoot and an
+#: overshoot sit either side of the solution, so at convergence both must give the same
+#: action; nothing checked that, and the profile handed on was simply whichever trial came
+#: last. Measured on the 2HDM at lambda3 = 5.816407666 with `TL_2HDM_BSMPT_highacc`, the two
+#: branches agree to 8.9e-06 at T = 60 GeV, 7.0e-04 at 40, 7.0e-03 at 25 and 3.2e-05 at 15,
+#: and disagree by 0.42 at T = 9.8514 GeV and 1.13 at 9.8546, where one branch returns a
+#: negative action. The threshold sits between the two populations, seven times the worst
+#: agreement seen and eight times below the smallest disagreement.
+_ACTION_BRACKET_TOL = 5.0e-2
+
+
+def _bracketSpread(undershoot: float, overshoot: float) -> float:
+    """How far apart the two bracketing branches are, relative to the larger of them.
+
+    A branch whose action is not finite has not resolved the bounce either, and a relative
+    spread cannot say so: `inf - inf` and `inf / inf` are both `nan`, and `nan > tol` is
+    false, so the caller would accept the sample on its worst input. Non-finite is reported
+    as an infinite spread, which the caller refuses.
+
+    A branch whose action is not positive is refused the same way, and for the same reason:
+    agreement is not the only thing that makes a bounce resolved. The Euclidean action of a
+    bounce is positive, so a branch returning zero or less has not found one, and two such
+    branches agree perfectly with each other. Two equal negative actions give a spread of
+    zero and would pass; `bounceAction`'s caller then replaces a negative action with zero
+    and labels the point a second-order transition, so a solver failure would be delivered
+    as a physical result. The same measurement that set the tolerance saw it: at
+    lambda3 = 5.816407666, T = 9.8546 GeV one of the two branches returns a negative action.
+    """
+    if not (np.isfinite(undershoot) and np.isfinite(overshoot)):
+        return float("inf")
+    if undershoot <= 0.0 or overshoot <= 0.0:
+        return float("inf")
+    spread = abs(undershoot - overshoot)
+    scale = max(abs(undershoot), abs(overshoot), np.finfo(float).tiny)
+    return float(spread / scale)
+
+
 if sys.version_info >= (3,0):
     xrange = range
 
@@ -781,6 +820,9 @@ class SingleFieldInstanton:
             # The sign for delta_phi_cutoff doesn't matter
         # --
         rf = None
+        #: The last trial on each side of the bracket, so that the action can be checked for
+        #: convergence once the loop ends on something other than `converged`.
+        bracket_trials: dict = {}
         # `epsabs_rf` and `delta_phi0_rf` are the `epsabs` and the `delta_phi0` that belong
         # to `rf`, i.e. to the trial the kept `r0`, `y0` and `rf` came from. Both are
         # recomputed from the trial `x` at the top of every iteration, and the loop can
@@ -850,6 +892,13 @@ class SingleFieldInstanton:
             phi_scale = max(excursion, abs(delta_phi) * np.finfo(float).eps)
             epsabs = abs(np.array([phi_scale, phi_scale/self.rscale])*phitol)
             integration_args = (dr0, epsfrac, epsabs, drmin, rmax)
+            #: The profile this trial integrated, or `None` where it was rejected without
+            #: being integrated. The verdict below is still set on a rejected trial, so
+            #: without this the bracket would be filled from whichever earlier trial last
+            #: left `r0`, `y0` and `rf` behind -- the same substitution of one trial's
+            #: profile for another's that `epsabs_rf` exists to prevent -- and on a first
+            #: trial with no usable slope those names are not bound at all.
+            trial_profile = None
 
             if np.isnan(x):
                 # A `nan` `x` has to be caught here rather than beside the `r0_` test
@@ -959,6 +1008,7 @@ class SingleFieldInstanton:
                         "Integration failed: " + str(e))
                 epsabs_rf = epsabs
                 delta_phi0_rf = delta_phi0
+                trial_profile = (r0, y0, rf, epsabs, delta_phi0)
             else:
                 ctype = ("overshoot" if abs(delta_phi0) < 0.5*abs(delta_phi)
                          else "undershoot")
@@ -967,9 +1017,13 @@ class SingleFieldInstanton:
             if ctype == "converged":
                 break
             elif ctype == "undershoot":  # x is too low
+                if trial_profile is not None:
+                    bracket_trials["undershoot"] = trial_profile
                 xmin = x
                 x = x*xincrease if xmax == np.inf else .5*(xmin+xmax)
             elif ctype == "overshoot":  # x is too high
+                if trial_profile is not None:
+                    bracket_trials["overshoot"] = trial_profile
                 xmax = x
                 x = .5*(xmin+xmax)
             # Check if we've reached xtol, as a fraction of the `x` the bracket holds rather
@@ -1020,39 +1074,91 @@ class SingleFieldInstanton:
             # reaching for, and it keeps `TooSmalldVError` as the outcome for it.
             raise errors.TooSmalldVError
 
+        # A bisection that did not end on `converged` leaves an undershoot and an overshoot
+        # either side of the solution, and at convergence both must give the same action.
+        # The spread between them is recorded rather than acted on here, because
+        # `fullTunneling` calls this once per path-deformation iteration and the early ones
+        # legitimately bracket poorly: at T = 40 GeV on the 2HDM benchmark raising here
+        # refused a temperature whose final branches agree to 7.0e-04. The caller applies
+        # the test to the profile it keeps.
+        # Where they do not, the bounce is not resolved at this temperature, and the profile
+        # that would be returned is whichever trial happened to come last. Measured on the
+        # 2HDM at lambda3 = 5.816407666 with `TL_2HDM_BSMPT_highacc`: at T = 9.8546 GeV the
+        # bisection runs 296 integrations whose last six share one `x` while the verdict
+        # alternates, and the two branches give +3743.07 at a bubble radius of 1.206 and
+        # -501.35 at 3.214. A negative Euclidean action is impossible, so one of them is
+        # certainly wrong, and which one is returned changes between temperatures 2e-04 GeV
+        # apart. Reporting the failure lets the controller drop the sample, which is what it
+        # already does with an action it cannot compute; returning either number silently
+        # puts an `S_3/T` of 73 where the curve is near 440.
+        # A solve that did not converge is unresolved until two integrated branches have
+        # been compared and found to agree. Starting the spread at zero made the opposite
+        # assumption: a bisection that ended with only one side ever integrated, so that
+        # there was no pair to compare, left the spread at zero and `fullTunneling` took the
+        # last profile as resolved on the strength of a test that had not been run.
+        self.bracket_action_spread = 0.0 if ctype == "converged" else float("inf")
+        self.bracket_branch_actions = {}
+        if ctype != "converged" and len(bracket_trials) == 2:
+            branch_actions = {}
+            for side, (b_r0, b_y0, b_rf, b_epsabs, b_dphi0) in bracket_trials.items():
+                b_R = np.linspace(b_r0, b_rf, npoints)
+                branch_profile = self.integrateAndSaveProfile(
+                    b_R, b_y0, dr0, epsfrac, b_epsabs, drmin)
+                # With its own interior, so that the two branches are compared as whole
+                # bounces rather than as the parts of them outside different radii.
+                branch_profile = self._withInteriorPoints(
+                    b_R, branch_profile, b_dphi0, max_interior_pts)
+                branch_actions[side] = float(np.squeeze(self.findAction(branch_profile)))
+            self.bracket_action_spread = _bracketSpread(
+                branch_actions["undershoot"], branch_actions["overshoot"])
+            self.bracket_branch_actions = dict(branch_actions)
+
         # Integrate a second time, this time getting the points along the way
         R = np.linspace(r0, rf, npoints)
         profile = self.integrateAndSaveProfile(R, y0, dr0,
                                                epsfrac, epsabs_rf, drmin)
-        # Make points interior to the bubble.
+        profile = self._withInteriorPoints(R, profile, delta_phi0_rf, max_interior_pts)
+        return profile
+
+    def _withInteriorPoints(self, R, profile, delta_phi0, max_interior_pts):
+        """Prepend the exact interior of the bubble, from `r = 0` out to `R[0]`.
+
+        Factored out so that the bracketing branches and the profile that is returned are
+        built the same way. They were not: a branch was integrated from its own starting
+        radius and its action taken there, while the profile returned here carries the
+        interior as well. The two branches of a bisection that has stalled can start at
+        quite different radii, 1.206 and 3.214 on the 2HDM at `lambda3 = 5.816407666`, so
+        the interior each of them omits differs, and the disagreement measured between
+        their actions was partly that difference rather than the bounce being unresolved.
+        """
         if max_interior_pts is None:
             max_interior_pts = len(R) // 2
-        if max_interior_pts > 0:
-            dx0 = R[1]-R[0]
-            if R[0] / dx0 <= max_interior_pts:
-                n = int(np.ceil(R[0]/dx0))
-                R_int = np.linspace(0, R[0], n+1)[:-1]
-            else:
-                n = max_interior_pts
-                # R[0] = dx0 * (n + a*n*(n+1)/2)
-                a = (R[0]/dx0 - n) * 2/(n*(n+1))
-                N = np.arange(1,n+1)[::-1]
-                R_int = R[0] - dx0*(N + 0.5*a*N*(N+1))
-                R_int[0] = 0.0  # enforce this exactly
-            Phi_int = np.empty_like(R_int)
-            dPhi_int = np.empty_like(R_int)
-            Phi_int[0] = self.phi_absMin + delta_phi0_rf
-            dPhi_int[0] = 0.0
-            dV = self.dV_from_absMin(delta_phi0_rf)
-            d2V = self.d2V(Phi_int[0])
-            for i in range(1,len(R_int)):
-                Phi_int[i], dPhi_int[i] = self.exactSolution(
-                    R_int[i], Phi_int[0], dV, d2V)
-            R = np.append(R_int, profile.R)
-            Phi = np.append(Phi_int, profile.Phi)
-            dPhi = np.append(dPhi_int, profile.dPhi)
-            profile = self.profile_rval(R,Phi,dPhi, profile.Rerr)
-        return profile
+        if max_interior_pts <= 0:
+            return profile
+        dx0 = R[1]-R[0]
+        if R[0] / dx0 <= max_interior_pts:
+            n = int(np.ceil(R[0]/dx0))
+            R_int = np.linspace(0, R[0], n+1)[:-1]
+        else:
+            n = max_interior_pts
+            # R[0] = dx0 * (n + a*n*(n+1)/2)
+            a = (R[0]/dx0 - n) * 2/(n*(n+1))
+            N = np.arange(1,n+1)[::-1]
+            R_int = R[0] - dx0*(N + 0.5*a*N*(N+1))
+            R_int[0] = 0.0  # enforce this exactly
+        Phi_int = np.empty_like(R_int)
+        dPhi_int = np.empty_like(R_int)
+        Phi_int[0] = self.phi_absMin + delta_phi0
+        dPhi_int[0] = 0.0
+        dV = self.dV_from_absMin(delta_phi0)
+        d2V = self.d2V(Phi_int[0])
+        for i in range(1,len(R_int)):
+            Phi_int[i], dPhi_int[i] = self.exactSolution(
+                R_int[i], Phi_int[0], dV, d2V)
+        R_full = np.append(R_int, profile.R)
+        Phi = np.append(Phi_int, profile.Phi)
+        dPhi = np.append(dPhi_int, profile.dPhi)
+        return self.profile_rval(R_full, Phi, dPhi, profile.Rerr)
 
     def findAction(self, profile):
         R"""

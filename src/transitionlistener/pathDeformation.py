@@ -1530,6 +1530,51 @@ def fullTunneling(
     )
     Phi = last_output.path.pts(last_output.profile1D.Phi)
     action = last_output.tobj.findAction(last_output.profile1D)
+    # The shooting brackets the bounce between an undershoot and an overshoot, and at
+    # convergence both must give the same action. `findProfile` records how far apart they
+    # were for the profile being kept here; a large spread means the bisection stalled and
+    # the profile returned is whichever trial came last. Measured on the 2HDM at
+    # lambda3 = 5.816407666 with `TL_2HDM_BSMPT_highacc`: the branches agree to 8.9e-06 at
+    # T = 60 GeV, 7.0e-04 at 40 and 7.0e-03 at 25, and disagree by 0.42 at 9.8514 and 1.13
+    # at 9.8546, where one branch returns a negative action. Reporting an unresolved bounce
+    # lets the controller drop the sample, as it already does for an action it cannot
+    # compute, instead of carrying a number decided by which trial ran last.
+    spread = float(getattr(last_output.tobj, "bracket_action_spread", 0.0) or 0.0)
+    # Written as a refused comparison rather than `spread > tol`, so that a spread which is
+    # not a number, from a branch action that was not finite, is refused instead of passing.
+    # The spread says the two branches agree; it does not say the number they agree on is an
+    # action. A converged solve never fills the spread at all, `findProfile` records 0.0 for
+    # it, so without this the whole gate is skipped for exactly the case it is least able to
+    # catch. The Euclidean action of a bounce is positive. A non-positive one reaching the
+    # caller is replaced there by zero and labelled `trantype` 2, a second-order transition,
+    # so a solver failure would be delivered as a physical result; refused here instead, the
+    # sample is dropped like any other the shooting could not resolve.
+    # `np.squeeze` first, as the branch path already does before its own `float`: measured,
+    # `findAction` returns a 0-d array here and `float` on that is exact, but a size-one
+    # array of any other shape would raise in a future numpy and nothing here pins the shape.
+    action_value = float(np.squeeze(action))
+    # Finite as well as positive. `+inf > 0.0` is true, so a positive infinity passed the
+    # positivity test on its own and was returned as a resolved bounce: the caller then reports
+    # `trantype` 1, a first-order transition whose action is infinite, where the code's own way
+    # of saying the action is infinite is `trantype` 0 with no instanton. An overflowing Simpson
+    # integration on a converged profile reaches here exactly that way. The branch guard in
+    # `_bracketSpread` already refuses a non-finite branch, and this makes the two agree.
+    if not (np.isfinite(action_value) and action_value > 0.0):
+        raise errors.InfiniteActionError(
+            "The bounce is not resolved at this temperature: the action came out as "
+            f"{action_value:.6g}, and the Euclidean action of a bounce is finite and positive.")
+    if not (spread <= tunneling1D._ACTION_BRACKET_TOL):
+        branches = getattr(last_output.tobj, "bracket_branch_actions", {}) or {}
+        # `InfiniteActionError`, not `TunnelingError`: the first is the signal the callers
+        # already read as "no action at this temperature" and drop the sample for, while
+        # the second leaves `fullTunneling` and ends the whole point as CLI code 11. One
+        # temperature the shooting cannot resolve is not a reason to abandon a coupling.
+        raise errors.InfiniteActionError(
+            "The bounce is not resolved at this temperature: the shooting's undershoot "
+            f"gives an action of {branches.get('undershoot', float('nan')):.6g} and its "
+            f"overshoot {branches.get('overshoot', float('nan')):.6g}, a relative spread "
+            f"of {spread:.3g} against a tolerance of "
+            f"{tunneling1D._ACTION_BRACKET_TOL:g}.")
     return rtuple(last_output.profile1D, Phi, action, f_ratio, saved_steps)
 
 
@@ -1725,6 +1770,10 @@ def bounceAction(
     tdict['action'] = result['action']
     tdict['trantype'] = result['trantype']
 
+    # Unreachable since `fullTunneling` began refusing an action that is not finite and
+    # positive: `_execute_full_tunneling` returns `action` as 0, `np.inf`, or the value that
+    # guard let through, and the two assignments above this one are in a branch that returns
+    # before reaching here. Kept as defence against a future caller, not as a live path.
     if tdict['action'] < 0:
         if verbose:
             print(

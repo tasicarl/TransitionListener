@@ -11,6 +11,7 @@ Authors:
     Carlo Tasillo <carlo.tasillo@ific.uv.es>
 """
 
+import itertools
 import numpy as np
 from dataclasses import dataclass
 from scipy import optimize
@@ -277,6 +278,72 @@ def findApproxLocalMin(f: Callable, x1: np.ndarray, x2: np.ndarray, args=(), n=1
 _traceMinimum_rval = namedtuple("traceMinimum_rval", "X T dXdT overX overT")
 
 
+def descendFromSaddle(
+    x: np.ndarray,
+    t: float,
+    f: Callable,
+    df_dx: Callable,
+    d2f_dx2: Callable,
+    xeps: float,
+    step: float,
+    max_displacement: float,
+) -> np.ndarray:
+    r"""Return a minimum near `x`, having stepped off it where it is a saddle.
+
+    A potential with a reflection symmetry has a stationary point at the origin at every
+    temperature, so a minimiser seeded there returns it whether or not it is a minimum:
+    the gradient vanishes by symmetry and there is no direction for the minimiser to
+    take. The thermal mass term tilts the origin over below some temperature, because
+    ``m_eff^2(T) = -|m^2| + c T^2`` changes sign, and the field then sits in a displaced
+    minimum instead. In a strongly supercooled transition the barrier is nearly
+    temperature independent, so the universe reaches that temperature while still in the
+    high-temperature phase, and the displaced minimum is the false vacuum the bounce has
+    to start from.
+
+    Stepping along the eigenvector of the most negative curvature and re-minimising finds
+    it. Both directions are tried at each step size and the nearer of what they find is
+    returned, since the two are equivalent under the symmetry only until the minimiser has
+    moved and the sign of an eigenvector is arbitrary; the step grows from the tracer's own
+    resolution, so the first step size that finds anything gives the nearest minimum. `max_displacement` bounds
+    the search, so that a saddle whose descent leads far away does not deliver a distant
+    minimum, such as the true vacuum, in place of the phase being traced.
+
+    Returns `x` unchanged where the Hessian there is already positive definite, and where
+    no minimum is found within the bound; the caller decides what to do with a point that
+    is still not a minimum.
+    """
+    x = np.asarray(x, dtype=float)
+    hess = np.atleast_2d(np.squeeze(d2f_dx2(x, t)))
+    eigval, eigvec = linalg.eigh(hess)
+    if eigval[0] > 0.0:
+        return x
+    direction = np.asarray(eigvec[:, 0], dtype=float).reshape(np.shape(x))
+    delta = max(abs(step), abs(xeps))
+    while delta <= max_displacement:
+        # Both directions at this step size, and the nearer of whatever they find. Taking
+        # the first that succeeds makes the answer depend on the arbitrary sign of an
+        # eigenvector rather than on distance, and where the two directions lead to
+        # different minima the farther one can then be returned: the phase being traced is
+        # the one the field is nearest to.
+        found = []
+        for sign in (1.0, -1.0):
+            trial = traceLocalMinimum(f, x + sign * delta * direction, t,
+                                      df_dx, d2f_dx2, xeps)
+            trial = np.asarray(trial, dtype=float)
+            distance = float(np.sum((trial - x) ** 2) ** 0.5)
+            if distance > max_displacement:
+                continue
+            trial_eig = linalg.eigvalsh(np.atleast_2d(np.squeeze(d2f_dx2(trial, t))))
+            if trial_eig[0] > 0.0:
+                found.append((distance, trial))
+        if found:
+            # The smallest distance, and on a tie the first direction, so that a symmetric
+            # saddle still answers deterministically.
+            return min(found, key=lambda pair: pair[0])[1]
+        delta *= 2.0
+    return x
+
+
 def traceMinimum(
     f : Callable, df_dx : Callable, d2f_dxdt : Callable, d2f_dx2 : Callable, 
     x0 : np.ndarray, t0 : float, tstop : float, dtstart : float, deltaX_target : float,
@@ -393,7 +460,18 @@ def traceMinimum(
         tnext = t + dt
         xnext = fmin(x + dxdt * dt, tnext)
         dxdt_next, negeig = dxmindt(xnext, tnext)
-        if dxdt_next is None or negeig is True:
+        # `negeig` is compared by value, not against the `True` singleton. `dxmindt`
+        # builds it from `(eigs <= 0).any()`, which is a `numpy.bool_`, and
+        # `numpy.bool_(True) is True` is False, so an identity test here never fired and
+        # the saddle check below was dead: a phase was traced through temperatures where
+        # the Hessian has a negative eigenvalue and the phase does not exist. On the 2HDM
+        # at lambda3 = 5.813 the high-temperature phase was traced from T = 121.9 GeV down
+        # to 0, straight through the window from 39.0 GeV down, keeping 7 of its 61 nodes
+        # at the origin where the smallest eigenvalue reaches -377.8 GeV^2. The bounce was
+        # then computed from a false vacuum that is a saddle, which put `S_3/T` at T = 37
+        # GeV at 148.5 against 135.8 at the neighbouring coupling, where the trace stopped
+        # for an unrelated reason.
+        if dxdt_next is None or bool(negeig):
             # We got stuck on a saddle, so there must be a phase transition
             # there.
             dt *= 0.5
@@ -419,7 +497,7 @@ def traceMinimum(
                 overX, overT = xnext, tnext
 
     def check():
-        nonlocal x, t, dt, dxdt, xerr, overX, overT, negeig
+        nonlocal x, t, dt, dxdt, xerr, overX, overT
         # Now do some checks on dt.
         if abs(dt) < abs(dtmin):
             # Found a transition! Or at least a point where the step is really
@@ -430,11 +508,52 @@ def traceMinimum(
             # Reached tstop, but we want to make sure we stop right at tstop.
             dt = tstop - t
             xnext = fmin(x + dxdt * dt, tstop)
-            dxdt_next, negeig = dxmindt(x, tstop)
+            # At `xnext`, the point this is about to keep, and not at `x`, the node before
+            # it. Read at `x` the slope and the flag describe a point the trace has already
+            # accepted, and the flag was then not read at all, so the one node that ends the
+            # trace could be a saddle while every other node was tested. A trace seeded at
+            # or beyond its own `tstop` takes this as its only step, and the whole phase is
+            # then that one node.
+            dxdt_next, _ = dxmindt(xnext, tstop)
             tnext = tstop
+            # The saddle flag is deliberately not applied here, and the slope is read at
+            # `xnext` only so that what is stored describes the node that is kept.
+            #
+            # Applying it was tried and withdrawn. On the shipped dark U(1) at g = 0.7,
+            # v = 0.1 GeV the symmetric phase ends at the origin, where `d2V` reports
+            # -4.23e-09 GeV^2, so `(eigs <= 0).any()` calls it a saddle, the trace stops
+            # short of T = 0 and the run dies with `WrongT0MinimumError`.
+            #
+            # Every number in this paragraph is in the model's internal units, which is
+            # what the tracer works in: `conversionFactor` is 1e-4 here, so the internal
+            # temperature 1e-6 is 1e-10 GeV and the internal field 1000 is the 0.1 GeV vev.
+            #
+            # That number is not the curvature. `d2V` is a finite difference of step
+            # `x_eps`, the potential has no quadratic term at the origin of a conformal
+            # model, and what the difference returns is the step squared times the quartic.
+            # Measured at the internal temperature 1e-6, halving `x_eps` from 4e-3 divides
+            # it by exactly 4 at every step down to 2.5e-4: -6.771e-08, -1.693e-08,
+            # -4.232e-09, -1.058e-09, -2.645e-10. It extrapolates to zero, which is the
+            # curvature a conformal potential has there. By the same measurement the broken
+            # phase's endpoint at the internal field 1000 holds +9160 across that range of
+            # steps, and the origin above the crossing converges towards 1.074e-05, reading
+            # 1.078e-05 at `x_eps` = 2.5e-4.
+            #
+            # Scaling the test by the curvature at the node before it does not help: the
+            # quantity being compared is still step-dependent, which is why it passed here
+            # at a ratio of 1.1e-03 against a threshold of 1e-2 and failed on the CI runner.
+            # Measured against the largest eigenvalue it is wrong in the other direction as
+            # well, eigenvalues [1e-3, 1e6] with an endpoint at -1e-4 passing a threshold of
+            # -1e4.
+            #
+            # So the endpoint is accepted on the slope alone, as it was before this branch.
+            # A trace can still finish on a point that is not a minimum. The test that would
+            # decide it is the one above: evaluate the curvature at two steps and ask whether
+            # it scales with the step, which separates a flat direction from a saddle without
+            # thresholding an absolute number. That belongs in its own change, not here.
             if dxdt_next is None:
-                # Cannot evaluate the next slope reliably; stop the trace here.
-                X[-1], T[-1], dXdT[-1] = xnext, tnext, dxdt
+                # No usable slope at the endpoint; the trace ends at the last node that had
+                # one rather than reaching `tstop`.
                 return True
             # Here it previously doesn't check if we have a phase transition between
             # tstop and t. This can happend. Therefore implement a
@@ -480,12 +599,93 @@ def traceMinimum(
     return _traceMinimum_rval(X, T, dXdT, overX, overT)
 
 
+#: How closely one element of the symmetry group has to reproduce the image
+#: `applySymmetries` returns for that element to be taken as the map it applied.
+_IMAGE_MATCH_RTOL = 1.0e-8
+
+
+def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
+                          invGroupElements) -> np.ndarray | None:
+    r"""The one symmetry transformation that puts a whole traced phase on its canonical image.
+
+    Below the temperature at which the origin tilts over, which image of the displaced
+    minimum the field sits in is settled by the sign of a numerical step, not by the
+    potential: the images are exactly degenerate. Tracing therefore returns a phase on
+    either image, and two seeds that reach the same physical phase on opposite images give
+    two phases that `removeRedundantPhases` cannot tell are one, because it compares field
+    values. The pair is then carried through as separate phases and the transition can be
+    built between a high phase on one image and a low phase on the other, whose field
+    separation and bounce action are those of no physical path. On the 2HDM at
+    `lambda3 = 5.868` that gave `S_3/T = 336.6` at `T = 30.0` GeV against `152.6` and
+    `153.3` at the neighbouring couplings, and no percolation at all.
+
+    `applySymmetries` chooses the image of a single point. Applied node by node it can send
+    neighbouring nodes of one trace to different images, putting a step into a phase that is
+    smooth, so the transformation is chosen once here and applied to every node. It is read
+    off the node furthest from the origin, where the sign of each field component is
+    resolved and the choice is therefore least ambiguous: near the origin every image of a
+    node is the same point to within the tracing accuracy.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        The traced field values, one row per temperature.
+    applySymmetries : callable or None
+        Maps a point onto the canonical image, as `generic_potential.applySymmetries` does.
+    invGroupElements : list[np.ndarray]
+        The transformations the potential is invariant under, right-multiplying a point.
+
+    Returns
+    -------
+    np.ndarray or None
+        The transformation to apply to the whole trace, or None where there is nothing to do.
+    """
+    if applySymmetries is None or len(invGroupElements) == 0:
+        return None
+    X = np.atleast_2d(np.asarray(X, dtype=float))
+    # Among the nodes that are finite. `np.argmax` returns the position of a `nan`, so a
+    # single non-finite node would otherwise be taken as the reference, and every
+    # comparison against it is then `nan`: `argmin` returns the first element and the
+    # tolerance test below is false, so the first transformation of the group would be
+    # applied to the whole phase. For the 2HDM that element is the flip, which would put
+    # the phase on the mirror image this function exists to keep it off.
+    norms = np.linalg.norm(X, axis=-1)
+    usable = np.isfinite(norms)
+    if not usable.any():
+        return None
+    reference = X[np.flatnonzero(usable)[np.argmax(norms[usable])]]
+    canonical = np.asarray(applySymmetries(reference), dtype=float)
+    # Which transformation that is, by matching its action on the reference node. The
+    # measure is not recomputed here so that the image this returns is the one
+    # `applySymmetries` chooses, whatever measure it uses.
+    distances = [float(np.linalg.norm(reference @ g - canonical)) for g in invGroupElements]
+    nearest = int(np.argmin(distances))
+    # Only where that transformation accounts for the image chosen. A model free to
+    # override `applySymmetries` may return a point that no single element of the group
+    # carries the reference to, and the nearest element is then not the map that was
+    # applied; transforming the phase by it would move the phase somewhere the potential
+    # does not relate to where it was traced. Leaving the trace alone loses the
+    # deduplication, which `removeRedundantPhases` may still catch, rather than
+    # introducing a phase that is wrong.
+    # Written as a refused comparison, for the reason the reference node is filtered above: a
+    # model is free to override `applySymmetries`, and one returning a non-finite point makes
+    # `canonical` non-finite, every distance `nan`, and every `nan > tol` false, so the map
+    # would be accepted on the one input that says it cannot be trusted. `np.argmin` then
+    # returns 0, and for the 2HDM the first element of the group is the flip, so a whole phase
+    # would be mirrored. `not (d <= tol)` refuses that the way `d > tol` does not.
+    if not (distances[nearest]
+            <= _IMAGE_MATCH_RTOL * max(float(np.linalg.norm(reference)), 1.0)):
+        return None
+    return invGroupElements[nearest]
+
+
 def traceMultiMin(
     f: Callable, df_dx: Callable, d2f_dxdt: Callable, d2f_dx2: Callable,
     points: list, tLow: float, tHigh: float, deltaX_target: float,
     verbose: bool = False, conversionFactor: float = 1, dtstart: float = 1e-3,
     tjump: float = 1e-3, forbidCrit: Callable | None = None, applySymmetries: Callable | None = None,
     single_trace_args: dict = {}, local_min_args: dict = {},
+    *, invGroupElements=(),
 ) -> dict[int, PhaseInfo]:
     """
     Trace multiple minima `xmin(t)` of the function `f(x,t)`.
@@ -528,6 +728,15 @@ def traceMultiMin(
         Arguments to pass to :func:`traceMinimum`.
     local_min_args : dict, optoinal
         Arguments to pass to :func:`findApproxLocalMinima`.
+    applySymmetries : callable or None, optional
+        Maps a point onto the canonical image of the potential's symmetry, as
+        :meth:`generic_potential.applySymmetries` does. Where it is None no phase is moved.
+    invGroupElements : sequence of np.ndarray, optional
+        The transformations the potential is invariant under, right-multiplying a point.
+        Used with `applySymmetries` to put a whole traced phase on one image: the two are
+        read together by :func:`canonicalImageElement`, which needs the group to name which
+        transformation the chosen image corresponds to. Empty, the default, leaves every
+        trace on the image it was walked onto.
 
     Returns
     -------
@@ -544,6 +753,21 @@ def traceMultiMin(
     def fmin(x, t):
         return traceLocalMinimum(f, x, t, df_dx, d2f_dx2, xeps)
 
+    # The displaced minimum a tilted-over origin rolls into sits at a field value set by
+    # the potential, not by the tracing resolution: `deltaX_target` is 0.1 GeV on the
+    # 2HDM benchmark while the displacement is 8.6 GeV at T = 37 GeV. Bounding the descent
+    # by a quarter of the largest field value seen keeps the search clear of a distant
+    # minimum such as the true vacuum. The search returns the nearest minimum, so the
+    # factor is not a sensitive choice: a quarter and a half give the same phases on the
+    # 2HDM couplings this was tested on.
+    # The starting points are the zero-temperature minima, which carry the field scale:
+    # 246.2 GeV on the 2HDM. A model whose zero-temperature minimum is the origin offers
+    # no field scale at all, and the only other scale in the problem is the temperature
+    # range, which is in the same units as the field here.
+    field_scale = max((np.sum(np.asarray(x0, dtype=float) ** 2) ** 0.5 for x0, _ in points),
+                      default=0.0)
+    max_descent = 0.25 * (field_scale if field_scale > 0.0 else abs(tHigh - tLow))
+
     dtstart = dtstart * (tHigh - tLow)
     tjump = tjump * (tHigh - tLow)
     phases = {}
@@ -558,12 +782,40 @@ def traceMultiMin(
         if applySymmetries is not None:
             x1 = applySymmetries(x1)
         x1 = fmin(x1, t1)  # make sure we start as accurately as possible.
+        # Accuracy alone cannot get the minimiser off a saddle that symmetry puts the
+        # gradient to zero at, so step off it explicitly and trace the minimum the field
+        # actually sits in. Where the point is still not a minimum, there is no phase to
+        # trace from it: seeding one anyway is what used to put nodes into a phase at
+        # temperatures where it does not exist, and the bounce was then computed from a
+        # false vacuum that is a saddle. On the 2HDM at lambda3 = 5.813 that left 7 of the
+        # 61 nodes of the high-temperature phase at the origin between T = 8.5 and 39.0
+        # GeV, where the smallest eigenvalue of the Hessian runs down to -377.8 GeV^2.
+        descended = descendFromSaddle(x1, t1, f, df_dx, d2f_dx2, xeps, deltaX_target,
+                                      max_descent)
+        if applySymmetries is not None and not np.array_equal(descended, x1):
+            # The descent leaves the quadrant the candidate was mapped into, and which
+            # image of the displaced minimum it lands in is decided by the sign of an
+            # eigenvector. That sign is not free: the broken minimum this phase tunnels to
+            # sits at a definite point, so one image is nearer to it than its mirror and
+            # carries the lower action. On the 2HDM at T = 37 GeV the two give field
+            # separations of 241.93 and 251.57 GeV, and `S_3/T` of 135.8 and 151.7.
+            # Mapping back puts every coupling in the same image as the broken minimum.
+            descended = applySymmetries(descended)
+        x1 = descended
+        if linalg.eigvalsh(np.atleast_2d(np.squeeze(d2f_dx2(x1, t1))))[0] <= 0.0:
+            continue
         # Check to see if this point is outside the bounds
         if t1 < tLow or (t1 == tLow and dt1 < 0):
             continue
         if t1 > tHigh or (t1 == tHigh and dt1 > 0):
             continue
-        if forbidCrit is not None and forbidCrit(x1) is True:
+        # By value, for the same reason as the saddle flag above: the shipped
+        # `forbidPhaseCrit` of the dark U(1) models returns
+        # `(np.array([X])[..., 0] < -5.).any()`, a `numpy.bool_`, which is never the `True`
+        # singleton, so this skipped nothing. The end-of-trace test at the foot of this
+        # function uses truthiness and did fire, so a phase whose endpoints are forbidden
+        # was still dropped; one that only passes through the forbidden region was not.
+        if forbidCrit is not None and bool(forbidCrit(x1)):
             continue
         # Check to see if it's redudant with another phase
         for i, phase in enumerate(phases.values()):
@@ -646,6 +898,13 @@ def traceMultiMin(
                 X = np.append(X_down, X_up[1:], 0)
                 T = np.append(T_down, T_up[1:], 0)
                 dXdT = np.append(dXdT_down, dXdT_up[1:], 0)
+            # On the image the seed was mapped into, so that two seeds reaching one
+            # physical phase on opposite images give traces that can be recognised as one.
+            # Before the forbidden-region test, which reads field values and so would
+            # otherwise answer for an image the phase is not stored on.
+            image = canonicalImageElement(X, applySymmetries, invGroupElements)
+            if image is not None:
+                X, dXdT = X @ image, dXdT @ image
             if forbidCrit is not None and (forbidCrit(X[0]) or forbidCrit(X[-1])):
                 # The phase is forbidden.
                 # Don't add it, and make it a dead-end.
@@ -859,17 +1118,35 @@ def _removeRedundantPhase(phases: dict[int | str, PhaseInfo],
     redundant_with_phase : PhaseInfo
         The phase with which the removed phase is redundant.
     """
-    for key in removed_phase.low_trans:
+    # A link is only cleared from the side this walks. `addLinkFrom` writes both sides, but
+    # a phase removed earlier can leave its key behind in a neighbour that was not reached
+    # from its own sets, and then `phases[key]` raises. Merging two pieces removes both of
+    # them in turn, which is exactly where a key left behind by the first removal is met by
+    # the second: with `upper.low_trans` holding `lower.key` and `lower.high_trans` not
+    # holding `upper.key`, the second call raised `KeyError: 0`.
+    for key in list(removed_phase.low_trans):
         if key != redundant_with_phase.key:
-            p = phases[key]
+            p = phases.get(key)
+            if p is None:
+                removed_phase.low_trans.discard(key)
+                continue
             p.high_trans.discard(removed_phase.key)
             redundant_with_phase.addLinkFrom(p)
 
-    for key in removed_phase.high_trans:
+    for key in list(removed_phase.high_trans):
         if key != redundant_with_phase.key:
-            p = phases[key]
+            p = phases.get(key)
+            if p is None:
+                removed_phase.high_trans.discard(key)
+                continue
             p.low_trans.discard(removed_phase.key)
             redundant_with_phase.addLinkFrom(p)
+    # Any phase still pointing at the one being removed loses that link, whether or not it
+    # was reachable from the removed phase's own sets.
+    for p in phases.values():
+        if p is not removed_phase:
+            p.low_trans.discard(removed_phase.key)
+            p.high_trans.discard(removed_phase.key)
     del phases[removed_phase.key]
 
 
@@ -1064,6 +1341,79 @@ def _merge_branch_overlap(
     _removeRedundantPhase(phases, comp.phase1, newphase)
     _removeRedundantPhase(phases, comp.phase2, newphase)
     return True
+
+
+def mergePhasesMeetingAtAPoint(
+    phases: dict[int | str, PhaseInfo],
+    diftol: float,
+    verbose: bool = False,
+    conversionFactor: float = 1.0,
+    gap_fraction: float = 1.0e-3,
+) -> None:
+    """Join phases the tracer stopped and restarted at a second-order merge.
+
+    A minimum that moves continuously into another as the temperature rises is one phase.
+    The tracer stops where the Hessian loses positivity, which is exactly that point, and
+    whether it then steps across the merge or restarts just below it is decided by where
+    its step happens to land. On the 2HDM the same structure comes out as one phase at
+    lambda3 = 5.813 and as two pieces 4.5 MeV apart at 5.8145.
+
+    Leaving the two separate does not make the answer imprecise, it loses the coupling:
+    a pair of phases has to be degenerate somewhere in its common temperature range for a
+    critical temperature to exist, and the degeneracy with the broken minimum sits at
+    96.97 GeV, well above the 39.60 GeV where the split falls. No tunnelling candidate is
+    then offered and the chain ends with `NoViablePhasePairError`.
+
+    Two pieces are joined when the gap between them is a thousandth of the range they
+    span and their endpoints across it agree to better than `diftol`. The field test is
+    what separates this from a first-order transition, where the two phases differ by far
+    more than `diftol`: 246 GeV against 1 GeV on the 2HDM. The gap test only keeps the
+    join local.
+    """
+    while True:
+        for key1, key2 in itertools.permutations(list(phases.keys()), 2):
+            if key1 not in phases or key2 not in phases:
+                continue
+            lower, upper = phases[key1], phases[key2]
+            gap = float(upper.Tmin) - float(lower.Tmax)
+            if gap < 0.0:
+                continue  # they overlap; removeRedundantPhases decides what to do
+            # The range the two pieces span together, outer endpoint to outer endpoint,
+            # which is what the rule above is written against. Taking the wider of the two
+            # pieces instead refused a pair of short pieces whose gap is small on the scale
+            # of the structure they belong to, and left the coupling split.
+            span = float(upper.Tmax) - float(lower.Tmin)
+            if gap > gap_fraction * span:
+                continue
+            mismatch = float(np.linalg.norm(np.asarray(upper.X[0], dtype=float)
+                                            - np.asarray(lower.X[-1], dtype=float)))
+            if mismatch >= diftol:
+                continue
+            if verbose:
+                console.print(
+                    f"Phases {lower.key} and {upper.key} meet at "
+                    f"T = {float(lower.Tmax) * conversionFactor} GeV with a gap of "
+                    f"{gap * conversionFactor} GeV and a field-space mismatch of "
+                    f"{mismatch * conversionFactor} GeV. They are one phase traced in "
+                    "two pieces, and are joined."
+                )
+            # Where the pieces meet exactly, the shared temperature stands in both of
+            # them. `PhaseInfo` builds a PchipInterpolator, which refuses a repeated node,
+            # so the join would raise instead of putting the phase back together.
+            first = 1 if gap <= 0.0 else 0
+            if len(upper.T) - first < 1:
+                continue
+            T = np.append(lower.T, upper.T[first:], axis=0)
+            X = np.append(lower.X, upper.X[first:], axis=0)
+            dXdT = np.append(lower.dXdT, upper.dXdT[first:], axis=0)
+            newkey = f"{lower.key}-{upper.key}"
+            newphase = PhaseInfo(newkey, X, T, dXdT)
+            phases[newkey] = newphase
+            _removeRedundantPhase(phases, lower, newphase)
+            _removeRedundantPhase(phases, upper, newphase)
+            break
+        else:
+            return
 
 
 def removeRedundantPhases(
@@ -1316,6 +1666,7 @@ class Phases:
             verbose=verbose,
             conversionFactor=self.conversionFactor,
             applySymmetries=pot.applySymmetries,
+            invGroupElements=getattr(pot, "invGroupElements", []),
             tLow=tstart,
             tHigh=tstop,
             deltaX_target=100 * self.x_eps,
@@ -1328,6 +1679,15 @@ class Phases:
                           style="bold green")
 
             
+        # Before judging phases redundant against one another, put back together any that
+        # are one phase the tracer stopped and restarted at a second-order merge. The
+        # redundancy pass works on phases that overlap in temperature and cannot see a
+        # pair separated by a gap.
+        mergePhasesMeetingAtAPoint(
+            phases, diftol=self.diftol, verbose=verbose,
+            conversionFactor=self.conversionFactor
+        )
+
         removeRedundantPhases(
             pot.Vtot, pot.gradV, pot.d2V, phases, self.x_eps * 1e-2, diftol=self.diftol,
             verbose=verbose, conversionFactor=self.conversionFactor
