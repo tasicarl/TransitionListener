@@ -399,7 +399,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   converged solve records no spread at all and would otherwise skip the gate: a non-positive
   action reaching the caller is replaced there by zero and labelled `trantype` 2, a
   second-order transition, so a solver failure would have been delivered as a physical
-  result. So does a solve that never
+  result. That check asks for a finite action as well as a positive one. `+inf > 0` is true,
+  so testing positivity alone returned an infinite action as a resolved bounce, which the
+  caller reports as `trantype` 1, a first-order transition of infinite action, where the code
+  says an infinite action with `trantype` 0 and no instanton. So does a solve that never
   bracketed: the spread began at zero, so an exit that recorded fewer than two integrated
   sides left it there and the caller read the absence of a comparison as agreement. It
   begins at infinity for any exit that is not a convergence and is overwritten only once

@@ -222,6 +222,23 @@ class AnActionThatIsNotPositiveIsNotABouncesAction(unittest.TestCase):
                 with self.assertRaises(errors.InfiniteActionError):
                     self._tunnel_with_action(bad)
 
+    def test_a_positive_infinity_is_refused_although_it_is_greater_than_zero(self):
+        """The one a positivity test alone lets through.
+
+        `+inf > 0.0` is true, so testing positivity and nothing else returned an infinite
+        action as a resolved bounce, which the caller reports as `trantype` 1, a first-order
+        transition of infinite action. An infinite action is said with `trantype` 0 and no
+        instanton, and that is what refusing it here produces.
+        """
+        with self.assertRaises(errors.InfiniteActionError):
+            self._tunnel_with_action(float("inf"))
+
+    def test_a_large_finite_action_is_still_accepted(self):
+        """The guard refuses non-finite, not merely large: the campaign's largest cached
+        action is 2.3e+08."""
+        result = self._tunnel_with_action(2.34745e08)
+        self.assertAlmostEqual(float(result.action), 2.34745e08, places=0)
+
     def test_a_positive_action_still_comes_back(self):
         """The guard must not refuse an ordinary bounce."""
         result = self._tunnel_with_action(3215.07)

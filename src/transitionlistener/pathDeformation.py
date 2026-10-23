@@ -1553,10 +1553,16 @@ def fullTunneling(
     # `findAction` returns a 0-d array here and `float` on that is exact, but a size-one
     # array of any other shape would raise in a future numpy and nothing here pins the shape.
     action_value = float(np.squeeze(action))
-    if not (action_value > 0.0):
+    # Finite as well as positive. `+inf > 0.0` is true, so a positive infinity passed the
+    # positivity test on its own and was returned as a resolved bounce: the caller then reports
+    # `trantype` 1, a first-order transition whose action is infinite, where the code's own way
+    # of saying the action is infinite is `trantype` 0 with no instanton. An overflowing Simpson
+    # integration on a converged profile reaches here exactly that way. The branch guard in
+    # `_bracketSpread` already refuses a non-finite branch, and this makes the two agree.
+    if not (np.isfinite(action_value) and action_value > 0.0):
         raise errors.InfiniteActionError(
             "The bounce is not resolved at this temperature: the action came out as "
-            f"{action_value:.6g}, and the Euclidean action of a bounce is positive.")
+            f"{action_value:.6g}, and the Euclidean action of a bounce is finite and positive.")
     if not (spread <= tunneling1D._ACTION_BRACKET_TOL):
         branches = getattr(last_output.tobj, "bracket_branch_actions", {}) or {}
         # `InfiniteActionError`, not `TunnelingError`: the first is the signal the callers
@@ -1764,6 +1770,10 @@ def bounceAction(
     tdict['action'] = result['action']
     tdict['trantype'] = result['trantype']
 
+    # Unreachable since `fullTunneling` began refusing an action that is not finite and
+    # positive: `_execute_full_tunneling` returns `action` as 0, `np.inf`, or the value that
+    # guard let through, and the two assignments above this one are in a branch that returns
+    # before reaching here. Kept as defence against a future caller, not as a live path.
     if tdict['action'] < 0:
         if verbose:
             print(
