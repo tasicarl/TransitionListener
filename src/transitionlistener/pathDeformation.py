@@ -1549,10 +1549,14 @@ def fullTunneling(
     # caller is replaced there by zero and labelled `trantype` 2, a second-order transition,
     # so a solver failure would be delivered as a physical result; refused here instead, the
     # sample is dropped like any other the shooting could not resolve.
-    if not (float(action) > 0.0):
+    # `np.squeeze` first, as the branch path already does before its own `float`: measured,
+    # `findAction` returns a 0-d array here and `float` on that is exact, but a size-one
+    # array of any other shape would raise in a future numpy and nothing here pins the shape.
+    action_value = float(np.squeeze(action))
+    if not (action_value > 0.0):
         raise errors.InfiniteActionError(
             "The bounce is not resolved at this temperature: the action came out as "
-            f"{float(action):.6g}, and the Euclidean action of a bounce is positive.")
+            f"{action_value:.6g}, and the Euclidean action of a bounce is positive.")
     if not (spread <= tunneling1D._ACTION_BRACKET_TOL):
         branches = getattr(last_output.tobj, "bracket_branch_actions", {}) or {}
         # `InfiniteActionError`, not `TunnelingError`: the first is the signal the callers

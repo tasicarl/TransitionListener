@@ -524,15 +524,20 @@ def traceMinimum(
             # -4.23e-09 GeV^2, so `(eigs <= 0).any()` calls it a saddle, the trace stops
             # short of T = 0 and the run dies with `WrongT0MinimumError`.
             #
+            # Every number in this paragraph is in the model's internal units, which is
+            # what the tracer works in: `conversionFactor` is 1e-4 here, so the internal
+            # temperature 1e-6 is 1e-10 GeV and the internal field 1000 is the 0.1 GeV vev.
+            #
             # That number is not the curvature. `d2V` is a finite difference of step
             # `x_eps`, the potential has no quadratic term at the origin of a conformal
             # model, and what the difference returns is the step squared times the quartic.
-            # Measured at T = 1e-6 GeV, halving `x_eps` from 4e-3 divides it by exactly 4
-            # at every step down to 2.5e-4: -6.771e-08, -1.693e-08, -4.232e-09, -1.058e-09,
-            # -2.645e-10 GeV^2. It extrapolates to zero, which is the curvature a conformal
-            # potential has there. By the same measurement the broken phase's endpoint at
-            # phi = 1000 GeV holds +9160 GeV^2 to within 0.02 % over that range of steps,
-            # and the origin above the crossing converges to +1.078e-05 GeV^2.
+            # Measured at the internal temperature 1e-6, halving `x_eps` from 4e-3 divides
+            # it by exactly 4 at every step down to 2.5e-4: -6.771e-08, -1.693e-08,
+            # -4.232e-09, -1.058e-09, -2.645e-10. It extrapolates to zero, which is the
+            # curvature a conformal potential has there. By the same measurement the broken
+            # phase's endpoint at the internal field 1000 holds +9160 across that range of
+            # steps, and the origin above the crossing converges towards 1.074e-05, reading
+            # 1.078e-05 at `x_eps` = 2.5e-4.
             #
             # Scaling the test by the curvature at the node before it does not help: the
             # quantity being compared is still step-dependent, which is why it passed here

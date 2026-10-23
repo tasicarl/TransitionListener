@@ -335,14 +335,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `1.5e-04` instead of `3.1e-02` where the minimum moves with temperature. The saddle flag
   is deliberately **not** applied at that endpoint. Applying it was tried and withdrawn:
   the shipped dark U(1) example ends its trace at the origin, where `d2V` reports
-  `-4.23e-09 GeV^2`, so the endpoint was refused, the phase stopped short of `T = 0` and the
+  `-4.23e-09` in the model's internal units, so the endpoint was refused, the phase stopped
+  short of `T = 0` and the
   run died with `WrongT0MinimumError`. That number is not the curvature. `d2V` is a finite
   difference of step `x_eps`, a conformal potential has no quadratic term at its origin, and
-  the difference returns the step squared times the quartic: at `T = 1e-06 GeV`, halving
-  `x_eps` from `4e-3` divides it by exactly 4 at every step down to `2.5e-4`, `-6.771e-08`,
-  `-1.693e-08`, `-4.232e-09`, `-1.058e-09`, `-2.645e-10 GeV^2`, extrapolating to zero. The
-  same variation leaves the broken phase's endpoint at `phi` = 1000 GeV at `+9160 GeV^2` to
-  within 0.02 per cent, and the origin above the crossing converges to `+1.078e-05 GeV^2`.
+  the difference returns the step squared times the quartic. In this model's internal units,
+  which the tracer works in and where `conversionFactor` is 1e-4, so that the internal
+  temperature 1e-6 is 1e-10 GeV and the internal field 1000 is the 0.1 GeV vev: at the internal
+  temperature 1e-6, halving `x_eps` from `4e-3` divides it by exactly 4 at every step down to
+  `2.5e-4`, `-6.771e-08`, `-1.693e-08`, `-4.232e-09`, `-1.058e-09`, `-2.645e-10`, extrapolating
+  to zero. The same variation leaves the broken phase's endpoint at the internal field 1000 at
+  `+9160`, and the origin above the crossing converges towards `1.074e-05`.
   Scaling the test by the curvature at the previous node does not help, since that quantity
   carries the same step dependence: it passed on one machine at a ratio of `1.1e-03` against
   a threshold of `1e-2` and failed on another. A trace can still end on a point that is not a
@@ -371,11 +374,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `lambda3` = 5.867765 on these changes, against 5.816408 in the published scan. Counted at
   the published couplings themselves rather than inferred from a neighbour, which matters
   because a change of 1e-10 in `lambda3` can flip the outcome at this end: of the 186
-  couplings both runs computed, 31 are gained and none is lost, the gained ones running from
-  `lambda3` = 5.803030 to 5.866162. The corner reaches past the last gained coupling because
-  the couplings beyond 5.866162 computed in the published scan as well. Five of the gained
-  ones are couplings whose published run ended in a timeout, and they now finish in 29 to 33
-  min against 81 to 111.
+  published couplings the new scan also covers, 185 distinct couplings with one of them run at
+  both precision settings, 31 are gained and none is lost, and the published run produced a
+  value at the remaining 155. The gained ones run from `lambda3` = 5.803030 to 5.866162. The
+  corner reaches past the last gained one because 5.867765 has no published counterpart to be
+  gained from: the published grid steps from 5.866162 to 5.868687 and returns error 8 at both.
+  Five of the gained couplings had a published run that ended in a timeout, and they now finish
+  in 29 to 33 min against 81 to 111.
 
 - **A bounce whose bracketing trials disagree on the action is reported as unresolved.**
   `bounceAction` returned whatever its last bracketing trial gave, so a solve that had not
