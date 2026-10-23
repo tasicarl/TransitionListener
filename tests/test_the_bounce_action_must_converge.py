@@ -177,6 +177,66 @@ class AnUnresolvedBounceIsReportedAsNoAction(unittest.TestCase):
                         f"a resolved bounce returned {result.action!r}")
 
 
+class AnActionThatIsNotPositiveIsNotABouncesAction(unittest.TestCase):
+    """The spread says the two branches agree, not that what they agree on is an action.
+
+    A converged solve records a spread of zero and never fills the branch actions, so the
+    spread gate is skipped entirely on that path. A non-positive action reaching the caller
+    is replaced there by zero and labelled `trantype` 2, a second-order transition, so
+    without this a solver failure is delivered as a physical result.
+    """
+
+    def _tunnel_with_action(self, action):
+        """The real `fullTunneling` on the quartic, with only the final action forced.
+
+        `findAction` is the one thing stubbed; the deformation, the profile and the
+        convergence are all genuine, and the solve converges, so the spread is zero and the
+        only thing that can refuse the sample is the test under test.
+        """
+        real = tunneling1D.SingleFieldInstanton.findAction
+
+        def patched(inst, profile, *a, **k):
+            real(inst, profile, *a, **k)
+            return float(action)
+
+        V, dV, _ = quartic()
+        with mock.patch.object(tunneling1D.SingleFieldInstanton, "findAction", patched):
+            return pathDeformation.fullTunneling(
+                [np.array([0.0]), np.array([1.0])],
+                lambda X: V(np.asarray(X)[..., 0]),
+                lambda X: np.asarray(dV(np.asarray(X)[..., 0]))[..., None],
+                verbose=False)
+
+    def test_a_negative_action_is_refused_although_the_solve_converged(self):
+        with self.assertRaises(errors.InfiniteActionError):
+            self._tunnel_with_action(-512.0)
+
+    def test_a_zero_action_is_refused(self):
+        with self.assertRaises(errors.InfiniteActionError):
+            self._tunnel_with_action(0.0)
+
+    def test_an_action_that_is_not_a_number_is_refused(self):
+        """Written as a refused comparison, so `nan` does not pass the way `nan > 0` would."""
+        for bad in (float("nan"), float("-inf")):
+            with self.subTest(action=bad):
+                with self.assertRaises(errors.InfiniteActionError):
+                    self._tunnel_with_action(bad)
+
+    def test_a_positive_action_still_comes_back(self):
+        """The guard must not refuse an ordinary bounce."""
+        result = self._tunnel_with_action(3215.07)
+        self.assertAlmostEqual(float(result.action), 3215.07, places=6)
+
+    def test_the_refusal_is_the_one_the_caller_drops_the_sample_for(self):
+        """Not `TunnelingError`, which would end the whole coupling."""
+        try:
+            self._tunnel_with_action(-1.0)
+        except errors.InfiniteActionError as exc:
+            self.assertIn("positive", str(exc))
+        else:
+            self.fail("a negative action was accepted")
+
+
 class ABisectionThatNeverBracketsIsUnresolved(unittest.TestCase):
     """One integrated side is not a comparison, and must not read as agreement.
 
@@ -222,11 +282,14 @@ class ABisectionThatNeverBracketsIsUnresolved(unittest.TestCase):
 
 
 class ABranchWithoutAFiniteActionIsUnresolved(unittest.TestCase):
-    """A branch that returned `inf` or `nan` has not resolved the bounce either.
+    """A branch that returned `inf`, `nan` or a non-positive action has not resolved the bounce.
 
-    The relative spread cannot report that on its own: `inf - inf` and `inf / inf` are both
-    `nan`, and every comparison against `nan` is false, so a sample whose branches could not
-    even be compared would be accepted. It is reported as an infinite spread instead.
+    The relative spread cannot report either case on its own. For a non-finite branch,
+    `inf - inf` and `inf / inf` are both `nan` and every comparison against `nan` is false,
+    so a sample whose branches could not even be compared would be accepted. For a
+    non-positive branch the spread is worse than useless: two equal negative actions agree
+    exactly, so the sample passes on the one input that proves the solve failed. Both are
+    reported as an infinite spread instead.
     """
 
     def test_two_infinite_branches_do_not_cancel_into_a_passing_spread(self):
@@ -246,8 +309,23 @@ class ABranchWithoutAFiniteActionIsUnresolved(unittest.TestCase):
     def test_two_branches_that_agree_give_zero(self):
         self.assertEqual(tunneling1D._bracketSpread(3215.07, 3215.07), 0.0)
 
-    def test_two_zero_actions_do_not_divide_by_zero(self):
-        self.assertEqual(tunneling1D._bracketSpread(0.0, 0.0), 0.0)
+    def test_two_zero_actions_are_unresolved_rather_than_in_perfect_agreement(self):
+        # Not a division by zero either: the scale is floored at the smallest positive
+        # double, so the old code returned 0.0 here, a perfect agreement, and the sample
+        # passed. The Euclidean action of a bounce is positive, so zero is not an action.
+        self.assertEqual(tunneling1D._bracketSpread(0.0, 0.0), float("inf"))
+
+    def test_two_equal_negative_actions_do_not_agree_their_way_through(self):
+        # The case the review found: equal negative actions give a relative spread of zero.
+        # `bounceAction`'s caller replaces a negative action with zero and calls the point a
+        # second-order transition, so accepting this delivers a solver failure as physics.
+        self.assertEqual(tunneling1D._bracketSpread(-512.0, -512.0), float("inf"))
+
+    def test_one_non_positive_branch_is_enough(self):
+        for pair in ((-512.0, 3215.07), (3215.07, -512.0),
+                     (0.0, 3215.07), (3215.07, 0.0)):
+            with self.subTest(pair=pair):
+                self.assertEqual(tunneling1D._bracketSpread(*pair), float("inf"))
 
 
 class TheToleranceSeparatesTheTwoMeasuredPopulations(unittest.TestCase):

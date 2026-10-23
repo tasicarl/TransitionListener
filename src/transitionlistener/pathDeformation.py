@@ -1542,6 +1542,17 @@ def fullTunneling(
     spread = float(getattr(last_output.tobj, "bracket_action_spread", 0.0) or 0.0)
     # Written as a refused comparison rather than `spread > tol`, so that a spread which is
     # not a number, from a branch action that was not finite, is refused instead of passing.
+    # The spread says the two branches agree; it does not say the number they agree on is an
+    # action. A converged solve never fills the spread at all, `findProfile` records 0.0 for
+    # it, so without this the whole gate is skipped for exactly the case it is least able to
+    # catch. The Euclidean action of a bounce is positive. A non-positive one reaching the
+    # caller is replaced there by zero and labelled `trantype` 2, a second-order transition,
+    # so a solver failure would be delivered as a physical result; refused here instead, the
+    # sample is dropped like any other the shooting could not resolve.
+    if not (float(action) > 0.0):
+        raise errors.InfiniteActionError(
+            "The bounce is not resolved at this temperature: the action came out as "
+            f"{float(action):.6g}, and the Euclidean action of a bounce is positive.")
     if not (spread <= tunneling1D._ACTION_BRACKET_TOL):
         branches = getattr(last_output.tobj, "bracket_branch_actions", {}) or {}
         # `InfiniteActionError`, not `TunnelingError`: the first is the signal the callers

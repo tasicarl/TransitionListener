@@ -387,7 +387,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   radius, or reach an unbound `r0` and raise. A branch whose action is not finite counts as
   unresolved as well. The relative spread between two infinite branches is `nan`, and every
   comparison against a `nan` is false, so the sample would have been accepted on the one
-  input where the two branches could not be compared at all. So does a solve that never
+  input where the two branches could not be compared at all. So does a branch whose action is
+  not positive: the Euclidean action of a bounce is positive, so a branch returning zero or
+  less has not found one, and two such branches agree with each other exactly, giving a spread
+  of zero. The action finally returned is checked the same way on every path, because a
+  converged solve records no spread at all and would otherwise skip the gate: a non-positive
+  action reaching the caller is replaced there by zero and labelled `trantype` 2, a
+  second-order transition, so a solver failure would have been delivered as a physical
+  result. So does a solve that never
   bracketed: the spread began at zero, so an exit that recorded fewer than two integrated
   sides left it there and the caller read the absence of a comparison as agreement. It
   begins at infinity for any exit that is not a convergence and is overwritten only once
