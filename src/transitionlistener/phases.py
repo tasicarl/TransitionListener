@@ -728,6 +728,15 @@ def traceMultiMin(
         Arguments to pass to :func:`traceMinimum`.
     local_min_args : dict, optoinal
         Arguments to pass to :func:`findApproxLocalMinima`.
+    applySymmetries : callable or None, optional
+        Maps a point onto the canonical image of the potential's symmetry, as
+        :meth:`generic_potential.applySymmetries` does. Where it is None no phase is moved.
+    invGroupElements : sequence of np.ndarray, optional
+        The transformations the potential is invariant under, right-multiplying a point.
+        Used with `applySymmetries` to put a whole traced phase on one image: the two are
+        read together by :func:`canonicalImageElement`, which needs the group to name which
+        transformation the chosen image corresponds to. Empty, the default, leaves every
+        trace on the image it was walked onto.
 
     Returns
     -------
