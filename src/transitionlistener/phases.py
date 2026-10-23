@@ -519,21 +519,33 @@ def traceMinimum(
             # The saddle flag is deliberately not applied here, and the slope is read at
             # `xnext` only so that what is stored describes the node that is kept.
             #
-            # Applying it was tried and withdrawn. At the cold end of a conformal model the
-            # curvature is numerically zero and the sign of the smallest eigenvalue is
-            # round-off: on the shipped dark U(1) at g = 0.7, v = 0.1 the endpoint sits at
-            # -4.23e-09 one step after +4.00e-06, so `(eigs <= 0).any()` calls it a saddle,
-            # the trace stops short of T = 0 and the run dies with `WrongT0MinimumError`.
-            # Scaling the test by the curvature at the node before it passed here at a ratio
-            # of 1.1e-03 against a threshold of 1e-2, and still failed on the CI runner,
-            # because the quantity being thresholded is that machine's round-off. The same
-            # scaling is wrong in the other direction too: measured against the largest
-            # eigenvalue it would accept a genuine soft mode, eigenvalues [1e-3, 1e6] with
-            # an endpoint at -1e-4 passing a threshold of -1e4.
+            # Applying it was tried and withdrawn. On the shipped dark U(1) at g = 0.7,
+            # v = 0.1 GeV the symmetric phase ends at the origin, where `d2V` reports
+            # -4.23e-09 GeV^2, so `(eigs <= 0).any()` calls it a saddle, the trace stops
+            # short of T = 0 and the run dies with `WrongT0MinimumError`.
+            #
+            # That number is not the curvature. `d2V` is a finite difference of step
+            # `x_eps`, the potential has no quadratic term at the origin of a conformal
+            # model, and what the difference returns is the step squared times the quartic.
+            # Measured at T = 1e-6 GeV, halving `x_eps` from 4e-3 divides it by exactly 4
+            # at every step down to 2.5e-4: -6.771e-08, -1.693e-08, -4.232e-09, -1.058e-09,
+            # -2.645e-10 GeV^2. It extrapolates to zero, which is the curvature a conformal
+            # potential has there. By the same measurement the broken phase's endpoint at
+            # phi = 1000 GeV holds +9160 GeV^2 to within 0.02 % over that range of steps,
+            # and the origin above the crossing converges to +1.078e-05 GeV^2.
+            #
+            # Scaling the test by the curvature at the node before it does not help: the
+            # quantity being compared is still step-dependent, which is why it passed here
+            # at a ratio of 1.1e-03 against a threshold of 1e-2 and failed on the CI runner.
+            # Measured against the largest eigenvalue it is wrong in the other direction as
+            # well, eigenvalues [1e-3, 1e6] with an endpoint at -1e-4 passing a threshold of
+            # -1e4.
             #
             # So the endpoint is accepted on the slope alone, as it was before this branch.
-            # A trace can still finish on a point that is not a minimum; what is needed is a
-            # test of that which does not rest on the sign of a number that is noise.
+            # A trace can still finish on a point that is not a minimum. The test that would
+            # decide it is the one above: evaluate the curvature at two steps and ask whether
+            # it scales with the step, which separates a flat direction from a saddle without
+            # thresholding an absolute number. That belongs in its own change, not here.
             if dxdt_next is None:
                 # No usable slope at the endpoint; the trace ends at the last node that had
                 # one rather than reaching `tstop`.
