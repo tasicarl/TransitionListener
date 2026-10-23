@@ -69,6 +69,16 @@ In rough order of how often it has been the actual defect here:
 8. **Claims in prose that the code does not support.** Docstrings, `CHANGELOG.md` entries and
    numbers quoted in the pull request body are part of the change. A number measured before other
    work landed may be stale.
+9. **A comparison a special float walks through.** Every comparison against `nan` is false, so
+   `if error > tol: reject` accepts a `nan`, the input it most needs to reject; and `+inf`
+   satisfies `value > 0`, so a positivity test alone accepts an infinite result. `np.argmax` and
+   `np.argmin` return the position of a `nan` rather than skipping it, so a selection by largest
+   or smallest can pick the non-finite entry and make every later comparison `nan`. Three
+   instances of this one class reached review in October 2026, in the same two files. Ask of any
+   new guard what it does when handed `nan`, `+inf`, `-inf` and zero, and flag the ones where the
+   answer is "accepts". The shape that does not have this failure is a refused comparison,
+   `if not (value <= tol)`, or an explicit `np.isfinite` first; and a mask to the finite entries
+   before any `argmax`/`argmin` over measured values, with its own exit when none is finite.
 
 ## Reviewing the tests
 
