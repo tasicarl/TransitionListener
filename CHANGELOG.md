@@ -318,7 +318,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   transformation is now read off the node of the trace furthest from the origin, where
   every field component has a resolved sign, and applied to the whole phase, to `X` and
   `dXdT` alike; one transformation for the trace rather than one per point, which would
-  send neighbouring nodes of a smooth phase to different images.
+  send neighbouring nodes of a smooth phase to different images. The test that the group
+  element chosen really accounts for the image `applySymmetries` returned is a refused
+  comparison rather than `distance > tol`: a model overriding `applySymmetries` to return a
+  non-finite point makes every distance `nan`, every `nan > tol` false, and `np.argmin` over
+  `nan` picks the first element of the group, which for the real 2HDM is the flip, so the
+  phase would have been mirrored on exactly the input saying the map cannot be trusted.
 
 - **The tracer stops where the point it carries is no longer a minimum, and steps off a
   saddle when seeding a phase.** The test in `traceMinimum` was written as

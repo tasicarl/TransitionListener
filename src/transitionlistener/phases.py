@@ -667,7 +667,14 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
     # does not relate to where it was traced. Leaving the trace alone loses the
     # deduplication, which `removeRedundantPhases` may still catch, rather than
     # introducing a phase that is wrong.
-    if distances[nearest] > _IMAGE_MATCH_RTOL * max(float(np.linalg.norm(reference)), 1.0):
+    # Written as a refused comparison, for the reason the reference node is filtered above: a
+    # model is free to override `applySymmetries`, and one returning a non-finite point makes
+    # `canonical` non-finite, every distance `nan`, and every `nan > tol` false, so the map
+    # would be accepted on the one input that says it cannot be trusted. `np.argmin` then
+    # returns 0, and for the 2HDM the first element of the group is the flip, so a whole phase
+    # would be mirrored. `not (d <= tol)` refuses that the way `d > tol` does not.
+    if not (distances[nearest]
+            <= _IMAGE_MATCH_RTOL * max(float(np.linalg.norm(reference)), 1.0)):
         return None
     return invGroupElements[nearest]
 

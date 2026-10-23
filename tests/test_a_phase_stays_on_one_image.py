@@ -383,6 +383,37 @@ class AMapThatIsNotAGroupActionIsDeclined(unittest.TestCase):
         rotated = lambda x: np.asarray(x, dtype=float) @ np.array([[0.0, -1.0], [1.0, 0.0]])
         self.assertIsNone(ph.canonicalImageElement(X, rotated, self.GROUP))
 
+    def test_a_map_that_returns_a_non_finite_point_is_declined(self):
+        """The one a `>` tolerance accepts instead of refusing.
+
+        A model's `applySymmetries` returning a non-finite point makes every distance to a
+        group element `nan`, and every `nan > tol` is false, so a test written that way
+        accepts the map on the one input that proves it cannot be trusted. `np.argmin` over
+        `nan` returns 0, and the first element of the 2HDM's group is the flip, so the whole
+        phase would be mirrored. The test here is the mirror of the action guard's: the
+        comparison is refused rather than passed.
+        """
+        X = np.array([[1.0, 2.0], [3.0, 4.0], [10.0, 20.0]])
+        flip_first = [FLIP_BOTH, IDENTITY]          # as `R2HDM` orders it
+        for bad in (np.array([np.nan, np.nan]), np.array([np.inf, 1.0]),
+                    np.array([1.0, -np.inf])):
+            with self.subTest(returns=bad.tolist()):
+                self.assertIsNone(
+                    ph.canonicalImageElement(X, lambda x, b=bad: b, flip_first),
+                    "a non-finite image was accepted, and with the flip first in the group "
+                    "that mirrors the whole phase")
+
+    def test_a_genuine_map_still_resolves_with_the_flip_first(self):
+        """The guard must not refuse the maps the group really does perform."""
+        X = np.array([[1.0, 2.0], [3.0, 4.0], [10.0, 20.0]])
+        flip_first = [FLIP_BOTH, IDENTITY]
+        got_identity = ph.canonicalImageElement(X, lambda x: np.asarray(x, dtype=float),
+                                                flip_first)
+        got_flip = ph.canonicalImageElement(X, lambda x: -np.asarray(x, dtype=float),
+                                            flip_first)
+        np.testing.assert_allclose(got_identity, IDENTITY, atol=0.0)
+        np.testing.assert_allclose(got_flip, FLIP_BOTH, atol=0.0)
+
     def test_a_scaled_image_is_not_applied(self):
         """A map that rescales is not a symmetry of the potential, whatever its direction."""
         X = np.array([[-1.0, -0.5], [-2.0, -1.0]])
