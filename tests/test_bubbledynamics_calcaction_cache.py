@@ -25,7 +25,11 @@ class TestCalcActionCache(unittest.TestCase):
         phase_lo = _DummyPhase()
         outdict = {1.23: {"action": 42.0}}
 
-        with mock.patch("transitionlistener.bubbledynamics.bounceAction") as bounce_action:
+        # `bounceActionOverImages`, which is what `calcAction` calls. Patching
+        # `bounceAction` instead asserts nothing: `calcAction` does not call it on any path,
+        # so the assertion below would hold with the cache short-circuit removed.
+        with mock.patch(
+            "transitionlistener.bubbledynamics.bounceActionOverImages") as bounce_action:
             result = calcAction(pot, 1.23, phase_hi, phase_lo, outdict)
 
         self.assertEqual(result, 42.0)

@@ -235,6 +235,8 @@ class Transitions():
                 tunn = computeNucleationTemperature(self.V, self.dV, self.d2V, high_phase, low_phase,
                                                     self.conversionFactor, verbose=verbose,
                                                     allow_second_order_fallback=not seedless,
+                                                    invGroupElements=getattr(
+                                                        self.pot, "invGroupElements", []),
                                                     **tunnelFromPhase_args)
                 # sometimes a second order transition slips through the phase tracing
                 if tunn['trantype'] == 2:
@@ -716,6 +718,8 @@ class Transitions():
                                                         endPhase, self.conversionFactor,
                                                         verbose=verbose,
                                                         allow_second_order_fallback=not seedless,
+                                                        invGroupElements=getattr(
+                                                            self.pot, "invGroupElements", []),
                                                         **tunnelFromPhase_args)
 
                     # create TunnelingInfo object

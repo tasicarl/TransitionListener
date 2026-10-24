@@ -26,7 +26,7 @@ from transitionlistener import constants as cn
 from transitionlistener import errors
 from transitionlistener.helper_functions import (temperatureDerivativeStep,
                                                  thermalDerivativeStep)
-from transitionlistener.pathDeformation import bounceAction
+from transitionlistener.pathDeformation import bounceActionOverImages
 from transitionlistener.finiteT import Jb_spline as Jb
 from transitionlistener.finiteT import Jf_spline as Jf
 from transitionlistener.nucleation import computeNucleationTemperature
@@ -901,10 +901,14 @@ def calcAction(pot, T: float, start_phase, end_phase, outdict: dict, verbose: bo
 
     x0 = findLocalMinimum(start_phase.valAt(T), T, pot.gradV, pot.d2V)
     x1 = findLocalMinimum(end_phase.valAt(T), T, pot.gradV, pot.d2V)
+
     tdict = dict(low_vev=x1, high_vev=x0)
 
-    outdict = bounceAction(
-        T, pot.Vtot, pot.gradV, outdict, tdict, verbose, pot.conversionFactor,
+    # Over every image of the false vacuum, since the images are the same physical state and
+    # the bubble nucleates along whichever pairing carries the smallest action.
+    outdict = bounceActionOverImages(
+        T, pot.Vtot, pot.gradV, outdict, tdict,
+        getattr(pot, "invGroupElements", []), verbose, pot.conversionFactor,
         **pot.config.tracingConf.tunneling_params)
     return outdict[T]["action"]
 

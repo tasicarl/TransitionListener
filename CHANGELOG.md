@@ -301,6 +301,39 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The bounce of a transition is now computed on every image of the false vacuum and the
+  smallest action kept.** Where the effective potential is invariant under a group, each
+  minimum stands for a set of images and all of them are the same physical state, and which
+  image the phase tracing landed on is settled by the sign of a numerical step rather than
+  by the potential. The two phases of a transition could therefore be stored on different
+  images, and the bounce was then computed along a path between images instead of along the
+  path the field takes. On the real two Higgs doublet model at `lambda3 = 5.868` that gave a
+  field separation of 264.54 GeV against 231.55 GeV at the neighbouring couplings and
+  `S_3/T = 336.84` against 152.97, where `S_3` is the Euclidean action of the O(3)
+  bounce, so the bubble nucleation rate never rose and the coupling returned error 8, no
+  percolation. The bubble nucleates along whichever pairing carries the smallest action, so
+  `bounceActionOverImages` now offers every image to the solver and keeps the entry with the
+  smallest action. A pairing whose bounce the solver could not resolve comes back as
+  `trantype` 0 with an infinite action and loses every comparison, so it does not cost the
+  temperature when another pairing resolved; where none resolved, the first pairing's entry
+  is kept and the caller sees the infinite action it would have seen before. The number of
+  pairings offered and the number that resolved a bounce are reported as `pairings_tried`
+  and `pairings_resolved`. Three places use it: both percolation routes, the adaptive one
+  and the fixed step size one, and the nucleation-temperature search, which reads the same
+  two traced phases and runs before percolation, so on the fixed step size route a criterion
+  that was never fulfilled on the expensive pairing dropped the candidate transition before
+  percolation was reached. On a model with a symmetry the reported `Tnuc` and the action at
+  `Tnuc` therefore move. Where the false vacuum sits at a fixed point of the group, the
+  origin in particular, every image coincides and one bounce is computed as before.
+
+- **A `PotentialError` whose error type the bounce code does not know now reaches the caller
+  as `UnexpectedError`.** It raised `IndexError` instead: the message was built from
+  `err.args[1]`, and `PotentialError` passes only its message to `Exception.__init__`, so
+  `args` has one entry. The message now names the error type and the function it comes from,
+  `_execute_full_tunneling`, rather than `_tunnelFromPhaseAtT`, which no longer exists. The
+  line is unreachable while the only two error types in the package are the two it handles,
+  and it is kept as the defence against a third that it was written to be.
+
 - **A traced phase is stored on one image of the potential's symmetry.** Below the
   temperature at which the origin tilts over, the displaced minima are exactly degenerate
   images of one another, so which one a trace walks into is settled by the sign of a
@@ -311,7 +344,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   at `lambda3` = 5.868 the high phase sat at `phi` = (-27.416, -15.335) GeV against
   (+27.354, +15.321) GeV and (+27.479, +15.349) GeV at the neighbouring couplings, with the
   broken minimum at (+11.48, +246.33) GeV in all three: a field separation of 264.54 GeV
-  against 231.55 GeV, and `S_3/T` = 336.6 against 152.6 and 153.3 at T = 30.0 GeV. The
+  against 231.54 GeV, and `S_3/T` = 336.84 against 152.97 at T = 30.0 GeV. The
   smallest `S_3/T` over the cache was 246.4 against a nucleation criterion near 155, so the
   rate never rose, the percolation probability stayed at zero over all 197 accepted support
   points, and the point returned error 8 between two couplings that behaved. The

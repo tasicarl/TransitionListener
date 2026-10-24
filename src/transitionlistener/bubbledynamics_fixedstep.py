@@ -23,7 +23,7 @@ from transitionlistener import constants as cn
 from transitionlistener.helper_functions import derivative
 from transitionlistener import errors
 from transitionlistener.helper_functions import thermalDerivativeStep
-from transitionlistener.pathDeformation import bounceAction
+from transitionlistener.pathDeformation import bounceAction, bounceActionOverImages
 from transitionlistener.finiteT import Jb_spline as Jb
 from transitionlistener.finiteT import Jf_spline as Jf
 
@@ -277,13 +277,18 @@ def calcAction(pot, T: float, start_phase, end_phase, outdict: dict, verbose: bo
 
     x0 = findLocalMinimum(start_phase.valAt(T), T, pot.gradV, pot.d2V)
     x1 = findLocalMinimum(end_phase.valAt(T), T, pot.gradV, pot.d2V)
-    tdict = dict(low_vev=x1, high_vev=x0)
 
     if T in outdict:
         return outdict[T]["action"]
 
-    outdict = bounceAction(
-        T, pot.Vtot, pot.gradV, outdict, tdict, verbose, pot.conversionFactor,
+    tdict = dict(low_vev=x1, high_vev=x0)
+
+    # Over every image of the false vacuum, as in the adaptive route's `calcAction`: the
+    # images are the same physical state and the bubble nucleates along whichever pairing
+    # carries the smallest action.
+    outdict = bounceActionOverImages(
+        T, pot.Vtot, pot.gradV, outdict, tdict,
+        getattr(pot, "invGroupElements", []), verbose, pot.conversionFactor,
         **pot.config.tracingConf.tunneling_params)
     return outdict[T]["action"]
 
@@ -3027,6 +3032,11 @@ def evalNucleationCriterion(T, start_phase, end_phase, V, dV,
     #     for i in sorted(excluded)[::-1]:
     #         del tunnel_list[i]
 
+    # Still `bounceAction` and not `bounceActionOverImages`, unlike `nucleation.py`'s copy:
+    # this one, and `computeNucleationTemperature`/`computeNucleationTemperature2` below it,
+    # are reached from nowhere outside this module. `transitions.py` imports the live
+    # nucleation-temperature search from `nucleation.py` for both backends. Enumerating the
+    # images here would add an untested code path and change nothing a run computes.
     outdict = bounceAction(
         T, V, dV, outdict, tdict, verbose=verbose, conversionFactor=conversionFactor, **fullTunneling_params
     )

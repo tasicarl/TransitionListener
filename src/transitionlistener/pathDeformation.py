@@ -1630,10 +1630,16 @@ def _execute_full_tunneling(
                     "GeV failed because the potential is stable and not metastable.",
                 )
             return {'action': np.inf, 'trantype': 0, 'instanton': None}, False
+        # `err.error_type`, not `err.args[1]`: `PotentialError.__init__` passes only the
+        # message to `Exception.__init__`, so `args` has one entry and `args[1]` raised
+        # `IndexError` here instead of the `UnexpectedError` the line was written to raise.
+        # Unreachable today, since the only two error types in the package are the two
+        # handled above, and kept as the defence it was meant to be against a third.
         if verbose:
-            print("Unexpected error message: ", err.args[1])
+            print("Unexpected PotentialError type: ", err.error_type)
         raise errors.UnexpectedError(
-            "In _tunnelFromPhaseAtT: Unexpected error message: %s" % err.args[1]
+            "In _execute_full_tunneling: Unexpected PotentialError type %r: %s"
+            % (err.error_type, err.args[0])
         ) from err
     except errors.ZeroActionError:
         if verbose:
@@ -1670,6 +1676,301 @@ def _execute_full_tunneling(
                 err,
             )
         raise
+
+
+#: How far apart two images of the false vacuum have to be, as a fraction of the length of
+#: the path the bounce traverses, before they are treated as two pairings and each given its
+#: own bounce. Below it they are the same path and one bounce is computed.
+#:
+#: Where the false vacuum sits at the origin, the origin is a fixed point of the symmetry and
+#: the images are one state, but the phase tracing returns a point a short way off it, so the
+#: images come out as distinct points and the same path is integrated twice. The separation
+#: varies continuously with the temperature, so no band of it is excluded on principle and a
+#: threshold cannot be put in a gap: on the real two Higgs doublet model at
+#: `lambda3 = 5.8676`, 60 temperatures spanning the transition's range of 11.81 to 121.34 GeV
+#: give separations from 1.1e-06 to 0.287 of the path length, 25 of them in [1e-5, 1e-4) and
+#: 5 more in [1e-4, 1e-3).
+#:
+#: What the value has to respect is therefore the action and not the distance. The two
+#: actions must agree to better than the criterion the solver already applies to itself,
+#: ``tunneling1D._ACTION_BRACKET_TOL``, which is the 5e-2 that two shooting guesses must
+#: agree to before their action is accepted. Measured at `lambda3 = 5.8676` over the four
+#: decades of separation where both pairings resolve, and at `lambda3 = 5.5227272727` for the
+#: fifth, the relative difference between the two actions stays within a factor of a few of
+#: the relative separation of the two images:
+#:
+#:     separation 2.855e-01 -> actions differ by 1.440        (T = 20.24 GeV)
+#:     separation 1.840e-01 -> actions differ by 3.867e-01    (T = 45.51 GeV)
+#:     separation 9.865e-02 -> actions differ by 9.349e-02    (T = 53.94 GeV)
+#:     separation 1.223e-04 -> actions differ by 2.777e-05    (T = 70.79 GeV)
+#:     separation 2.767e-05 -> actions differ by 4.653e-05    (T = 62.36 GeV)
+#:     separation 4.033e-06 -> actions differ by 1.129e-08    (lambda3 = 5.5227272727)
+#:
+#: so a separation at the value below leaves the two actions agreeing to about 1e-4, which
+#: is 500 times inside the solver's own criterion. Above it the two pairings are far enough
+#: apart that their actions differ by more than the solver's criterion, and both are
+#: computed.
+_IMAGE_SEPARATION_RTOL = 1.0e-4
+
+
+def _actionOfOnePairing(entry: dict) -> float:
+    """The action :func:`bounceAction` stored for one pairing, as a float.
+
+    `nan` where the entry carries no action at all, so that a missing key cannot take part
+    in a comparison as if it were a number; the comparisons below refuse a `nan`.
+    `bounceAction` stores a ``numpy.float64``, and ``np.squeeze`` before ``float`` because
+    nothing pins the shape it arrives in.
+
+    Parameters
+    ----------
+    entry : dict
+        One temperature's entry as :func:`bounceAction` leaves it.
+
+    Returns
+    -------
+    float
+        The action, or `nan` where the entry has none.
+    """
+    return float(np.squeeze(entry.get("action", np.nan)))
+
+
+def _isAnOrdinaryBounce(entry: dict) -> bool:
+    """Whether :func:`bounceAction` resolved a first-order bounce for one pairing.
+
+    ``trantype`` 1 with a finite positive action is a bounce. The other two outcomes are
+    not: ``trantype`` 2 with action 0 says the two points it was handed coincide, and
+    ``trantype`` 0 with an infinite action says the pairing gave no action at all.
+
+    Parameters
+    ----------
+    entry : dict
+        One temperature's entry as :func:`bounceAction` leaves it.
+
+    Returns
+    -------
+    bool
+        True where the entry carries a bounce the solver resolved.
+    """
+    action = _actionOfOnePairing(entry)
+    return bool(entry.get("trantype") == 1 and np.isfinite(action) and action > 0.0)
+
+
+def _isACheaperPairing(action: float, best: float) -> bool:
+    """Whether `action` is the smaller of two pairings' actions.
+
+    Written as a pair of refused comparisons rather than as ``action < best``, because
+    every comparison against a `nan` is false: ``action < best`` rejects a `nan` candidate,
+    which is right, but also keeps a `nan` incumbent against every later candidate, which
+    is not. ``+inf`` needs the same care in the other direction, since a positivity test
+    alone accepts it. The Euclidean action of a bounce is finite and non-negative, and
+    :func:`bounceAction` stores 0 for a path whose two points coincide and ``+inf`` for a
+    pairing it could not resolve, so a value that is not finite and non-negative is not an
+    action: it never wins, and it is displaced by the first value that is one.
+
+    Parameters
+    ----------
+    action : float
+        The candidate pairing's action.
+    best : float
+        The action of the pairing kept so far.
+
+    Returns
+    -------
+    bool
+        True where the candidate's action is the one to keep.
+    """
+    if not (np.isfinite(action) and action >= 0.0):
+        return False
+    if not (np.isfinite(best) and best >= 0.0):
+        return True
+    return bool(action < best)
+
+
+def imagesOfTheFalseVacuum(x_false: np.ndarray, x_true: np.ndarray,
+                           invGroupElements) -> list:
+    r"""Every image of the false vacuum, the one nearest the true vacuum first.
+
+    Where the potential is invariant under a group, each minimum stands for a set of
+    images, all of them the same physics. Which image a phase was traced onto is settled by
+    the sign of a numerical step and not by the potential, so the two phases of a transition
+    can be stored on different images, and the bounce is then computed along a path between
+    images rather than the path the field takes. The field separation and the action of that
+    path are those of no physical channel: on the 2HDM at `lambda3 = 5.868` it gave
+    `S_3/T = 336.84` where the pairing the field takes gives 152.97, both at T = 30.0 GeV.
+
+    The bubble nucleates along whichever pairing carries the smallest action, so all of the
+    images are candidates and :func:`bounceActionOverImages` computes the bounce for each of
+    them. The transformation is applied to the false vacuum, leaving the true vacuum where
+    the phase tracing put it, so that every candidate ends at the same point.
+
+    The images are returned with the one nearest the true vacuum first, and the point as it
+    was traced wins a tie, which makes the order independent of the order the group is given
+    in. The order decides nothing: every candidate is computed and the smallest action is
+    kept, so it only settles which bounce is solved first and which entry a tie goes to. It
+    is the order it is because the nearest image is measured to be the pairing that wins.
+    On the real two Higgs doublet model along the `lambda3` line scan of figure 15 of the
+    code paper, 36 temperatures were sampled across the three couplings. At 22 of them the
+    false vacuum sits at the origin and only one pairing exists; of the remaining 14, two
+    pairings both resolved at 12, and at those 12 the nearest image carried the smaller
+    action every time, by a factor between 1.17 and 2.46. At the other 2 the mirror pairing
+    gave no action and the nearest one did. The factor falls towards 1 as the false vacuum
+    approaches the origin, which is the point the two pairings share.
+
+    An image equal to the traced point is dropped, so the identity, which most models'
+    groups contain, costs nothing, and a false vacuum sitting at a fixed point of the group,
+    the origin in particular, yields one candidate and costs one bounce however large the
+    group is.
+
+    Parameters
+    ----------
+    x_false, x_true : np.ndarray
+        The two minima at this temperature, as traced.
+    invGroupElements : list[np.ndarray]
+        The transformations the potential is invariant under, right-multiplying a point.
+
+    Returns
+    -------
+    list[np.ndarray]
+        The distinct images of `x_false`, nearest to `x_true` first. Never empty: the point
+        as it was traced is always one of them, and it is the first entry where no other
+        image is strictly nearer.
+    """
+    x_false = np.asarray(x_false, dtype=float)
+    x_true = np.asarray(x_true, dtype=float)
+    if not (np.isfinite(x_false).all() and np.isfinite(x_true).all()):
+        # Nothing to choose between, and saying so here rather than leaving it to the
+        # comparisons below keeps the arithmetic off a non-finite point: `x_false @ g`
+        # warns on it, and a distance that is `nan` decides the question only because every
+        # comparison against a `nan` is false.
+        return [x_false]
+    # The length of the path the bounce traverses, which is what "the same path" has to be
+    # measured against. Taking the false vacuum's own length instead would make the test
+    # meaningless for a false vacuum sitting at the origin, where that length is whatever the
+    # tracing left behind rather than a scale of the problem, and taking an absolute
+    # separation would make it depend on the units the model works in: the 2HDM's fields are
+    # in GeV, the conformal dark U(1) example's are 1e4 times smaller. Where the two minima
+    # coincide the path has no length and every image is the same point, so the comparison
+    # falls back on the fields' own scale.
+    path = float(np.linalg.norm(x_false - x_true))
+    scale = path if path > 0.0 else max(float(np.linalg.norm(x_true)), 1.0)
+    candidates = [(path, x_false)]
+    for g in invGroupElements:
+        image = np.asarray(x_false @ g, dtype=float)
+        if not np.isfinite(image).all():
+            continue
+        # An image that traverses the same path is the same bounce, so it is offered to the
+        # solver once. The group may name a map more than once, and it contains the identity
+        # for most models, so an image is compared against every candidate already accepted
+        # and not only against the point as it was traced.
+        if any(float(np.linalg.norm(image - accepted)) <= _IMAGE_SEPARATION_RTOL * scale
+               for _, accepted in candidates):
+            continue
+        candidates.append((float(np.linalg.norm(image - x_true)), image))
+    # Python's sort is stable, so two images the true vacuum is equally far from keep the
+    # order they were appended in. The point as it was traced is appended first, so it stays
+    # first on a tie and the answer does not depend on the order the group is given in.
+    candidates.sort(key=lambda entry: entry[0])
+    return [image for _, image in candidates]
+
+
+def bounceActionOverImages(
+    T: float,
+    V: Callable[[np.ndarray, float], np.ndarray],
+    dV: Callable[[np.ndarray, float], np.ndarray],
+    outdict: dict,
+    tdict: dict,
+    invGroupElements=(),
+    verbose: bool = False,
+    conversionFactor: float = 1.0,
+    **fullTunneling_params,
+) -> dict:
+    """Compute the bounce for every image of the false vacuum and keep the smallest action.
+
+    Where the potential is invariant under a group, the false vacuum stands for a set of
+    images, all of them the same physical state, and which of them the phase tracing landed
+    on is settled by the sign of a numerical step rather than by the potential. The paths
+    from those images to the true vacuum are different paths and carry different actions,
+    and the bubble nucleates along the one with the smallest action, so that is the action
+    the bubble nucleation rate is built from.
+
+    Each image is offered to :func:`bounceAction` in turn, nearest to the true vacuum
+    first, and the entry with the smallest action is the one stored. A pairing whose bounce
+    the solver could not resolve comes back as ``trantype`` 0 with an infinite action, which
+    loses every comparison, so it does not cost the temperature when another pairing
+    resolved; where no pairing resolved, the first one's entry is kept and the caller sees
+    the infinite action it would have seen before any of the images were tried. A pairing
+    whose two points coincide comes back as ``trantype`` 2 with action 0, and only the
+    nearest image can do that, since an image equal to the true vacuum is at distance zero
+    and so is ordered first.
+
+    Nothing here catches an exception. Every ``transitionlistener`` error the bounce code
+    raises about a path is already absorbed by :func:`bounceAction` into one of those two
+    ``trantype`` values, except the one that reports a fault in the code, and the two
+    modules' ``raise`` statements are pinned against that census in the tests, each entry
+    measured by injecting the failure where it is really raised. So there is nothing left
+    for a handler here to pass over, and what would still reach it is the run deadline, a
+    fault in the code, or a failure from outside the package such as a ``ValueError`` out of
+    scipy. None of those may be read as a pairing that happened not to resolve, and the last
+    of them ends the temperature, which is what the single pairing already did.
+
+    Parameters
+    ----------
+    T : float
+        Temperature at which to compute the bounce action.
+    V, dV : callable
+        The potential and its gradient, as :func:`bounceAction` takes them.
+    outdict : dict
+        A dictionary mapping temperatures to tunnelling results. A result already stored
+        under `T` is returned as it stands, without computing anything.
+    tdict : dict
+        Dictionary describing the tunnelling phase at temperature `T`, as
+        :func:`bounceAction` takes it. Must contain the keys ``'low_vev'`` and
+        ``'high_vev'`` for the field values of the two minima, the second of which is the
+        false vacuum whose images are enumerated. Every other key is carried through onto
+        the entry that is stored, so a caller that puts ``'Tnuc'`` or the phase keys in it
+        gets them back.
+    invGroupElements : list[np.ndarray], optional
+        The transformations the potential is invariant under, right-multiplying a point.
+        An empty group leaves one candidate and one bounce, the one the caller asked for.
+    verbose : bool, optional
+        If True, print diagnostic messages while computing the bounce action.
+    conversionFactor : float, optional
+        Factor to convert the temperature from internal units to GeV when printing messages.
+    fullTunneling_params : dict, optional
+        Extra parameters forwarded to :func:`fullTunneling`.
+
+    Returns
+    -------
+    outdict : dict
+        The updated output dictionary. The entry under `T` carries the usual keys, and in
+        addition ``pairings_tried`` and ``pairings_resolved``, the number of images that
+        were offered to the solver and the number for which it resolved a bounce.
+    """
+    if T in outdict:
+        return outdict
+
+    images = imagesOfTheFalseVacuum(tdict["high_vev"], tdict["low_vev"], invGroupElements)
+    best, best_action, resolved = None, float("nan"), 0
+    for image in images:
+        # A fresh dictionary per candidate, and `outdict` is written once at the end, so a
+        # pairing that raises cannot leave a partial entry behind for the caller to read.
+        trial: dict = {}
+        bounceAction(T, V, dV, trial, dict(tdict, high_vev=image),
+                     verbose, conversionFactor, **fullTunneling_params)
+        candidate = trial[T]
+        action = _actionOfOnePairing(candidate)
+        if _isAnOrdinaryBounce(candidate):
+            resolved += 1
+        elif verbose:
+            print("Tunneling at T = ", T * conversionFactor,
+                  "GeV gave no bounce on one image of the false vacuum: trantype ",
+                  candidate.get("trantype"), " action ", action)
+        if best is None or _isACheaperPairing(action, best_action):
+            best, best_action = candidate, action
+    best["pairings_tried"] = len(images)
+    best["pairings_resolved"] = resolved
+    outdict[T] = best
+    return outdict
 
 
 def bounceAction(
