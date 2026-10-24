@@ -299,6 +299,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   they are now 3.9309 (arXiv:1803.01038), the value `gwfopt` already used as
   its default. All amplitudes rise by 0.7 %.
 
+- **The bounce integrator's step-size error estimate is computed without building a list of
+  arrays, which makes a bounce 14.7 per cent faster and returns the same number.**
+  `helper_functions.rkqs` put two arrays in a Python list for `np.min` to stack and reduce,
+  and then called `np.nan_to_num` on the single number that came out. That costs 23.9
+  microseconds against 4.7 for the same arithmetic written directly, measured over 200000
+  repetitions, and the solver runs it once per Runge-Kutta step. Six bounces of the real two
+  Higgs doublet model at `lambda3 = 5.5227272727` take 78658 steps and ran in 13.902 s
+  before and 11.857 s after, the fastest of three runs each, and all six actions agree digit
+  for digit. The replacement spells out what `np.nan_to_num` did rather than calling it: a
+  `nan` becomes zero, so that a step whose error cannot be judged is accepted, which is the
+  behaviour the solver has always had, and an infinity becomes the largest representable
+  float.
+
 ### Fixed
 
 - **A traced phase is stored on one image of the potential's symmetry.** Below the
