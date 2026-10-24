@@ -301,6 +301,28 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Two ways the canonical image of a traced phase was decided by something other than the
+  potential.** `canonicalImageElement` reads one symmetry transformation off the node of a
+  trace furthest from the origin, so that the whole trace can be put on one image. It
+  identified that transformation by matching its action on the reference node against the
+  image `applySymmetries` chose, and `np.argmin` returns the first of several equal
+  distances, so any group element that fixes the reference node tied with the identity and
+  won. At the origin every element of every group fixes it, and for the real two Higgs
+  doublet model the first element is the flip, so a phase that needed no transformation was
+  mirrored. The function now returns early where the reference node already sits on its
+  canonical image, which is the question the tie was failing to answer.
+
+  Separately, the measure `sum_i 2^i theta(phi_i)` that `applySymmetries` maximises gives the
+  field component with the highest index the largest weight, so that component decides the
+  image on its own, and the sign of a component far below the phase tracer's resolution is
+  settled by the tracer's noise. On the 2HDM's group a reference node at `(246.0, +1e-09)`
+  GeV is kept as it is while one at `(246.0, -1e-09)` GeV is returned as `(-246.0, +1e-09)`
+  GeV, so two nodes 2e-09 GeV apart were canonicalised onto images 492 GeV apart. The
+  function now reverses the sign of every component below `_IMAGE_SIGN_RTOL` of the node's
+  own length and asks whether the image changes; where it does, the trace is left alone.
+  That loses the removal of a duplicate phase, which `removeRedundantPhases` may still
+  catch, rather than moving a phase on the strength of a digit the tracer does not resolve.
+
 - **A traced phase is stored on one image of the potential's symmetry.** Below the
   temperature at which the origin tilts over, the displaced minima are exactly degenerate
   images of one another, so which one a trace walks into is settled by the sign of a

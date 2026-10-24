@@ -602,6 +602,10 @@ def traceMinimum(
 #: How closely one element of the symmetry group has to reproduce the image
 #: `applySymmetries` returns for that element to be taken as the map it applied.
 _IMAGE_MATCH_RTOL = 1.0e-8
+#: How small a field component has to be, relative to the length of the node it belongs to,
+#: before its sign is treated as unresolved. The phase tracer's residual on the 2HDM
+#: benchmark is 2.7e-06 of the field scale, so this admits it by two decades.
+_IMAGE_SIGN_RTOL = 1.0e-4
 
 
 def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
@@ -655,9 +659,45 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
         return None
     reference = X[np.flatnonzero(usable)[np.argmax(norms[usable])]]
     canonical = np.asarray(applySymmetries(reference), dtype=float)
-    # Which transformation that is, by matching its action on the reference node. The
-    # measure is not recomputed here so that the image this returns is the one
-    # `applySymmetries` chooses, whatever measure it uses.
+    scale = max(float(np.linalg.norm(reference)), 1.0)
+    # The identity where the reference node already sits on its canonical image. Answering
+    # this before searching the group settles the case where two elements carry the reference
+    # to the same point, which happens whenever an element fixes the reference: at the origin
+    # every element of every group does, and `np.argmin` would then return the first element
+    # of the group, which for the 2HDM is the flip, and mirror a phase that needed no
+    # transformation. The identity rather than None, because None is this function's way of
+    # declining a map it cannot account for, while here the map is known and is the identity.
+    if float(np.linalg.norm(reference - canonical)) <= _IMAGE_MATCH_RTOL * scale:
+        return np.eye(np.size(reference))
+    # The canonical image is chosen from the signs of the field components, through the
+    # measure `sum_i 2^i theta(phi_i)`, and the component with the highest index carries the
+    # largest weight, so it decides the image on its own. A component whose magnitude is
+    # below the tracing resolution has a sign the tracing noise settles rather than the
+    # potential: on a reference node `(246.0, +1e-09)` GeV the measure keeps the node, and on
+    # `(246.0, -1e-09)` GeV it returns `(-246.0, +1e-09)` GeV, so two nodes 2e-09 GeV apart
+    # are canonicalised onto images 492 GeV apart. Where reversing the sign of every such
+    # component changes the image, the choice is the noise's, and the trace is left alone:
+    # that loses the deduplication, which `removeRedundantPhases` may still catch, rather
+    # than moving a phase on the strength of a digit the tracer does not resolve.
+    undecided = np.abs(reference) <= _IMAGE_SIGN_RTOL * scale
+    if undecided.any():
+        probe = np.array(reference, dtype=float)
+        probe[undecided] = (np.where(reference[undecided] >= 0.0, -1.0, 1.0)
+                            * _IMAGE_SIGN_RTOL * scale)
+        probed = np.asarray(applySymmetries(probe), dtype=float)
+        if not np.isfinite(probed).all():
+            return None
+        # Whether each of the two nodes was moved onto a different image. The probe differs
+        # from the reference only in components the measure cannot resolve, so a measure that
+        # moves one of them and leaves the other is reading exactly those components. The
+        # reference is known to have been moved, since an unmoved one returned above.
+        probe_was_moved = (float(np.linalg.norm(probe - probed))
+                           > _IMAGE_MATCH_RTOL * scale)
+        if not probe_was_moved:
+            return None
+    # Which transformation carries the reference onto its canonical image, by matching its
+    # action on that node. The measure is not recomputed here, so that the image this returns
+    # is the one `applySymmetries` chooses, whatever measure it uses.
     distances = [float(np.linalg.norm(reference @ g - canonical)) for g in invGroupElements]
     nearest = int(np.argmin(distances))
     # Only where that transformation accounts for the image chosen. A model free to
