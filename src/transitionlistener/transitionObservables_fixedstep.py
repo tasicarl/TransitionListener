@@ -15,6 +15,7 @@ from transitionlistener.generic_potential import generic_potential
 from transitionlistener.phases import PhaseInfo
 from transitionlistener import config
 from transitionlistener.transitions import TransitionInfo
+from transitionlistener.transitionObservables import theChainEndedElsewhere
 from transitionlistener.transitionObservables import _BoundedPchipInterpolator
 from . import thermodynamics as td
 from . import constants as cn
@@ -156,7 +157,7 @@ class TransitionObservables:
         T0 = self.pot.Tmin
         last_vev = self.phases[self.transitions[-1].low_phase].valAt(self.pot.Tmin)
 
-        if not np.allclose(last_vev, self.pot.X0):
+        if theChainEndedElsewhere(self.pot, last_vev):
             # The global minimum at T = 0 is not the last minimum!
 
             for i, tr in enumerate(self.transitions):

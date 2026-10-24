@@ -301,6 +301,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The check that the chain ended in the zero-temperature minimum fired on a chain that
+  had.** `check_T0_global_min` compared the field values of the last traced phase against
+  `pot.X0` with `np.allclose`. `valAt` interpolates the phase tracer's own nodes, so it
+  carries the tracer's resolution: on the real two Higgs doublet model at `lambda3 = 5.8672`
+  the endpoint sits 2.7e-06 of the field scale from `X0`, with the potential agreeing to
+  eight digits, and `np.allclose` refused it on the smaller field component alone and by a
+  factor 1.04, because a test applied component by component gives the 11.5 GeV component a
+  tolerance 21 times tighter than the 246.2 GeV one while the tracer's error is the same
+  absolute size in both. The check now compares the depth of the potential at the two points,
+  which is the question it is asking, and keeps a field-space distance measured against the
+  field scale as a second condition so that a pair of degenerate minima is still reported. The
+  decision is `theChainEndedElsewhere`, which both routes call, the adaptive one and the fixed
+  step size one; the second had its own copy of the comparison and so its own version of the
+  defect.
+
 - **A traced phase is stored on one image of the potential's symmetry.** Below the
   temperature at which the origin tilts over, the displaced minima are exactly degenerate
   images of one another, so which one a trace walks into is settled by the sign of a
