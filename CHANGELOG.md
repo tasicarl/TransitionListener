@@ -301,6 +301,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Two docstrings rendered as broken references in the published documentation.**
+  `|T'/T - 1|` in `calc_betaH_S3` and `|V_CW|` in `counterterm_derivative_step` were read
+  by docutils as substitution references, so the pages lost that text. The documentation
+  workflow runs only on `main`, so no branch build reported them.
+
 - **A traced phase is stored on one image of the potential's symmetry.** Below the
   temperature at which the origin tilts over, the displaced minima are exactly degenerate
   images of one another, so which one a trace walks into is settled by the sign of a
