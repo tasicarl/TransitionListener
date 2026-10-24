@@ -1501,7 +1501,7 @@ class generic_potential():
             f = self._massSqMatrix
         return f(X)
 
-    def d2V(self, X, T):
+    def d2V(self, X, T, x_eps: float | None = None):
         """
         Calculates the Hessian (second derivative) matrix for the
         finite-temperature effective potential.
@@ -1521,13 +1521,34 @@ class generic_potential():
             The temperature. The shapes of `X` and `T`
             should be such that ``X.shape[:-1]`` and ``T.shape`` are
             broadcastable (that is, ``X[...,0]*T`` is a valid operation).
-        
+        x_eps : float, optional
+            The finite difference step, in place of `self.x_eps`. Every value returned by
+            this method carries the bias of the step it was taken with, and where the
+            potential has no quadratic term the difference returns the step squared times
+            the quartic rather than zero. Evaluating the same point at two steps is what
+            separates that from a curvature the potential really has, since the first
+            falls by four when the step is halved and the second does not. The function
+            built for each step is kept, so a caller that alternates between two steps
+            builds each of them once.
+
         Returns
         -------
         np.ndarray
             The Hessian matrix of the effective potential at the given field
             values and temperatures.
         """
+        if x_eps is not None and x_eps != self.x_eps:
+            try:
+                cache = self._d2V_by_step
+            except AttributeError:
+                cache = self._d2V_by_step = {}
+            f = cache.get(x_eps)
+            if f is None:
+                f = cache[x_eps] = helper_functions.hessianFunction(
+                    self.Vtot, x_eps, self.Ndim, self.deriv_order)
+            X = broadcast_fields(X, T)
+            T = np.asanyarray(T)[..., np.newaxis]
+            return f(X, T, False)
         try:
             f = self._d2V
         except BaseException:

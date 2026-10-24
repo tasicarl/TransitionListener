@@ -301,6 +301,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A phase trace's last point is now refused where it is a saddle point of the potential.**
+  Pull request #44 stopped the tracer following a point after that point had stopped being a
+  minimum, at every node except the last one, which was accepted on the slope alone. The
+  obvious check refuses the symmetric phase of a conformal model, which is what withdrew two
+  earlier attempts: `d2V` is a finite difference of step `x_eps`, such a potential has no
+  quadratic term at the origin, and the difference returns the step squared times the
+  quartic, which is negative. `smallestCurvatureIsTheSteps` separates the two by evaluating
+  the curvature at two steps, since a value that belongs to the step falls by four when the
+  step is halved while a curvature the potential has does not. `d2V` takes an `x_eps` of its
+  own for that, keeping the function it builds for each step.
+
+  **No endpoint that this refuses has been found.** Of 70 phase endpoints examined, 62 across
+  ten couplings of the real two Higgs doublet model and 4 each on the two dark U(1) models
+  shipped with the code, not one is a saddle point, and the only negative eigenvalue among
+  them is the conformal model's origin, whose ratio is 4.000 and which is therefore the
+  step's own. On a potential built so that its origin does turn into a saddle, the
+  minimisation fails and the trace ends on its own before the endpoint is reached. So this
+  guards a case that has not been observed, at the one point of a trace where the check pull
+  request #44 added is still missing, and it costs 0.6 per cent on the shipped example.
+
 - **A traced phase is stored on one image of the potential's symmetry.** Below the
   temperature at which the origin tilts over, the displaced minima are exactly degenerate
   images of one another, so which one a trace walks into is settled by the sign of a

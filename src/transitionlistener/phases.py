@@ -344,11 +344,158 @@ def descendFromSaddle(
     return x
 
 
+#: Below this ratio the smallest curvature at a point is taken to be the potential's own
+#: rather than the finite difference step's. `d2V` is a difference of step `x_eps`, and two
+#: behaviours of that difference were measured on the four models shipped with the code, at
+#: temperatures from 1e-6 to 1e2:
+#:
+#:   ratio 4.0000  the potential has no quadratic term in that direction, so the difference
+#:                 returns the step squared times the quartic. The origin of the symmetric
+#:                 phase of `models/TL_conformal_dark_u1.py` at g = 0.7, v = 0.1 GeV gives
+#:                 -6.771e-08, -1.693e-08, -4.232e-09, -1.058e-09 and -2.645e-10 as `x_eps`
+#:                 is halved from 4e-3 to 2.5e-4, all in the model's internal units, a factor
+#:                 4.0000 at every halving, extrapolating to the zero curvature a conformal
+#:                 potential has there.
+#:   ratio 1.0000  the value is the curvature. The broken phase's minimum of the same model
+#:                 holds +9160 across that whole range of steps, the origin above the
+#:                 crossing converges to 1.074e-05, and the origin of every other shipped
+#:                 model gives 1.000 at every temperature sampled.
+#:
+#: The cut sits between them, a factor 1.5 above the curvature and 2.67 below the step's own
+#: value. These are deterministic differences of a smooth function and not samples, so they
+#: do not move between machines: what moved between machines in the earlier attempt was a
+#: test of the absolute value against a neighbouring node, which this replaces.
+#:
+#: Two qualifications on those two numbers, both measured and neither affecting the verdict.
+#: The 4.0000 belongs to the fourth-order stencil, which is `tracing_derivative_order`'s
+#: default: near a conformal origin the potential goes as `phi^4 ln|phi|`, the fourth-order
+#: stencil annihilates the logarithm and leaves a pure step squared, while the second-order
+#: one does not and gives 3.79 to 3.83 over the same ladder. And "does not move with the
+#: step" holds over the ladder the models are run on and not below it: the broken phase's
+#: minimum reads 9164, 9290, 9160, 14144, 19872 and 48512 as the step falls from 2.5e-4 to
+#: 7.8e-6, which is the cancellation error of a difference of a large potential, 430 per cent
+#: high at the finest. The pair this check uses, `x_eps` and half of it, is 1e-3 and 5e-4 for
+#: every shipped model and sits inside the window. Either way 3.79 and 4.00 are both above
+#: the cut and 0.99 is below it, so the answer is the same.
+#:
+#: What the check refuses, and what it keeps. The value a step returns is the true curvature
+#: plus the step's own term, `lambda + C x_eps^2`, so the ratio is
+#: `(lambda + C x_eps^2) / (lambda + C x_eps^2 / 4)` and reaches the cut when
+#: `lambda = 1.25 C x_eps^2`. A point that is a saddle, but whose curvature is shallower than
+#: 1.25 times the step's own term, is therefore kept as a minimum. On
+#: `models/TL_conformal_dark_u1.py` that term is -4.2e-09 in internal units at the default
+#: step, so a true curvature shallower than about -5e-09 there would not be seen. The check is
+#: one-sided on purpose: refusing the coldest point of a phase costs the transition that would
+#: be computed from it, so it refuses only where the curvature is clearly the potential's.
+#:
+#: A fourth derivative that is positive and finite cannot reach this test at all. The
+#: fourth-order stencil `[-1, 16, -30, 16, -1] / (12 h^2)` annihilates a quartic term by term,
+#: `(-16 + 16 + 16 - 16) h^2 / 12`, so an origin whose first three derivatives vanish and
+#: whose fourth is positive returns exactly zero and the question is declined; at the second
+#: order it returns `+2 c_4 h^2`, which is positive, and the question is never asked, because
+#: it is asked only where an eigenvalue is negative. What a conformal origin has instead is
+#: the one-loop term going as the field to the fourth times the logarithm of the field, whose
+#: fourth derivative does not exist, and the stencil leaves `-(32 ln 2 / 12) B x_eps^2`,
+#: negative for a positive `B`.
+#:
+#: A potential that is only once differentiable at the point, which the Arnold-Espinosa
+#: daisy's term in the modulus of the field cubed would make the origin, would contribute a
+#: term linear in the step and give a ratio near 2. **No shipped model does this**: switching
+#: the daisy off changes the ratio of none of them at any temperature sampled, so the ratio
+#: near 2 is a possibility and not a measurement. A cut below 2 accepts such a point as the
+#: step's own, which is the side to err on, since refusing the coldest point of a phase costs
+#: the transition that would be computed from it.
+_ENDPOINT_CURVATURE_RATIO_CUT = 1.5
+
+
+def smallestCurvatureIsTheSteps(d2f_dx2: Callable, d2f_dx2_half: Callable,
+                                x: np.ndarray, t: float) -> bool | None:
+    r"""Whether the smallest curvature at `x` belongs to the step rather than the potential.
+
+    `d2f_dx2` is a finite difference of some step and `d2f_dx2_half` the same difference at
+    half that step. Where the potential has no quadratic term in a direction the difference
+    returns the step squared times the quartic, which is negative for a quartic that is
+    positive and falls by four when the step is halved. Where the value is the potential's
+    curvature it does not move with the step. Comparing the two is what separates a direction
+    that is flat from one the point is a saddle in, without putting a threshold on a number
+    whose size depends on the model's units. `_ENDPOINT_CURVATURE_RATIO_CUT` carries the two
+    measured regimes and where the cut between them sits.
+
+    Parameters
+    ----------
+    d2f_dx2, d2f_dx2_half : callable
+        The Hessian of the potential at a step and at half that step, each taking `(x, t)`.
+    x : np.ndarray
+        The point to judge.
+    t : float
+        The temperature.
+
+    Returns
+    -------
+    bool or None
+        True where the smallest curvature scales with the step, False where it does not, and
+        None where the question cannot be answered: a Hessian that is not finite, or a
+        smallest eigenvalue of zero at either step, which no ratio can be formed from.
+    """
+    try:
+        full = np.atleast_2d(np.squeeze(np.asarray(d2f_dx2(x, t), dtype=float)))
+        half = np.atleast_2d(np.squeeze(np.asarray(d2f_dx2_half(x, t), dtype=float)))
+    except Exception:
+        return None
+    if not (np.isfinite(full).all() and np.isfinite(half).all()):
+        return None
+    lo_full = float(np.min(np.linalg.eigvalsh(full)))
+    lo_half = float(np.min(np.linalg.eigvalsh(half)))
+    if lo_full == 0.0 or lo_half == 0.0:
+        return None
+    ratio = lo_full / lo_half
+    # A negative ratio means the two steps disagree on the sign of the curvature, which no
+    # single power of the step produces, so the value is not the potential's either.
+    if ratio <= 0.0:
+        return True
+    return bool(ratio >= _ENDPOINT_CURVATURE_RATIO_CUT)
+
+
+def endpointIsASaddlePoint(d2f_dx2: Callable, d2f_dx2_half: Callable,
+                           x: np.ndarray, t: float) -> bool:
+    """Whether a trace's last point is a saddle point of the potential rather than a minimum.
+
+    It is one where the smallest eigenvalue of the Hessian is negative and that value is the
+    potential's rather than the finite difference step's, which
+    :func:`smallestCurvatureIsTheSteps` decides. A value that scales with the step is the
+    step's, and a question that cannot be answered leaves the point accepted: dropping the
+    coldest point of a phase on a guess costs the transition that would be computed from it.
+
+    Parameters
+    ----------
+    d2f_dx2, d2f_dx2_half : callable
+        The Hessian of the potential at the tracing step and at half that step.
+    x : np.ndarray
+        The point at the end of the trace.
+    t : float
+        The temperature there.
+
+    Returns
+    -------
+    bool
+        True only where the point is a saddle point.
+    """
+    try:
+        hess = np.atleast_2d(np.squeeze(np.asarray(d2f_dx2(x, t), dtype=float)))
+        eigs = np.linalg.eigvalsh(hess)
+    except Exception:
+        return False
+    if not (eigs < 0).any():
+        return False
+    return smallestCurvatureIsTheSteps(d2f_dx2, d2f_dx2_half, x, t) is False
+
+
 def traceMinimum(
     f : Callable, df_dx : Callable, d2f_dxdt : Callable, d2f_dx2 : Callable, 
     x0 : np.ndarray, t0 : float, tstop : float, dtstart : float, deltaX_target : float,
     dtabsMax: float = 20.0, dtfracMax: float = 0.25, dtmin : float = 1e-3, deltaX_tol : float = 1.2,
     minratio : float = 1e-2, verbose : bool = False, conversionFactor : float = 1,
+    endpointIsASaddle: Callable[[np.ndarray, float], bool] | None = None,
 ) -> _traceMinimum_rval:
 
     """
@@ -546,11 +693,12 @@ def traceMinimum(
             # well, eigenvalues [1e-3, 1e6] with an endpoint at -1e-4 passing a threshold of
             # -1e4.
             #
-            # So the endpoint is accepted on the slope alone, as it was before this branch.
-            # A trace can still finish on a point that is not a minimum. The test that would
-            # decide it is the one above: evaluate the curvature at two steps and ask whether
-            # it scales with the step, which separates a flat direction from a saddle without
-            # thresholding an absolute number. That belongs in its own change, not here.
+            # That test is what `smallestCurvatureIsTheSteps` now performs, and it is applied
+            # a few lines below: the curvature is evaluated at two steps and the endpoint is
+            # refused only where the smallest eigenvalue is negative and does not scale with
+            # the step. Where no second step is supplied the endpoint is accepted on the
+            # slope alone, as it was before, and a trace can then still finish on a point
+            # that is not a minimum.
             if dxdt_next is None:
                 # No usable slope at the endpoint; the trace ends at the last node that had
                 # one rather than reaching `tstop`.
@@ -561,6 +709,19 @@ def traceMinimum(
             xerr = max(np.sum((x + dxdt * dt - xnext) ** 2), np.sum((xnext - dxdt_next * dt - x) ** 2)) ** 0.5
             if xerr < deltaX_tol:
                 # good step, found endpoint of phase
+                if endpointIsASaddle is not None and endpointIsASaddle(xnext, tnext):
+                    # The endpoint is a saddle point of the potential and not a minimum, so
+                    # the phase does not reach it. The trace keeps the last node that is a
+                    # minimum, which is what the caller gets, rather than carrying a point
+                    # the bounce would then be computed from. The decision is the caller's
+                    # predicate and not this function's, so that the Hessian this function
+                    # solves with and the Hessians the decision reads stay separate.
+                    if verbose:
+                        print("Phase ends before T = ", tnext * conversionFactor,
+                              "GeV: the smallest curvature there is negative and does not",
+                              "scale with the finite difference step, so the point is a",
+                              "saddle")
+                    return True
                 X[-1], T[-1], dXdT[-1] = xnext, tnext, dxdt_next
                 return True
             else:
@@ -686,6 +847,7 @@ def traceMultiMin(
     tjump: float = 1e-3, forbidCrit: Callable | None = None, applySymmetries: Callable | None = None,
     single_trace_args: dict = {}, local_min_args: dict = {},
     *, invGroupElements=(),
+    endpointIsASaddle: Callable[[np.ndarray, float], bool] | None = None,
 ) -> dict[int, PhaseInfo]:
     """
     Trace multiple minima `xmin(t)` of the function `f(x,t)`.
@@ -850,6 +1012,7 @@ def traceMultiMin(
                     **single_trace_args,
                     verbose=verbose,
                     conversionFactor=conversionFactor,
+                    endpointIsASaddle=endpointIsASaddle,
                 )
                 X_down, T_down, dXdT_down, nX, nT = down_trace
                 t2, dt2 = nT - tjump, 0.1 * tjump
@@ -879,6 +1042,7 @@ def traceMultiMin(
                     **single_trace_args,
                     verbose=verbose,
                     conversionFactor=conversionFactor,
+                    endpointIsASaddle=endpointIsASaddle,
                 )
                 X_up, T_up, dXdT_up, nX, nT = up_trace
                 t2, dt2 = nT + tjump, 0.1 * tjump
@@ -1657,12 +1821,24 @@ class Phases:
             # speedup: no call to interpolated geff needed here
             return pot.Vtot(X, T, include_radiation=False, include_decoupled=False)
 
+        def endpoint_is_a_saddle(X, T):
+            """Whether a trace ending at `X`, `T` ends on a saddle point of the potential.
+
+            The smallest eigenvalue `d2V` reports is not always the curvature: where the
+            potential has no quadratic term in a direction the finite difference returns the
+            step squared times the quartic, which is negative and looks like a saddle.
+            Evaluating the same point at two steps separates the two.
+            """
+            return endpointIsASaddlePoint(
+                pot.d2V, lambda Y, t: pot.d2V(Y, t, x_eps=0.5 * pot.x_eps), X, T)
+
         phases = traceMultiMin(
             V_,  # pot.Vtot,
             pot.gradV,
             pot.dgradV_dT,
             pot.d2V,
             points,
+            endpointIsASaddle=endpoint_is_a_saddle,
             verbose=verbose,
             conversionFactor=self.conversionFactor,
             applySymmetries=pot.applySymmetries,
