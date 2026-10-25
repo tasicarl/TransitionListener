@@ -3127,7 +3127,7 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
 
     * ``betaH_S3_fit_points`` nearest samples are used;
     * at least ``betaH_S3_fit_min_per_side`` of them must lie on each side of
-      ``T`` and none further than ``betaH_S3_fit_max_rel_span`` in |T'/T - 1|,
+      ``T`` and none further than ``betaH_S3_fit_max_rel_span`` in ``|T'/T - 1|``,
       otherwise five new actions are computed at T (1 + k step), k = -2..2,
       with step ``betaH_S3_fallback_rel_step``, and the same fit is applied;
     * the fit is repeated with the ``betaH_S3_fit_check_points`` nearest samples,
