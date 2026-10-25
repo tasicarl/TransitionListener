@@ -311,7 +311,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   tolerance 21 times tighter than the 246.2 GeV one while the tracer's error is the same
   absolute size in both. The check now compares the depth of the potential at the two points,
   which is the question it is asking, and keeps a field-space distance measured against the
-  field scale as a second condition so that a pair of degenerate minima is still reported. The
+  field scale as a second condition so that a pair of degenerate minima is still reported.
+  The difference in depth is measured against the depth of the zero-temperature minimum
+  below the origin, and not against the size of the potential there: `Vtot` carries an
+  arbitrary constant, which leaves every minimum and every difference in depth where it was
+  while inflating that size, so a vacuum that was reported would pass once the constant was
+  large enough. A difference of two potential values has no such freedom. On the models
+  shipped with the code the two scales are close: 5.724e+08 either way on the conformal
+  dark U(1), whose origin sits at zero, and 4.714e+07 against 4.398e+07 on the real two
+  Higgs doublet model, whose origin sits at -3.161e+06 GeV^4. The
   decision is `theChainEndedElsewhere`, which both routes call, the adaptive one and the fixed
   step size one; the second had its own copy of the comparison and so its own version of the
   defect. A depth or a separation that is not a number is reported rather than passed,
