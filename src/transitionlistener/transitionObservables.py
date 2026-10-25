@@ -369,6 +369,93 @@ def _record_rescue_outcome(derived: dict, diagnostic) -> None:
         derived.get("DIAG:action_rescue_attempts", 0) + attempts)
 
 
+#: How far apart in depth two zero-temperature minima have to be before the chain is said to
+#: have ended somewhere other than `X0`. Relative to the depth of `X0` below the origin,
+#: `|V(X0) - V(0)|`, and not to `|V(X0)|`, which moves with the constant `Vtot` is free to
+#: carry. That depth is 4.398e+07 GeV^4 on the 2HDM benchmark, so this is about 0.44 GeV^4:
+#: far above the 0 the two sides agree to when they are the same minimum, far below the
+#: difference between genuinely distinct vacua.
+_T0_MINIMUM_DEPTH_RTOL = 1.0e-8
+#: And how far apart in field space, relative to `|X0|`. The tracer's residual at `Tmin` is
+#: 2.7e-06 of the field scale on the 2HDM benchmark, a factor 370 below this, while two minima
+#: that are genuinely apart are further still.
+_T0_MINIMUM_FIELD_RTOL = 1.0e-3
+
+
+def theChainEndedElsewhere(pot, last_vev) -> bool:
+    """Whether the chain's last minimum is a different minimum from `pot.X0`.
+
+    Two labels for the same minimum have the same potential whatever their coordinates differ
+    by, and a genuinely different vacuum is deeper or shallower by far more than any tracing
+    residual, so the depth is the question. A pair of degenerate minima has no difference in
+    depth to find, so the distance in field space is kept as a second condition and either one
+    reports.
+
+    `valAt` interpolates the nodes the phase tracer put down, so it carries the tracer's
+    resolution and not the potential's. On the real two Higgs doublet model at
+    `lambda3 = 5.8672` the traced endpoint sits 1.2e-04 GeV from `X0` in the first field
+    component and 6.5e-04 GeV in the second, which is 2.7e-06 of the field scale, and the
+    potential at the two points agrees to eight digits. `np.allclose`, which this replaces,
+    refused them on the smaller component alone and by a factor 1.04, because a test applied
+    component by component gives the 11.5 GeV component a tolerance 21 times tighter than the
+    246.2 GeV one while the tracer's error is the same absolute size in both.
+
+    Both routes call this, the adaptive one and the fixed step size one, so that the two
+    cannot drift apart.
+
+    Parameters
+    ----------
+    pot : generic_potential
+        The potential, read for `Tmin`, `X0` and `Vtot`.
+    last_vev : array_like
+        The field values of the chain's last phase at `pot.Tmin`.
+
+    Returns
+    -------
+    bool
+        True where the chain ended somewhere other than the zero-temperature minimum,
+        and where the question cannot be answered because a potential, the field scale or
+        the separation is not finite.
+    """
+    T0 = pot.Tmin
+    # The field points first, before the potential is asked about them. `np.allclose`, which
+    # this replaces, compared the coordinates and never evaluated `Vtot`, so a traced endpoint
+    # that is not finite could not reach a model's own code; a model is free to refuse such a
+    # point by raising, and that would come out of here as an exception where it used to come
+    # out as this verdict.
+    if not (np.isfinite(np.atleast_1d(np.asarray(last_vev, dtype=float))).all()
+            and np.isfinite(np.atleast_1d(np.asarray(pot.X0, dtype=float))).all()):
+        return True
+    V_last = float(np.squeeze(pot.Vtot(last_vev, T0)))
+    V_X0 = float(np.squeeze(pot.Vtot(pot.X0, T0)))
+    # The depth of the zero-temperature minimum below the origin, which is what the difference
+    # in depth is measured against. `abs(V_X0)` was used for that and is not invariant under
+    # the constant `Vtot` is free to carry: adding one to the potential leaves every minimum
+    # and every difference in depth where it was while inflating `abs(V_X0)`, so a vacuum that
+    # was reported becomes one that passes. The difference of two potential values has no such
+    # freedom. On the shipped models the two scales are close, 5.724e+08 either way on the
+    # conformal dark U(1) where the origin sits at zero, and 4.714e+07 against 4.398e+07 on the
+    # real two Higgs doublet model, whose origin is at -3.161e+06 in GeV^4.
+    V_origin = float(np.squeeze(pot.Vtot(np.zeros_like(np.atleast_1d(
+        np.asarray(pot.X0, dtype=float))), T0)))
+    depth = abs(V_X0 - V_origin)
+    scale = float(np.linalg.norm(np.atleast_1d(pot.X0)))
+    separation = float(np.linalg.norm(np.atleast_1d(last_vev) - np.atleast_1d(pot.X0)))
+    if not all(np.isfinite([V_last, V_X0, V_origin, depth, scale, separation])):
+        # Neither comparison below can be true of a `nan`, so leaving one to reach them
+        # answers "the chain ended at the zero-temperature minimum" to a question that was
+        # not answered. `np.allclose`, which this replaces, returned False for a `nan` and so
+        # reported, and a traced endpoint or a potential that is not finite is a reason to
+        # report rather than a reason to pass. `scale` is checked although it is the norm
+        # of `X0`: the norm of a vector of finite components overflows to `inf` above
+        # about 1.3e154 per component, and the comparison it divides would then be
+        # `separation > inf`, which is false of every separation.
+        return True
+    depths_differ = abs(V_last - V_X0) > _T0_MINIMUM_DEPTH_RTOL * max(depth, 1.0)
+    far_apart = separation > _T0_MINIMUM_FIELD_RTOL * max(scale, 1.0)
+    return bool(depths_differ or far_apart)
+
+
 class TransitionObservables:
     """Evaluate derived observables for every transition of a potential."""
 
@@ -396,9 +483,18 @@ class TransitionObservables:
         If not, raise an error.
         """
         T0 = self.pot.Tmin
+        # `valAt` interpolates the tracer's own nodes and carries its resolution rather than
+        # the potential's: on the 2HDM at lambda3 = 5.8672 the traced endpoint sits 1.2e-04
+        # GeV from `X0` in the first field component and 6.5e-04 in the second, so the two
+        # agree to 2.7e-06 in norm and `V` agrees to eight digits. `np.allclose` on those
+        # values still failed, on the smaller component alone and by a factor 1.04, because
+        # a per-component relative test gives the 11.5 GeV component a tolerance 21 times
+        # tighter than the 246 GeV one while the tracer's error is absolute. The tolerances
+        # below are relative to the field scale and to the depth, which is what the two
+        # quantities actually have in common, and they admit that residual by three decades.
         last_vev = self.phases[self.transitions[-1].low_phase].valAt(self.pot.Tmin)
 
-        if not np.allclose(last_vev, self.pot.X0):
+        if theChainEndedElsewhere(self.pot, last_vev):
             # The global minimum at T = 0 is not the last minimum!
 
             for i, tr in enumerate(self.transitions):
