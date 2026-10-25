@@ -210,7 +210,7 @@ class generic_potential():
     #: counterterms (``dV1atvev``, ``d2V1atvev``, ``dV1physatvev``). It is kept
     #: separate from the phase-tracing accuracy ``x_eps`` on purpose: tightening a
     #: tracing tolerance must not change the potential. For the abelian dark
-    #: Higgs, with |V_CW| of order 1e9 at the vev, steps below 1e-3 are dominated
+    #: Higgs, with ``|V_CW|`` of order 1e9 at the vev, steps below 1e-3 are dominated
     #: by round-off (1e-4 shifts the second derivative by up to 1.4 %). Above it
     #: the second derivative drifts with the logarithm of the step, by 0.05 % to
     #: 0.5 % per decade: the tree-level Goldstone mass vanishes at the vacuum, so
