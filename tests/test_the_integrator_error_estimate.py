@@ -144,9 +144,12 @@ class TheTwoFormsReturnTheSameNumber(unittest.TestCase):
         self.assertEqual(on_inf, np.finfo(np.longdouble).max)
         self.assertTrue(np.isfinite(on_inf),
                         msg="the largest longdouble came back as an infinity")
+        if np.finfo(np.longdouble).max <= np.finfo(np.float64).max:
+            self.skipTest("numpy aliases longdouble to float64 on this platform, so the cast "
+                          "this guards against loses nothing and there is nothing to check")
         self.assertNotEqual(float(on_inf), on_inf,
-                            msg="this dtype is not wider than a Python float here, so the "
-                                "case this guards cannot arise and the test is vacuous")
+                            msg="the cast to a Python float did not change the value, so the "
+                                "helper is returning something narrower than the reduction")
 
     def test_a_nan_accepts_the_step_through_rkqs(self):
         """The behaviour `np.nan_to_num` gave, read off `rkqs` and not off the arithmetic.
