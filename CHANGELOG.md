@@ -305,11 +305,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   and then called `np.nan_to_num` on the single number that came out, once per Runge-Kutta
   step. The arithmetic is now `helper_functions._step_error_estimate`, which the solver calls
   instead. Six bounces of the real two Higgs doublet model at `lambda3 = 5.5227272727` take
-  78658 steps and ran in 14.688 s before and 12.444 s after, the fastest of three runs each
-  measured in one window, and all six actions agree digit for digit. The estimate is a named
+  78658 steps, and the two trees were timed against each other twice, each time in one window
+  with both trees under the same conditions: 13.902 s before and 11.857 s after on an idle
+  machine, and 14.688 s before and 12.444 s after while another job held about 40 of the
+  cores. The absolute times depend on what else the machine is doing; the difference is 14.7
+  and 15.3 per cent. All six actions agree digit for digit in every run. The estimate is a named
   function rather than inline arithmetic so that the tests can call the number the solver
   judges its steps on; one function call costs 0.01 microseconds of the 7.83 the estimate
-  takes, measured over 200000 repetitions.
+  takes, measured over 200000 repetitions. The estimate returns the reduction's own numpy
+  scalar rather than a Python `float`, which holds a `float64`: a `longdouble` reduction
+  would otherwise come back as `inf` where `np.nan_to_num` returns 1.1897e+4932, and a
+  finite one would lose its last digits.
 
   The replacement spells out what `np.nan_to_num` did rather than calling it: a `nan` becomes
   zero, so that a step whose error cannot be judged is accepted, which is the behaviour the

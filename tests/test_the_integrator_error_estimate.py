@@ -83,6 +83,12 @@ CASES = [
      np.array([0.4, -1.2e-3], dtype=np.float32), np.float32(1.0e-10), np.float32(1.0e-8)),
     ("single precision, infinite", np.array([np.inf, np.inf], dtype=np.float32),
      np.array([0.4, -1.0e-3], dtype=np.float32), np.float32(1.0e-10), np.float32(1.0e-8)),
+    ("extended precision", np.array([3.0e-9, -7.0e-10], dtype=np.longdouble),
+     np.array([0.4, -1.2e-3], dtype=np.longdouble), np.longdouble(1.0e-10),
+     np.longdouble(1.0e-8)),
+    ("extended precision, infinite", np.array([np.inf, np.inf], dtype=np.longdouble),
+     np.array([0.4, -1.0e-3], dtype=np.longdouble), np.longdouble(1.0e-10),
+     np.longdouble(1.0e-8)),
 ]
 
 
@@ -92,8 +98,10 @@ class TheTwoFormsReturnTheSameNumber(unittest.TestCase):
         for name, yerr, y, epsabs, epsfrac in CASES:
             with self.subTest(name):
                 with np.errstate(all="ignore"):
-                    was = float(the_form_that_was_replaced(yerr, y, epsabs, epsfrac))
-                    now = float(hf._step_error_estimate(yerr, y, epsabs, epsfrac))
+                    was = the_form_that_was_replaced(yerr, y, epsabs, epsfrac)
+                    now = hf._step_error_estimate(yerr, y, epsabs, epsfrac)
+                # Compared without casting to `float`, which holds a `float64` and would hide
+                # a difference in an extended-precision reduction behind its own rounding.
                 if was != was:
                     self.assertNotEqual(now, now, msg=f"{name}: one form gave a nan")
                 else:
@@ -101,6 +109,8 @@ class TheTwoFormsReturnTheSameNumber(unittest.TestCase):
                         was, now,
                         msg=f"{name}: the step would be judged on {now!r} where it used to "
                             f"be judged on {was!r}")
+                self.assertEqual(np.asarray(now).dtype, np.asarray(was).dtype,
+                                 msg=f"{name}: the reduction changed dtype")
 
     def test_the_infinity_substitution_keeps_the_dtype(self):
         """`np.nan_to_num` substitutes the input dtype's largest value, not float64's.
@@ -119,6 +129,24 @@ class TheTwoFormsReturnTheSameNumber(unittest.TestCase):
         self.assertEqual(value, expected)
         self.assertEqual(value, float(np.finfo(np.float32).max))
         self.assertNotEqual(value, float(np.finfo(np.float64).max))
+
+    def test_extended_precision_is_not_rounded_through_a_python_float(self):
+        """A `longdouble` reduction may not be returned as a `float64`.
+
+        `float` holds a `float64`, so it turns the largest `longdouble` into `inf`, which
+        `np.nan_to_num` never returns, and rounds a finite one at the sixteenth digit. Both
+        are differences in the number the solver judges its steps on.
+        """
+        y = np.array([0.4, -1.0e-3], dtype=np.longdouble)
+        with np.errstate(all="ignore"):
+            on_inf = hf._step_error_estimate(np.array([np.inf, np.inf], dtype=np.longdouble),
+                                             y, np.longdouble(1.0e-10), np.longdouble(1.0e-8))
+        self.assertEqual(on_inf, np.finfo(np.longdouble).max)
+        self.assertTrue(np.isfinite(on_inf),
+                        msg="the largest longdouble came back as an infinity")
+        self.assertNotEqual(float(on_inf), on_inf,
+                            msg="this dtype is not wider than a Python float here, so the "
+                                "case this guards cannot arise and the test is vacuous")
 
     def test_a_nan_accepts_the_step_through_rkqs(self):
         """The behaviour `np.nan_to_num` gave, read off `rkqs` and not off the arithmetic.
@@ -143,6 +171,30 @@ class TheTwoFormsReturnTheSameNumber(unittest.TestCase):
         y = np.array([0.4, -1.0e-3])
         with self.assertRaises(hf.IntegrationError):
             one_step(np.array([np.inf, np.inf]), y, 1.0e-10, 1.0e-8, t=1.0, dt=1.0e-3)
+
+    def test_rkqs_asks_the_helper_rather_than_computing_it_again(self):
+        """The solver has to go through the helper the tests above exercise.
+
+        Without this, the arithmetic could be written out inside `rkqs` again and every test
+        here would still pass, because the two forms return the same number; the tests would
+        then be testing a function the solver does not call. The call is checked by replacing
+        the helper, not by reading the source.
+        """
+        calls = []
+        original = hf._step_error_estimate
+
+        def spy(yerr, y, epsabs, epsfrac):
+            calls.append((np.asarray(yerr).copy(), np.asarray(y).copy()))
+            return original(yerr, y, epsabs, epsfrac)
+
+        hf._step_error_estimate = spy
+        try:
+            one_step(np.array([3.0e-13, -7.0e-14]), np.array([0.4, -1.0e-3]),
+                     1.0e-10, 1.0e-8)
+        finally:
+            hf._step_error_estimate = original
+        self.assertEqual(len(calls), 1,
+                         msg="`rkqs` did not ask `_step_error_estimate` for the estimate")
 
     def test_rkqs_judges_the_step_on_the_number_the_estimate_returns(self):
         """`rkqs` has to use the returned value, not a constant of its own.

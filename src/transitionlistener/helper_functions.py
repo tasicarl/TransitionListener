@@ -272,18 +272,21 @@ def _step_error_estimate(yerr, y, epsabs, epsfrac):
 
     Returns
     -------
-    float
+    numpy scalar
         The largest scaled error over the components, with a `nan` returned as zero and an
-        infinity as the largest finite value of the reduction's dtype.
+        infinity as the largest finite value of the reduction's dtype. The reduction's own
+        scalar is returned rather than a Python `float`, which holds a `float64` and would
+        turn a `longdouble` reduction into a number `np.nan_to_num` does not return: its
+        largest value overflows to `inf` and a finite one loses its last digits.
     """
     scaled = np.minimum(np.abs(yerr / epsabs),
                         np.abs(yerr) / ((np.abs(y) + 1e-300) * epsfrac))
     peak = np.max(scaled)
     if peak != peak:
-        return 0.0
+        return scaled.dtype.type(0.0)
     if peak == np.inf:
-        return float(np.finfo(scaled.dtype).max)
-    return float(peak)
+        return np.finfo(scaled.dtype).max
+    return peak
 
 
 def rkqs(y,dydt,t,f, dt_try, epsfrac, epsabs, args=()):
