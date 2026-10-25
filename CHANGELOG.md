@@ -315,7 +315,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   decision is `theChainEndedElsewhere`, which both routes call, the adaptive one and the fixed
   step size one; the second had its own copy of the comparison and so its own version of the
   defect. A depth or a separation that is not a number is reported rather than passed,
-  because neither comparison can be true of a `nan` and `np.allclose` reported it too.
+  because neither comparison can be true of a `nan` and `np.allclose` reported it too. The
+  field scale is checked with them: the norm of finite field values is itself not finite
+  above about 1.3e154 per component, and it divides the comparison it would then defeat.
 
 - **A traced phase is stored on one image of the potential's symmetry.** Below the
   temperature at which the origin tilts over, the displaced minima are exactly degenerate

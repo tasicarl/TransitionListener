@@ -420,13 +420,15 @@ def theChainEndedElsewhere(pot, last_vev) -> bool:
     V_X0 = float(np.squeeze(pot.Vtot(pot.X0, T0)))
     scale = float(np.linalg.norm(np.atleast_1d(pot.X0)))
     separation = float(np.linalg.norm(np.atleast_1d(last_vev) - np.atleast_1d(pot.X0)))
-    if not all(np.isfinite([V_last, V_X0, separation])):
+    if not all(np.isfinite([V_last, V_X0, scale, separation])):
         # Neither comparison below can be true of a `nan`, so leaving one to reach them
         # answers "the chain ended at the zero-temperature minimum" to a question that was
         # not answered. `np.allclose`, which this replaces, returned False for a `nan` and so
         # reported, and a traced endpoint or a potential that is not finite is a reason to
-        # report rather than a reason to pass. An infinity needs no guard: it makes the
-        # distance below larger than any tolerance, so it reports on its own.
+        # report rather than a reason to pass. `scale` is checked although it is the norm
+        # of `X0`: the norm of a vector of finite components overflows to `inf` above
+        # about 1.3e154 per component, and the comparison it divides would then be
+        # `separation > inf`, which is false of every separation.
         return True
     depths_differ = abs(V_last - V_X0) > _T0_MINIMUM_DEPTH_RTOL * max(abs(V_X0), 1.0)
     far_apart = separation > _T0_MINIMUM_FIELD_RTOL * max(scale, 1.0)

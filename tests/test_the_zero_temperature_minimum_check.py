@@ -276,6 +276,23 @@ class AQuestionThatCannotBeAnsweredIsReported(unittest.TestCase):
                         msg="a separation that is not a number passed because the depths "
                             "were finite")
 
+    def test_a_field_scale_that_overflows_is_reported(self):
+        """The norm of finite components is not itself finite above about 1.3e154 each.
+
+        `scale` divides the field comparison, so an overflowing norm makes it
+        `separation > inf`, false of every separation, while the depths stay finite and
+        agree. I had argued that nothing could make `scale` non-finite while the depths were,
+        and this is the case that can.
+        """
+        pot = _potential()
+        pot.X0 = np.array([1.0e200, 1.0e200])
+        pot.Vtot = lambda X, T, *a, **k: -4.5e7
+        self.assertFalse(np.isfinite(np.linalg.norm(pot.X0)),
+                         msg="this field scale does not overflow, so the test is vacuous")
+        self.assertTrue(np.isfinite(pot.X0).all())
+        self.assertTrue(TO.theChainEndedElsewhere(pot, pot.X0),
+                        msg="an overflowing field scale passed as a match")
+
     def test_this_is_what_the_comparison_it_replaced_did(self):
         """`np.allclose` returned False for a `nan`, so the old check reported too.
 
