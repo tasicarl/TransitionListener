@@ -237,6 +237,58 @@ class IntegrationError(Exception):
 
 
 _rkqs_rval = namedtuple("rkqs_rval", "Delta_y Delta_t dtnxt")
+
+
+def _step_error_estimate(yerr, y, epsabs, epsfrac):
+    """How far a Runge-Kutta step's error estimate is beyond the tolerances it is held to.
+
+    The smaller of the absolute and fractional comparisons for each component, and the
+    largest of those over the components. `rkqs` accepts the step where this is below 1.
+
+    The same number as `np.nan_to_num(np.max(np.min([a, b], axis=0)))`, computed without
+    building a list of two arrays for `np.min` to stack. The bounce solver asks for it once
+    per Runge-Kutta step, 78658 times for six bounces of the real two Higgs doublet model
+    benchmark, which is why the arithmetic is written out.
+
+    `np.nan_to_num` is spelled out rather than called because it is a general-purpose
+    function working on a single number here: it sends a `nan` to zero, so that a step whose
+    error cannot be judged is accepted, which is the behaviour the solver has always had, and
+    an infinity to the largest value the reduction's own dtype can hold. That dtype is read
+    from the reduction rather than fixed at `float64`, because that is what `np.nan_to_num`
+    does: a `float32` `yerr` gives 3.4028235e+38 and not 1.7976931e+308.
+
+    Parameters
+    ----------
+    yerr : array_like
+        The step's error estimate, component by component.
+    y : array_like
+        The value the step starts from, which the fractional tolerance is measured against.
+    epsabs, epsfrac : array_like
+        The absolute and fractional tolerances, each either a single number or one per
+        component of `y`.
+
+    Both comparisons are absolute values, so the reduction is never negative and the only
+    values it can take that are not ordinary numbers are `nan` and `+inf`.
+
+    Returns
+    -------
+    numpy scalar
+        The largest scaled error over the components, with a `nan` returned as zero and an
+        infinity as the largest finite value of the reduction's dtype. The reduction's own
+        scalar is returned rather than a Python `float`, which holds a `float64` and would
+        turn a `longdouble` reduction into a number `np.nan_to_num` does not return: its
+        largest value overflows to `inf` and a finite one loses its last digits.
+    """
+    scaled = np.minimum(np.abs(yerr / epsabs),
+                        np.abs(yerr) / ((np.abs(y) + 1e-300) * epsfrac))
+    peak = np.max(scaled)
+    if peak != peak:
+        return scaled.dtype.type(0.0)
+    if peak == np.inf:
+        return np.finfo(scaled.dtype).max
+    return peak
+
+
 def rkqs(y,dydt,t,f, dt_try, epsfrac, epsabs, args=()):
     """
     Take a single 5th order Runge-Kutta step with error monitoring.
@@ -290,9 +342,7 @@ def rkqs(y,dydt,t,f, dt_try, epsfrac, epsabs, args=()):
     dt = dt_try
     while True:
         dy,yerr = _rkck(y,dydt,t,f,dt,args)
-        errmax = np.nan_to_num(np.max(np.min([
-            abs(yerr/epsabs), abs(yerr)/((abs(y)+1e-300)*epsfrac)
-        ], axis=0)))
+        errmax = _step_error_estimate(yerr, y, epsabs, epsfrac)
         if(errmax < 1.0):
             break  # Step succeeded
         dttemp = 0.9*dt*errmax**-.25

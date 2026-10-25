@@ -299,6 +299,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   they are now 3.9309 (arXiv:1803.01038), the value `gwfopt` already used as
   its default. All amplitudes rise by 0.7 %.
 
+- **The bounce integrator's step-size error estimate is computed without building a list of
+  arrays, which makes a bounce 16 per cent faster and returns the same number.**
+  `helper_functions.rkqs` put two arrays in a Python list for `np.min` to stack and reduce,
+  and then called `np.nan_to_num` on the single number that came out, once per Runge-Kutta
+  step. The arithmetic is now `helper_functions._step_error_estimate`, which the solver calls
+  instead. Six bounces of the real two Higgs doublet model at `lambda3 = 5.5227272727` take
+  78658 steps, and ran in 13.823 s before and 11.588 s after, 16.2 per cent. The two trees were
+  timed alternately on an idle machine, three runs each, so that any drift in what else the
+  machine was doing fell on both: 13.896, 13.942 and 13.823 s before against 11.717, 11.742 and
+  11.588 s after, a spread of about 1 per cent within each. All six actions agree digit for
+  digit in every run. The estimate is a named
+  function rather than inline arithmetic so that the tests can call the number the solver
+  judges its steps on; one function call costs 0.01 microseconds of the 7.83 the estimate
+  takes, measured over 200000 repetitions. The estimate returns the reduction's own numpy
+  scalar rather than a Python `float`, which holds a `float64`: a `longdouble` reduction
+  would otherwise come back as `inf` where `np.nan_to_num` returns 1.1897e+4932, and a
+  finite one would lose its last digits.
+
+  The replacement spells out what `np.nan_to_num` did rather than calling it: a `nan` becomes
+  zero, so that a step whose error cannot be judged is accepted, which is the behaviour the
+  solver has always had, and an infinity becomes the largest value the reduction's own dtype
+  can hold. That dtype is read from the reduction and not fixed at `float64`, because a
+  `float32` error estimate is what `np.nan_to_num` sends to 3.4028235e+38 and not to
+  1.7976931e+308. Both comparisons are absolute values, so the reduction is never negative
+  and the branch for a negative infinity, which no input can reach, is not kept.
+
 ### Fixed
 
 - **Two ways the canonical image of a traced phase was decided by something other than the
@@ -327,6 +353,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   make it an absolute cutoff for any phase whose node is shorter than 1.
   That loses the removal of a duplicate phase, which `removeRedundantPhases` may still
   catch, rather than moving a phase on the strength of a digit the tracer does not resolve.
+  
+- **Two docstrings rendered as broken references in the published documentation.**
+  `|T'/T - 1|` in `calc_betaH_S3` and `|V_CW|` in `counterterm_derivative_step` were read
+  by docutils as substitution references, so the pages lost that text. The documentation
+  workflow runs only on `main`, so no branch build reported them.
 
 - **A traced phase is stored on one image of the potential's symmetry.** Below the
   temperature at which the origin tilts over, the displaced minima are exactly degenerate
