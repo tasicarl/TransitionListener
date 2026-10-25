@@ -374,5 +374,81 @@ class ADifferentElementOnTheProbeIsStillTheNoisesChoice(unittest.TestCase):
                              "element, so the image rests on an unresolved sign")
 
 
+class TheProbeVariesTheSignAndNotTheMagnitude(unittest.TestCase):
+    """What the probe asks has to be the sign alone.
+
+    A model may override `applySymmetries` with a measure that reads magnitudes. Setting an
+    unresolved component to the cutoff instead of reversing it moves it by orders of magnitude,
+    1e-09 GeV to 1e-04 of the node here, and such a measure can then choose a different element
+    because the probe is larger rather than because its sign differs. The trace would be left
+    alone for a reason that has nothing to do with the question.
+    """
+
+    #: Chooses from the sign of the first component, which the tracer resolves, and ignores the
+    #: sign of the second; but a second component large against the first is taken as a
+    #: different kind of point and left alone. Sign-blind where the probe varies the sign,
+    #: magnitude-sensitive where the old probe varied the magnitude.
+    @staticmethod
+    def measure(X, **k):
+        X = np.asarray(X, dtype=float)
+        if abs(X[1]) > 1.0e-06 * abs(X[0]):
+            return X.copy()
+        return X @ FLIP_BOTH if X[0] < 0.0 else X.copy()
+
+    def test_the_reference_and_the_sign_reversed_probe_agree(self):
+        """The precondition, asked of the measure: the sign alone does not change the image."""
+        reference = np.array([-246.0, -1.0e-09])
+        probe = np.array([-246.0, +1.0e-09])
+        for point in (reference, probe):
+            with self.subTest(str(point)):
+                self.assertTrue(np.allclose(self.measure(point), point @ FLIP_BOTH),
+                                msg="the measure does not apply the flip to this point, so "
+                                    "the test cannot see the defect")
+
+    def test_a_magnitude_reading_measure_does_not_refuse_the_trace(self):
+        reference = np.array([-246.0, -1.0e-09])
+        length = float(np.linalg.norm(reference))
+        at_the_cutoff = np.array([-246.0, +PH._IMAGE_SIGN_RTOL * length])
+        self.assertFalse(
+            np.allclose(self.measure(at_the_cutoff), at_the_cutoff @ FLIP_BOTH),
+            msg="the measure treats a probe at the cutoff the same way, so this test cannot "
+                "tell the two probes apart")
+        self.assertEqual(
+            element_for([reference], measure=self.measure), "flip",
+            msg="the map was declined although only the magnitude of the probe, not its "
+                "sign, changed what the measure returned")
+
+
+class AComponentThatIsExactlyZeroStillHasItsSignProbed(unittest.TestCase):
+    """Reversing a zero leaves a zero, so the probe would be the reference itself.
+
+    A component of exactly zero is as unresolved as a component can be, and
+    `np.heaviside(0, 1)` counts it as positive, so a measure reading that sign reads a positive
+    one. Probing it needs a value with a sign, and the smallest the node's own scale resolves
+    is the one that changes the sign and nothing else.
+    """
+
+    #: Reads the sign of the second component alone, which is the one under test.
+    @staticmethod
+    def measure(X, **k):
+        X = np.asarray(X, dtype=float)
+        return X @ FLIP_BOTH if X[1] >= 0.0 else X.copy()
+
+    def test_the_map_is_declined_where_a_zero_decides_it(self):
+        reference = np.array([-246.0, 0.0])
+        self.assertTrue(np.allclose(self.measure(reference), reference @ FLIP_BOTH),
+                        msg="the measure leaves the reference alone, so there is no map to "
+                            "decline and the test is vacuous")
+        tiny = -np.finfo(float).eps * float(np.linalg.norm(reference))
+        self.assertTrue(
+            np.allclose(self.measure(np.array([-246.0, tiny])), np.array([-246.0, tiny])),
+            msg="the measure answers the probe the same way as the reference, so this test "
+                "cannot see whether the probe carried a sign")
+        self.assertEqual(
+            element_for([reference], measure=self.measure), "none",
+            msg="the map was applied although the image rests on the sign of a component "
+                "that is exactly zero")
+
+
 if __name__ == "__main__":
     unittest.main()

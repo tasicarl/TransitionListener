@@ -718,9 +718,19 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
     # digit the tracer does not resolve.
     undecided = np.abs(reference) <= _IMAGE_SIGN_RTOL * node_length
     if undecided.any():
+        # The sign of each unresolved component is reversed and its magnitude left alone, so
+        # that what the probe varies is only the thing in question. Setting them to the cutoff
+        # instead would move a component of 1e-09 GeV to 1e-04 of the node, five orders of
+        # magnitude, and a model is free to override `applySymmetries` with a measure that
+        # reads magnitudes: such a measure could then choose a different element because the
+        # probe is larger, not because its sign differs, and the trace would be left alone for
+        # the wrong reason. A component that is exactly zero has no sign to reverse, and
+        # `np.heaviside(0, 1)` counts it as positive, so it is given the smallest negative
+        # value the node's own scale resolves.
         probe = np.array(reference, dtype=float)
-        probe[undecided] = (np.where(reference[undecided] >= 0.0, -1.0, 1.0)
-                            * _IMAGE_SIGN_RTOL * node_length)
+        exactly_zero = undecided & (reference == 0.0)
+        probe[undecided] = -probe[undecided]
+        probe[exactly_zero] = -np.finfo(float).eps * node_length
         probed = np.asarray(applySymmetries(probe), dtype=float)
         if not np.isfinite(probed).all():
             return None
