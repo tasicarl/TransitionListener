@@ -326,6 +326,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   because neither comparison can be true of a `nan` and `np.allclose` reported it too. The
   field scale is checked with them: the norm of finite field values is itself not finite
   above about 1.3e154 per component, and it divides the comparison it would then defeat.
+  The field values are checked before the potential is asked about them, because
+  `np.allclose` compared coordinates and evaluated no potential at all: a model is free to
+  refuse a field point that is not a number by raising, and that would have come out of
+  this check as an exception where it used to come out as a verdict.
 
 - **A traced phase is stored on one image of the potential's symmetry.** Below the
   temperature at which the origin tilts over, the displaced minima are exactly degenerate

@@ -369,14 +369,16 @@ def _record_rescue_outcome(derived: dict, diagnostic) -> None:
         derived.get("DIAG:action_rescue_attempts", 0) + attempts)
 
 
-#: How far apart in depth two zero-temperature minima have to be before the chain is said
-#: to have ended somewhere other than `X0`. Relative to `|V(X0)|`, which is of order 4.5e+07
-#: GeV^4 on the 2HDM, so this is about 0.45 GeV^4: far above the 0 the two sides agree to
-#: when they are the same minimum, far below the difference between genuinely distinct vacua.
+#: How far apart in depth two zero-temperature minima have to be before the chain is said to
+#: have ended somewhere other than `X0`. Relative to the depth of `X0` below the origin,
+#: `|V(X0) - V(0)|`, and not to `|V(X0)|`, which moves with the constant `Vtot` is free to
+#: carry. That depth is 4.398e+07 GeV^4 on the 2HDM benchmark, so this is about 0.44 GeV^4:
+#: far above the 0 the two sides agree to when they are the same minimum, far below the
+#: difference between genuinely distinct vacua.
 _T0_MINIMUM_DEPTH_RTOL = 1.0e-8
 #: And how far apart in field space, relative to `|X0|`. The tracer's residual at `Tmin` is
-#: 2.7e-06 of the field scale on the 2HDM benchmark, so this admits it by three decades while
-#: still separating two minima that are genuinely apart.
+#: 2.7e-06 of the field scale on the 2HDM benchmark, a factor 370 below this, while two minima
+#: that are genuinely apart are further still.
 _T0_MINIMUM_FIELD_RTOL = 1.0e-3
 
 
@@ -416,6 +418,14 @@ def theChainEndedElsewhere(pot, last_vev) -> bool:
         the separation is not finite.
     """
     T0 = pot.Tmin
+    # The field points first, before the potential is asked about them. `np.allclose`, which
+    # this replaces, compared the coordinates and never evaluated `Vtot`, so a traced endpoint
+    # that is not finite could not reach a model's own code; a model is free to refuse such a
+    # point by raising, and that would come out of here as an exception where it used to come
+    # out as this verdict.
+    if not (np.isfinite(np.atleast_1d(np.asarray(last_vev, dtype=float))).all()
+            and np.isfinite(np.atleast_1d(np.asarray(pot.X0, dtype=float))).all()):
+        return True
     V_last = float(np.squeeze(pot.Vtot(last_vev, T0)))
     V_X0 = float(np.squeeze(pot.Vtot(pot.X0, T0)))
     # The depth of the zero-temperature minimum below the origin, which is what the difference

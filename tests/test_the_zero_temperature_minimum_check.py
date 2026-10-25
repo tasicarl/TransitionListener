@@ -314,6 +314,42 @@ class AQuestionThatCannotBeAnsweredIsReported(unittest.TestCase):
                         msg="an endpoint that is not a number was taken for the "
                             "zero-temperature minimum")
 
+    def test_a_non_finite_endpoint_never_reaches_the_potential(self):
+        """`np.allclose` compared coordinates and evaluated no potential at all.
+
+        A model is free to refuse a field point that is not a number by raising, and the
+        comparison this replaces could not put one in front of it. Asking the potential first
+        would turn that verdict into an exception out of `check_T0_global_min`.
+        """
+        pot = _potential()
+        inner = pot.Vtot
+        seen = []
+
+        def refuses_what_is_not_a_number(X, T, *a, **k):
+            X = np.atleast_1d(np.squeeze(np.asarray(X, dtype=float)))
+            seen.append(X.copy())
+            if not np.isfinite(X).all():
+                raise ValueError("this model refuses a field point that is not a number")
+            return inner(X, T)
+
+        pot.Vtot = refuses_what_is_not_a_number
+        # Either side can be the non-finite one: the traced endpoint, and `X0` itself, which
+        # the potential is asked about just as directly.
+        for name, endpoint, X0 in (
+                ("the traced endpoint", np.array([np.nan, SCALE]), np.array([11.5, SCALE])),
+                ("the zero-temperature minimum", np.array([11.5, SCALE]),
+                 np.array([np.nan, SCALE]))):
+            with self.subTest(name):
+                seen.clear()
+                pot.X0 = X0
+                self.assertTrue(
+                    TO.theChainEndedElsewhere(pot, endpoint),
+                    msg=f"the verdict did not come back when {name} was not finite")
+                for point in seen:
+                    self.assertTrue(
+                        np.isfinite(point).all(),
+                        msg=f"the potential was handed {point}, which is not finite")
+
     def test_a_non_finite_potential_is_reported(self):
         pot = _potential()
         pot.Vtot = lambda X, T, *a, **k: float("nan")
