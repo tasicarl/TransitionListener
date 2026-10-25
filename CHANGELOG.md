@@ -344,7 +344,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   temperature when another pairing resolved; where none resolved, the first pairing's entry
   is kept and the caller sees the infinite action it would have seen before. The number of
   pairings offered and the number that resolved a bounce are reported as `pairings_tried`
-  and `pairings_resolved`. Three places use it: both percolation routes, the adaptive one
+  and `pairings_resolved`, and the false vacuum as the phase tracing produced it as
+  `high_vev_as_traced`. That last one is what lets a cached action be recognised as this
+  transition's: the entry's `high_vev` is the image the bounce was computed on, which on
+  the 2HDM is 492 GeV from the traced point, and the adaptive percolation route compares
+  the two to decide whether an action can be reused rather than computed again. Three places use it: both percolation routes, the adaptive one
   and the fixed step size one, and the nucleation-temperature search, which reads the same
   two traced phases and runs before percolation, so on the fixed step size route a criterion
   that was never fulfilled on the expensive pairing dropped the candidate transition before

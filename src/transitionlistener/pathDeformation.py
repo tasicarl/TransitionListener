@@ -1944,7 +1944,9 @@ def bounceActionOverImages(
     outdict : dict
         The updated output dictionary. The entry under `T` carries the usual keys, and in
         addition ``pairings_tried`` and ``pairings_resolved``, the number of images that
-        were offered to the solver and the number for which it resolved a bounce.
+        were offered to the solver and the number for which it resolved a bounce, and
+        ``high_vev_as_traced``, the false vacuum as the phase tracing produced it, since
+        ``high_vev`` carries the image the bounce was computed on.
     """
     if T in outdict:
         return outdict
@@ -1969,6 +1971,12 @@ def bounceActionOverImages(
             best, best_action = candidate, action
     best["pairings_tried"] = len(images)
     best["pairings_resolved"] = resolved
+    # The false vacuum as the phase tracing produced it, beside the image the bounce was
+    # computed on. A caller holding this entry and the two traced phases cannot otherwise tell
+    # that it belongs to them: the entry's `high_vev` is the winning image, which is 492 GeV
+    # from the traced point on the 2HDM, and `bubbledynamics` compares the two to decide
+    # whether a cached action can be reused.
+    best["high_vev_as_traced"] = tdict["high_vev"]
     outdict[T] = best
     return outdict
 

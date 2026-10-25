@@ -1101,5 +1101,67 @@ class BothPercolationRoutesReachTheEnumeration(unittest.TestCase):
                 self.assertAlmostEqual(float(np.squeeze(action)), 71.152, places=2)
 
 
+class TheCacheEntryIsRecognisedAfterATransformedImageWins(unittest.TestCase):
+    """A cached action is reused only if its entry can be tied to the two traced phases.
+
+    `bounceAction` stores the `tdict` it is handed, and `bounceActionOverImages` hands it the
+    winning image, so the entry's `high_vev` is that image and not the point the phase tracing
+    produced. `bubbledynamics._transition_action_outdict_temperatures` compares the two with a
+    tolerance of `max(1e-6, 2e-2 * scale)`, which an image far from the traced point cannot
+    pass, and the temperature would then be dropped and its action computed again.
+    """
+
+    def setUp(self):
+        self.false_vacuum = toy_minimum([-0.95, -0.12])
+        self.true_vacuum = toy_minimum([1.2, 0.17])
+
+    def test_the_entry_carries_the_false_vacuum_as_traced(self):
+        outdict = {}
+        bounceActionOverImages(
+            1.0, toy_V, toy_dV, outdict,
+            dict(low_vev=self.true_vacuum, high_vev=self.false_vacuum),
+            [np.diag([-1.0, -1.0]), np.diag([1.0, 1.0])], False, 1.0)
+        entry = outdict[1.0]
+        self.assertIn("high_vev_as_traced", entry,
+                      msg="the entry does not say which false vacuum it was asked about")
+        self.assertTrue(np.allclose(entry["high_vev_as_traced"], self.false_vacuum),
+                        msg="the as-traced false vacuum is not the one that was handed in")
+
+    def _recognised(self, entry):
+        symmetric = SimpleNamespace(valAt=lambda T, deriv=0: self.false_vacuum)
+        broken = SimpleNamespace(valAt=lambda T, deriv=0: self.true_vacuum)
+        got = bd._transition_action_outdict_temperatures(
+            {1.0: entry}, symmetric, broken, tmin=0.5, tmax=1.5)
+        return list(np.asarray(got, dtype=float))
+
+    def test_a_transformed_entry_is_still_recognised(self):
+        mirrored = -np.asarray(self.false_vacuum, dtype=float)
+        separation = float(np.linalg.norm(mirrored - self.false_vacuum))
+        self.assertGreater(
+            separation,
+            max(1.0e-6, 2.0e-2 * float(np.linalg.norm(self.false_vacuum))),
+            msg="the mirror image is inside the matcher's tolerance of the traced point, so "
+                "this test cannot see the defect")
+        self.assertEqual(
+            self._recognised({"action": 150.0, "low_vev": self.true_vacuum,
+                              "high_vev": mirrored,
+                              "high_vev_as_traced": self.false_vacuum}),
+            [1.0],
+            msg="the cached action was not recognised as this transition's, so it would be "
+                "computed again")
+
+    def test_an_entry_belonging_to_neither_phase_is_still_refused(self):
+        """The relaxation may not make the matcher accept anything."""
+        elsewhere = np.asarray(self.false_vacuum, dtype=float) + 9.0
+        self.assertEqual(
+            self._recognised({"action": 150.0, "low_vev": self.true_vacuum,
+                              "high_vev": elsewhere,
+                              "high_vev_as_traced": elsewhere}),
+            [],
+            msg="an entry whose false vacuum is neither the traced point nor an image of it "
+                "was accepted")
+
+
 if __name__ == "__main__":
     unittest.main()
+

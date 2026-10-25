@@ -2387,10 +2387,18 @@ def _transition_action_outdict_temperatures(
             except Exception:
                 pass
             else:
-                if not (
-                    phase_point_matches(high_vev, symmetric_point)
-                    and phase_point_matches(low_vev, broken_point)
-                ):
+                # `high_vev` is the image of the false vacuum the bounce was computed on,
+                # which is not the point the phase tracing produced where a transformed image
+                # carried the smaller action: on the 2HDM the two are 492 GeV apart, far
+                # outside this tolerance, so the entry would not be recognised as this
+                # transition's and its action would be computed again. The as-traced point is
+                # recorded beside it for exactly this comparison; entries written before it
+                # existed carry only `high_vev`.
+                traced = payload.get("high_vev_as_traced")
+                high_matches = phase_point_matches(high_vev, symmetric_point) or (
+                    traced is not None and phase_point_matches(traced, symmetric_point))
+                if not (high_matches
+                        and phase_point_matches(low_vev, broken_point)):
                     continue
         temperatures.append(float(temperature))
     return _temperature_grid(temperatures)
