@@ -323,8 +323,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   two traced phases and runs before percolation, so on the fixed step size route a criterion
   that was never fulfilled on the expensive pairing dropped the candidate transition before
   percolation was reached. On a model with a symmetry the reported `Tnuc` and the action at
-  `Tnuc` therefore move. Where the false vacuum sits at a fixed point of the group, the
-  origin in particular, every image coincides and one bounce is computed as before.
+  `Tnuc` therefore move: on the real two Higgs doublet model benchmark of figure 15 the
+  nucleation temperature at `lambda3 = 5.82` goes from 42.00650206 GeV to 42.01949643 GeV,
+  0.013 GeV or 0.031 per cent, with `S_3/T` at it going from 153.530488 to 153.497022, while
+  the three colder couplings measured are unchanged to the last digit. Where the false vacuum
+  sits at a fixed point of the group, the origin in particular, every image coincides and one
+  bounce is computed as before.
 
 - **A `PotentialError` whose error type the bounce code does not know now reaches the caller
   as `UnexpectedError`.** It raised `IndexError` instead: the message was built from
