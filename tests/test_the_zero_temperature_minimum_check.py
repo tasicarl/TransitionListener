@@ -102,6 +102,69 @@ class BothRoutesAskTheSameQuestion(unittest.TestCase):
                       msg="the fixed step size route no longer uses the shared decision, so "
                           "it can answer a different question from the adaptive one")
 
+    def _driven(self, module, cls_name, verdict):
+        """Drive one route's `check_T0_global_min` on a stub and report what it did.
+
+        The method reads a handful of attributes and nothing else, so it can be called
+        without a run behind it. The shared decision is replaced for the duration, which is
+        what shows that the route asks it rather than merely importing its name.
+        """
+        calls = []
+        original = module.theChainEndedElsewhere
+
+        class _Transition:
+            type = 1
+
+            def __init__(self):
+                self.derived_params = {}
+                self.low_phase = 0
+
+        transition = _Transition()
+        observables = [{}]
+        stub = types.SimpleNamespace(
+            pot=_potential(), phases={0: _Phase(np.array([11.5, SCALE]))},
+            transitions=[transition], transitionObservables=observables,
+            GWconfig=types.SimpleNamespace(check_if_T0_global_min=False), verbose=False)
+
+        def spy(pot, last_vev):
+            calls.append(np.asarray(last_vev, dtype=float).copy())
+            return verdict
+
+        module.theChainEndedElsewhere = spy
+        try:
+            getattr(module, cls_name).check_T0_global_min(stub)
+        finally:
+            module.theChainEndedElsewhere = original
+        return calls, transition.derived_params, observables[0]
+
+    def test_each_route_asks_the_shared_decision_and_records_its_answer(self):
+        """Both routes, driven, with the decision replaced: the call and the warning.
+
+        Checking that the name is imported cannot show that either route asks it, and the
+        warning is what the answer is for.
+        """
+        from transitionlistener import transitionObservables_fixedstep as fixedstep
+
+        for name, module, cls_name in (("the adaptive route", TO, "TransitionObservables"),
+                                       ("the fixed step size route", fixedstep,
+                                        "TransitionObservables")):
+            with self.subTest(f"{name}, the chain ended elsewhere"):
+                calls, derived, observables = self._driven(module, cls_name, True)
+                self.assertEqual(len(calls), 1,
+                                 msg=f"{name} did not ask the shared decision")
+                self.assertTrue(derived.get("WARNING:not_T0_global_min"),
+                                msg=f"{name} did not record the warning it was told to")
+                self.assertTrue(observables.get("WARNING:not_T0_global_min"))
+            with self.subTest(f"{name}, the chain ended at the minimum"):
+                calls, derived, observables = self._driven(module, cls_name, False)
+                self.assertEqual(len(calls), 1,
+                                 msg=f"{name} did not ask the shared decision")
+                # Written as False rather than left out, which is how a reader tells a run
+                # that was checked from one where no verdict was formed.
+                self.assertIs(derived["WARNING:not_T0_global_min"], False,
+                              msg=f"{name} warned although the answer was no")
+                self.assertIs(observables["WARNING:not_T0_global_min"], False)
+
     def test_neither_route_compares_the_coordinates_directly(self):
         """Reading the source, because driving the fixed step size route needs a whole run.
 
