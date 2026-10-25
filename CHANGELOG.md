@@ -334,7 +334,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   by the potential. The two phases of a transition could therefore be stored on different
   images, and the bounce was then computed along a path between images instead of along the
   path the field takes. On the real two Higgs doublet model at `lambda3 = 5.868` that gave a
-  field separation of 264.54 GeV against 231.55 GeV at the neighbouring couplings and
+  field separation of 264.54 GeV against 231.55 and 231.53 GeV at the two neighbouring
+  couplings, and
   `S_3/T = 336.84` against 152.97, where `S_3` is the Euclidean action of the O(3)
   bounce, so the bubble nucleation rate never rose and the coupling returned error 8, no
   percolation. The bubble nucleates along whichever pairing carries the smallest action, so
@@ -382,7 +383,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   at `lambda3` = 5.868 the high phase sat at `phi` = (-27.416, -15.335) GeV against
   (+27.354, +15.321) GeV and (+27.479, +15.349) GeV at the neighbouring couplings, with the
   broken minimum at (+11.48, +246.33) GeV in all three: a field separation of 264.54 GeV
-  against 231.54 GeV, and `S_3/T` = 336.84 against 152.97 at T = 30.0 GeV. The
+  against 231.55 and 231.53 GeV, and `S_3/T` = 336.84 against 152.97 at T = 30.0 GeV. The
   smallest `S_3/T` over the cache was 246.4 against a nucleation criterion near 155, so the
   rate never rose, the percolation probability stayed at zero over all 197 accepted support
   points, and the point returned error 8 between two couplings that behaved. The
