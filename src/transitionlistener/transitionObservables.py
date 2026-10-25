@@ -411,13 +411,23 @@ def theChainEndedElsewhere(pot, last_vev) -> bool:
     Returns
     -------
     bool
-        True where the chain ended somewhere other than the zero-temperature minimum.
+        True where the chain ended somewhere other than the zero-temperature minimum,
+        and where the question cannot be answered because a potential, the field scale or
+        the separation is not finite.
     """
     T0 = pot.Tmin
     V_last = float(np.squeeze(pot.Vtot(last_vev, T0)))
     V_X0 = float(np.squeeze(pot.Vtot(pot.X0, T0)))
     scale = float(np.linalg.norm(np.atleast_1d(pot.X0)))
     separation = float(np.linalg.norm(np.atleast_1d(last_vev) - np.atleast_1d(pot.X0)))
+    if not all(np.isfinite([V_last, V_X0, separation])):
+        # Neither comparison below can be true of a `nan`, so leaving one to reach them
+        # answers "the chain ended at the zero-temperature minimum" to a question that was
+        # not answered. `np.allclose`, which this replaces, returned False for a `nan` and so
+        # reported, and a traced endpoint or a potential that is not finite is a reason to
+        # report rather than a reason to pass. An infinity needs no guard: it makes the
+        # distance below larger than any tolerance, so it reports on its own.
+        return True
     depths_differ = abs(V_last - V_X0) > _T0_MINIMUM_DEPTH_RTOL * max(abs(V_X0), 1.0)
     far_apart = separation > _T0_MINIMUM_FIELD_RTOL * max(scale, 1.0)
     return bool(depths_differ or far_apart)

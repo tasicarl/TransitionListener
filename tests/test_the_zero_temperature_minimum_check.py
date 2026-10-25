@@ -242,5 +242,48 @@ class AGenuinelyDifferentMinimumIsStillReported(unittest.TestCase):
                         f"{'not reported' if expected else 'reported'}")
 
 
+class AQuestionThatCannotBeAnsweredIsReported(unittest.TestCase):
+    """Neither comparison can be true of a `nan`, so one must not be left to reach them."""
+
+    def test_a_non_finite_traced_endpoint_is_reported(self):
+        pot = _potential()
+        self.assertTrue(TO.theChainEndedElsewhere(pot, np.array([np.nan, SCALE])),
+                        msg="an endpoint that is not a number was taken for the "
+                            "zero-temperature minimum")
+
+    def test_a_non_finite_potential_is_reported(self):
+        pot = _potential()
+        pot.Vtot = lambda X, T, *a, **k: float("nan")
+        self.assertTrue(TO.theChainEndedElsewhere(pot, pot.X0),
+                        msg="a potential that is not a number was taken for a match")
+
+    def test_an_infinite_separation_is_reported(self):
+        pot = _potential()
+        self.assertTrue(TO.theChainEndedElsewhere(pot, np.array([np.inf, SCALE])))
+
+    def test_a_finite_depth_does_not_excuse_a_separation_that_is_not_a_number(self):
+        """The separation is checked in its own right, not only through the depths.
+
+        A potential need not be non-finite where its argument is: one that clips or wraps its
+        input returns an ordinary number at a field value that is not one, and then the depths
+        agree while the distance between the two points is not a number. Both comparisons are
+        false of that distance, so checking only the depths would report the pair as the
+        zero-temperature minimum.
+        """
+        pot = _potential()
+        pot.Vtot = lambda X, T, *a, **k: -4.5e7
+        self.assertTrue(TO.theChainEndedElsewhere(pot, np.array([np.nan, SCALE])),
+                        msg="a separation that is not a number passed because the depths "
+                            "were finite")
+
+    def test_this_is_what_the_comparison_it_replaced_did(self):
+        """`np.allclose` returned False for a `nan`, so the old check reported too.
+
+        The change may not turn a reported run into a silent one, and a `nan` is the input
+        on which the two could differ.
+        """
+        self.assertFalse(np.allclose(np.array([np.nan, SCALE]), np.array([11.5, SCALE])))
+
+
 if __name__ == "__main__":
     unittest.main()

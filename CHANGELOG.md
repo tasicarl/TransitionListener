@@ -314,7 +314,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   field scale as a second condition so that a pair of degenerate minima is still reported. The
   decision is `theChainEndedElsewhere`, which both routes call, the adaptive one and the fixed
   step size one; the second had its own copy of the comparison and so its own version of the
-  defect.
+  defect. A depth or a separation that is not a number is reported rather than passed,
+  because neither comparison can be true of a `nan` and `np.allclose` reported it too.
 
 - **A traced phase is stored on one image of the potential's symmetry.** Below the
   temperature at which the origin tilts over, the displaced minima are exactly degenerate
