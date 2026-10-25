@@ -604,7 +604,8 @@ def traceMinimum(
 _IMAGE_MATCH_RTOL = 1.0e-8
 #: How small a field component has to be, relative to the length of the node it belongs to,
 #: before its sign is treated as unresolved. The phase tracer's residual on the 2HDM
-#: benchmark is 2.7e-06 of the field scale, so this admits it by two decades.
+#: benchmark is 2.7e-06 of the field scale, a factor 37 below this, and a component worth
+#: a per cent of the node's own length is a factor 100 above it.
 _IMAGE_SIGN_RTOL = 1.0e-4
 
 
@@ -642,7 +643,11 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
     Returns
     -------
     np.ndarray or None
-        The transformation to apply to the whole trace, or None where there is nothing to do.
+        The transformation to apply to the whole trace, which is the identity where the
+        reference node already sits on its canonical image. None where no transformation
+        can be accounted for: no symmetry group, no finite node to read the reference
+        from, a non-finite image, no group element that reproduces the image, or a choice
+        of image that rests on a field component below the tracing resolution.
     """
     if applySymmetries is None or len(invGroupElements) == 0:
         return None
