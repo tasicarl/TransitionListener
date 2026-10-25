@@ -4,17 +4,17 @@ r"""The step-size error estimate of the bounce integrator, against the form it r
 step's error estimate against the absolute and fractional tolerances, and it takes the
 smaller of the two comparisons for each component and the largest over the components. It
 built that number by putting two arrays in a Python list for `np.min` to stack and reduce,
-and then called `np.nan_to_num` on the single number that came out. That costs 23.9
-microseconds against 4.7 for the form below, measured over 200000 repetitions, and the
-bounce solver runs it once per step, 78658 times for six bounces of the real two Higgs
-doublet model, which is why it is worth writing differently.
+and then called `np.nan_to_num` on the single number that came out, which costs several
+times what the same arithmetic written directly costs, once per step.
 
-What the change may not do is return a different number. The tests here compare the two
-forms on the cases where they could differ: a `nan` or an infinity in the error estimate,
-a field value at zero, and a tolerance at zero or given per component.
+What the change may not do is return a different number, or change what `rkqs` does with it.
+The arithmetic is `helper_functions._step_error_estimate`, which the tests below call, and
+the step decisions are tested through `rkqs` itself with the Cash-Karp step replaced by one
+that returns a chosen error estimate.
 
 Part of TransitionListener v2
 """
+import contextlib
 import unittest
 
 import numpy as np
@@ -29,24 +29,27 @@ def the_form_that_was_replaced(yerr, y, epsabs, epsfrac):
     ], axis=0)))
 
 
-def the_form_in_use(yerr, y, epsabs, epsfrac):
-    """The same arithmetic as `rkqs` performs now, so that the two can be compared.
+@contextlib.contextmanager
+def the_step_returns(yerr):
+    """Give `rkqs` a Cash-Karp step whose error estimate is `yerr`.
 
-    `rkqs` computes this inline and then uses it, so there is nothing to import. Keeping the
-    copy next to the original is what makes the comparison below a comparison and not a
-    restatement, and `test_the_copy_matches_the_source` reads the source to check that this
-    copy has not drifted from it.
+    The estimate is formed inside `rkqs`'s own loop, so this is what makes the step
+    decisions that follow from it reachable from a test.
     """
-    scaled = np.minimum(np.abs(yerr / epsabs),
-                        np.abs(yerr) / ((np.abs(y) + 1e-300) * epsfrac))
-    errmax = float(np.max(scaled))
-    if errmax != errmax:
-        return 0.0
-    if errmax == np.inf:
-        return hf._LARGEST_FLOAT
-    if errmax == -np.inf:
-        return -hf._LARGEST_FLOAT
-    return errmax
+    original = hf._rkck
+    dy = np.zeros_like(np.atleast_1d(np.asarray(yerr, dtype=float)))
+    hf._rkck = lambda y, dydt, t, f, dt, args: (dy, yerr)
+    try:
+        yield
+    finally:
+        hf._rkck = original
+
+
+def one_step(yerr, y, epsabs, epsfrac, t=1.0, dt=1.0e-3):
+    """One `rkqs` step on that estimate, returning what `rkqs` returns."""
+    with the_step_returns(yerr), np.errstate(all="ignore"):
+        return hf.rkqs(y, np.zeros_like(y), t, lambda *a: np.zeros_like(y),
+                       dt, epsfrac, epsabs)
 
 
 #: Each case is (name, yerr, y, epsabs, epsfrac). The first is an ordinary accepted step on
@@ -76,6 +79,10 @@ CASES = [
     ("a single component", np.array([3.0e-9]), np.array([0.4]), 1.0e-10, 1.0e-8),
     ("eight components", np.linspace(1.0e-12, 1.0e-8, 8), np.linspace(-2.0, 2.0, 8),
      1.0e-10, 1.0e-8),
+    ("single precision", np.array([3.0e-9, -7.0e-10], dtype=np.float32),
+     np.array([0.4, -1.2e-3], dtype=np.float32), np.float32(1.0e-10), np.float32(1.0e-8)),
+    ("single precision, infinite", np.array([np.inf, np.inf], dtype=np.float32),
+     np.array([0.4, -1.0e-3], dtype=np.float32), np.float32(1.0e-10), np.float32(1.0e-8)),
 ]
 
 
@@ -86,7 +93,7 @@ class TheTwoFormsReturnTheSameNumber(unittest.TestCase):
             with self.subTest(name):
                 with np.errstate(all="ignore"):
                     was = float(the_form_that_was_replaced(yerr, y, epsabs, epsfrac))
-                    now = float(the_form_in_use(yerr, y, epsabs, epsfrac))
+                    now = float(hf._step_error_estimate(yerr, y, epsabs, epsfrac))
                 if was != was:
                     self.assertNotEqual(now, now, msg=f"{name}: one form gave a nan")
                 else:
@@ -95,78 +102,65 @@ class TheTwoFormsReturnTheSameNumber(unittest.TestCase):
                         msg=f"{name}: the step would be judged on {now!r} where it used to "
                             f"be judged on {was!r}")
 
-    def test_a_nan_is_sent_to_zero_and_so_accepts_the_step(self):
-        """The behaviour `np.nan_to_num` gave and that the step acceptance rests on.
+    def test_the_infinity_substitution_keeps_the_dtype(self):
+        """`np.nan_to_num` substitutes the input dtype's largest value, not float64's.
 
-        `rkqs` accepts the step when the estimate is below 1, so sending a `nan` to zero
-        accepts a step whose error could not be judged. That is what the solver has always
-        done, and spelling the replacement out rather than calling `np.nan_to_num` is what
-        makes it easy to change by accident.
+        A single precision error estimate is sent to 3.4028235e+38, and fixing the
+        substitution at `float64` would return 1.7976931e+308 instead. The two differ by 270
+        orders of magnitude, and both reject the step, so only the number says which was
+        used.
         """
+        single = np.array([np.inf, np.inf], dtype=np.float32)
+        y = np.array([0.4, -1.0e-3], dtype=np.float32)
         with np.errstate(all="ignore"):
-            value = the_form_in_use(np.array([np.nan, np.nan]), np.array([0.4, -1.0e-3]),
-                                    1.0e-10, 1.0e-8)
-        self.assertEqual(value, 0.0)
-        self.assertLess(value, 1.0, msg="a step whose error is not a number is no longer "
-                                        "accepted, which changes where the solver stops")
+            value = hf._step_error_estimate(single, y, np.float32(1.0e-10),
+                                            np.float32(1.0e-8))
+            expected = float(np.nan_to_num(np.float32(np.inf)))
+        self.assertEqual(value, expected)
+        self.assertEqual(value, float(np.finfo(np.float32).max))
+        self.assertNotEqual(value, float(np.finfo(np.float64).max))
 
-    def test_an_infinity_is_sent_to_the_largest_float_and_so_rejects_the_step(self):
-        """Kept for faithfulness, and it cannot change what the solver does.
+    def test_a_nan_accepts_the_step_through_rkqs(self):
+        """The behaviour `np.nan_to_num` gave, read off `rkqs` and not off the arithmetic.
 
-        `rkqs` uses the estimate twice, in `errmax < 1.0` and in `0.9*dt*errmax**-.25`. An
-        infinity fails the first comparison and an infinity raised to minus a quarter is
-        zero, while the largest float fails the same comparison and gives 1.45e-77; the step
-        size that follows is `max(dttemp, dt*.1)`, or `min` for a negative step, and
-        `dt*0.1` wins against both. So the two choices send the solver down the same path
-        with the same numbers, and no behaviour of the solver can tell them apart. The
-        branch is kept because it is what `np.nan_to_num` did and because a reader comparing
-        the two forms would otherwise find a difference in the number they return, and it is
-        checked by reading the source in `test_the_copy_matches_the_source`, since there is
-        no behaviour to check it by.
+        Sending a `nan` to zero accepts a step whose error could not be judged. Left as a
+        `nan` it would fail `errmax < 1.0`, and `rkqs` would then halve its way down to
+        `IntegrationError` instead of returning, which is what this distinguishes.
         """
-        with np.errstate(all="ignore"):
-            value = the_form_in_use(np.array([np.inf, np.inf]), np.array([0.4, -1.0e-3]),
-                                    1.0e-10, 1.0e-8)
-        self.assertEqual(value, float(np.finfo(np.float64).max))
-        self.assertGreater(value, 1.0)
-        # The two choices give the same next step size, which is why the branch is
-        # unobservable and the claim above is a claim about the source and not about
-        # behaviour.
-        for dt in (1.0e-3, -1.0e-3):
-            with self.subTest(f"dt = {dt:g}"):
-                with np.errstate(all="ignore"):
-                    from_inf = 0.9 * dt * float(np.inf) ** -0.25
-                    from_max = 0.9 * dt * hf._LARGEST_FLOAT ** -0.25
-                pick = max if dt > 0 else min
-                self.assertEqual(pick(from_inf, dt * 0.1), pick(from_max, dt * 0.1))
+        y = np.array([0.4, -1.0e-3])
+        step = one_step(np.array([np.nan, np.nan]), y, 1.0e-10, 1.0e-8, dt=1.0e-3)
+        self.assertEqual(step.Delta_t, 1.0e-3,
+                         msg="the step was not accepted at the size it was tried at")
+        self.assertAlmostEqual(step.dtnxt, 5.0e-3, places=12,
+                               msg="an estimate of zero should give the fivefold step")
 
-    def test_the_copy_matches_the_source(self):
-        """The copy above has to be the arithmetic `rkqs` performs, or nothing is tested.
+    def test_an_infinity_rejects_the_step_through_rkqs(self):
+        """An infinite estimate fails `errmax < 1.0` at every step size.
 
-        Reading the source rather than calling `rkqs`, because the estimate is computed
-        inside its loop and cannot be reached from outside without a derivative function and
-        a whole integration behind it.
+        `rkqs` shrinks the step by ten each time and raises once it rounds down to nothing,
+        which is the only outcome an estimate above 1 can have when it never improves.
         """
-        import inspect
+        y = np.array([0.4, -1.0e-3])
+        with self.assertRaises(hf.IntegrationError):
+            one_step(np.array([np.inf, np.inf]), y, 1.0e-10, 1.0e-8, t=1.0, dt=1.0e-3)
 
-        source = inspect.getsource(hf.rkqs)
-        for fragment in ("np.minimum(np.abs(yerr / epsabs)",
-                         "np.abs(yerr) / ((np.abs(y) + 1e-300) * epsfrac)",
-                         "errmax = float(np.max(scaled))",
-                         "if errmax != errmax:",
-                         "errmax = 0.0",
-                         "elif errmax == np.inf:",
-                         "errmax = _LARGEST_FLOAT",
-                         "elif errmax == -np.inf:",
-                         "errmax = -_LARGEST_FLOAT"):
-            self.assertIn(fragment, source,
-                          msg=f"rkqs no longer contains {fragment!r}, so the copy in this "
-                              f"test file is not the arithmetic under test")
+    def test_rkqs_judges_the_step_on_the_number_the_estimate_returns(self):
+        """`rkqs` has to use the returned value, not a constant of its own.
 
-    def test_the_largest_float_is_what_nan_to_num_uses(self):
-        """The constant has to be the one `np.nan_to_num` would have put there."""
+        The tolerances below make the estimate exactly 0.5: the absolute comparison gives
+        0.5 and the fractional one 5e+29, and the smaller is kept. `rkqs` accepts the step
+        and, since 0.5 is above its 1.89e-4 threshold, offers `0.9 * dt * errmax**-0.2` as
+        the next size. Any value other than 0.5 reaching that line gives a different number.
+        """
+        y = np.array([1.0])
+        yerr = np.array([0.5])
         with np.errstate(all="ignore"):
-            self.assertEqual(hf._LARGEST_FLOAT, float(np.nan_to_num(np.inf)))
+            self.assertEqual(hf._step_error_estimate(yerr, y, 1.0, 1.0e-30), 0.5)
+        dt = 1.0e-3
+        step = one_step(yerr, y, 1.0, 1.0e-30, dt=dt)
+        self.assertAlmostEqual(step.dtnxt, 0.9 * dt * 0.5 ** -0.2, places=12,
+                               msg="the next step size does not follow from an estimate "
+                                   "of 0.5, so `rkqs` judged the step on something else")
 
 
 if __name__ == "__main__":
