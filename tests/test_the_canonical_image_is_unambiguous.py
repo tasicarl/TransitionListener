@@ -276,9 +276,6 @@ class ASignTheTracerDoesNotResolveDecidesNothing(unittest.TestCase):
         self.assertEqual(len(calls), 1)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 #: A group with independent flips, unlike the 2HDM's, whose only non-trivial element turns
 #: both components at once. The first component alone, then both, then the second alone, then
@@ -375,3 +372,7 @@ class ADifferentElementOnTheProbeIsStillTheNoisesChoice(unittest.TestCase):
         self.assertFalse(moves_the_trace(node, group=INDEPENDENT_FLIPS, measure=independent_measure),
                          msg="the phase was moved although the probe chose a different "
                              "element, so the image rests on an unresolved sign")
+
+
+if __name__ == "__main__":
+    unittest.main()
