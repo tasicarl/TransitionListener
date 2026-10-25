@@ -602,6 +602,11 @@ def traceMinimum(
 #: How closely one element of the symmetry group has to reproduce the image
 #: `applySymmetries` returns for that element to be taken as the map it applied.
 _IMAGE_MATCH_RTOL = 1.0e-8
+#: How small a field component has to be, relative to the length of the node it belongs to,
+#: before its sign is treated as unresolved. The phase tracer's residual on the 2HDM
+#: benchmark is 2.7e-06 of the field scale, a factor 37 below this, and a component worth
+#: a per cent of the node's own length is a factor 100 above it.
+_IMAGE_SIGN_RTOL = 1.0e-4
 
 
 def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
@@ -638,7 +643,11 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
     Returns
     -------
     np.ndarray or None
-        The transformation to apply to the whole trace, or None where there is nothing to do.
+        The transformation to apply to the whole trace, which is the identity where the
+        reference node already sits on its canonical image. None where no transformation
+        can be accounted for: no symmetry group, no finite node to read the reference
+        from, a non-finite image, no group element that reproduces the image, or a choice
+        of image that rests on a field component below the tracing resolution.
     """
     if applySymmetries is None or len(invGroupElements) == 0:
         return None
@@ -655,28 +664,84 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
         return None
     reference = X[np.flatnonzero(usable)[np.argmax(norms[usable])]]
     canonical = np.asarray(applySymmetries(reference), dtype=float)
-    # Which transformation that is, by matching its action on the reference node. The
-    # measure is not recomputed here so that the image this returns is the one
-    # `applySymmetries` chooses, whatever measure it uses.
-    distances = [float(np.linalg.norm(reference @ g - canonical)) for g in invGroupElements]
-    nearest = int(np.argmin(distances))
-    # Only where that transformation accounts for the image chosen. A model free to
-    # override `applySymmetries` may return a point that no single element of the group
-    # carries the reference to, and the nearest element is then not the map that was
-    # applied; transforming the phase by it would move the phase somewhere the potential
-    # does not relate to where it was traced. Leaving the trace alone loses the
-    # deduplication, which `removeRedundantPhases` may still catch, rather than
-    # introducing a phase that is wrong.
-    # Written as a refused comparison, for the reason the reference node is filtered above: a
-    # model is free to override `applySymmetries`, and one returning a non-finite point makes
-    # `canonical` non-finite, every distance `nan`, and every `nan > tol` false, so the map
-    # would be accepted on the one input that says it cannot be trusted. `np.argmin` then
-    # returns 0, and for the 2HDM the first element of the group is the flip, so a whole phase
-    # would be mirrored. `not (d <= tol)` refuses that the way `d > tol` does not.
-    if not (distances[nearest]
-            <= _IMAGE_MATCH_RTOL * max(float(np.linalg.norm(reference)), 1.0)):
+    node_length = float(np.linalg.norm(reference))
+    # The floor keeps the match tolerance from collapsing to zero on a short node. It is used
+    # only for that tolerance: applied to the sign cutoff below it would turn a relative
+    # cutoff into an absolute one for every phase whose node is shorter than 1, which depends
+    # on the model's units.
+    scale = max(node_length, 1.0)
+
+    def elementApplied(point, image):
+        """Which element of the group carries `point` to `image`, or None for none of them.
+
+        Written as a refused comparison rather than `d > tol`: a model is free to override
+        `applySymmetries`, and one returning a non-finite point makes every distance `nan`,
+        every `nan > tol` false, and `np.argmin` return 0, which for the 2HDM is the flip, so
+        a whole phase would be mirrored on exactly the input saying the map cannot be
+        trusted. `not (d <= tol)` refuses that.
+        """
+        distances = [float(np.linalg.norm(point @ g - image)) for g in invGroupElements]
+        nearest = int(np.argmin(distances))
+        if not (distances[nearest]
+                <= _IMAGE_MATCH_RTOL * max(float(np.linalg.norm(point)), 1.0)):
+            return None
+        return nearest
+
+    # The identity where the reference node already sits on its canonical image. Answering
+    # this before searching the group settles the case where two elements carry the reference
+    # to the same point, which happens whenever an element fixes the reference: at the origin
+    # every element of every group does, and `np.argmin` would then return the first element
+    # of the group, which for the 2HDM is the flip, and mirror a phase that needed no
+    # transformation. The identity rather than None, because None is this function's way of
+    # declining a map it cannot account for, while here the map is known and is the identity.
+    if float(np.linalg.norm(reference - canonical)) <= _IMAGE_MATCH_RTOL * scale:
+        return np.eye(np.size(reference))
+    # Which transformation carries the reference onto its canonical image. The measure is not
+    # recomputed here, so that the image this returns is the one `applySymmetries` chooses,
+    # whatever measure it uses. Only where one element of the group accounts for that image:
+    # a model overriding `applySymmetries` may return a point no single element reaches, and
+    # transforming the phase by the nearest one would move it somewhere the potential does not
+    # relate to where it was traced. Leaving the trace alone loses the deduplication, which
+    # `removeRedundantPhases` may still catch, rather than introducing a phase that is wrong.
+    chosen = elementApplied(reference, canonical)
+    if chosen is None:
         return None
-    return invGroupElements[nearest]
+    # The canonical image is chosen from the signs of the field components, through the
+    # measure `sum_i 2^i theta(phi_i)`, and the component with the highest index carries the
+    # largest weight, so it decides the image on its own. A component whose magnitude is
+    # below the tracing resolution has a sign the tracing noise settles rather than the
+    # potential: on a reference node `(246.0, +1e-09)` GeV the measure keeps the node, and on
+    # `(246.0, -1e-09)` GeV it returns `(-246.0, +1e-09)` GeV, so two nodes 2e-09 GeV apart
+    # are canonicalised onto images 492 GeV apart. Where reversing the sign of every such
+    # component changes which element is applied, the choice is the noise's, and the trace is
+    # left alone: that loses the deduplication rather than moving a phase on the strength of a
+    # digit the tracer does not resolve.
+    undecided = np.abs(reference) <= _IMAGE_SIGN_RTOL * node_length
+    if undecided.any():
+        # The sign of each unresolved component is reversed and its magnitude left alone, so
+        # that what the probe varies is only the thing in question. Setting them to the cutoff
+        # instead would move a component of 1e-09 GeV to 1e-04 of the node, five orders of
+        # magnitude, and a model is free to override `applySymmetries` with a measure that
+        # reads magnitudes: such a measure could then choose a different element because the
+        # probe is larger, not because its sign differs, and the trace would be left alone for
+        # the wrong reason. A component that is exactly zero has no sign to reverse, and
+        # `np.heaviside(0, 1)` counts it as positive, so it is given the smallest negative
+        # value the node's own scale resolves.
+        probe = np.array(reference, dtype=float)
+        exactly_zero = undecided & (reference == 0.0)
+        probe[undecided] = -probe[undecided]
+        probe[exactly_zero] = -np.finfo(float).eps * node_length
+        probed = np.asarray(applySymmetries(probe), dtype=float)
+        if not np.isfinite(probed).all():
+            return None
+        # Which element the measure applies to the probe, and not merely whether the probe
+        # moved at all. Two points can both be moved by different elements: with independent
+        # flips in the group, a reference whose second component is unresolved and a probe of
+        # the opposite unresolved sign are carried by different elements, and asking only
+        # whether each moved would accept exactly the case this exists to refuse.
+        if elementApplied(probe, probed) != chosen:
+            return None
+    return invGroupElements[chosen]
 
 
 def traceMultiMin(

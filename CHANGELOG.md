@@ -356,6 +356,40 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `np.allclose` compared coordinates and evaluated no potential at all: a model is free to
   refuse a field point that is not a number by raising, and that would have come out of
   this check as an exception where it used to come out as a verdict.
+- **Two ways the canonical image of a traced phase was decided by something other than the
+  potential.** `canonicalImageElement` reads one symmetry transformation off the node of a
+  trace furthest from the origin, so that the whole trace can be put on one image. It
+  identified that transformation by matching its action on the reference node against the
+  image `applySymmetries` chose, and `np.argmin` returns the first of several equal
+  distances, so any group element that fixes the reference node tied with the identity and
+  won. At the origin every element of every group fixes it, and for the real two Higgs
+  doublet model the first element is the flip, so a phase that needed no transformation was
+  mirrored. The function now returns early where the reference node already sits on its
+  canonical image, which is the question the tie was failing to answer.
+
+  Separately, the measure `sum_i 2^i theta(phi_i)` that `applySymmetries` maximises gives the
+  field component with the highest index the largest weight, so that component decides the
+  image on its own, and the sign of a component far below the phase tracer's resolution is
+  settled by the tracer's noise. On the 2HDM's group a reference node at `(246.0, +1e-09)`
+  GeV is kept as it is while one at `(246.0, -1e-09)` GeV is returned as `(-246.0, +1e-09)`
+  GeV, so two nodes 2e-09 GeV apart were canonicalised onto images 492 GeV apart. The
+  function now reverses the sign of every component below `_IMAGE_SIGN_RTOL` of the node's
+  own length, leaving its magnitude alone, and asks which element of the group the measure
+  then applies; where that is a
+  different element, the trace is left alone. Asking only whether the probe moved is not
+  enough: with independent flips in the group both points are moved, by different elements,
+  and the image still rests on the unresolved sign. The cutoff is measured against the
+  node's own length and not against the floored scale the match tolerance uses, which would
+  make it an absolute cutoff for any phase whose node is shorter than 1. Only the sign is
+  varied, because a model may override `applySymmetries` with a measure that reads
+  magnitudes: setting the component to the cutoff instead would move it by orders of
+  magnitude and such a measure could choose a different element for that reason rather
+  than for the sign. A component that is exactly zero has no sign to reverse, and
+  `np.heaviside(0, 1)` counts it as positive, so it is given the smallest negative value
+  the node's own scale resolves.
+  That loses the removal of a duplicate phase, which `removeRedundantPhases` may still
+  catch, rather than moving a phase on the strength of a digit the tracer does not resolve.
+  
 - **Two docstrings rendered as broken references in the published documentation.**
   `|T'/T - 1|` in `calc_betaH_S3` and `|V_CW|` in `counterterm_derivative_step` were read
   by docutils as substitution references, so the pages lost that text. The documentation
