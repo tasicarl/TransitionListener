@@ -664,7 +664,29 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
         return None
     reference = X[np.flatnonzero(usable)[np.argmax(norms[usable])]]
     canonical = np.asarray(applySymmetries(reference), dtype=float)
-    scale = max(float(np.linalg.norm(reference)), 1.0)
+    node_length = float(np.linalg.norm(reference))
+    # The floor keeps the match tolerance from collapsing to zero on a short node. It is used
+    # only for that tolerance: applied to the sign cutoff below it would turn a relative
+    # cutoff into an absolute one for every phase whose node is shorter than 1, which depends
+    # on the model's units.
+    scale = max(node_length, 1.0)
+
+    def elementApplied(point, image):
+        """Which element of the group carries `point` to `image`, or None for none of them.
+
+        Written as a refused comparison rather than `d > tol`: a model is free to override
+        `applySymmetries`, and one returning a non-finite point makes every distance `nan`,
+        every `nan > tol` false, and `np.argmin` return 0, which for the 2HDM is the flip, so
+        a whole phase would be mirrored on exactly the input saying the map cannot be
+        trusted. `not (d <= tol)` refuses that.
+        """
+        distances = [float(np.linalg.norm(point @ g - image)) for g in invGroupElements]
+        nearest = int(np.argmin(distances))
+        if not (distances[nearest]
+                <= _IMAGE_MATCH_RTOL * max(float(np.linalg.norm(point)), 1.0)):
+            return None
+        return nearest
+
     # The identity where the reference node already sits on its canonical image. Answering
     # this before searching the group settles the case where two elements carry the reference
     # to the same point, which happens whenever an element fixes the reference: at the origin
@@ -674,6 +696,16 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
     # declining a map it cannot account for, while here the map is known and is the identity.
     if float(np.linalg.norm(reference - canonical)) <= _IMAGE_MATCH_RTOL * scale:
         return np.eye(np.size(reference))
+    # Which transformation carries the reference onto its canonical image. The measure is not
+    # recomputed here, so that the image this returns is the one `applySymmetries` chooses,
+    # whatever measure it uses. Only where one element of the group accounts for that image:
+    # a model overriding `applySymmetries` may return a point no single element reaches, and
+    # transforming the phase by the nearest one would move it somewhere the potential does not
+    # relate to where it was traced. Leaving the trace alone loses the deduplication, which
+    # `removeRedundantPhases` may still catch, rather than introducing a phase that is wrong.
+    chosen = elementApplied(reference, canonical)
+    if chosen is None:
+        return None
     # The canonical image is chosen from the signs of the field components, through the
     # measure `sum_i 2^i theta(phi_i)`, and the component with the highest index carries the
     # largest weight, so it decides the image on its own. A component whose magnitude is
@@ -681,47 +713,25 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
     # potential: on a reference node `(246.0, +1e-09)` GeV the measure keeps the node, and on
     # `(246.0, -1e-09)` GeV it returns `(-246.0, +1e-09)` GeV, so two nodes 2e-09 GeV apart
     # are canonicalised onto images 492 GeV apart. Where reversing the sign of every such
-    # component changes the image, the choice is the noise's, and the trace is left alone:
-    # that loses the deduplication, which `removeRedundantPhases` may still catch, rather
-    # than moving a phase on the strength of a digit the tracer does not resolve.
-    undecided = np.abs(reference) <= _IMAGE_SIGN_RTOL * scale
+    # component changes which element is applied, the choice is the noise's, and the trace is
+    # left alone: that loses the deduplication rather than moving a phase on the strength of a
+    # digit the tracer does not resolve.
+    undecided = np.abs(reference) <= _IMAGE_SIGN_RTOL * node_length
     if undecided.any():
         probe = np.array(reference, dtype=float)
         probe[undecided] = (np.where(reference[undecided] >= 0.0, -1.0, 1.0)
-                            * _IMAGE_SIGN_RTOL * scale)
+                            * _IMAGE_SIGN_RTOL * node_length)
         probed = np.asarray(applySymmetries(probe), dtype=float)
         if not np.isfinite(probed).all():
             return None
-        # Whether each of the two nodes was moved onto a different image. The probe differs
-        # from the reference only in components the measure cannot resolve, so a measure that
-        # moves one of them and leaves the other is reading exactly those components. The
-        # reference is known to have been moved, since an unmoved one returned above.
-        probe_was_moved = (float(np.linalg.norm(probe - probed))
-                           > _IMAGE_MATCH_RTOL * scale)
-        if not probe_was_moved:
+        # Which element the measure applies to the probe, and not merely whether the probe
+        # moved at all. Two points can both be moved by different elements: with independent
+        # flips in the group, a reference whose second component is unresolved and a probe of
+        # the opposite unresolved sign are carried by different elements, and asking only
+        # whether each moved would accept exactly the case this exists to refuse.
+        if elementApplied(probe, probed) != chosen:
             return None
-    # Which transformation carries the reference onto its canonical image, by matching its
-    # action on that node. The measure is not recomputed here, so that the image this returns
-    # is the one `applySymmetries` chooses, whatever measure it uses.
-    distances = [float(np.linalg.norm(reference @ g - canonical)) for g in invGroupElements]
-    nearest = int(np.argmin(distances))
-    # Only where that transformation accounts for the image chosen. A model free to
-    # override `applySymmetries` may return a point that no single element of the group
-    # carries the reference to, and the nearest element is then not the map that was
-    # applied; transforming the phase by it would move the phase somewhere the potential
-    # does not relate to where it was traced. Leaving the trace alone loses the
-    # deduplication, which `removeRedundantPhases` may still catch, rather than
-    # introducing a phase that is wrong.
-    # Written as a refused comparison, for the reason the reference node is filtered above: a
-    # model is free to override `applySymmetries`, and one returning a non-finite point makes
-    # `canonical` non-finite, every distance `nan`, and every `nan > tol` false, so the map
-    # would be accepted on the one input that says it cannot be trusted. `np.argmin` then
-    # returns 0, and for the 2HDM the first element of the group is the flip, so a whole phase
-    # would be mirrored. `not (d <= tol)` refuses that the way `d > tol` does not.
-    if not (distances[nearest]
-            <= _IMAGE_MATCH_RTOL * max(float(np.linalg.norm(reference)), 1.0)):
-        return None
-    return invGroupElements[nearest]
+    return invGroupElements[chosen]
 
 
 def traceMultiMin(

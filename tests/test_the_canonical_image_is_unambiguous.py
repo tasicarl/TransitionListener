@@ -196,6 +196,26 @@ class ASignTheTracerDoesNotResolveDecidesNothing(unittest.TestCase):
                         msg="the threshold now treats a field component a per cent of the "
                             "node's length as unresolved")
 
+    def test_a_measure_that_returns_a_non_finite_point_for_the_reference_is_refused(self):
+        """The case the test below says is "caught further down", which nothing asked.
+
+        Where the reference's own image is not finite, every distance to a group element's
+        action on it is `nan` or `inf`, `np.argmin` returns the first element, and for the
+        2HDM that is the flip, so the phase would be mirrored on exactly the input saying the
+        measure cannot be trusted. The refusal is the comparison in the element search, and
+        removing it leaves every other test in this file passing.
+        """
+        reference = np.array([-246.0, -11.5])
+        for name, bad in (("not a number", np.nan), ("positive infinity", np.inf),
+                          ("negative infinity", -np.inf)):
+            with self.subTest(name):
+                def broken(X, _bad=bad, **k):
+                    return np.full_like(np.asarray(X, dtype=float), _bad)
+
+                self.assertEqual(
+                    element_for([reference], measure=broken), "none",
+                    msg="a measure that could not place the reference had its map applied")
+
     def test_a_measure_that_returns_a_non_finite_point_for_the_probe_is_refused(self):
         """A model may override `applySymmetries`, and the probe goes through it too.
 
@@ -258,3 +278,100 @@ class ASignTheTracerDoesNotResolveDecidesNothing(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+#: A group with independent flips, unlike the 2HDM's, whose only non-trivial element turns
+#: both components at once. The first component alone, then both, then the second alone, then
+#: the identity: a sign that the tracer does not resolve can select between these.
+FLIP_FIRST = np.diag([-1.0, 1.0])
+FLIP_SECOND = np.diag([1.0, -1.0])
+INDEPENDENT_FLIPS = [FLIP_FIRST, FLIP_BOTH, FLIP_SECOND, IDENTITY]
+
+
+def independent_measure(X, **k):
+    """`apply_symmetries` over `INDEPENDENT_FLIPS`.
+
+    The helpers above take the group for the element search and the measure separately, and
+    the measure's own default group is the 2HDM's. Passing only the group would leave the
+    measure choosing images with one group while the search matched elements of another,
+    which answers neither question.
+    """
+    return apply_symmetries(X, group=INDEPENDENT_FLIPS)
+
+
+class TheSignCutoffIsRelativeToTheNodeAndNotToOne(unittest.TestCase):
+    """`scale` carries a floor of 1.0 for the match tolerance, which the cutoff must not use.
+
+    With the floor, the cutoff is `_IMAGE_SIGN_RTOL` in absolute terms for every phase whose
+    node is shorter than 1, which depends on the model's units: the conformal examples are
+    quoted in GeV with `v_GeV = 0.1`. A component worth 5e-04 of its node is resolved, five
+    times the relative cutoff, and must be treated as such however short the node is.
+    """
+
+    def test_a_resolved_component_on_a_short_node_decides_the_image(self):
+        node = np.array([-0.1, -5.0e-05])
+        length = float(np.linalg.norm(node))
+        self.assertGreater(abs(node[1]) / length, PH._IMAGE_SIGN_RTOL,
+                           msg="this component is below the relative cutoff, so the test "
+                               "does not measure what it claims")
+        self.assertLess(abs(node[1]), PH._IMAGE_SIGN_RTOL,
+                        msg="this component is above the cutoff in absolute terms, so the "
+                            "floor would not change the answer and the test is vacuous")
+        self.assertEqual(element_for(node), "flip",
+                         msg="a resolved component was treated as unresolved because the "
+                             "cutoff was measured against 1 rather than the node")
+
+
+class ADifferentElementOnTheProbeIsStillTheNoisesChoice(unittest.TestCase):
+    """Both points moving is not the same as both moving the same way.
+
+    With independent flips in the group, a reference whose second component is below the
+    tracing resolution and a probe of the opposite unresolved sign are each moved, but by
+    different elements, so the image still rests on the digit the tracer does not resolve.
+    """
+
+    def _element_the_measure_applies(self, point):
+        """Which element of the group the measure's image of `point` corresponds to.
+
+        Asked of the measure directly. Going through `canonicalImageElement` would run the
+        logic under test, which declines this case, so it cannot establish the precondition.
+        """
+        image = independent_measure(np.asarray(point, dtype=float))
+        for g, name in zip(INDEPENDENT_FLIPS,
+                           ["flip_first", "flip_both", "flip_second", "identity"]):
+            if np.allclose(np.asarray(point, dtype=float) @ g, image):
+                return name
+        return "none of the group"
+
+    def test_the_two_points_are_carried_by_different_elements(self):
+        """The precondition: without this the group does not separate them."""
+        node = np.array([-2.0, -1.0e-05])
+        length = float(np.linalg.norm(node))
+        self.assertLess(abs(node[1]) / length, PH._IMAGE_SIGN_RTOL,
+                        msg="the second component is resolved here, so there is nothing to "
+                            "probe and the test is vacuous")
+        probe = np.array([-2.0, +PH._IMAGE_SIGN_RTOL * length])
+        self.assertEqual(self._element_the_measure_applies(node), "flip_both")
+        self.assertEqual(self._element_the_measure_applies(probe), "flip_first")
+
+    def test_a_probe_carried_by_another_element_declines_the_map(self):
+        node = np.array([-2.0, -1.0e-05])
+        self.assertEqual(
+            element_for(node, group=INDEPENDENT_FLIPS, measure=independent_measure), "none",
+            msg="the map was accepted although the probe is carried by another element, so "
+                "the image rests on a sign the tracer does not resolve")
+
+    def test_both_being_moved_is_not_enough(self):
+        """The two are moved, which is what the earlier form of the test asked."""
+        node = np.array([-2.0, -1.0e-05])
+        length = float(np.linalg.norm(node))
+        probe = np.array([-2.0, +PH._IMAGE_SIGN_RTOL * length])
+        for point in (node, probe):
+            with self.subTest(str(point)):
+                moved = not np.allclose(
+                    apply_symmetries(point, group=INDEPENDENT_FLIPS), point)
+                self.assertTrue(moved, msg="this point is not moved, so 'both moved' is not "
+                                           "the condition under test")
+        self.assertFalse(moves_the_trace(node, group=INDEPENDENT_FLIPS, measure=independent_measure),
+                         msg="the phase was moved although the probe chose a different "
+                             "element, so the image rests on an unresolved sign")

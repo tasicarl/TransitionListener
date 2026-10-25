@@ -319,7 +319,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   GeV is kept as it is while one at `(246.0, -1e-09)` GeV is returned as `(-246.0, +1e-09)`
   GeV, so two nodes 2e-09 GeV apart were canonicalised onto images 492 GeV apart. The
   function now reverses the sign of every component below `_IMAGE_SIGN_RTOL` of the node's
-  own length and asks whether the image changes; where it does, the trace is left alone.
+  own length and asks which element of the group the measure then applies; where that is a
+  different element, the trace is left alone. Asking only whether the probe moved is not
+  enough: with independent flips in the group both points are moved, by different elements,
+  and the image still rests on the unresolved sign. The cutoff is measured against the
+  node's own length and not against the floored scale the match tolerance uses, which would
+  make it an absolute cutoff for any phase whose node is shorter than 1.
   That loses the removal of a duplicate phase, which `removeRedundantPhases` may still
   catch, rather than moving a phase on the strength of a digit the tracer does not resolve.
 
