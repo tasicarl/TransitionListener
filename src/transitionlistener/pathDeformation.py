@@ -1706,10 +1706,28 @@ def _execute_full_tunneling(
 #:     separation 2.767e-05 -> actions differ by 4.653e-05    (T = 62.36 GeV)
 #:     separation 4.033e-06 -> actions differ by 1.129e-08    (lambda3 = 5.5227272727)
 #:
-#: so a separation at the value below leaves the two actions agreeing to about 1e-4, which
-#: is 500 times inside the solver's own criterion. Above it the two pairings are far enough
-#: apart that their actions differ by more than the solver's criterion, and both are
-#: computed.
+#: Those samples lie outside the value below, which is where both pairings are computed
+#: anyway, so they say nothing about the pair this merges. Measured inside it, with the images
+#: enumerated directly from the group so that this screen cannot hide the pair, at the 18
+#: temperatures of `lambda3` = 5.8676 and 5.8200 where the separation is under the value below
+#: and both pairings resolve an action:
+#:
+#:     lambda3 = 5.8676, 7 temperatures from T = 76.59 to 92.12 GeV internal, separations
+#:     9.82e-05 down to 2.45e-05: the worst relative difference between the two actions is
+#:     5.517e-04, at T = 81.76 and separation 6.667e-05.
+#:
+#:     lambda3 = 5.8200, 11 temperatures from T = 52.12 to 93.29, separations 9.21e-05 down to
+#:     2.29e-06: the worst is 2.512e-04, at T = 56.24 and separation 9.211e-05.
+#:
+#: So the largest disagreement measured where this screen acts is 5.5e-04, a factor 91 inside
+#: the solver's own criterion of 5e-02. Above the value below the two pairings are far enough
+#: apart that their actions differ by more than that criterion, and both are computed: the
+#: difference crosses 5e-02 at a separation near 8e-02, three decades above this value.
+#:
+#: What the measurement does not give is a bound. A separation does not bound the difference of
+#: two bounce actions for a general potential, so this rests on the two couplings above and on
+#: the shipped models, not on an argument. Dropping it costs a second bounce at 25 of the 60
+#: temperatures of `lambda3` = 5.8676.
 _IMAGE_SEPARATION_RTOL = 1.0e-4
 
 
