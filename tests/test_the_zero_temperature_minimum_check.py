@@ -242,6 +242,69 @@ class AGenuinelyDifferentMinimumIsStillReported(unittest.TestCase):
                         f"{'not reported' if expected else 'reported'}")
 
 
+class TheVerdictDoesNotMoveWithTheConstantInThePotential(unittest.TestCase):
+    """`Vtot` carries an arbitrary constant, and the verdict may not depend on it.
+
+    Adding a constant leaves every minimum and every difference in depth where it was. A
+    tolerance scaled by `abs(V_X0)` grows with the constant, so a vacuum that was reported
+    becomes one that passes; scaling by the depth below the origin, a difference of two
+    potential values, has no such freedom.
+    """
+
+    def _with_offset(self, offset, other_minimum, depth_offset):
+        pot = _potential(other_minimum=other_minimum, depth_offset=depth_offset)
+        inner = pot.Vtot
+        pot.Vtot = lambda X, T, *a, **k: inner(X, T) + offset
+        return pot
+
+    def test_a_distinct_vacuum_is_still_reported_under_a_large_offset(self):
+        # Further from `X0` than the stub's basin, or `X0` falls inside the other minimum's
+        # basin and both sides of the comparison get the same formula, and still inside the
+        # field tolerance, so that the depth tolerance is what decides.
+        other = np.array([11.5, SCALE]) + np.array([0.0, 1.0e-01])
+        self.assertGreater(1.0e-01, _BASIN)
+        self.assertLess(1.0e-01, TO._T0_MINIMUM_FIELD_RTOL * SCALE)
+        # 1 GeV^4 deeper: above the tolerance the depth below the origin sets, which is
+        # 1e-08 of about 3e+04, and below the one `abs(V_X0)` would set once the potential
+        # carries a constant of 1e+09 or more.
+        for offset in (0.0, 1.0e6, 1.0e9, 1.0e12, -1.0e12):
+            with self.subTest(f"offset {offset:g}"):
+                pot = self._with_offset(offset, other, depth_offset=-1.0)
+                self.assertTrue(
+                    TO.theChainEndedElsewhere(pot, other),
+                    msg=f"a vacuum 1 GeV^4 deeper passed because the potential carried "
+                        f"{offset:g} as a constant")
+
+    def test_a_potential_that_fails_only_at_the_origin_is_reported(self):
+        """The origin is evaluated now, so it joins the values that must be finite."""
+        pot = _potential()
+        inner = pot.Vtot
+        origin = np.zeros(2)
+
+        def only_the_origin_fails(X, T, *a, **k):
+            X = np.atleast_1d(np.squeeze(np.asarray(X, dtype=float)))
+            if np.allclose(X, origin):
+                return float("nan")
+            return inner(X, T)
+
+        pot.Vtot = only_the_origin_fails
+        self.assertTrue(np.isfinite(pot.Vtot(pot.X0, pot.Tmin)),
+                        msg="the fixture has to answer `X0` finitely, or this is the earlier "
+                            "guard firing and not the one under test")
+        self.assertTrue(TO.theChainEndedElsewhere(pot, pot.X0),
+                        msg="a potential that could not be evaluated at the origin passed")
+
+    def test_the_tracing_residual_is_still_accepted_under_a_large_offset(self):
+        residual = np.array([11.5, SCALE]) + np.array([1.2e-04, 6.5e-04])
+        for offset in (0.0, 1.0e6, 1.0e9, 1.0e12, -1.0e12):
+            with self.subTest(f"offset {offset:g}"):
+                pot = self._with_offset(offset, None, 0.0)
+                self.assertFalse(
+                    TO.theChainEndedElsewhere(pot, residual),
+                    msg=f"the tracer's own residual was reported once the potential carried "
+                        f"{offset:g} as a constant")
+
+
 class AQuestionThatCannotBeAnsweredIsReported(unittest.TestCase):
     """Neither comparison can be true of a `nan`, so one must not be left to reach them."""
 

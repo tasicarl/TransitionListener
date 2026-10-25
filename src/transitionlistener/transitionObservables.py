@@ -418,9 +418,20 @@ def theChainEndedElsewhere(pot, last_vev) -> bool:
     T0 = pot.Tmin
     V_last = float(np.squeeze(pot.Vtot(last_vev, T0)))
     V_X0 = float(np.squeeze(pot.Vtot(pot.X0, T0)))
+    # The depth of the zero-temperature minimum below the origin, which is what the difference
+    # in depth is measured against. `abs(V_X0)` was used for that and is not invariant under
+    # the constant `Vtot` is free to carry: adding one to the potential leaves every minimum
+    # and every difference in depth where it was while inflating `abs(V_X0)`, so a vacuum that
+    # was reported becomes one that passes. The difference of two potential values has no such
+    # freedom. On the shipped models the two scales are close, 5.724e+08 either way on the
+    # conformal dark U(1) where the origin sits at zero, and 4.714e+07 against 4.398e+07 on the
+    # real two Higgs doublet model, whose origin is at -3.161e+06 in GeV^4.
+    V_origin = float(np.squeeze(pot.Vtot(np.zeros_like(np.atleast_1d(
+        np.asarray(pot.X0, dtype=float))), T0)))
+    depth = abs(V_X0 - V_origin)
     scale = float(np.linalg.norm(np.atleast_1d(pot.X0)))
     separation = float(np.linalg.norm(np.atleast_1d(last_vev) - np.atleast_1d(pot.X0)))
-    if not all(np.isfinite([V_last, V_X0, scale, separation])):
+    if not all(np.isfinite([V_last, V_X0, V_origin, depth, scale, separation])):
         # Neither comparison below can be true of a `nan`, so leaving one to reach them
         # answers "the chain ended at the zero-temperature minimum" to a question that was
         # not answered. `np.allclose`, which this replaces, returned False for a `nan` and so
@@ -430,7 +441,7 @@ def theChainEndedElsewhere(pot, last_vev) -> bool:
         # about 1.3e154 per component, and the comparison it divides would then be
         # `separation > inf`, which is false of every separation.
         return True
-    depths_differ = abs(V_last - V_X0) > _T0_MINIMUM_DEPTH_RTOL * max(abs(V_X0), 1.0)
+    depths_differ = abs(V_last - V_X0) > _T0_MINIMUM_DEPTH_RTOL * max(depth, 1.0)
     far_apart = separation > _T0_MINIMUM_FIELD_RTOL * max(scale, 1.0)
     return bool(depths_differ or far_apart)
 
