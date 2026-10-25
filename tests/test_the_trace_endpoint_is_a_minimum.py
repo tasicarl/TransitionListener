@@ -31,6 +31,7 @@ import numpy as np
 from transitionlistener import helper_functions as hf
 from transitionlistener import phases as PH
 from transitionlistener.helper_functions import load_potential
+from transitionlistener.errors import Timeout
 
 REPO = Path(__file__).resolve().parents[1]
 #: The step `d2V` uses by default in every model shipped with the code.
@@ -579,3 +580,65 @@ class TheOptionalStepIsHonoured(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheDeadlineIsNotASolverFailure(unittest.TestCase):
+    """`errors.Timeout` comes from the run's alarm, so neither check may swallow it."""
+
+    def _hessian(self):
+        return np.array([[-1.0, 0.0], [0.0, 4.0]])
+
+    def test_a_timeout_from_the_full_step_reaches_the_caller(self):
+        def d2f(x, t):
+            raise Timeout("the run's deadline")
+        with self.assertRaises(Timeout):
+            PH.endpointIsASaddlePoint(d2f, d2f, np.zeros(2), 1.0)
+
+    def test_a_timeout_from_the_half_step_reaches_the_caller(self):
+        """The one the second evaluation can raise after the first has succeeded."""
+        def full(x, t):
+            return self._hessian()
+
+        def half(x, t):
+            raise Timeout("the run's deadline")
+        with self.assertRaises(Timeout):
+            PH.smallestCurvatureIsTheSteps(full, half, np.zeros(2), 1.0)
+        with self.assertRaises(Timeout):
+            PH.endpointIsASaddlePoint(full, half, np.zeros(2), 1.0)
+
+    def test_an_ordinary_solver_failure_is_still_swallowed(self):
+        """Only the deadline is special; a failure to evaluate leaves the point accepted."""
+        def d2f(x, t):
+            raise ValueError("the minimisation did not converge")
+        self.assertFalse(PH.endpointIsASaddlePoint(d2f, d2f, np.zeros(2), 1.0))
+        self.assertIsNone(PH.smallestCurvatureIsTheSteps(d2f, d2f, np.zeros(2), 1.0))
+
+
+class TheEndpointPaysForTwoHessiansAndNotThree(unittest.TestCase):
+    """Each `d2V` call runs the whole finite-difference stencil, so the count is the cost."""
+
+    def test_the_full_step_hessian_is_computed_once(self):
+        calls = {"full": 0, "half": 0}
+
+        def full(x, t):
+            calls["full"] += 1
+            return np.array([[-1.0e-9, 0.0], [0.0, 4.0]])
+
+        def half(x, t):
+            calls["half"] += 1
+            return np.array([[-2.5e-10, 0.0], [0.0, 4.0]])
+
+        PH.endpointIsASaddlePoint(full, half, np.zeros(2), 1.0)
+        self.assertEqual(calls, {"full": 1, "half": 1},
+                         msg=f"the endpoint cost {sum(calls.values())} Hessian evaluations")
+
+    def test_the_handed_over_hessian_is_the_one_used(self):
+        """Passing `full` must replace the evaluation, not sit beside it."""
+        def full(x, t):
+            raise AssertionError("d2f_dx2 was called although a Hessian was handed over")
+
+        def half(x, t):
+            return np.array([[-2.5e-10, 0.0], [0.0, 4.0]])
+        verdict = PH.smallestCurvatureIsTheSteps(
+            full, half, np.zeros(2), 1.0, full=np.array([[-1.0e-9, 0.0], [0.0, 4.0]]))
+        self.assertTrue(verdict, msg="a value that falls by four with the step is the step's")

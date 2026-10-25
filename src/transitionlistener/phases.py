@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Callable, Iterable
 
 from transitionlistener import generic_potential
 from transitionlistener.errors import WrongHighTPhaseError
+from transitionlistener.errors import Timeout
 
 from . import console, print
 import rich
@@ -409,7 +410,8 @@ _ENDPOINT_CURVATURE_RATIO_CUT = 1.5
 
 
 def smallestCurvatureIsTheSteps(d2f_dx2: Callable, d2f_dx2_half: Callable,
-                                x: np.ndarray, t: float) -> bool | None:
+                                x: np.ndarray, t: float,
+                                full: np.ndarray | None = None) -> bool | None:
     r"""Whether the smallest curvature at `x` belongs to the step rather than the potential.
 
     `d2f_dx2` is a finite difference of some step and `d2f_dx2_half` the same difference at
@@ -429,6 +431,9 @@ def smallestCurvatureIsTheSteps(d2f_dx2: Callable, d2f_dx2_half: Callable,
         The point to judge.
     t : float
         The temperature.
+    full : np.ndarray or None
+        The Hessian at the full step where the caller has already computed it, so that it
+        is not computed twice. `d2f_dx2` is then not called.
 
     Returns
     -------
@@ -438,8 +443,15 @@ def smallestCurvatureIsTheSteps(d2f_dx2: Callable, d2f_dx2_half: Callable,
         smallest eigenvalue of zero at either step, which no ratio can be formed from.
     """
     try:
-        full = np.atleast_2d(np.squeeze(np.asarray(d2f_dx2(x, t), dtype=float)))
+        if full is None:
+            full = np.atleast_2d(np.squeeze(np.asarray(d2f_dx2(x, t), dtype=float)))
+        else:
+            full = np.atleast_2d(np.squeeze(np.asarray(full, dtype=float)))
         half = np.atleast_2d(np.squeeze(np.asarray(d2f_dx2_half(x, t), dtype=float)))
+    except Timeout:
+        # The run's deadline, raised from a signal handler. Swallowing it here would report
+        # the endpoint as undecided and let the run carry on past the time it was given.
+        raise
     except Exception:
         return None
     if not (np.isfinite(full).all() and np.isfinite(half).all()):
@@ -483,11 +495,17 @@ def endpointIsASaddlePoint(d2f_dx2: Callable, d2f_dx2_half: Callable,
     try:
         hess = np.atleast_2d(np.squeeze(np.asarray(d2f_dx2(x, t), dtype=float)))
         eigs = np.linalg.eigvalsh(hess)
+    except Timeout:
+        # As above: the deadline is not a solver failure and may not be turned into one.
+        raise
     except Exception:
         return False
     if not (eigs < 0).any():
         return False
-    return smallestCurvatureIsTheSteps(d2f_dx2, d2f_dx2_half, x, t) is False
+    # The Hessian at the full step is handed over rather than asked for again. Each call to
+    # `generic_potential.d2V` runs the whole finite-difference stencil, so an endpoint would
+    # otherwise pay for three of them where two answer the question.
+    return smallestCurvatureIsTheSteps(d2f_dx2, d2f_dx2_half, x, t, full=hess) is False
 
 
 def traceMinimum(

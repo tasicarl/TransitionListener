@@ -310,7 +310,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   quartic, which is negative. `smallestCurvatureIsTheSteps` separates the two by evaluating
   the curvature at two steps, since a value that belongs to the step falls by four when the
   step is halved while a curvature the potential has does not. `d2V` takes an `x_eps` of its
-  own for that, keeping the function it builds for each step.
+  own for that, keeping the function it builds for each step. The Hessian at the full step
+  is computed once and handed to the comparison, so an endpoint costs two evaluations of
+  the finite difference and not three, and `errors.Timeout` is re-raised at both
+  evaluations rather than read as a solver failure, since it carries the run's deadline.
 
   **No endpoint that this refuses has been found.** Of 70 phase endpoints examined, 62 across
   ten couplings of the real two Higgs doublet model and 4 each on the two dark U(1) models
