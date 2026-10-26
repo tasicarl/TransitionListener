@@ -56,6 +56,14 @@ class TransitionInfo():
     computation."""
     action_Tnuc: float = 0.0
     """Action at the nucleation."""
+    high_vev_as_traced: np.ndarray | None = None
+    """The false vacuum as the phase tracing produced it, where that differs from `high_vev`.
+
+    `high_vev` is the image the bounce was actually computed on, which is the traced point
+    unless `pair_transition_over_images` is on and a transformed image carried the smaller
+    action. Anything drawing the bounce beside its endpoints needs to know which of the two the
+    profile belongs to; `None` means they are the same point.
+    """
     instanton = {}
     """Instanton solution at the nucleation temperature."""
     step: int = 0
@@ -727,6 +735,7 @@ class Transitions():
                                         high_phase=tunn['high_phase'],
                                         low_vev=tunn['low_vev'],
                                         high_vev=tunn['high_vev'],
+                                        high_vev_as_traced=tunn.get('high_vev_as_traced'),
                                         action_Tnuc=tunn['action'],
                                         type=tunn['trantype'])
                     if tr.type != 2:  # Sometimes a second order transitions slips through here

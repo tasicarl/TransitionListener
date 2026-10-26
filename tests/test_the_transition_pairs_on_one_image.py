@@ -1301,6 +1301,70 @@ class TheCacheEntryIsRecognisedAfterATransformedImageWins(unittest.TestCase):
                 "was accepted")
 
 
+class TheBounceMarkerFollowsTheImageTheBounceUsedTests(unittest.TestCase):
+    """The profile plot draws the bounce beside markers for its two endpoints.
+
+    `bounceActionOverImages` may compute the bounce on a transformed image of the false vacuum,
+    and the marker then has to follow it. Evaluating the traced phase alone puts the marker a
+    reflection away from the curve it labels, which on a model whose fields are hundreds of GeV
+    is the whole width of the plot.
+
+    This cannot be reached on the shipped benchmark: with the pairing on, the image the tracing
+    produced carried the smaller action at all 66 of the temperatures whose images are
+    genuinely apart, so no transformed image ever wins there. The test therefore builds the
+    situation directly rather than running a model that cannot produce it.
+    """
+
+    @staticmethod
+    def _plotter(group):
+        from transitionlistener import plots
+
+        plotter = plots.TLPlots.__new__(plots.TLPlots)
+        plotter.pot = SimpleNamespace(invGroupElements=group, conversionFactor=1.0)
+        plotter.phases = {"hi": SimpleNamespace(valAt=lambda T: np.array([246.0, 11.5]))}
+        return plotter
+
+    @staticmethod
+    def _transition(high_vev, traced):
+        return SimpleNamespace(high_phase="hi", high_vev=np.asarray(high_vev, float),
+                               high_vev_as_traced=(None if traced is None
+                                                   else np.asarray(traced, float)))
+
+    def test_an_untransformed_transition_keeps_the_traced_point(self):
+        """`None` means the bounce used the point the tracing produced, so nothing is mapped."""
+        plotter = self._plotter(TWO_HIGGS_DOUBLET)
+        got = plotter._bounce_false_vacuum_at_temperature(
+            self._transition([246.0, 11.5], None), 30.0)
+        np.testing.assert_allclose(got, [246.0, 11.5])
+
+    def test_a_transformed_image_moves_the_marker_onto_it(self):
+        """The marker is the phase point mapped by the element the bounce used."""
+        plotter = self._plotter(TWO_HIGGS_DOUBLET)
+        # The bounce was computed on the flipped image of a false vacuum at (1.0, 0.5).
+        tr = self._transition(high_vev=[-1.0, -0.5], traced=[1.0, 0.5])
+        got = plotter._bounce_false_vacuum_at_temperature(tr, 30.0)
+        np.testing.assert_allclose(
+            got, [-246.0, -11.5],
+            err_msg="the marker stayed on the traced image while the bounce used its mirror, "
+                    "so the curve starts a reflection away from the point labelling it")
+
+    def test_a_map_the_group_does_not_contain_leaves_the_point_alone(self):
+        """Better a marker that is wrong as before than a transformation invented here.
+
+        The group here is the flip of both components, and the pair asks for a flip of the
+        first alone, which the group does not contain. The group must therefore hold an element
+        that would visibly move the point if it were applied without being matched: with only
+        the identity in it this test passes whether the match is checked or not.
+        """
+        plotter = self._plotter([FLIP_BOTH])
+        tr = self._transition(high_vev=[-1.0, 0.5], traced=[1.0, 0.5])
+        got = plotter._bounce_false_vacuum_at_temperature(tr, 30.0)
+        np.testing.assert_allclose(
+            got, [246.0, 11.5],
+            err_msg="an element that does not reproduce the map was applied anyway, so the "
+                    "marker moved on the strength of a transformation nothing asked for")
+
+
 if __name__ == "__main__":
     unittest.main()
 

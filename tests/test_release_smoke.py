@@ -295,7 +295,14 @@ def test_every_shipped_example_names_a_model_that_is_here(config: Path) -> None:
     spec = yaml.safe_load(config.read_text())
     model = spec.get("Modelfile")
     assert isinstance(model, str) and model.strip(), f"{config.name} names no Modelfile"
-    path = REPO_ROOT / model.strip()
+    # Resolved and checked for containment, not just for existence. `REPO_ROOT / "/etc/passwd"`
+    # is `/etc/passwd`, so a config naming an absolute path, or climbing out with `..`, would
+    # pass a bare `is_file()` while naming a model outside the repository that no one else can
+    # run. The claim this test makes is that the example works from a fresh checkout.
+    path = (REPO_ROOT / model.strip()).resolve()
+    assert path.is_relative_to(REPO_ROOT.resolve()), (
+        f"{config.name} names {model.strip()!r}, which resolves to {path}, outside the "
+        f"repository. A fresh checkout has no such file.")
     assert path.is_file(), (
         f"{config.name} names {model.strip()!r}, which is not in the repository. "
         f"Run it and it fails before the first temperature.")

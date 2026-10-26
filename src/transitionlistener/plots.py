@@ -262,6 +262,40 @@ class TLPlots():
                 pass
         return np.asarray(fallback_point, dtype=float)
 
+    def _bounce_false_vacuum_at_temperature(self, tr, temperature):
+        """The false vacuum the bounce was computed from, evaluated at ``temperature``.
+
+        The profile drawn beside this marker starts at the image `bounceActionOverImages`
+        chose, which is the traced point unless `pair_transition_over_images` is on and a
+        transformed image carried the smaller action. Evaluating the traced phase alone would
+        then put the marker a reflection away from the curve it labels, and on a model whose
+        fields are hundreds of GeV that is the whole width of the plot.
+
+        The phase is evaluated at `temperature`, because the plot is not always at `Tnuc` and
+        `tr.high_vev` is, and the group element that took the traced point to the one used is
+        then applied to it. Where no element of the potential's group reproduces that map, the
+        phase point is returned unmapped: a marker in the traced place is wrong in the same way
+        as before this, and inventing a transformation the potential does not have would be
+        worse.
+        """
+        point = self._phase_point_at_temperature(tr.high_phase, tr.high_vev, temperature)
+        traced = getattr(tr, "high_vev_as_traced", None)
+        if traced is None:
+            return point
+        traced = np.asarray(traced, dtype=float)
+        used = np.asarray(tr.high_vev, dtype=float)
+        if traced.shape != used.shape or np.allclose(traced, used, rtol=0.0, atol=0.0):
+            return point
+        scale = max(float(np.linalg.norm(traced)), float(np.linalg.norm(used)), 1.0)
+        for element in getattr(self.pot, "invGroupElements", []) or []:
+            try:
+                mapped = np.asarray(traced @ element, dtype=float)
+            except Exception:  # noqa: BLE001
+                continue
+            if mapped.shape == used.shape and np.allclose(mapped, used, atol=1e-8 * scale):
+                return np.asarray(point @ element, dtype=float)
+        return point
+
     @staticmethod
     def _expanded_axis_limits(values, *, rel_pad: float, fallback_scale: float, min_pad: float):
         """Return ``(low, high)`` with robust padding, even for zero-width data."""
@@ -726,7 +760,7 @@ class TLPlots():
             plot_temperature, _ = self._profile_reference_temperature(transition_index, tr)
             if plot_temperature is None:
                 plot_temperature = tr.Tcrit
-            start = self._phase_point_at_temperature(tr.high_phase, tr.high_vev, plot_temperature)
+            start = self._bounce_false_vacuum_at_temperature(tr, plot_temperature)
             end = self._phase_point_at_temperature(tr.low_phase, tr.low_vev, plot_temperature)
             fallback_scale = float(
                 max(
