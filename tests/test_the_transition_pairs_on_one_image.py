@@ -21,10 +21,13 @@ carried the smaller action every time, by a factor between 1.17 and 2.46.
 Part of TransitionListener v2
 """
 import ast
+import contextlib
+import io
 import unittest
 import warnings
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
 from scipy import optimize
@@ -1299,6 +1302,87 @@ class TheCacheEntryIsRecognisedAfterATransformedImageWins(unittest.TestCase):
             [],
             msg="an entry whose false vacuum is neither the traced point nor an image of it "
                 "was accepted")
+
+
+class TheReturnedTransitionCarriesTheImageItsActionBelongsToTests(unittest.TestCase):
+    """`findAllTransitions` must not describe one endpoint and return another's action.
+
+    `computeNucleationTemperature` returns the entry `bounceActionOverImages` left behind, and
+    with the pairing on that entry's `high_vev` is the image the bounce was computed on, which
+    for a group that reverses the fields is a reflection of the traced point. The loop copies
+    the action, the profile and the temperatures onto the transition found before the call; if
+    it leaves the endpoints alone the transition says the bounce starts at the traced point
+    while its action and instanton belong to the reflection, and the profile plot then maps the
+    marker with the wrong element or not at all.
+    """
+
+    @staticmethod
+    def _stub(tunnel_result):
+        tr = SimpleNamespace(type=1, Tcrit=120.0, high_phase="1", low_phase="0", Tnuc=None,
+                             action=None, instanton={}, full_tunneling_info={},
+                             high_vev=np.array([1.0, 0.5]), low_vev=np.array([0.0, 0.0]),
+                             high_vev_as_traced=None, step=0)
+        phases = {"1": SimpleNamespace(key="1", T=np.array([10.0, 615.5])),
+                  "0": SimpleNamespace(key="0", T=np.array([0.0, 200.0]))}
+        pot = SimpleNamespace(
+            Tmax=615.5,
+            config=SimpleNamespace(
+                percolationConf=SimpleNamespace(algorithm_mode="fixed_step_size"),
+                tracingConf=SimpleNamespace(do_high_T_phase_check=False)))
+        return tr, SimpleNamespace(
+            pot=pot, phases=phases, verbose=False, tunnelFromPhase_args={},
+            conversionFactor=1.0, V=lambda x, T: 0.0, dV=None, d2V=None,
+            findTransitionPathFromTnuc=lambda verbose=False: [tr])
+
+    def _run(self, tunnel_result):
+        from transitionlistener import transitions as tr_mod
+
+        tr, stub = self._stub(tunnel_result)
+        with mock.patch.object(tr_mod, "computeNucleationTemperature",
+                               lambda *a, **k: tunnel_result):
+            with contextlib.redirect_stdout(io.StringIO()):
+                found = tr_mod.Transitions.findAllTransitions(stub)
+        return found
+
+    @staticmethod
+    def _result(**extra):
+        base = dict(Tnuc=90.0, low_phase="0", high_phase="1", instanton={"r": [0.0]},
+                    trantype=1, action=152.6, full_tunneling_info={})
+        base.update(extra)
+        return base
+
+    def test_the_transformed_false_vacuum_reaches_the_transition(self):
+        found = self._run(self._result(high_vev=np.array([-1.0, -0.5]),
+                                       low_vev=np.array([0.0, 0.0]),
+                                       high_vev_as_traced=np.array([1.0, 0.5])))
+        self.assertEqual(len(found), 1)
+        np.testing.assert_allclose(
+            found[0].high_vev, [-1.0, -0.5],
+            err_msg="the transition kept the endpoint of the preliminary transition while its "
+                    "action came from the bounce on the other image")
+        np.testing.assert_allclose(found[0].high_vev_as_traced, [1.0, 0.5])
+
+    def test_an_untransformed_result_leaves_the_marker_unmapped(self):
+        """`high_vev_as_traced` absent means the bounce used the traced point.
+
+        It has to be written through as `None` rather than left at whatever the transition
+        carried, or a transition reused across calls would keep a stale image.
+        """
+        found = self._run(self._result(high_vev=np.array([1.0, 0.5]),
+                                       low_vev=np.array([0.0, 0.0])))
+        self.assertIsNone(found[0].high_vev_as_traced)
+
+    def test_the_low_vacuum_comes_from_the_same_entry(self):
+        found = self._run(self._result(high_vev=np.array([-1.0, -0.5]),
+                                       low_vev=np.array([-27.4, -15.3]),
+                                       high_vev_as_traced=np.array([1.0, 0.5])))
+        np.testing.assert_allclose(found[0].low_vev, [-27.4, -15.3])
+
+    def test_a_result_without_the_endpoints_leaves_the_transition_alone(self):
+        """Not every return path of the nucleation search carries them."""
+        found = self._run(self._result())
+        np.testing.assert_allclose(found[0].high_vev, [1.0, 0.5])
+        np.testing.assert_allclose(found[0].low_vev, [0.0, 0.0])
 
 
 class TheBounceMarkerFollowsTheImageTheBounceUsedTests(unittest.TestCase):

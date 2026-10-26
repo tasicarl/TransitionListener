@@ -258,6 +258,14 @@ class Transitions():
                     tr.instanton = tunn["instanton"]
                     tr.type = tunn["trantype"]
                     tr.action = tunn["action"]
+                    # The endpoints come from the same entry as the action and the profile.
+                    # `bounceActionOverImages` may return the bounce computed on a transformed
+                    # image of the false vacuum, and `tr` still holds the endpoints of the
+                    # preliminary transition found before this call, so leaving them would
+                    # describe one endpoint while the action and the profile belong to another.
+                    tr.low_vev = tunn.get("low_vev", tr.low_vev)
+                    tr.high_vev = tunn.get("high_vev", tr.high_vev)
+                    tr.high_vev_as_traced = tunn.get("high_vev_as_traced")
                     transitions_dict.append(tr)
             except errors.NucleationError as err:
                 if verbose:
