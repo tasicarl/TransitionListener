@@ -116,6 +116,49 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   5.2 on a 2HDM line, reaching 109% estimated against 3.8% measured at one 2HDM point. Read
   it as a diagnostic of the expansion history, not as a prediction for an observable.
 
+- **The bounce can be computed on every image of the false vacuum, behind a new setting that
+  is off by default.** Where the effective potential is invariant under a group, each minimum
+  stands for a set of images, all of them the same physical state, and which image the phase
+  tracing landed on is settled by the sign of a numerical step rather than by the potential.
+  The two phases of a transition could therefore be stored on different images, and the bounce
+  was then computed along a path between images instead of along the path the field takes. On
+  the real two Higgs doublet model at `lambda3 = 5.868` that gave `S_3/T` = 336.6 against 152.6
+  and 153.3 at the two neighbouring couplings, where `S_3` is the Euclidean action of the O(3)
+  bounce, so the bubble nucleation rate never rose and the coupling returned error 8, no
+  percolation.
+
+  `bounceActionOverImages` offers every image to the solver and keeps the smallest action, and
+  `TracingConf.pair_transition_over_images` decides whether it is used. It **defaults to
+  `False`**, so the shipped behaviour computes one bounce per temperature, as before. The
+  default is off because `canonicalImageElement`, below, now puts a whole traced phase on its
+  canonical image and so repairs the defect where it arises: at `lambda3 = 5.868`, of the 76
+  temperatures of the transition, 66 have two images genuinely apart, and at none of them did
+  the image the tracing did not produce carry the smaller action, while the second bounce took
+  66 per cent of the time spent on bounces. Over the forty couplings of the `lambda3` line from
+  5.50 to 5.87, turning the setting on changes no observable at any coupling and raises the
+  median runtime of a coupling from 408 s to 529 s. It is kept so the check can be run on a new
+  model or a new symmetry group.
+
+  With it on, a pairing whose bounce the solver could not resolve comes back as `trantype` 0
+  with an infinite action and loses every comparison, so it does not cost the temperature when
+  another pairing resolved; where none resolved, the first pairing's entry is kept and the
+  caller sees the infinite action it would have seen before. The number of pairings offered and
+  the number that resolved are reported as `pairings_tried` and `pairings_resolved`, and the
+  false vacuum as the phase tracing produced it as `high_vev_as_traced`, which is what lets a
+  cached action be recognised as this transition's: the entry's `high_vev` is the image the
+  bounce was computed on, and the adaptive percolation route compares the two to decide whether
+  an action can be reused. Three places use the pairing: both percolation routes and the
+  nucleation-temperature search.
+
+  Two images closer together than 1e-4 of the path length are one point. That is the resolution
+  the phase tracing works to, and not a claim about the action, which a separation does not
+  bound for a general potential; `phases._IMAGE_SIGN_RTOL` carries the same constant for the
+  same reason, applied to a field component's sign. An equality test at machine precision was
+  tried and withdrawn: a symmetric phase is a false vacuum at a fixed point of the group, the
+  tracer leaves it about 1e-10 from that point rather than on it, and at machine precision that
+  residual and its reflection are two states, so every temperature below percolation solved the
+  same bounce twice.
+
 ### Changed
 
 - **The action-rate jitter gate no longer judges a rate that has died.** It defines its band
@@ -327,46 +370,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **The bounce of a transition is now computed on every image of the false vacuum and the
-  smallest action kept.** Where the effective potential is invariant under a group, each
-  minimum stands for a set of images and all of them are the same physical state, and which
-  image the phase tracing landed on is settled by the sign of a numerical step rather than
-  by the potential. The two phases of a transition could therefore be stored on different
-  images, and the bounce was then computed along a path between images instead of along the
-  path the field takes. On the real two Higgs doublet model at `lambda3 = 5.868` that gave a
-  field separation of 264.54 GeV against 231.55 and 231.53 GeV at the two neighbouring
-  couplings, and `S_3/T` = 336.6 against 152.6 and 153.3, where `S_3` is the Euclidean
-  action of the O(3) bounce, so the bubble nucleation rate never rose and the coupling
-  returned error 8, no
-  percolation. The bubble nucleates along whichever pairing carries the smallest action, so
-  `bounceActionOverImages` now offers every image to the solver and keeps the entry with the
-  smallest action. A pairing whose bounce the solver could not resolve comes back as
-  `trantype` 0 with an infinite action and loses every comparison, so it does not cost the
-  temperature when another pairing resolved; where none resolved, the first pairing's entry
-  is kept and the caller sees the infinite action it would have seen before. The number of
-  pairings offered and the number that resolved a bounce are reported as `pairings_tried`
-  and `pairings_resolved`, and the false vacuum as the phase tracing produced it as
-  `high_vev_as_traced`. That last one is what lets a cached action be recognised as this
-  transition's: the entry's `high_vev` is the image the bounce was computed on, which on
-  the 2HDM is 492 GeV from the traced point, and the adaptive percolation route compares
-  the two to decide whether an action can be reused rather than computed again. Three places use it: both percolation routes, the adaptive one
-  and the fixed step size one, and the nucleation-temperature search, which reads the same
-  two traced phases and runs before percolation, so on the fixed step size route a criterion
-  that was never fulfilled on the expensive pairing dropped the candidate transition before
-  percolation was reached. On a model with a symmetry the reported `Tnuc` and the action at
-  `Tnuc` therefore move: on the real two Higgs doublet model benchmark of figure 15 the
-  nucleation temperature at `lambda3 = 5.82` goes from 42.00650206 GeV to 42.01949643 GeV,
-  0.013 GeV or 0.031 per cent, with `S_3/T` at it going from 153.530488 to 153.497022, while
-  the three colder couplings measured are unchanged to the last digit. Where the false vacuum
-  sits at a fixed point of the group, the origin in particular, every image coincides and one
-  bounce is computed as before. Two images are offered as one pairing only where they are
-  the same point to the precision the field values hold. A tolerance of 1e-4 of the path
-  length was used for that and is gone: it saved a bounce at 25 of the 60 temperatures of
-  `lambda3 = 5.8676` and 5.7 per cent of that point's runtime, and the two actions were
-  measured to agree to 5.5e-04 at worst where it fired, a factor 91 inside the solver's
-  own criterion, but a separation does not bound the difference of two bounce actions for
-  a general potential and an image it dropped never reached the solver, so nothing
-  downstream could have caught a case where it was wrong.
+- **`examples/bp_lisa.yaml` named a model file that is not in the repository.** It asked for
+  `arxiv/reproducibility/models/TL_2HDM_BSMPT_highacc.py` from the v2.0 release preparations
+  onward, while no `arxiv/` directory is tracked and the model it wants is at
+  `models/TL_2HDM_BSMPT_highacc.py`, which does define the class the configuration names. The
+  example failed at its first step for two releases. `tests/test_release_smoke.py` now checks
+  every shipped example statically, that its `Modelfile` resolves inside the repository and
+  that the named `Potential` class is defined in it, for all ten configurations in 0.12 s.
 
 - **A `PotentialError` whose error type the bounce code does not know now reaches the caller
   as `UnexpectedError`.** It raised `IndexError` instead: the message was built from
