@@ -359,7 +359,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   0.013 GeV or 0.031 per cent, with `S_3/T` at it going from 153.530488 to 153.497022, while
   the three colder couplings measured are unchanged to the last digit. Where the false vacuum
   sits at a fixed point of the group, the origin in particular, every image coincides and one
-  bounce is computed as before.
+  bounce is computed as before. Two images are offered as one pairing only where they are
+  the same point to the precision the field values hold. A tolerance of 1e-4 of the path
+  length was used for that and is gone: it saved a bounce at 25 of the 60 temperatures of
+  `lambda3 = 5.8676` and 5.7 per cent of that point's runtime, and the two actions were
+  measured to agree to 5.5e-04 at worst where it fired, a factor 91 inside the solver's
+  own criterion, but a separation does not bound the difference of two bounce actions for
+  a general potential and an image it dropped never reached the solver, so nothing
+  downstream could have caught a case where it was wrong.
 
 - **A `PotentialError` whose error type the bounce code does not know now reaches the caller
   as `UnexpectedError`.** It raised `IndexError` instead: the message was built from

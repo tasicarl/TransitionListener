@@ -1678,57 +1678,31 @@ def _execute_full_tunneling(
         raise
 
 
-#: How far apart two images of the false vacuum have to be, as a fraction of the length of
-#: the path the bounce traverses, before they are treated as two pairings and each given its
-#: own bounce. Below it they are the same path and one bounce is computed.
+#: How far apart two images of the false vacuum have to be, as a fraction of the length of the
+#: path the bounce traverses, before they are treated as two pairings and each given its own
+#: bounce.
 #:
-#: Where the false vacuum sits at the origin, the origin is a fixed point of the symmetry and
-#: the images are one state, but the phase tracing returns a point a short way off it, so the
-#: images come out as distinct points and the same path is integrated twice. The separation
-#: varies continuously with the temperature, so no band of it is excluded on principle and a
-#: threshold cannot be put in a gap: on the real two Higgs doublet model at
-#: `lambda3 = 5.8676`, 60 temperatures spanning the transition's range of 11.81 to 121.34 GeV
-#: give separations from 1.1e-06 to 0.287 of the path length, 25 of them in [1e-5, 1e-4) and
-#: 5 more in [1e-4, 1e-3).
+#: It was 1e-4, chosen so that two images closer than that were treated as one path and one
+#: bounce computed. That saved work: on the 2HDM at `lambda3` = 5.8676, 25 of the 60
+#: temperatures spanning the transition have separations in [1e-5, 1e-4), and the whole point
+#: ran 5.7 per cent faster with the merge than without, 4283.03 s against 4528.57 s.
 #:
-#: What the value has to respect is therefore the action and not the distance. The two
-#: actions must agree to better than the criterion the solver already applies to itself,
-#: ``tunneling1D._ACTION_BRACKET_TOL``, which is the 5e-2 that two shooting guesses must
-#: agree to before their action is accepted. Measured at `lambda3 = 5.8676` over the four
-#: decades of separation where both pairings resolve, and at `lambda3 = 5.5227272727` for the
-#: fifth, the relative difference between the two actions stays within a factor of a few of
-#: the relative separation of the two images:
+#: It is an equality test now, and the saving is given up, because the merge could not be
+#: justified by anything stronger than measurement. A separation does not bound the difference
+#: of two bounce actions for a general potential, and an image the merge dropped never reached
+#: the solver, so no tolerance the solver applies to itself could have noticed the loss.
 #:
-#:     separation 2.855e-01 -> actions differ by 1.440        (T = 20.24 GeV)
-#:     separation 1.840e-01 -> actions differ by 3.867e-01    (T = 45.51 GeV)
-#:     separation 9.865e-02 -> actions differ by 9.349e-02    (T = 53.94 GeV)
-#:     separation 1.223e-04 -> actions differ by 2.777e-05    (T = 70.79 GeV)
-#:     separation 2.767e-05 -> actions differ by 4.653e-05    (T = 62.36 GeV)
-#:     separation 4.033e-06 -> actions differ by 1.129e-08    (lambda3 = 5.5227272727)
-#:
-#: Those samples lie outside the value below, which is where both pairings are computed
-#: anyway, so they say nothing about the pair this merges. Measured inside it, with the images
-#: enumerated directly from the group so that this screen cannot hide the pair, at the 18
-#: temperatures of `lambda3` = 5.8676 and 5.8200 where the separation is under the value below
-#: and both pairings resolve an action:
-#:
-#:     lambda3 = 5.8676, 7 temperatures from T = 76.59 to 92.12 GeV internal, separations
-#:     9.82e-05 down to 2.45e-05: the worst relative difference between the two actions is
-#:     5.517e-04, at T = 81.76 and separation 6.667e-05.
-#:
-#:     lambda3 = 5.8200, 11 temperatures from T = 52.12 to 93.29, separations 9.21e-05 down to
-#:     2.29e-06: the worst is 2.512e-04, at T = 56.24 and separation 9.211e-05.
-#:
-#: So the largest disagreement measured where this screen acts is 5.5e-04, a factor 91 inside
-#: the solver's own criterion of 5e-02. Above the value below the two pairings are far enough
-#: apart that their actions differ by more than that criterion, and both are computed: the
-#: difference crosses 5e-02 at a separation near 8e-02, three decades above this value.
-#:
-#: What the measurement does not give is a bound. A separation does not bound the difference of
-#: two bounce actions for a general potential, so this rests on the two couplings above and on
-#: the shipped models, not on an argument. Dropping it costs a second bounce at 25 of the 60
-#: temperatures of `lambda3` = 5.8676.
-_IMAGE_SEPARATION_RTOL = 1.0e-4
+#: What the measurement said, for the record. With the images enumerated directly from the group
+#: so that the merge could not hide the pair, both pairings were computed at the 18 temperatures
+#: of `lambda3` = 5.8676 and 5.8200 where the separation is under 1e-4 and both resolve an
+#: action. The largest relative difference between the two actions was 5.517e-04, at
+#: T = 81.76 GeV internal and separation 6.667e-05, a factor 91 inside
+#: ``tunneling1D._ACTION_BRACKET_TOL``, the 5e-2 that two shooting guesses must agree to before
+#: their action is accepted. End to end the merge moved three of 30 observables of the
+#: `lambda3` = 5.8676 point, `Tf_SM_GeV` by 4.3e-04, `(beta/H)_S3` by 7.0e-05 and `RH` by
+#: 1.2e-05, and left the other 27 identical. So nothing measured was wrong with it; it was
+#: simply not something a user could check.
+_IMAGE_SEPARATION_RTOL = 8.0 * float(np.finfo(float).eps)
 
 
 def _actionOfOnePairing(entry: dict) -> float:
@@ -1876,10 +1850,15 @@ def imagesOfTheFalseVacuum(x_false: np.ndarray, x_true: np.ndarray,
         image = np.asarray(x_false @ g, dtype=float)
         if not np.isfinite(image).all():
             continue
-        # An image that traverses the same path is the same bounce, so it is offered to the
-        # solver once. The group may name a map more than once, and it contains the identity
-        # for most models, so an image is compared against every candidate already accepted
-        # and not only against the point as it was traced.
+        # An image equal to one already accepted is the same bounce, so it is offered to the
+        # solver once. The group may name a map more than once and contains the identity for
+        # most models, so an image is compared against every candidate already accepted and not
+        # only against the point as it was traced. The comparison is for equality to the
+        # precision the numbers are held in, not a tolerance on the separation: a separation
+        # does not bound the difference of two bounce actions for a general potential, and an
+        # image this dropped would never reach the solver, so no tolerance the solver applies
+        # to itself could notice the loss. Every image that is a distinct point is computed and
+        # its action compared, which is what the function promises.
         if any(float(np.linalg.norm(image - accepted)) <= _IMAGE_SEPARATION_RTOL * scale
                for _, accepted in candidates):
             continue

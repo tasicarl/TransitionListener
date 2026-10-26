@@ -34,6 +34,7 @@ from transitionlistener import bubbledynamics as bd
 from transitionlistener import bubbledynamics_fixedstep as bdf
 from transitionlistener import errors, nucleation, tunneling1D
 from transitionlistener import pathDeformation as pd
+from transitionlistener.pathDeformation import _IMAGE_SEPARATION_RTOL
 from transitionlistener.pathDeformation import (bounceAction, bounceActionOverImages,
                                                 imagesOfTheFalseVacuum)
 
@@ -103,7 +104,7 @@ class TheImagesAreEnumeratedNearestFirst(unittest.TestCase):
         np.testing.assert_allclose(got[0], np.zeros(2), atol=0.0)
 
     def test_the_same_point_is_recognised_in_any_units(self):
-        """Two images closer than round-off on the scale of the transition are one point.
+        """Two images equal to the precision the field values hold are one point.
 
         The separation has to be measured against a scale of the problem, which is the
         length of the path the bounce traverses, `|x_false - x_true|`, and not as an
@@ -119,7 +120,7 @@ class TheImagesAreEnumeratedNearestFirst(unittest.TestCase):
                                   ("internal units 1e4 smaller", TRUE_VACUUM * 1.0e-4),
                                   ("internal units 1e3 larger", TRUE_VACUUM * 1.0e3)):
             with self.subTest(name):
-                point = true_vacuum * 1.0e-13
+                point = true_vacuum * 1.0e-17
                 got = imagesOfTheFalseVacuum(point, true_vacuum, TWO_HIGGS_DOUBLET)
                 self.assertEqual(len(got), 1,
                                  msg=f"{name}: {len(got)} candidates for one point")
@@ -128,48 +129,74 @@ class TheImagesAreEnumeratedNearestFirst(unittest.TestCase):
                     len(imagesOfTheFalseVacuum(far, true_vacuum, TWO_HIGGS_DOUBLET)), 2,
                     msg=f"{name}: a genuine pair of images was collapsed into one")
 
-    def test_the_two_measured_regimes_of_the_2hdm_scan_fall_on_either_side(self):
-        """The separations measured on the `lambda3` line scan, and nothing between them.
+    def test_every_distinct_image_is_offered_to_the_solver(self):
+        """Two images are merged only where they are the same point, whatever the separation.
 
-        Where the false vacuum sits at the origin the phase tracing returns a point a short
-        way off it, so the two images come out as two points, but they traverse the same
-        path and their actions agree far better than the solver's own criterion. Measured at
-        `lambda3 = 5.5227272727`, where the false vacuum is at the origin over the whole
-        temperature range, 60 temperatures put the two images 3.3e-7 to 2.9e-5 of the path
-        length apart. A second walk of the same range at 10 temperatures computed both
-        pairings' actions, and at the 8 of the 10 where both resolved the two actions agree
-        to between 1.1e-8 and 4.0e-3 relative, against the solver's criterion of 5.0e-2.
-        Where the false vacuum has left the origin, at `lambda3 = 5.84` and above, the
-        separations run from 0.052 to 0.287 of the path length and the actions differ by a
-        factor up to 2.46. The separation varies continuously with the temperature, so it
-        passes through the values between those two bands, and what the threshold has to
-        respect is the action rather than the distance: it has to sit where the two actions
-        still agree to better than the criterion the solver applies to its own shooting
-        guesses.
+        The separation used to decide this, below 1e-4 of the path length merging the pair.
+        That saved a bounce at 25 of the 60 temperatures of `lambda3` = 5.8676 and 5.7 per cent
+        of a point's runtime, and the two actions were measured to agree to 5.5e-04 at worst
+        where it fired, a factor 91 inside the solver's own criterion. It is gone because a
+        separation does not bound the difference of two bounce actions for a general potential,
+        and an image it dropped never reached the solver, so nothing downstream could have
+        caught a case where it was wrong.
+
+        The points below are the ones that measurement was taken on. The three near the origin
+        were merged before and are each computed now; the two off it were always computed.
         """
         true_vacuum = np.array([11.48, 246.33])
-        # Each point's |A| and separation are its own, computed from the two vectors below,
-        # and each sits inside one of the two measured ranges. Quoting a measured |A| here
-        # instead would name a number the point does not reproduce.
-        for name, false_vacuum, expected in (
+        for name, false_vacuum in (
                 ("at the origin, |A| = 3.54e-3 GeV, separation 2.87e-5",
-                 np.array([2.5e-3, 2.5e-3]), 1),
+                 np.array([2.5e-3, 2.5e-3])),
                 ("at the origin, |A| = 1.37e-4 GeV, separation 1.11e-6",
-                 np.array([9.7e-5, 9.7e-5]), 1),
+                 np.array([9.7e-5, 9.7e-5])),
                 ("at the origin, |A| = 4.24e-5 GeV, separation 3.44e-7",
-                 np.array([3.0e-5, 3.0e-5]), 1),
+                 np.array([3.0e-5, 3.0e-5])),
                 ("off the origin, |A| = 31.4 GeV, separation 0.271",
-                 np.array([27.416, 15.335]), 2),
+                 np.array([27.416, 15.335])),
                 ("off the origin, |A| = 33.0 GeV, separation 0.283",
-                 np.array([30.0, 13.7]), 2)):
+                 np.array([30.0, 13.7]))):
             with self.subTest(name):
                 got = imagesOfTheFalseVacuum(false_vacuum, true_vacuum, TWO_HIGGS_DOUBLET)
+                sep = (np.linalg.norm(2 * false_vacuum)
+                       / np.linalg.norm(false_vacuum - true_vacuum))
                 self.assertEqual(
-                    len(got), expected,
-                    msg=f"{name}: {len(got)} candidates, expected {expected}; the "
-                        f"separation is "
-                        f"{np.linalg.norm(2*false_vacuum)/np.linalg.norm(false_vacuum-true_vacuum):.3e}"
-                        " of the path length")
+                    len(got), 2,
+                    msg=f"{name}: {len(got)} candidate(s) for two distinct images, "
+                        f"separation {sep:.3e} of the path length")
+                self.assertGreater(sep, _IMAGE_SEPARATION_RTOL,
+                                   msg=f"{name}: this pair is the same point to the "
+                                       "precision the fields hold, so the test is vacuous")
+
+    def test_a_pair_distinct_in_double_precision_is_two_images(self):
+        """The threshold is the precision the fields hold and not a little more than that.
+
+        A separation of 1e-13 of the path length is far below any physical scale and still
+        hundreds of times the 2.2e-16 a double holds, so the two points are different points
+        and each gets its bounce. A threshold even a thousand times the precision, 1.8e-12,
+        would merge this pair, and nothing else in this file would notice.
+        """
+        true_vacuum = np.array([11.48, 246.33])
+        # Images at +-point, so the separation is 2|point| against a path of about |x_true|.
+        point = true_vacuum * 0.5e-13
+        got = imagesOfTheFalseVacuum(point, true_vacuum, TWO_HIGGS_DOUBLET)
+        sep = float(np.linalg.norm(2 * point) / np.linalg.norm(point - true_vacuum))
+        self.assertGreater(sep, 1.0e-14)
+        self.assertLess(sep, 1.0e-12,
+                        msg="this pair is outside the window the test is about")
+        self.assertEqual(len(got), 2,
+                         msg=f"a pair {sep:.2e} of the path apart, distinct in double "
+                             f"precision, came back as {len(got)} image(s)")
+
+    def test_a_false_vacuum_at_the_origin_still_costs_one_bounce(self):
+        """The case the merge existed for, which an equality test still covers.
+
+        A false vacuum exactly at a fixed point of the group has one image, so the group costs
+        nothing there however large it is. That is true of the identity for every point too.
+        """
+        true_vacuum = np.array([11.48, 246.33])
+        got = imagesOfTheFalseVacuum(np.zeros(2), true_vacuum, TWO_HIGGS_DOUBLET)
+        self.assertEqual(len(got), 1,
+                         msg=f"a false vacuum at the origin gave {len(got)} candidates")
 
     def test_a_potential_with_no_symmetry_costs_one_bounce(self):
         got = imagesOfTheFalseVacuum(FALSE_VACUUM, TRUE_VACUUM, [])
