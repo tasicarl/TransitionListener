@@ -1348,6 +1348,23 @@ class TheBounceMarkerFollowsTheImageTheBounceUsedTests(unittest.TestCase):
             err_msg="the marker stayed on the traced image while the bounce used its mirror, "
                     "so the curve starts a reflection away from the point labelling it")
 
+    def test_the_marker_follows_the_image_even_when_the_phase_lookup_fails(self):
+        """`valAt` fails where the plotting temperature is outside the traced interval.
+
+        `_phase_point_at_temperature` then returns the fallback it was handed, untouched. Hand
+        it the image the bounce used and the element below transforms it a second time, and
+        since these elements are involutions the marker lands back on the traced image, which
+        is the one place this helper exists to keep it off.
+        """
+        plotter = self._plotter(TWO_HIGGS_DOUBLET)
+        plotter.phases = {}  # every lookup raises, so the fallback is what comes back
+        tr = self._transition(high_vev=[-1.0, -0.5], traced=[1.0, 0.5])
+        got = plotter._bounce_false_vacuum_at_temperature(tr, 30.0)
+        np.testing.assert_allclose(
+            got, [-1.0, -0.5],
+            err_msg="the fallback was transformed twice and the marker came back on the "
+                    "traced image")
+
     def test_a_map_the_group_does_not_contain_leaves_the_point_alone(self):
         """Better a marker that is wrong as before than a transformation invented here.
 

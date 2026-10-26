@@ -278,8 +278,14 @@ class TLPlots():
         as before this, and inventing a transformation the potential does not have would be
         worse.
         """
-        point = self._phase_point_at_temperature(tr.high_phase, tr.high_vev, temperature)
         traced = getattr(tr, "high_vev_as_traced", None)
+        # The fallback has to be in the same frame as the element applied below. `valAt` fails
+        # where the plotting temperature is outside the traced interval, and
+        # `_phase_point_at_temperature` then returns the fallback untouched: passing
+        # `tr.high_vev`, which is already the transformed image, would transform it a second
+        # time and, the elements being involutions, land the marker back on the traced image.
+        point = self._phase_point_at_temperature(
+            tr.high_phase, tr.high_vev if traced is None else traced, temperature)
         if traced is None:
             return point
         traced = np.asarray(traced, dtype=float)
