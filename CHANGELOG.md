@@ -255,6 +255,16 @@ Each line says what was wrong and when it bit.
   the image the bounce was computed on.
 - `examples/bp_lisa.yaml` named a model file that is not in the repository, so the shipped
   benchmark point could not be run.
+- A failure of the potential whose tag the bounce code does not handle raised `IndexError`
+  rather than reaching the caller as `UnexpectedError`, because the message was read from an
+  index of `args` that `PotentialError` never fills. The second copy of the same translation,
+  in `bounceAction`, reported no tag at all.
+- The tachyonic-mass message divided the squared boson masses by the internal field scale,
+  which is neither a mass nor a squared mass and changes with a model's choice of scale, and
+  printed every mode without saying which one was tachyonic.
+- `Phases.testTmax` documented `ValueError` and raises `WrongHighTPhaseError`, and
+  `PotentialError`'s docstring described a tuple convention its constructor does not follow, so
+  a reader deciding what to catch would have caught nothing.
 
 ## [2.1.0] - 2026-07-28
 
