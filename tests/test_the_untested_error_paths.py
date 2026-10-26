@@ -196,6 +196,17 @@ class TheUnhandledErrorTypeIsReportedFromBounceActionTests(_UnhandledPotentialEr
         self.assertIn("bounceAction", msg,
                       "the message names the routine, so the two copies are distinguishable")
 
+    def test_the_message_carries_the_explanation_and_both_handled_tags(self):
+        """The message promises three things beside the tag, so all three are asserted.
+
+        The explanation is what the potential said; the two handled tags tell a model author
+        which tag to use instead. A regression that dropped any of them would otherwise pass.
+        """
+        msg = str(self._bounce(self._error("the potential did something new")))
+        self.assertIn("the potential did something new", msg)
+        self.assertIn("no barrier", msg)
+        self.assertIn("stable, not metastable", msg)
+
     def test_the_code_is_999(self):
         self.assertEqual(self._bounce(self._error()).errorcode, 999)
 
