@@ -26,7 +26,8 @@ from transitionlistener import constants as cn
 from transitionlistener import errors
 from transitionlistener.helper_functions import (temperatureDerivativeStep,
                                                  thermalDerivativeStep)
-from transitionlistener.pathDeformation import bounceActionOverImages
+from transitionlistener.pathDeformation import (bounceActionOverImages,
+                                                imagesToPairOver)
 from transitionlistener.finiteT import Jb_spline as Jb
 from transitionlistener.finiteT import Jf_spline as Jf
 from transitionlistener.nucleation import computeNucleationTemperature
@@ -687,12 +688,10 @@ ENTROPY_DEFINITIONS = cn.ENTROPY_DEFINITIONS
 
 # Relative step of the logarithmic entropy derivative of the "dof_table" scheme. The counted
 # entropy is a smooth function of the temperature (the Standard Model part is a spline through a
-# Savitzky-Golay-filtered table), so the choice is not delicate over several decades. Measured on
-# the conformal dark U(1) at g = 0.692, v = 6 GeV, on 60 points over internal temperatures 16 to
-# 30, which sit on the QCD crossover: the largest relative deviation of c_s^2 from its value at
-# this step is 1.5e-4 for a 1e-3 step and 1.5e-6 for 1e-5 and 1e-6, so the residual is dominated
-# by the table's own structure rather than by the step. A 1e-2 step is too coarse there, reaching
-# 4.5e-3 at the worst point.
+# Savitzky-Golay-filtered table), so the choice is not delicate over several decades. Steps from
+# 1e-3 down to 1e-6 leave c_s^2 within the structure the table itself contributes, even across
+# the QCD crossover where that structure is strongest; only a step as coarse as 1e-2 is visible
+# in the result.
 _ENTROPY_REL_STEP = 1.0e-4
 
 
@@ -789,7 +788,8 @@ def _time_temperature_factors(
             # d2V/dXdT * dX/dT: along a phase dV/dX = 0, so dX/dT = -(d2V/dX2)^-1 d2V/dXdT,
             # and that term vanishes only where the phase does not move. It is exactly zero
             # for a symmetric phase pinned at the origin, which is why the fixed-field route
-            # agreed to 1e-6 there, and reaches 0.09% at a drift of dX/dT = 0.5 on the 2HDM.
+            # agrees with this one there. The discrepancy grows with the drift, reaching about a
+            # tenth of a per cent where dX/dT = 0.5.
             h = t * _ENTROPY_REL_STEP
             # Keep the stencil inside the traced range. `valAt` interpolates a spline and
             # happily extrapolates instead of raising, and where it does raise, `h_eff_DS`
@@ -908,7 +908,7 @@ def calcAction(pot, T: float, start_phase, end_phase, outdict: dict, verbose: bo
     # the bubble nucleates along whichever pairing carries the smallest action.
     outdict = bounceActionOverImages(
         T, pot.Vtot, pot.gradV, outdict, tdict,
-        getattr(pot, "invGroupElements", []), verbose, pot.conversionFactor,
+        imagesToPairOver(pot), verbose, pot.conversionFactor,
         **pot.config.tracingConf.tunneling_params)
     return outdict[T]["action"]
 
@@ -1404,7 +1404,7 @@ def percIntegralODE(
     # completion into regions where the traced false vacuum is no longer a
     # sensible equilibrium (its sound speed passes through zero, the scale
     # factor blows up by e^700), which used to make the integrator fail on
-    # an otherwise healthy transition (2HDM benchmark, lambda3 = 5.7175).
+    # an otherwise healthy transition.
     def _false_vacuum_gone(u, y):
         return (4.0 * np.pi / 3.0) * vw**3 * y[3] - _PERC_INTEGRAL_STOP
 
@@ -1649,16 +1649,13 @@ _APPROX_PERCOLATION_SCAN_RATIO = 1.15
 #: How many steps of that walk may pass without a computable action before the estimate
 #: declines. Such a step cannot bracket anything -- the criterion returns `+inf` for it, so
 #: it carries no sign -- and `S_3/T` cannot be read from it either, so the nucleation-dead
-#: stop below cannot bound the walk on its own: with every action non-finite the walk pays
-#: for the whole interval, 243 steps and 484 action evaluations over the 2HDM's
-#: [2.35254e-13, 121.839] GeV. The bound counts *consecutive* such steps, so the stretch
-#: above the critical temperature, where the broken phase is still the metastable one and
-#: `bounceAction` returns `inf` by construction, is walked through rather than stopped at.
-#: Measured on the 2HDM, that stretch is one step at lambda3 = 5.815656566, where the
-#: walk's first probe at 105.947 GeV has no computable action and its second at 92.1277 GeV
-#: has one at S_3/T = 5462, and no steps at all at lambda3 = 5.5, where the first probe at
-#: 107.943 GeV already has an action at S_3/T = 8345. Twenty steps is a factor 16.4 in
-#: temperature against those, and 40 action evaluations against the 484.
+#: stop below cannot bound the walk on its own: with every action non-finite the walk pays for
+#: the whole interval, which runs from the critical temperature down to the integrator's floor
+#: and costs a few hundred action evaluations. The bound counts *consecutive* such steps, so the
+#: stretch above the critical temperature, where the broken phase is still the metastable one
+#: and `bounceAction` returns `inf` by construction, is walked through rather than stopped at.
+#: The walk starts just above the critical temperature, so that stretch is a step or two, and
+#: twenty steps is more than an order of magnitude in temperature beyond it.
 _APPROX_PERCOLATION_MAX_BLIND_STEPS = 20
 
 
@@ -1828,17 +1825,13 @@ def calcApproxPercolation(
     # than one root and `brentq` assumes one. The criterion is positive below the
     # percolation point and negative above it, but as `T` falls the rate vanishes, so it
     # turns negative again at the cold end, and `T <= Tmin` returns `+inf` by construction.
-    # On the 2HDM at lambda3 = 5.815656566 that interval runs from 121.839 down to
-    # 2.35254e-13 GeV, and at lambda3 = 5.5 from 124.135 down to the same floor.
     # Percolation is the first temperature the universe meets on the way down, so the
     # hottest root is the one wanted and the others are artefacts of the bracket.
     #
     # The walk is geometric at `_APPROX_PERCOLATION_SCAN_RATIO` per step, which costs two
     # action evaluations each and reaches the root in a handful of steps because the root
-    # sits within a factor of a few of `Tmax`: on the 2HDM at lambda3 = 5.5 it brackets a
-    # root at 89.5357 GeV between its second and third steps, 93.8636 and 81.6205 GeV,
-    # below the top of the interval at 124.135 GeV, and the whole estimate costs 14
-    # criterion calls and 22 cached action temperatures. It stops where no bubble can
+    # sits within a factor of a few of `Tmax`, so the whole estimate costs on the order of ten
+    # criterion calls rather than a walk over the interval. It stops where no bubble can
     # nucleate at any Hubble rate, since no root below that is physical, and separately
     # after `_APPROX_PERCOLATION_MAX_BLIND_STEPS` consecutive steps whose action could not
     # be computed, which is the case the first stop cannot see because it has no `S_3/T`
@@ -2389,9 +2382,10 @@ def _transition_action_outdict_temperatures(
             else:
                 # `high_vev` is the image of the false vacuum the bounce was computed on,
                 # which is not the point the phase tracing produced where a transformed image
-                # carried the smaller action: on the 2HDM the two are 492 GeV apart, far
-                # outside this tolerance, so the entry would not be recognised as this
-                # transition's and its action would be computed again. The as-traced point is
+                # carried the smaller action. For a group that reverses the fields the two are
+                # a reflection apart, far outside this tolerance, so the entry would not be
+                # recognised as this transition's and its action would be computed again. The
+                # as-traced point is
                 # recorded beside it for exactly this comparison; entries written before it
                 # existed carry only `high_vev`.
                 traced = payload.get("high_vev_as_traced")
@@ -2551,12 +2545,12 @@ class PercolationDiagnostics:
 # unstable bounce solve, and one quadratic in ln T cannot describe a range of hundreds of
 # decades at all.
 #
-# Both ends of the window are measured, not argued from precision. Above about 40 the gate
-# goes back to firing on the cases it was written for: every false rejection sat at 40.5
-# decades or deeper (max 688.5, 22 cases across the coarse, refined and marginal 2HDM
-# lines). Below about 20 the window starves the fit, which needs five active samples for
-# its quadratic: at 30 decades one of the 83 measured profiles already has only two
-# support points inside the window, and narrowing it moves more profiles into the
+# Both ends of the window are constrained, and by different things. Open it much wider and the
+# gate goes back to rejecting the dead tail it was written to ignore, since every false
+# rejection seen came from samples forty decades or more below the peak. Close it much further
+# and the window starves the fit, which needs five active samples for its quadratic: by thirty
+# decades a profile can already have only two support points inside the window, and narrowing it
+# moves more profiles into the
 # "unassessable" state, which measures nothing. 30 sits between the two, with 1.35x margin
 # to the shallowest observed false positive.
 #
@@ -2599,19 +2593,18 @@ def _action_rate_jitter_diagnostic(
     # P rises monotonically as T falls, so every sample colder than the one that reached
     # p_low is inside the band whether or not its rate still matters. Fitting one quadratic
     # in ln T across a dead tail that spans seven decades of temperature measures the fit's
-    # inadequacy, not the data's: at lambda3 = 5.8205024605 that produced a "residual" of
-    # 1.6e10 orders of magnitude and advised the user to increase the bounce precision for a
-    # sample at T = 1.4e-5 GeV.
+    # inadequacy, not the data's: it produced residuals of billions of orders of magnitude and
+    # advised the user to increase the bounce precision for samples far colder than percolation.
     #
     # The grid builders' floor, 1e3 decades below the peak, is far too loose to use here: it
     # is sized for deciding where to *place* support, where being permissive costs only a few
     # wasted evaluations, and no sample on the measured line ever reached it, so applying it
     # excluded nothing and the gate still judged the dead tail. P rises past f_perc while the
     # rate falls through hundreds of decades, so a sample can be well inside the probability
-    # band and still carry no weight at all: at lambda3 = 5.82015 the flagged point was 432
-    # decades below the peak with P = 0.572, already past percolation, and its 34.6-decade
-    # "jump" is 8% of the range the quadratic has to span. Judge only the samples whose rate
-    # is still live, with the threshold measured for this gate.
+    # band and still carry no weight at all: a flagged point can sit hundreds of decades below
+    # the peak with the transition already past percolation, where its apparent jump is a small
+    # fraction of the range the quadratic has to span. Judge only the samples whose rate is
+    # still live, with the threshold measured for this gate.
     band_idx = np.flatnonzero(mask)
     dead_in_band = 0
     if band_idx.size:
@@ -2622,8 +2615,8 @@ def _action_rate_jitter_diagnostic(
         # the running maximum over the cold-side suffix -- and not by the sample's own value.
         # Judging a sample by its own rate lets a downward spike exempt itself: the defect
         # pushes it below the floor, and the gate it should have tripped never sees it. Both
-        # signs occur here; at lambda3 = 5.82045 the flagged sample sat 41 decades *below*
-        # its own local fit. The suffix maximum is non-increasing towards the cold end, so
+        # signs occur, and a dropout tens of decades below its own local fit is the case that
+        # would exempt itself. The suffix maximum is non-increasing towards the cold end, so
         # this keeps a contiguous warm stretch, and a lone dropout stays in it as long as the
         # samples just colder than it are still live.
         suffix_max = np.maximum.accumulate(rate_hot_to_cold[::-1])[::-1]
@@ -2855,10 +2848,10 @@ def _try_action_jitter_tunneltight_rescue(
         # Delta P and hot-head acceptance gates are not run again on what remains. The
         # returned `Sr` and `Pr` therefore describe slightly different supports.
         #
-        # That is tolerated rather than hidden, because the alternatives measured on the 2HDM
-        # line are worse. Re-deriving the profile from the reduced support and re-running the
-        # gates leaves the coupling's `betaH_RH` far from the trend its neighbours set, and
-        # refusing the point instead costs every coupling that discards at all.
+        # That is tolerated rather than hidden, because both alternatives measured worse.
+        # Re-deriving the profile from the reduced support and re-running the gates leaves the
+        # coupling's inverse duration far from the trend its neighbours set, and refusing the
+        # point instead costs every coupling that discards at all.
         #
         # The couplings that reached the discard were sick for a reason outside this file: the
         # traced symmetric phase was interpolated with an overshooting cubic, so the bounce
@@ -3052,16 +3045,15 @@ def _tight_tunneling_params(pot):
             deform[name] = value
     # `min(current, constant)` leaves a model that already asks for the constant with no
     # tightening at all, which makes the rescue recompute the same action with the same
-    # settings. That is the state of `R2HDM_HighAcc_NAct100_Conv1_FRatio005`: it declares
-    # converge_0 = 1.0 and fRatioConv = 5e-3, exactly the two constants above, so every
-    # deformation parameter of the "tight" set is bit-identical to the run's and the
+    # settings, which is the state of any run that already configures the two constants above:
+    # every deformation parameter of the "tight" set is then bit-identical to the run's and the
     # rate-jitter rescue is a no-op. Divide by a further factor instead, so there is always
     # real margin: with the cap above, the tight target is 1e-3 for any run at or above 5e-3,
     # a factor 10 below the multi-field default of 1e-2, and one fifth of the configured
     # value below that. `converge_0` keeps the plain clamp, so the margin comes from
-    # `fRatioConv` alone. Measured on the 2HDM edge line, halving fRatioConv from
-    # 1e-2 to 5e-3 took the action jitter from 0.78 to 0.28 rms in S_3/T, so a further
-    # factor buys a comparable amount; the cost is bounded because the rescue only
+    # `fRatioConv` alone, where halving the target was measured to cut the action jitter by
+    # about a factor three, so a further factor buys a comparable amount; the cost is bounded
+    # because the rescue only
     # recomputes the handful of outlier temperatures it targets.
     try:
         deform["fRatioConv"] = float(deform["fRatioConv"]) / _JITTER_RESCUE_TIGHTEN_FACTOR
@@ -3853,8 +3845,8 @@ def record_entropy_scheme_diagnostics(
     # The flag is raised on the median spread of 3 c_s^2 over the support, which estimates
     # the relative shift the mean bubble separation takes between the schemes to about 30%.
     # The gap in ln a is recorded beside it but is not the criterion: it is the linearised
-    # estimate of the same shift and is biased by a model-dependent factor, from 0.08 on an
-    # abelian dark Higgs line to 5.2 on a 2HDM line.
+    # estimate of the same shift and is biased by a model-dependent factor that varies by two
+    # orders of magnitude between the models this was checked on.
     derived["WARNING:entropy_scheme_sensitive"] = entropy_scheme_is_sensitive(
         spread, threshold)
     if derived["WARNING:entropy_scheme_sensitive"] and verbose and console is not None:

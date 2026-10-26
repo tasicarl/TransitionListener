@@ -1316,23 +1316,21 @@ def _deform_path(
     return TunnelingOutputs(path, tobj, profile1D, phi, dphi, pts, deform_obj, converged)
 
 
-# Measured at lambda3 = 5.8205024605, T = 15.202392 GeV, where the force ratio floors at
-# 0.00855 against a target of 0.005:
+# A path that cannot reach its force target is under-resolved rather than a second branch, and
+# enlarging the basis moves its action onto the curve its neighbours occupy. The improvement is
+# not monotonic, though: past some size the deformation is destabilised and both the force ratio
+# and the action get worse, so a loop that kept doubling would return a worse path than one that
+# stopped. The loop therefore enlarges while enlarging helps and no further, and the cap holds
+# the default basis at or under nb = 40.
 #
-#   nb    fRatio     S_3/T
-#   10    0.00855   286.43   <- the sample the jitter gate rejects on
-#   20    0.00799   299.92
-#   40    0.00581   299.62   <- on the smooth curve its neighbours occupy
-#   80    0.09998   300.78   <- the deformation is destabilised, 17x worse
+# One reference, since the cap is a tuned number. Measured on commit 065ef81 with
+# `examples/bp_lisa.yaml` at `lambda3 = 5.8205024605`, T = 15.202392 GeV, where the force ratio
+# floors above its target of 0.005: nb = 10, 20 and 40 give force ratios 0.00855, 0.00799 and
+# 0.00581 with `S_3/T` of 286.43, 299.92 and 299.62, while nb = 80 gives 0.09998 and 300.78, a
+# force ratio an order of magnitude worse, and at T = 16.33 GeV the action collapsed by 34.
 #
-# Enlarging the basis both lowers the force ratio and moves the action by +13.2 onto the
-# curve, so the low outlier was an under-resolved path rather than a second branch. But the
-# improvement is not monotonic: at nb = 80 the force ratio is an order of magnitude worse
-# than at nb = 10, and at T = 16.33 GeV the action collapsed by 34. So the loop stops
-# enlarging as soon as enlarging stops helping, and the cap below keeps the default basis
-# at or under nb = 40, short of the size that was measured to destabilise it. The returned
-# path is still the last iteration's, exactly as before this change; nothing here selects
-# among the iterations.
+# The returned path is still the last iteration's, exactly as before this change; nothing here
+# selects among the iterations.
 _PLATEAU_IMPROVEMENT = 0.9      # less than 10% better than the previous iteration is a plateau
 _MAX_BASIS_DOUBLINGS = 2        # nb 10 -> 40; 80 was measured to destabilise the deformation
 _DEFAULT_BASIS_SIZE = 10        # Deformation_Spline's own default when nb is unset
@@ -1533,10 +1531,9 @@ def fullTunneling(
     # The shooting brackets the bounce between an undershoot and an overshoot, and at
     # convergence both must give the same action. `findProfile` records how far apart they
     # were for the profile being kept here; a large spread means the bisection stalled and
-    # the profile returned is whichever trial came last. Measured on the 2HDM at
-    # lambda3 = 5.816407666 with `TL_2HDM_BSMPT_highacc`: the branches agree to 8.9e-06 at
-    # T = 60 GeV, 7.0e-04 at 40 and 7.0e-03 at 25, and disagree by 0.42 at 9.8514 and 1.13
-    # at 9.8546, where one branch returns a negative action. Reporting an unresolved bounce
+    # the profile returned is whichever trial came last. The spread grows as the transition
+    # cools and the barrier becomes harder to resolve, and at the cold end one branch can
+    # return a negative action while the other is positive. Reporting an unresolved bounce
     # lets the controller drop the sample, as it already does for an action it cannot
     # compute, instead of carrying a number decided by which trial ran last.
     spread = float(getattr(last_output.tobj, "bracket_action_spread", 0.0) or 0.0)
@@ -1603,8 +1600,8 @@ def _execute_full_tunneling(
 ):
     """Try to compute the instanton and translate known failure modes."""
     # The straight line between the two minima. Each temperature is solved independently;
-    # seeding a retry from a neighbouring temperature's converged path was measured to
-    # return a non-finite action on the 2HDM and is not part of the solver.
+    # seeding a retry from a neighbouring temperature's converged path was measured to return
+    # a non-finite action and is not part of the solver.
     initial_path = [tdict["low_vev"], tdict["high_vev"]]
     try:
         result = fullTunneling(initial_path, V_, dV_, callback_data=T, verbose=verbose, **settings)
@@ -1682,27 +1679,29 @@ def _execute_full_tunneling(
 #: path the bounce traverses, before they are treated as two pairings and each given its own
 #: bounce.
 #:
-#: It was 1e-4, chosen so that two images closer than that were treated as one path and one
-#: bounce computed. That saved work: on the 2HDM at `lambda3` = 5.8676, 25 of the 60
-#: temperatures spanning the transition have separations in [1e-5, 1e-4), and the whole point
-#: ran 5.7 per cent faster with the merge than without, 4283.03 s against 4528.57 s.
+#: The criterion is the resolution of the phase tracing that produced the false vacuum. A
+#: separation does not bound the difference of two bounce actions for a general potential, so
+#: this is not a tolerance on the action; it is the statement that two points closer together
+#: than the tracer can place a minimum are one point. The tracer locates each node by finite
+#: differences of step ``deltaX_target * 1e-2``, and `phases.py` already applies that reasoning,
+#: with this same constant, to the sign of a field component in ``phases._IMAGE_SIGN_RTOL``.
 #:
-#: It is an equality test now, and the saving is given up, because the merge could not be
-#: justified by anything stronger than measurement. A separation does not bound the difference
-#: of two bounce actions for a general potential, and an image the merge dropped never reached
-#: the solver, so no tolerance the solver applies to itself could have noticed the loss.
+#: An equality test at machine precision was tried and withdrawn. A symmetric phase is a false
+#: vacuum at a fixed point of the group, and the tracer leaves it a few times 1e-10 from that
+#: point rather than on it, so an exact test saw two images at every temperature of such a
+#: transition and the solver computed one path twice. What a merge at this threshold can hide is
+#: bounded by what the solver can tell apart: the two paths then differ by less than 1e-4 of
+#: their length, and the solver's action on one path recomputed repeats only to a few times
+#: 1e-5.
 #:
-#: What the measurement said, for the record. With the images enumerated directly from the group
-#: so that the merge could not hide the pair, both pairings were computed at the 18 temperatures
-#: of `lambda3` = 5.8676 and 5.8200 where the separation is under 1e-4 and both resolve an
-#: action. The largest relative difference between the two actions was 5.517e-04, at
-#: T = 81.76 GeV internal and separation 6.667e-05, a factor 91 inside
-#: ``tunneling1D._ACTION_BRACKET_TOL``, the 5e-2 that two shooting guesses must agree to before
-#: their action is accepted. End to end the merge moved three of 30 observables of the
-#: `lambda3` = 5.8676 point, `Tf_SM_GeV` by 4.3e-04, `(beta/H)_S3` by 7.0e-05 and `RH` by
-#: 1.2e-05, and left the other 27 identical. So nothing measured was wrong with it; it was
-#: simply not something a user could check.
-_IMAGE_SEPARATION_RTOL = 8.0 * float(np.finfo(float).eps)
+#: One reference, since the threshold is a tuned number. Measured on commit 065ef81 with
+#: ``examples/bp_lisa.yaml`` at ``lambda3 = 5.6518``, where the symmetric phase is the false
+#: vacuum at all 7 temperatures that resolve: the two images lay 3.6e-13 to 2.3e-12 of the path
+#: length apart, the two actions agreed to 3.0e-05 relative, and the second bounce took 49 per
+#: cent of all the time spent on bounces. The tracer's own step would put the threshold at
+#: 4e-06 of the path length instead, which merges the same pairs and splits the same pairs; the
+#: looser constant is used so that one number serves both this test and the sign test.
+_IMAGE_SEPARATION_RTOL = 1.0e-4
 
 
 def _actionOfOnePairing(entry: dict) -> float:
@@ -1787,8 +1786,11 @@ def imagesOfTheFalseVacuum(x_false: np.ndarray, x_true: np.ndarray,
     the sign of a numerical step and not by the potential, so the two phases of a transition
     can be stored on different images, and the bounce is then computed along a path between
     images rather than the path the field takes. The field separation and the action of that
-    path are those of no physical channel: on the 2HDM at `lambda3 = 5.868` it gave
-    `S_3/T = 336.84` where the pairing the field takes gives 152.97, both at T = 30.0 GeV.
+    path are those of no physical channel, and the action can come out a factor of two wrong
+    without anything downstream being able to tell. That defect is what this exists for, and
+    it is worth the one specific reference: on commit 065ef81 with `examples/bp_lisa.yaml` at
+    `lambda3 = 5.868` the path between images gave `S_3/T = 336.84` at T = 30.0 GeV where the
+    path the field takes gives 152.97.
 
     The bubble nucleates along whichever pairing carries the smallest action, so all of the
     images are candidates and :func:`bounceActionOverImages` computes the bounce for each of
@@ -1799,14 +1801,11 @@ def imagesOfTheFalseVacuum(x_false: np.ndarray, x_true: np.ndarray,
     was traced wins a tie, which makes the order independent of the order the group is given
     in. The order decides nothing: every candidate is computed and the smallest action is
     kept, so it only settles which bounce is solved first and which entry a tie goes to. It
-    is the order it is because the nearest image is measured to be the pairing that wins.
-    On the real two Higgs doublet model along the `lambda3` line scan of figure 15 of the
-    code paper, 36 temperatures were sampled across the three couplings. At 22 of them the
-    false vacuum sits at the origin and only one pairing exists; of the remaining 14, two
-    pairings both resolved at 12, and at those 12 the nearest image carried the smaller
-    action every time, by a factor between 1.17 and 2.46. At the other 2 the mirror pairing
-    gave no action and the nearest one did. The factor falls towards 1 as the false vacuum
-    approaches the origin, which is the point the two pairings share.
+    is the order it is because a shorter path usually carries the smaller action, so the
+    pairing solved first is usually the one kept. The two pairings approach each other as the
+    false vacuum approaches a fixed point of the group, which is the point they share, and
+    where the false vacuum sits at such a point there is one pairing and the group costs
+    nothing.
 
     An image equal to the traced point is dropped, so the identity, which most models'
     groups contain, costs nothing, and a false vacuum sitting at a fixed point of the group,
@@ -1839,8 +1838,8 @@ def imagesOfTheFalseVacuum(x_false: np.ndarray, x_true: np.ndarray,
     # measured against. Taking the false vacuum's own length instead would make the test
     # meaningless for a false vacuum sitting at the origin, where that length is whatever the
     # tracing left behind rather than a scale of the problem, and taking an absolute
-    # separation would make it depend on the units the model works in: the 2HDM's fields are
-    # in GeV, the conformal dark U(1) example's are 1e4 times smaller. Where the two minima
+    # separation would make it depend on the units the model works in, which differ between
+    # models by orders of magnitude. Where the two minima
     # coincide the path has no length and every image is the same point, so the comparison
     # falls back on the fields' own scale.
     path = float(np.linalg.norm(x_false - x_true))
@@ -1853,11 +1852,10 @@ def imagesOfTheFalseVacuum(x_false: np.ndarray, x_true: np.ndarray,
         # An image equal to one already accepted is the same bounce, so it is offered to the
         # solver once. The group may name a map more than once and contains the identity for
         # most models, so an image is compared against every candidate already accepted and not
-        # only against the point as it was traced. The comparison is for equality to the
-        # precision the numbers are held in, not a tolerance on the separation: a separation
-        # does not bound the difference of two bounce actions for a general potential, and an
-        # image this dropped would never reach the solver, so no tolerance the solver applies
-        # to itself could notice the loss. Every image that is a distinct point is computed and
+        # only against the point as it was traced. Two images closer than
+        # `_IMAGE_SEPARATION_RTOL` of the path are the same point to the resolution of the
+        # tracing that produced them, and the note on that constant says what the test is and
+        # why an exact one was withdrawn. Every image that is a distinct point is computed and
         # its action compared, which is what the function promises.
         if any(float(np.linalg.norm(image - accepted)) <= _IMAGE_SEPARATION_RTOL * scale
                for _, accepted in candidates):
@@ -1868,6 +1866,36 @@ def imagesOfTheFalseVacuum(x_false: np.ndarray, x_true: np.ndarray,
     # first on a tie and the answer does not depend on the order the group is given in.
     candidates.sort(key=lambda entry: entry[0])
     return [image for _, image in candidates]
+
+
+def imagesToPairOver(pot) -> list:
+    """The symmetry elements the bounce should be computed over, for this potential.
+
+    Empty unless `pair_transition_over_images` is on, which leaves one bounce per temperature.
+    A model with no symmetry group gives the same thing and costs the same either way.
+
+    Off by default because the defect it guards against is now fixed where it arises. The bounce
+    used to be computed between two images because the phase tracing could put the two phases on
+    different ones, and `phases.canonicalImageElement` now puts a whole phase on its canonical
+    image, so the pairing recomputes a bounce whose answer is rejected. Measured on commit
+    065ef81 with `examples/bp_lisa.yaml` at `lambda3 = 5.868`, the coupling the pairing was added
+    for: of 76 temperatures, 66 have two images genuinely apart, between 0.12 and 0.25 of the
+    path length, and at none of the 66 did the image the tracing did not produce carry the
+    smaller action. Its action was larger by a median factor 2.1, and the second bounce took 66
+    per cent of all the time spent on bounces, raising the whole point from 426.96 s to
+    1075.64 s. At `lambda3 = 5.6518`, where the false vacuum is the symmetric phase, the two
+    images are the same point to the tracer's resolution and the switch costs 5 per cent.
+
+    Turning it on is the way to check that on a new model or a new group, which is why the
+    switch is here rather than the code removed.
+    """
+    group = list(getattr(pot, "invGroupElements", []) or [])
+    if not group:
+        return []
+    conf = getattr(getattr(pot, "config", None), "tracingConf", None)
+    if not getattr(conf, "pair_transition_over_images", False):
+        return []
+    return group
 
 
 def bounceActionOverImages(
@@ -1970,9 +1998,10 @@ def bounceActionOverImages(
     best["pairings_resolved"] = resolved
     # The false vacuum as the phase tracing produced it, beside the image the bounce was
     # computed on. A caller holding this entry and the two traced phases cannot otherwise tell
-    # that it belongs to them: the entry's `high_vev` is the winning image, which is 492 GeV
-    # from the traced point on the 2HDM, and `bubbledynamics` compares the two to decide
-    # whether a cached action can be reused.
+    # that it belongs to them: the entry's `high_vev` is the winning image, which for a group
+    # that reverses the fields is a reflection of the traced point rather than the point
+    # itself, and `bubbledynamics` compares the two to decide whether a cached action can be
+    # reused.
     best["high_vev_as_traced"] = tdict["high_vev"]
     outdict[T] = best
     return outdict

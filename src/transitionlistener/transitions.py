@@ -235,8 +235,7 @@ class Transitions():
                 tunn = computeNucleationTemperature(self.V, self.dV, self.d2V, high_phase, low_phase,
                                                     self.conversionFactor, verbose=verbose,
                                                     allow_second_order_fallback=not seedless,
-                                                    invGroupElements=getattr(
-                                                        self.pot, "invGroupElements", []),
+                                                    invGroupElements=pathDeformation.imagesToPairOver(self.pot),
                                                     **tunnelFromPhase_args)
                 # sometimes a second order transition slips through the phase tracing
                 if tunn['trantype'] == 2:
@@ -606,10 +605,12 @@ class Transitions():
         V = self.V
         startPhase = phases[phases.rootPhase]
         seedless = self.pot.config.percolationConf.algorithm_mode == "adaptive_step_size"
-        # Every phase the walk has stood on. A phase graph may contain a cycle -- measured on
-        # the 2HDM at lambda3 = 5.8888888889 and above, where the zero-temperature phase lists
-        # the high-temperature root phase among its children -- and a chain that returns to a
-        # phase it already left is not a sequence the universe can follow.
+        # Every phase the walk has stood on. A phase graph may contain a cycle, with the
+        # zero-temperature phase listing the high-temperature root phase among its children,
+        # and a chain that returns to a phase it already left is not a sequence the universe
+        # can follow. One reference for the cycle, since it is a surprising thing to find in a
+        # real model: commit 065ef81 with `examples/bp_lisa.yaml` at `lambda3 = 5.8888888889`
+        # and above.
         visited = []
 
         while True:
@@ -621,11 +622,10 @@ class Transitions():
             # then follow the cycle instead of stopping. Testing only "every candidate was
             # rejected" catches the measured case and not that one.
             #
-            # Measured on the 2HDM at lambda3 = 5.8888888889, 5.8939393939 and 5.9015151515:
-            # phase 0 is the zero-temperature phase and lists the high-temperature root phase
-            # among its children, so the walk asked it for one more transition, was refused the
-            # cycle's closing link, and raised -- discarding the two transitions it had already
-            # found and reporting the run as too supercooled to nucleate.
+            # Without the test at the top, the walk asks the zero-temperature phase for one
+            # more transition, is refused the cycle's closing link, and raises -- discarding
+            # the transitions it had already found and reporting the run as too supercooled to
+            # nucleate.
             # Tested at the top, on the phase this iteration begins at, because
             # `startPhase` is reassigned in two places below: once by the second-order branch
             # inside the child loop, and once at the end of the iteration. Reading it after
@@ -718,8 +718,7 @@ class Transitions():
                                                         endPhase, self.conversionFactor,
                                                         verbose=verbose,
                                                         allow_second_order_fallback=not seedless,
-                                                        invGroupElements=getattr(
-                                                            self.pot, "invGroupElements", []),
+                                                        invGroupElements=pathDeformation.imagesToPairOver(self.pot),
                                                         **tunnelFromPhase_args)
 
                     # create TunnelingInfo object
@@ -772,7 +771,8 @@ class Transitions():
                 # Raised with a message rather than bare. The class default says the phase is
                 # too supercooled to nucleate, which is a claim about the physics; reaching
                 # here means only that no candidate below the current phase was viable, which
-                # on the 2HDM benchmark was a phase-overlap rejection and not supercooling.
+                # in the case this was written for was a phase-overlap rejection and not
+                # supercooling.
                 # Which error this is depends on how far the solver got. Supercooling is a
                 # claim about the physics -- the rate never reached one bubble per Hubble
                 # volume -- and it can only be made if a nucleation solve was actually

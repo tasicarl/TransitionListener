@@ -464,13 +464,12 @@ def traceMinimum(
         # builds it from `(eigs <= 0).any()`, which is a `numpy.bool_`, and
         # `numpy.bool_(True) is True` is False, so an identity test here never fired and
         # the saddle check below was dead: a phase was traced through temperatures where
-        # the Hessian has a negative eigenvalue and the phase does not exist. On the 2HDM
-        # at lambda3 = 5.813 the high-temperature phase was traced from T = 121.9 GeV down
-        # to 0, straight through the window from 39.0 GeV down, keeping 7 of its 61 nodes
-        # at the origin where the smallest eigenvalue reaches -377.8 GeV^2. The bounce was
-        # then computed from a false vacuum that is a saddle, which put `S_3/T` at T = 37
-        # GeV at 148.5 against 135.8 at the neighbouring coupling, where the trace stopped
-        # for an unrelated reason.
+        # the Hessian has a negative eigenvalue and the phase does not exist, and the bounce
+        # was then computed from a false vacuum that is a saddle. One reference, since the
+        # defect is invisible in the output: commit 065ef81 with `examples/bp_lisa.yaml` at
+        # `lambda3 = 5.813`, where the high-temperature phase was traced to T = 0 keeping 7 of
+        # its 61 nodes at the origin, and `S_3/T` came out 148.5 at T = 37 GeV against 135.8 at
+        # the neighbouring coupling.
         if dxdt_next is None or bool(negeig):
             # We got stuck on a saddle, so there must be a phase transition
             # there.
@@ -519,32 +518,26 @@ def traceMinimum(
             # The saddle flag is deliberately not applied here, and the slope is read at
             # `xnext` only so that what is stored describes the node that is kept.
             #
-            # Applying it was tried and withdrawn. On the shipped dark U(1) at g = 0.7,
-            # v = 0.1 GeV the symmetric phase ends at the origin, where `d2V` reports
-            # -4.23e-09 GeV^2, so `(eigs <= 0).any()` calls it a saddle, the trace stops
-            # short of T = 0 and the run dies with `WrongT0MinimumError`.
+            # Applying it was tried and withdrawn. A conformal potential has no quadratic term
+            # at its origin, and `d2V` is a finite difference of step `x_eps`, so what the
+            # difference returns there is the step squared times the quartic: a small negative
+            # number, which `(eigs <= 0).any()` calls a saddle. The trace then stops short of
+            # T = 0 and the run dies with `WrongT0MinimumError` on a symmetric phase that ends
+            # at the origin, which is where it should end. Halving `x_eps` divides that number
+            # by four, which is how it can be told from a curvature.
             #
-            # Every number in this paragraph is in the model's internal units, which is
-            # what the tracer works in: `conversionFactor` is 1e-4 here, so the internal
-            # temperature 1e-6 is 1e-10 GeV and the internal field 1000 is the 0.1 GeV vev.
+            # Scaling the test by the curvature at the node before it does not help, because
+            # the quantity compared is still step-dependent: it passed locally and failed on
+            # the CI runner at the same threshold. Measuring against the largest eigenvalue is
+            # wrong in the other direction, admitting a genuinely negative endpoint wherever
+            # the spectrum spans many decades.
             #
-            # That number is not the curvature. `d2V` is a finite difference of step
-            # `x_eps`, the potential has no quadratic term at the origin of a conformal
-            # model, and what the difference returns is the step squared times the quartic.
-            # Measured at the internal temperature 1e-6, halving `x_eps` from 4e-3 divides
-            # it by exactly 4 at every step down to 2.5e-4: -6.771e-08, -1.693e-08,
-            # -4.232e-09, -1.058e-09, -2.645e-10. It extrapolates to zero, which is the
-            # curvature a conformal potential has there. By the same measurement the broken
-            # phase's endpoint at the internal field 1000 holds +9160 across that range of
-            # steps, and the origin above the crossing converges towards 1.074e-05, reading
-            # 1.078e-05 at `x_eps` = 2.5e-4.
-            #
-            # Scaling the test by the curvature at the node before it does not help: the
-            # quantity being compared is still step-dependent, which is why it passed here
-            # at a ratio of 1.1e-03 against a threshold of 1e-2 and failed on the CI runner.
-            # Measured against the largest eigenvalue it is wrong in the other direction as
-            # well, eigenvalues [1e-3, 1e6] with an endpoint at -1e-4 passing a threshold of
-            # -1e4.
+            # One reference, since the withdrawal rests on a measurement: commit 065ef81 with
+            # `models/TL_conformal_dark_u1.py` at g = 0.7, v_GeV = 0.1, in the internal units
+            # the tracer works in. At the internal temperature 1e-6 the origin's `d2V` reads
+            # -6.771e-08, -1.693e-08, -4.232e-09, -1.058e-09 and -2.645e-10 as `x_eps` halves
+            # from 4e-3 to 2.5e-4, extrapolating to the zero a conformal potential has there,
+            # while the broken phase's endpoint holds +9160 across the same steps.
             #
             # So the endpoint is accepted on the slope alone, as it was before this branch.
             # A trace can still finish on a point that is not a minimum. The test that would
@@ -603,9 +596,10 @@ def traceMinimum(
 #: `applySymmetries` returns for that element to be taken as the map it applied.
 _IMAGE_MATCH_RTOL = 1.0e-8
 #: How small a field component has to be, relative to the length of the node it belongs to,
-#: before its sign is treated as unresolved. The phase tracer's residual on the 2HDM
-#: benchmark is 2.7e-06 of the field scale, a factor 37 below this, and a component worth
-#: a per cent of the node's own length is a factor 100 above it.
+#: before its sign is treated as unresolved. The phase tracer's residual is orders of
+#: magnitude below this, and a component worth a per cent of the node's own length is well
+#: above it. ``pathDeformation._IMAGE_SEPARATION_RTOL`` is the same constant for the same
+#: reason, applied to the separation of two images rather than to one component's sign.
 _IMAGE_SIGN_RTOL = 1.0e-4
 
 
@@ -656,8 +650,8 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
     # single non-finite node would otherwise be taken as the reference, and every
     # comparison against it is then `nan`: `argmin` returns the first element and the
     # tolerance test below is false, so the first transformation of the group would be
-    # applied to the whole phase. For the 2HDM that element is the flip, which would put
-    # the phase on the mirror image this function exists to keep it off.
+    # applied to the whole phase. For a group that reverses the fields that element is the
+    # flip, which would put the phase on the mirror image this function exists to keep it off.
     norms = np.linalg.norm(X, axis=-1)
     usable = np.isfinite(norms)
     if not usable.any():
@@ -691,7 +685,8 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
     # this before searching the group settles the case where two elements carry the reference
     # to the same point, which happens whenever an element fixes the reference: at the origin
     # every element of every group does, and `np.argmin` would then return the first element
-    # of the group, which for the 2HDM is the flip, and mirror a phase that needed no
+    # of the group, which for a group that reverses the fields is the flip, and mirror a phase
+    # that needed no
     # transformation. The identity rather than None, because None is this function's way of
     # declining a map it cannot account for, while here the map is known and is the identity.
     if float(np.linalg.norm(reference - canonical)) <= _IMAGE_MATCH_RTOL * scale:
@@ -710,9 +705,9 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
     # measure `sum_i 2^i theta(phi_i)`, and the component with the highest index carries the
     # largest weight, so it decides the image on its own. A component whose magnitude is
     # below the tracing resolution has a sign the tracing noise settles rather than the
-    # potential: on a reference node `(246.0, +1e-09)` GeV the measure keeps the node, and on
-    # `(246.0, -1e-09)` GeV it returns `(-246.0, +1e-09)` GeV, so two nodes 2e-09 GeV apart
-    # are canonicalised onto images 492 GeV apart. Where reversing the sign of every such
+    # potential: two nodes a nanovolt apart in the small component are canonicalised onto
+    # images a whole field scale apart, because the sign of that component, and not its size,
+    # decides the image. Where reversing the sign of every such
     # component changes which element is applied, the choice is the noise's, and the trace is
     # left alone: that loses the deduplication rather than moving a phase on the strength of a
     # digit the tracer does not resolve.
@@ -720,8 +715,8 @@ def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
     if undecided.any():
         # The sign of each unresolved component is reversed and its magnitude left alone, so
         # that what the probe varies is only the thing in question. Setting them to the cutoff
-        # instead would move a component of 1e-09 GeV to 1e-04 of the node, five orders of
-        # magnitude, and a model is free to override `applySymmetries` with a measure that
+        # instead would move a component many orders of magnitude, and a model is free to
+        # override `applySymmetries` with a measure that
         # reads magnitudes: such a measure could then choose a different element because the
         # probe is larger, not because its sign differs, and the trace would be left alone for
         # the wrong reason. A component that is exactly zero has no sign to reverse, and
@@ -818,15 +813,14 @@ def traceMultiMin(
     def fmin(x, t):
         return traceLocalMinimum(f, x, t, df_dx, d2f_dx2, xeps)
 
-    # The displaced minimum a tilted-over origin rolls into sits at a field value set by
-    # the potential, not by the tracing resolution: `deltaX_target` is 0.1 GeV on the
-    # 2HDM benchmark while the displacement is 8.6 GeV at T = 37 GeV. Bounding the descent
-    # by a quarter of the largest field value seen keeps the search clear of a distant
-    # minimum such as the true vacuum. The search returns the nearest minimum, so the
-    # factor is not a sensitive choice: a quarter and a half give the same phases on the
-    # 2HDM couplings this was tested on.
-    # The starting points are the zero-temperature minima, which carry the field scale:
-    # 246.2 GeV on the 2HDM. A model whose zero-temperature minimum is the origin offers
+    # The displaced minimum a tilted-over origin rolls into sits at a field value set by the
+    # potential, not by the tracing resolution, and is typically orders of magnitude larger
+    # than the tracing step. Bounding the descent by a quarter of the largest field value seen
+    # keeps the search clear of a distant minimum such as the true vacuum. The search returns
+    # the nearest minimum, so the factor is not a sensitive choice: a quarter and a half give
+    # the same phases on the couplings this was tested on.
+    # The starting points are the zero-temperature minima, which carry the field scale. A
+    # model whose zero-temperature minimum is the origin offers
     # no field scale at all, and the only other scale in the problem is the temperature
     # range, which is in the same units as the field here.
     field_scale = max((np.sum(np.asarray(x0, dtype=float) ** 2) ** 0.5 for x0, _ in points),
@@ -852,9 +846,8 @@ def traceMultiMin(
         # actually sits in. Where the point is still not a minimum, there is no phase to
         # trace from it: seeding one anyway is what used to put nodes into a phase at
         # temperatures where it does not exist, and the bounce was then computed from a
-        # false vacuum that is a saddle. On the 2HDM at lambda3 = 5.813 that left 7 of the
-        # 61 nodes of the high-temperature phase at the origin between T = 8.5 and 39.0
-        # GeV, where the smallest eigenvalue of the Hessian runs down to -377.8 GeV^2.
+        # false vacuum that is a saddle, over a whole window of temperatures where the
+        # smallest eigenvalue of the Hessian is negative.
         descended = descendFromSaddle(x1, t1, f, df_dx, d2f_dx2, xeps, deltaX_target,
                                       max_descent)
         if applySymmetries is not None and not np.array_equal(descended, x1):
@@ -862,9 +855,9 @@ def traceMultiMin(
             # image of the displaced minimum it lands in is decided by the sign of an
             # eigenvector. That sign is not free: the broken minimum this phase tunnels to
             # sits at a definite point, so one image is nearer to it than its mirror and
-            # carries the lower action. On the 2HDM at T = 37 GeV the two give field
-            # separations of 241.93 and 251.57 GeV, and `S_3/T` of 135.8 and 151.7.
-            # Mapping back puts every coupling in the same image as the broken minimum.
+            # carries the lower action: the two differ in field separation by a few per cent
+            # and in `S_3/T` by more than ten. Mapping back puts every coupling in the same
+            # image as the broken minimum.
             descended = applySymmetries(descended)
         x1 = descended
         if linalg.eigvalsh(np.atleast_2d(np.squeeze(d2f_dx2(x1, t1))))[0] <= 0.0:

@@ -23,7 +23,9 @@ from transitionlistener import constants as cn
 from transitionlistener.helper_functions import derivative
 from transitionlistener import errors
 from transitionlistener.helper_functions import thermalDerivativeStep
-from transitionlistener.pathDeformation import bounceAction, bounceActionOverImages
+from transitionlistener.pathDeformation import (bounceAction,
+                                                bounceActionOverImages,
+                                                imagesToPairOver)
 from transitionlistener.finiteT import Jb_spline as Jb
 from transitionlistener.finiteT import Jf_spline as Jf
 
@@ -288,7 +290,7 @@ def calcAction(pot, T: float, start_phase, end_phase, outdict: dict, verbose: bo
     # carries the smallest action.
     outdict = bounceActionOverImages(
         T, pot.Vtot, pot.gradV, outdict, tdict,
-        getattr(pot, "invGroupElements", []), verbose, pot.conversionFactor,
+        imagesToPairOver(pot), verbose, pot.conversionFactor,
         **pot.config.tracingConf.tunneling_params)
     return outdict[T]["action"]
 

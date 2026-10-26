@@ -32,11 +32,11 @@ from scipy import optimize
 import transitionlistener
 from transitionlistener import bubbledynamics as bd
 from transitionlistener import bubbledynamics_fixedstep as bdf
-from transitionlistener import errors, nucleation, tunneling1D
+from transitionlistener import config, errors, nucleation, tunneling1D
 from transitionlistener import pathDeformation as pd
 from transitionlistener.pathDeformation import _IMAGE_SEPARATION_RTOL
 from transitionlistener.pathDeformation import (bounceAction, bounceActionOverImages,
-                                                imagesOfTheFalseVacuum)
+                                                imagesOfTheFalseVacuum, imagesToPairOver)
 
 IDENTITY = np.diag([1.0, 1.0])
 FLIP_BOTH = np.diag([-1.0, -1.0])
@@ -129,63 +129,86 @@ class TheImagesAreEnumeratedNearestFirst(unittest.TestCase):
                     len(imagesOfTheFalseVacuum(far, true_vacuum, TWO_HIGGS_DOUBLET)), 2,
                     msg=f"{name}: a genuine pair of images was collapsed into one")
 
-    def test_every_distinct_image_is_offered_to_the_solver(self):
-        """Two images are merged only where they are the same point, whatever the separation.
+    def test_every_image_the_tracer_resolves_is_offered_to_the_solver(self):
+        """A false vacuum the group moves to a different point is a second bounce.
 
-        The separation used to decide this, below 1e-4 of the path length merging the pair.
-        That saved a bounce at 25 of the 60 temperatures of `lambda3` = 5.8676 and 5.7 per cent
-        of a point's runtime, and the two actions were measured to agree to 5.5e-04 at worst
-        where it fired, a factor 91 inside the solver's own criterion. It is gone because a
-        separation does not bound the difference of two bounce actions for a general potential,
-        and an image it dropped never reached the solver, so nothing downstream could have
-        caught a case where it was wrong.
-
-        The points below are the ones that measurement was taken on. The three near the origin
-        were merged before and are each computed now; the two off it were always computed.
+        These separations are far above the resolution the phase tracing works to, so the two
+        images are two states and each one's action has to be computed. The pairing whose
+        action differs by a factor two on the benchmark is of this kind.
         """
         true_vacuum = np.array([11.48, 246.33])
         for name, false_vacuum in (
-                ("at the origin, |A| = 3.54e-3 GeV, separation 2.87e-5",
-                 np.array([2.5e-3, 2.5e-3])),
-                ("at the origin, |A| = 1.37e-4 GeV, separation 1.11e-6",
-                 np.array([9.7e-5, 9.7e-5])),
-                ("at the origin, |A| = 4.24e-5 GeV, separation 3.44e-7",
-                 np.array([3.0e-5, 3.0e-5])),
-                ("off the origin, |A| = 31.4 GeV, separation 0.271",
+                ("off the origin, separation 0.271 of the path",
                  np.array([27.416, 15.335])),
-                ("off the origin, |A| = 33.0 GeV, separation 0.283",
-                 np.array([30.0, 13.7]))):
+                ("off the origin, separation 0.283 of the path",
+                 np.array([30.0, 13.7])),
+                ("a hundredth of the field scale", true_vacuum * 1.0e-2),
+                ("a thousandth of the field scale", true_vacuum * 1.0e-3)):
             with self.subTest(name):
                 got = imagesOfTheFalseVacuum(false_vacuum, true_vacuum, TWO_HIGGS_DOUBLET)
-                sep = (np.linalg.norm(2 * false_vacuum)
-                       / np.linalg.norm(false_vacuum - true_vacuum))
+                sep = float(np.linalg.norm(2 * false_vacuum)
+                            / np.linalg.norm(false_vacuum - true_vacuum))
+                self.assertGreater(sep, _IMAGE_SEPARATION_RTOL,
+                                   msg=f"{name}: separation {sep:.3e} is below the tracing "
+                                       "resolution, so the test is not about what it says")
                 self.assertEqual(
                     len(got), 2,
                     msg=f"{name}: {len(got)} candidate(s) for two distinct images, "
                         f"separation {sep:.3e} of the path length")
-                self.assertGreater(sep, _IMAGE_SEPARATION_RTOL,
-                                   msg=f"{name}: this pair is the same point to the "
-                                       "precision the fields hold, so the test is vacuous")
 
-    def test_a_pair_distinct_in_double_precision_is_two_images(self):
-        """The threshold is the precision the fields hold and not a little more than that.
+    def test_a_pair_the_tracer_cannot_resolve_is_one_image(self):
+        """A symmetric phase costs one bounce, the tracer's residual notwithstanding.
 
-        A separation of 1e-13 of the path length is far below any physical scale and still
-        hundreds of times the 2.2e-16 a double holds, so the two points are different points
-        and each gets its bounce. A threshold even a thousand times the precision, 1.8e-12,
-        would merge this pair, and nothing else in this file would notice.
+        The phase tracing leaves a false vacuum that belongs at a fixed point of the group a
+        little off it rather than on it, and the group then maps that residual onto its
+        reflection. Those two points are the same state, and computing a bounce on each is the
+        same path solved twice: measured on commit 065ef81 with `examples/bp_lisa.yaml` at
+        `lambda3 = 5.6518` the second bounce took 49 per cent of all the time spent on bounces
+        and the two actions agreed to 3.0e-05, a factor 1600 inside the solver's own bracket
+        tolerance. The separations below are the ones measured there.
         """
         true_vacuum = np.array([11.48, 246.33])
-        # Images at +-point, so the separation is 2|point| against a path of about |x_true|.
-        point = true_vacuum * 0.5e-13
-        got = imagesOfTheFalseVacuum(point, true_vacuum, TWO_HIGGS_DOUBLET)
-        sep = float(np.linalg.norm(2 * point) / np.linalg.norm(point - true_vacuum))
-        self.assertGreater(sep, 1.0e-14)
-        self.assertLess(sep, 1.0e-12,
-                        msg="this pair is outside the window the test is about")
-        self.assertEqual(len(got), 2,
-                         msg=f"a pair {sep:.2e} of the path apart, distinct in double "
-                             f"precision, came back as {len(got)} image(s)")
+        for name, false_vacuum in (
+                ("the tracer's residual, 3.6e-13 of the path",
+                 np.array([-1.448e-11, 4.118e-11])),
+                ("the tracer's residual, 1.8e-12 of the path",
+                 np.array([-9.759e-11, -1.862e-10])),
+                ("the tracer's residual, 2.3e-12 of the path",
+                 np.array([-1.542e-10, 2.060e-10])),
+                ("a millionth of the field scale", true_vacuum * 1.0e-6)):
+            with self.subTest(name):
+                got = imagesOfTheFalseVacuum(false_vacuum, true_vacuum, TWO_HIGGS_DOUBLET)
+                sep = float(np.linalg.norm(2 * false_vacuum)
+                            / np.linalg.norm(false_vacuum - true_vacuum))
+                self.assertLess(sep, _IMAGE_SEPARATION_RTOL,
+                                msg=f"{name}: separation {sep:.3e} is above the tracing "
+                                    "resolution, so the test is not about what it says")
+                self.assertEqual(
+                    len(got), 1,
+                    msg=f"{name}: {len(got)} candidates for one state, separation "
+                        f"{sep:.3e} of the path length")
+
+    def test_the_threshold_sits_between_the_two(self):
+        """The constant is the tracing resolution and not whatever merges the cases above.
+
+        A pair just inside it is one state and a pair just outside it is two, so moving the
+        constant by an order of magnitude in either direction is visible here. Without this the
+        two tests above pass for any threshold between 1e-5 and 1e-2 of the path length.
+        """
+        true_vacuum = np.array([11.48, 246.33])
+        path = float(np.linalg.norm(true_vacuum))
+        for factor, expected in ((0.3, 1), (3.0, 2)):
+            with self.subTest(f"{factor} times the threshold"):
+                # The separation is 2|x_false| against a path of about |x_true|.
+                false_vacuum = np.array([1.0, 0.0]) * (
+                    0.5 * factor * _IMAGE_SEPARATION_RTOL * path)
+                got = imagesOfTheFalseVacuum(false_vacuum, true_vacuum, TWO_HIGGS_DOUBLET)
+                sep = float(np.linalg.norm(2 * false_vacuum)
+                            / np.linalg.norm(false_vacuum - true_vacuum))
+                self.assertEqual(
+                    len(got), expected,
+                    msg=f"a pair {sep:.3e} of the path apart, {factor} times the threshold "
+                        f"of {_IMAGE_SEPARATION_RTOL:.1e}, came back as {len(got)} image(s)")
 
     def test_a_false_vacuum_at_the_origin_still_costs_one_bounce(self):
         """The case the merge existed for, which an equality test still covers.
@@ -962,9 +985,17 @@ class TheNucleationTemperatureSearchPairsOnOneImageToo(unittest.TestCase):
 
     def test_the_search_is_handed_the_potential_s_own_group(self):
         """`transitions.py` is the only caller, and it has to pass the group along or the
-        keyword's default leaves the search on one pairing."""
+        keyword's default leaves the search on one pairing.
+
+        What this pins is that the value comes from the potential, not how it is spelled. It
+        was written against `getattr(self.pot, "invGroupElements", [])` and failed the moment
+        that became `imagesToPairOver(self.pot)`, which reads the same attribute through the
+        switch; the defect it exists for is a literal `[]` or a missing keyword, and both are
+        still refused.
+        """
         source = Path(transitionlistener.__file__).parent / "transitions.py"
-        tree = ast.parse(source.read_text())
+        text = source.read_text()
+        tree = ast.parse(text)
         calls = [node for node in ast.walk(tree)
                  if isinstance(node, ast.Call)
                  and getattr(node.func, "id", None) == "computeNucleationTemperature"]
@@ -973,28 +1004,81 @@ class TheNucleationTemperatureSearchPairsOnOneImageToo(unittest.TestCase):
             passed = {keyword.arg: keyword.value for keyword in call.keywords}
             self.assertIn("invGroupElements", passed,
                           msg=f"the call at line {call.lineno} does not pass the group")
-            # The keyword being there is not enough: passing `[]` keeps it there and leaves
-            # the search on one pairing, which is the whole defect. The value has to be read
-            # off the potential, and `getattr(self.pot, "invGroupElements", [])` is how every
-            # other caller in the package reads it.
             value = passed["invGroupElements"]
-            self.assertIsInstance(
-                value, ast.Call,
-                msg=f"the call at line {call.lineno} passes a literal rather than reading the "
-                    f"group off the potential")
-            self.assertEqual(
-                getattr(value.func, "id", None), "getattr",
-                msg=f"the call at line {call.lineno} does not read the group with getattr")
-            names = {node.attr for node in ast.walk(value) if isinstance(node, ast.Attribute)}
+            self.assertNotIsInstance(
+                value, (ast.List, ast.Tuple, ast.Constant),
+                msg=f"the call at line {call.lineno} passes a literal, which leaves the "
+                    f"search on one pairing")
+            expression = ast.get_source_segment(text, value) or ""
             self.assertIn(
-                "pot", names,
-                msg=f"the call at line {call.lineno} reads the group from something other "
-                    f"than the potential")
-            literals = [node.value for node in ast.walk(value)
-                        if isinstance(node, ast.Constant) and isinstance(node.value, str)]
-            self.assertIn(
-                "invGroupElements", literals,
-                msg=f"the call at line {call.lineno} reads some other attribute")
+                "pot", expression,
+                msg=f"the call at line {call.lineno} takes the group from something other "
+                    f"than the potential: {expression!r}")
+
+    def test_the_switch_decides_whether_the_group_is_offered_at_all(self):
+        """`imagesToPairOver` is the only thing the four call sites consult.
+
+        Off, the solver is handed nothing and computes one bounce per temperature. On, it is
+        handed the potential's own group. The setting is read from the potential's config, so a
+        run can turn it on without touching the code.
+        """
+        group = [-np.identity(2), np.identity(2)]
+
+        class Conf:
+            pair_transition_over_images = False
+
+        class Config:
+            tracingConf = Conf()
+
+        class Pot:
+            invGroupElements = group
+            config = Config()
+
+        pot = Pot()
+        self.assertEqual(
+            imagesToPairOver(pot), [],
+            msg="with the switch off the group was still offered, which costs a bounce per "
+                "image at every temperature")
+        Conf.pair_transition_over_images = True
+        offered = imagesToPairOver(pot)
+        self.assertEqual(len(offered), len(group),
+                         msg=f"with the switch on {len(offered)} of {len(group)} elements "
+                             "were offered")
+        for given, got in zip(group, offered):
+            np.testing.assert_array_equal(got, given)
+
+    def test_the_shipped_default_is_off(self):
+        """Which is a decision, not an accident, so it is pinned here.
+
+        The bounce used to be computed between two images because the phase tracing could put
+        the two phases on different ones, and that is now repaired in `phases.py` where it
+        arises. Measured on commit 065ef81 with `examples/bp_lisa.yaml` at `lambda3 = 5.868`,
+        the coupling the pairing was added for: at none of the 66 temperatures whose two images
+        are genuinely apart did the image the tracing did not produce carry the smaller action,
+        while the second bounce took 66 per cent of the time spent on bounces.
+
+        If this is ever flipped back on, the thing to check first is whether
+        `test_a_phase_stays_on_one_image.py` still holds, because that is what makes the
+        pairing unnecessary.
+        """
+        self.assertFalse(
+            config.TracingConf.pair_transition_over_images,
+            msg="the pairing is on by default, which doubles the bounce count on every model "
+                "with a symmetry group for no measured change in any result")
+
+    def test_a_potential_without_a_config_is_not_paired_over(self):
+        """A potential that carries no `tracingConf` gets the shipped default, not the opposite.
+
+        The attribute is read with a fallback, and a fallback that disagreed with the shipped
+        default would make the behaviour depend on how complete the config object is.
+        """
+        class Pot:
+            invGroupElements = [-np.identity(2), np.identity(2)]
+
+        self.assertEqual(
+            imagesToPairOver(Pot()), [],
+            msg="a potential with no config was paired over, so the fallback disagrees with "
+                "the shipped default")
 
     def test_the_other_two_copies_of_the_search_are_reached_from_nowhere(self):
         """Why only `nucleation.py`'s copy was changed.
@@ -1070,11 +1154,18 @@ class BothPercolationRoutesReachTheEnumeration(unittest.TestCase):
         self.false_vacuum = toy_minimum([-0.2, 1.1])
         self.true_vacuum = toy_minimum([1.2, 0.17])
 
-    def _potential(self, group):
+    def _potential(self, group, paired=True):
+        """The switch is set explicitly, because these tests are about the plumbing.
+
+        What they check is that the group reaches the enumeration through the entry point a run
+        takes, which is only visible with the pairing on; the shipped default is off and is
+        pinned separately.
+        """
         return SimpleNamespace(
             Vtot=toy_V, gradV=toy_dV_point, d2V=toy_d2V_point, conversionFactor=1.0,
             invGroupElements=group,
-            config=SimpleNamespace(tracingConf=SimpleNamespace(tunneling_params={})))
+            config=SimpleNamespace(tracingConf=SimpleNamespace(
+                tunneling_params={}, pair_transition_over_images=paired)))
 
     def test_both_copies_hand_the_potential_s_group_to_the_enumeration(self):
         for module in (bd, bdf):
@@ -1126,6 +1217,27 @@ class BothPercolationRoutesReachTheEnumeration(unittest.TestCase):
                                            _ConstantPhase("sym", self.false_vacuum),
                                            _ConstantPhase("bro", self.true_vacuum), {})
                 self.assertAlmostEqual(float(np.squeeze(action)), 71.152, places=2)
+
+    def test_the_switch_off_leaves_the_action_of_the_traced_pairing(self):
+        """The end-to-end effect of the switch, through the entry point a run takes.
+
+        Off, `calcAction` returns the action of the pairing the phases were traced onto, which
+        on this toy potential is the more expensive one, 112.934 against 71.152. That is the
+        behaviour from before the pairing existed, and it is what the shipped default now gives.
+        A toy potential is enough to show the switch acts; which pairing is right on a real model
+        is settled by the phase tracing, and `test_a_phase_stays_on_one_image.py` is what holds
+        that.
+        """
+        for module in (bd, bdf):
+            with self.subTest(module.__name__):
+                action = module.calcAction(
+                    self._potential(TWO_HIGGS_DOUBLET, paired=False), 1.0,
+                    _ConstantPhase("sym", self.false_vacuum),
+                    _ConstantPhase("bro", self.true_vacuum), {})
+                self.assertAlmostEqual(
+                    float(np.squeeze(action)), 112.934, places=2,
+                    msg=f"{module.__name__}: with the switch off the action is not the traced "
+                        "pairing's, so the switch does not reach this route")
 
 
 class TheCacheEntryIsRecognisedAfterATransformedImageWins(unittest.TestCase):
