@@ -293,14 +293,25 @@ class TLPlots():
         if traced.shape != used.shape or np.allclose(traced, used, rtol=0.0, atol=0.0):
             return point
         scale = max(float(np.linalg.norm(traced)), float(np.linalg.norm(used)), 1.0)
+        # Only the absolute tolerance, measured against the field scale: `np.allclose` would
+        # otherwise add its default rtol of 1e-5 of `used`, which on a 246 GeV field is 2.5e-3
+        # GeV and lets an element that merely agrees with the right one near the traced point
+        # match. The element is then applied at `temperature`, where the two can differ by the
+        # whole width of the plot.
+        matched = []
         for element in getattr(self.pot, "invGroupElements", []) or []:
             try:
                 mapped = np.asarray(traced @ element, dtype=float)
             except Exception:  # noqa: BLE001
                 continue
-            if mapped.shape == used.shape and np.allclose(mapped, used, atol=1e-8 * scale):
-                return np.asarray(point @ element, dtype=float)
-        return point
+            if mapped.shape == used.shape and np.allclose(
+                    mapped, used, rtol=0.0, atol=1e-8 * scale):
+                matched.append(element)
+        # Two elements that agree on the traced point need not agree anywhere else, so a tie is
+        # no more usable than no match at all and is treated the same way.
+        if len(matched) != 1:
+            return point
+        return np.asarray(point @ matched[0], dtype=float)
 
     @staticmethod
     def _expanded_axis_limits(values, *, rel_pad: float, fallback_scale: float, min_pad: float):

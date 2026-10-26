@@ -1365,6 +1365,44 @@ class TheBounceMarkerFollowsTheImageTheBounceUsedTests(unittest.TestCase):
             err_msg="the fallback was transformed twice and the marker came back on the "
                     "traced image")
 
+    def test_an_element_that_only_matches_through_a_relative_tolerance_is_not_applied(self):
+        """`np.allclose` adds its default rtol of 1e-5 of the point unless told otherwise.
+
+        On a 246 GeV field that is 2.5e-3 GeV, a thousand times the absolute tolerance this
+        match is supposed to use, so an element that merely lands near the right one passes.
+        The winning image is `x_false @ g` for an element `g` of the group, computed and stored
+        by `bounceActionOverImages`, so the only discrepancy a real match has to absorb is
+        floating-point round-off and 1e-8 of the field scale is already generous.
+
+        The group here holds one element, a flip whose first component is wrong by one part in
+        a million. It reproduces the map to 2.5e-4 GeV, inside the relative tolerance and
+        outside the absolute one.
+        """
+        near_flip = np.diag([-1.0 + 1.0e-6, -1.0])
+        plotter = self._plotter([near_flip])
+        tr = self._transition(high_vev=[-1.0, -0.5], traced=[1.0, 0.5])
+        got = plotter._bounce_false_vacuum_at_temperature(tr, 30.0)
+        np.testing.assert_allclose(
+            got, [246.0, 11.5],
+            err_msg="an element that only matches through the relative tolerance was applied, "
+                    "and it is applied at the plotting temperature, where it need not agree "
+                    "with the right one at all")
+
+    def test_two_elements_that_both_match_leave_the_point_alone(self):
+        """A tie is no more usable than no match: they need not agree away from this point.
+
+        Both elements of the 2HDM group map a point at the origin to itself, so at a false
+        vacuum that small either one reproduces the map. Applying the first found would move
+        the marker by the whole width of the plot on the strength of a coin flip. The group is
+        given flip-first so that taking the first match is distinguishable from refusing.
+        """
+        plotter = self._plotter([FLIP_BOTH, IDENTITY])
+        tr = self._transition(high_vev=[-1.0e-12, -1.0e-12], traced=[1.0e-12, 1.0e-12])
+        got = plotter._bounce_false_vacuum_at_temperature(tr, 30.0)
+        np.testing.assert_allclose(
+            got, [246.0, 11.5],
+            err_msg="one of two elements that both reproduce the map was applied anyway")
+
     def test_a_map_the_group_does_not_contain_leaves_the_point_alone(self):
         """Better a marker that is wrong as before than a transformation invented here.
 
