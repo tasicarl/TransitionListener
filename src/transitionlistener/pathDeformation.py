@@ -1737,7 +1737,7 @@ def bounceAction(
                 "Tunneling at T = ",
                 T * conversionFactor,
                 "GeV failed during path validation: ",
-                err.args[0],
+                err.args[0] if err.args else err.error_type,
             )
         if err.error_type == "no barrier":
             tdict['action'] = 0
@@ -1749,7 +1749,9 @@ def bounceAction(
             tdict['instanton'] = None
         else:
             raise errors.UnexpectedError(
-                "In bounceAction: Unexpected error message: %s" % err.args[0]
+                "In bounceAction: the potential failed with an error type this routine does "
+                "not handle, %r, saying: %s. The handled types are 'no barrier' and "
+                "'stable, not metastable'." % (err.error_type, err.args[0] if err.args else "")
             ) from err
         outdict[T] = tdict
         return outdict

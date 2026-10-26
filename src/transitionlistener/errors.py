@@ -206,8 +206,12 @@ class PotentialError(Exception):
     """
     Used when the potential does not have the expected characteristics.
 
-    The error messages should be tuples, with the second item being one of
-    ``(\"no barrier\", \"stable, not metastable\")``.
+    The message is the human-readable explanation and reaches ``args[0]``. The
+    machine-readable tag is the separate ``error_type`` argument, kept on the instance, and
+    every handler of this exception translates one of ``"no barrier"`` and
+    ``"stable, not metastable"`` and reports anything else as
+    :class:`UnexpectedError`. An earlier convention passed both inside the message as a
+    tuple, which is why a handler once read ``args[1]``; that index does not exist.
     """
 
     def __init__(

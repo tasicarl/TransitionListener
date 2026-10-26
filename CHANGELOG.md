@@ -327,6 +327,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`bounceAction` reported an unrecognised failure of the potential without saying what it
+  was.** It translates a `PotentialError` into a result for the tags `"no barrier"` and
+  `"stable, not metastable"` and raises `UnexpectedError`, code 999, for anything else, saying
+  only "Unexpected error message": the error type, which is the one thing the handler knows
+  about a failure it cannot handle, was left out. It now reports the tag, the message that came
+  with it, and the two tags it does handle, so a model author can see which tag to use, and its
+  diagnostic print no longer reads a message that an exception need not carry. The branch is
+  reached only from a model that raises `PotentialError` with a third tag, which the public
+  constructor allows; no raise site in the package does.
+
+- **The tachyonic-mass message reported a quantity that was neither a mass nor a squared
+  mass.** `tachyonTest` printed the squared masses divided by the internal field scale and
+  called the result a "Mass matrix", so the same physical spectrum read differently in two
+  models that chose different internal scales, and every entry was printed without saying
+  which one was tachyonic. The message now names each tachyonic mode, gives the squared masses
+  divided by the square of the internal field scale, states the threshold in those units, and
+  gives the minimum it tested.
+
+- **`Phases.testTmax` documented `ValueError` and raises `WrongHighTPhaseError`**, code 14, so
+  a user reading the docstring to decide what to catch would have caught nothing.
+
 - **The check that the chain ended in the zero-temperature minimum fired on a chain that
   had.** `check_T0_global_min` compared the field values of the last traced phase against
   `pot.X0` with `np.allclose`. `valAt` interpolates the phase tracer's own nodes, so it

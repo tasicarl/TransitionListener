@@ -1641,8 +1641,8 @@ class Phases:
 
         Raises
         ------
-        ValueError
-            If more than one phase has Tmax = self.Tmax
+        WrongHighTPhaseError
+            If more than one phase has Tmax = self.Tmax, within `T_eps`.
         """
         Tmax_phases = []
         for p in self.phases.values():

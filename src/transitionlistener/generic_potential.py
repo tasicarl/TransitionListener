@@ -572,7 +572,27 @@ class generic_potential():
         is_tachyonic = np.logical_and(m20 < -1e-5, is_physical == True)
 
         if is_tachyonic.any():
-            msg = "Tachyonic boson mass at zero temperature minimum, Mass matrix: " + str(m20/self.v_stable)
+            # The squared masses are normalised by the square of the internal field scale, so
+            # the numbers are dimensionless and comparable between models. Dividing by the
+            # scale itself, as this message did, leaves a quantity that is neither a squared
+            # mass nor a mass. A scale that is not a positive number leaves the squared masses
+            # as they are: this routine reports a refusal and must not fail while doing it.
+            scale_sq = float(self.v_stable) ** 2 if float(self.v_stable or 0.0) > 0.0 else None
+            raw = np.ravel(np.asarray(m20, dtype=float))
+            scaled = raw / scale_sq if scale_sq else raw
+            unit = "m^2/v^2" if scale_sq else "m^2"
+            threshold = -1.0e-5 / scale_sq if scale_sq else -1.0e-5
+            tachyonic = np.flatnonzero(np.ravel(np.asarray(is_tachyonic)))
+            listed = ", ".join(
+                f"boson {int(i)}: {unit} = {float(scaled[i]):.6g}" for i in tachyonic
+            )
+            msg = (
+                f"Tachyonic physical boson mass at the zero-temperature minimum X0 = "
+                f"{np.asarray(X0, dtype=float).tolist()} in internal field units, with the "
+                f"internal field scale v_stable = {self.v_stable}. {listed}. A physical boson "
+                f"counts as tachyonic below {unit} = {threshold:.6g}. All squared masses, in "
+                f"the same units: {scaled.tolist()}."
+            )
             raise errors.TachyonError(msg)
 
 
