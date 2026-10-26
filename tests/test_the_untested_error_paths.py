@@ -100,9 +100,15 @@ class TheTachyonMessageNamesTheModeTests(unittest.TestCase):
         self.assertIn("m^2/v^2 = -2.5", at_ten)
 
     def test_the_message_states_the_threshold_in_the_units_it_reports(self):
-        """A reader comparing the listed number against the cut needs both in one unit."""
+        """A reader comparing the listed number against the cut needs both in one unit.
+
+        At `v_stable` = 2 the listed mass is -2.5/4 = -0.625 and the threshold is -1e-5/4 =
+        -2.5e-06, so the assertion names the word before it: a bare "-2.5e-06" would also pass
+        on a message that printed it as the mass.
+        """
         msg = self._raise([-2.5], [True], v_stable=2.0)
-        self.assertIn("m^2/v^2 = -2.5e-06", msg)
+        self.assertIn("below m^2/v^2 = -2.5e-06", msg)
+        self.assertIn("boson 0: m^2/v^2 = -0.625", msg)
 
     def test_the_message_gives_the_minimum_it_tested(self):
         msg = self._raise([-2.5], [True])
@@ -116,7 +122,7 @@ class TheTachyonMessageNamesTheModeTests(unittest.TestCase):
         losing the error and its code. The squared masses are then reported as they are, and
         the message says which unit it is using.
         """
-        for scale in (0.0, None):
+        for scale in (0.0, None, float("inf"), float("nan"), -2.0, 1.0e200):
             with self.subTest(v_stable=scale):
                 msg = self._raise([-2.5, 4.0], [True, True], v_stable=scale)
                 self.assertIn("boson 0: m^2 = -2.5", msg)

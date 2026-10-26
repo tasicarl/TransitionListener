@@ -577,7 +577,15 @@ class generic_potential():
             # scale itself, as this message did, leaves a quantity that is neither a squared
             # mass nor a mass. A scale that is not a positive number leaves the squared masses
             # as they are: this routine reports a refusal and must not fail while doing it.
-            scale_sq = float(self.v_stable) ** 2 if float(self.v_stable or 0.0) > 0.0 else None
+            # A scale that is not a positive finite number, or one large enough that its
+            # square overflows, would report every mass as zero or as a nan instead of the
+            # spectrum. Python raises `OverflowError` on the square rather than returning
+            # infinity, so the bound is checked before squaring. The raw squared masses are the
+            # fallback and the unit label below follows them; the tachyon criterion itself is
+            # on `m20` and is unaffected either way.
+            scale = float(self.v_stable) if self.v_stable is not None else 0.0
+            largest = float(np.sqrt(np.finfo(float).max))
+            scale_sq = scale**2 if 0.0 < scale < largest else None
             raw = np.ravel(np.asarray(m20, dtype=float))
             scaled = raw / scale_sq if scale_sq else raw
             unit = "m^2/v^2" if scale_sq else "m^2"
