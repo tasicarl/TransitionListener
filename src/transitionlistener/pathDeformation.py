@@ -1324,7 +1324,7 @@ def _deform_path(
 # the default basis at or under nb = 40.
 #
 # One reference, since the cap is a tuned number. Measured on commit 065ef81 with
-# `examples/bp_lisa.yaml` at `lambda3 = 5.8205024605`, T = 15.202392 GeV, where the force ratio
+# `models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml` at `lambda3 = 5.8205024605`, T = 15.202392 GeV, where the force ratio
 # floors above its target of 0.005: nb = 10, 20 and 40 give force ratios 0.00855, 0.00799 and
 # 0.00581 with `S_3/T` of 286.43, 299.92 and 299.62, while nb = 80 gives 0.09998 and 300.78, a
 # force ratio an order of magnitude worse, and at T = 16.33 GeV the action collapsed by 34.
@@ -1695,7 +1695,7 @@ def _execute_full_tunneling(
 #: 1e-5.
 #:
 #: One reference, since the threshold is a tuned number. Measured on commit 065ef81 with
-#: ``examples/bp_lisa.yaml`` at ``lambda3 = 5.6518``, where the symmetric phase is the false
+#: ``models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml`` at ``lambda3 = 5.6518``, where the symmetric phase is the false
 #: vacuum at all 7 temperatures that resolve: the two images lay 3.6e-13 to 2.3e-12 of the path
 #: length apart, the two actions agreed to 3.0e-05 relative, and the second bounce took 49 per
 #: cent of all the time spent on bounces. The tracer's own step would put the threshold at
@@ -1788,7 +1788,7 @@ def imagesOfTheFalseVacuum(x_false: np.ndarray, x_true: np.ndarray,
     images rather than the path the field takes. The field separation and the action of that
     path are those of no physical channel, and the action can come out a factor of two wrong
     without anything downstream being able to tell. That defect is what this exists for, and
-    it is worth the one specific reference: on commit 065ef81 with `examples/bp_lisa.yaml` at
+    it is worth the one specific reference: on commit 065ef81 with `models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml` at
     `lambda3 = 5.868` the path between images gave `S_3/T = 336.84` at T = 30.0 GeV where the
     path the field takes gives 152.97.
 
@@ -1878,7 +1878,7 @@ def imagesToPairOver(pot) -> list:
     used to be computed between two images because the phase tracing could put the two phases on
     different ones, and `phases.canonicalImageElement` now puts a whole phase on its canonical
     image, so the pairing recomputes a bounce whose answer is rejected. Measured on commit
-    065ef81 with `examples/bp_lisa.yaml` at `lambda3 = 5.868`, the coupling the pairing was added
+    065ef81 with `models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml` at `lambda3 = 5.868`, the coupling the pairing was added
     for: of 76 temperatures, 66 have two images genuinely apart, between 0.12 and 0.25 of the
     path length, and at none of the 66 did the image the tracing did not produce carry the
     smaller action. Its action was larger by a median factor 2.1, and the second bounce took 66

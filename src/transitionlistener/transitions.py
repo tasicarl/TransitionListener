@@ -609,7 +609,7 @@ class Transitions():
         # zero-temperature phase listing the high-temperature root phase among its children,
         # and a chain that returns to a phase it already left is not a sequence the universe
         # can follow. One reference for the cycle, since it is a surprising thing to find in a
-        # real model: commit 065ef81 with `examples/bp_lisa.yaml` at `lambda3 = 5.8888888889`
+        # real model: commit 065ef81 with `models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml` at `lambda3 = 5.8888888889`
         # and above.
         visited = []
 

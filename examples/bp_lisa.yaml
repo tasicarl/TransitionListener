@@ -1,5 +1,5 @@
 Modelfile:
-  arxiv/reproducibility/models/TL_2HDM_BSMPT_highacc.py
+  models/TL_2HDM_BSMPT_highacc.py
 
 Potential:
   R2HDM_HighAcc_NAct100_Conv1_FRatio005

@@ -466,7 +466,7 @@ def traceMinimum(
         # the saddle check below was dead: a phase was traced through temperatures where
         # the Hessian has a negative eigenvalue and the phase does not exist, and the bounce
         # was then computed from a false vacuum that is a saddle. One reference, since the
-        # defect is invisible in the output: commit 065ef81 with `examples/bp_lisa.yaml` at
+        # defect is invisible in the output: commit 065ef81 with `models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml` at
         # `lambda3 = 5.813`, where the high-temperature phase was traced to T = 0 keeping 7 of
         # its 61 nodes at the origin, and `S_3/T` came out 148.5 at T = 37 GeV against 135.8 at
         # the neighbouring coupling.
