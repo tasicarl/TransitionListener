@@ -375,6 +375,35 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
   `_execute_full_tunneling`, rather than `_tunnelFromPhaseAtT`, which no longer exists. The
   line is unreachable while the only two error types in the package are the two it handles,
   and it is kept as the defence against a third that it was written to be.
+- **The check that the chain ended in the zero-temperature minimum fired on a chain that
+  had.** `check_T0_global_min` compared the field values of the last traced phase against
+  `pot.X0` with `np.allclose`. `valAt` interpolates the phase tracer's own nodes, so it
+  carries the tracer's resolution: on the real two Higgs doublet model at `lambda3 = 5.8672`
+  the endpoint sits 2.7e-06 of the field scale from `X0`, with the potential agreeing to
+  eight digits, and `np.allclose` refused it on the smaller field component alone and by a
+  factor 1.04, because a test applied component by component gives the 11.5 GeV component a
+  tolerance 21 times tighter than the 246.2 GeV one while the tracer's error is the same
+  absolute size in both. The check now compares the depth of the potential at the two points,
+  which is the question it is asking, and keeps a field-space distance measured against the
+  field scale as a second condition so that a pair of degenerate minima is still reported.
+  The difference in depth is measured against the depth of the zero-temperature minimum
+  below the origin, and not against the size of the potential there: `Vtot` carries an
+  arbitrary constant, which leaves every minimum and every difference in depth where it was
+  while inflating that size, so a vacuum that was reported would pass once the constant was
+  large enough. A difference of two potential values has no such freedom. On the models
+  shipped with the code the two scales are close: 5.724e+08 either way on the conformal
+  dark U(1), whose origin sits at zero, and 4.714e+07 against 4.398e+07 on the real two
+  Higgs doublet model, whose origin sits at -3.161e+06 GeV^4. The
+  decision is `theChainEndedElsewhere`, which both routes call, the adaptive one and the fixed
+  step size one; the second had its own copy of the comparison and so its own version of the
+  defect. A depth or a separation that is not a number is reported rather than passed,
+  because neither comparison can be true of a `nan` and `np.allclose` reported it too. The
+  field scale is checked with them: the norm of finite field values is itself not finite
+  above about 1.3e154 per component, and it divides the comparison it would then defeat.
+  The field values are checked before the potential is asked about them, because
+  `np.allclose` compared coordinates and evaluated no potential at all: a model is free to
+  refuse a field point that is not a number by raising, and that would have come out of
+  this check as an exception where it used to come out as a verdict.
 - **Two ways the canonical image of a traced phase was decided by something other than the
   potential.** `canonicalImageElement` reads one symmetry transformation off the node of a
   trace furthest from the origin, so that the whole trace can be put on one image. It
