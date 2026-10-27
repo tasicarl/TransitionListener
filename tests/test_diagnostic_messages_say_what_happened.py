@@ -29,6 +29,8 @@ from unittest import mock
 
 import numpy as np
 
+from transitionlistener import bubbledynamics as bd
+from transitionlistener import errors
 from transitionlistener import transitions
 from transitionlistener import transitionObservables as tobs
 from transitionlistener import transitionObservables_fixedstep as tobs_fixed
@@ -980,6 +982,157 @@ class CyclicPhaseGraphTests(unittest.TestCase):
         self.assertNotIsInstance(caught.exception, transitions.errors.TooMuchSupercoolingError,
                                  "no nucleation solve was attempted, so supercooling is not "
                                  "something this run can report")
+
+
+class TheRateJitterErrorSaysWhichSampleAndByHowMuchTests(unittest.TestCase):
+    """Error code 17 fires in delivered runs and nothing drove it.
+
+    Of the twenty error codes, this is the one with the most state behind it: the message
+    carries six numbers, an `action_rate_jitter_diagnostic` attribute is attached for a caller
+    to read, and the raise happens only after a rescue has been attempted and failed. A wrong
+    number in that message, or the attribute missing on one branch, would reach a user
+    unnoticed.
+
+    The samples below are a smooth rate curve in ln T with one action displaced, which is what
+    an unstable bounce solve at one temperature looks like.
+    """
+
+    @staticmethod
+    def _band(bump=0.0, index=4):
+        """Nine support points across the active band, rate smooth in ln T but for `bump`."""
+        T = np.linspace(60.0, 20.0, 9)
+        H = np.full_like(T, 1.0e-16)
+        P = np.linspace(0.02, 0.80, 9)
+        S = np.linspace(170.0, 120.0, 9) * T / T.mean()
+        S = S.copy()
+        S[index] += bump
+        return T, H, S, P
+
+    @staticmethod
+    def _state(T, H, S, P):
+        return bd.PercolationState(TSYM=T, Sr=S, Hr=H, Pr=P, Tb=T.copy())
+
+    @staticmethod
+    def _settings(threshold=1.0):
+        """The rescue is off, so the gate is reached without a bounce solver behind it."""
+        return types.SimpleNamespace(jitter_GH4_threshold=threshold,
+                                     jitter_rescue=False, n_jitter_save=0)
+
+    def test_a_smooth_band_is_not_rejected(self):
+        """The control. Without it every assertion below passes for a gate that always fires."""
+        T, H, S, P = self._band()
+        diagnostic = bd._raise_if_action_rate_jitter_unresolved(
+            self._state(T, H, S, P), self._settings(), 1.0)
+        self.assertEqual(diagnostic["n_active"], 9)
+        self.assertLess(diagnostic["max_residual_oom"], 1.0,
+                        msg="the smooth samples are already above the threshold, so the test "
+                            "below would fire on anything")
+
+    def test_one_displaced_action_is_rejected_and_named(self):
+        """The message has to say which sample, at what temperature, and by how much."""
+        T, H, S, P = self._band(bump=600.0, index=4)
+        with self.assertRaises(errors.ActionRateJitterError) as caught:
+            bd._raise_if_action_rate_jitter_unresolved(
+                self._state(T, H, S, P), self._settings(), 1.0)
+        error = caught.exception
+        self.assertEqual(error.errorcode, 17)
+        message = str(error)
+        # The offending point is T = 40 GeV, the fifth of nine between 60 and 20.
+        self.assertIn("40", message,
+                      msg=f"the message does not name the offending temperature: {message!r}")
+        self.assertIn("orders of magnitude", message)
+        self.assertNotIn("nan", message.lower(),
+                         msg=f"a number in the message was not computed: {message!r}")
+
+    def test_the_diagnostic_travels_with_the_error(self):
+        """A caller reads this attribute; the raise is the only place it is attached."""
+        T, H, S, P = self._band(bump=600.0, index=4)
+        with self.assertRaises(errors.ActionRateJitterError) as caught:
+            bd._raise_if_action_rate_jitter_unresolved(
+                self._state(T, H, S, P), self._settings(), 1.0)
+        diagnostic = getattr(caught.exception, "action_rate_jitter_diagnostic", None)
+        self.assertIsInstance(diagnostic, dict,
+                              msg="the error carries no diagnostic, so a caller that reads it "
+                                  "gets nothing")
+        self.assertGreater(diagnostic["max_residual_oom"], 1.0)
+        self.assertAlmostEqual(float(diagnostic["temperature"]), 40.0, places=6)
+
+    def test_the_threshold_is_what_decides(self):
+        """Raised above the band's own residual, the same samples are accepted.
+
+        Which shows the gate reads the configured threshold rather than a number of its own.
+        """
+        T, H, S, P = self._band(bump=600.0, index=4)
+        diagnostic = bd._raise_if_action_rate_jitter_unresolved(
+            self._state(T, H, S, P), self._settings(threshold=50.0), 1.0)
+        self.assertGreater(diagnostic["max_residual_oom"], 1.0)
+        self.assertLess(diagnostic["max_residual_oom"], 50.0)
+
+    def test_the_temperature_in_the_message_is_in_GeV(self):
+        """`CF` converts internal temperature to GeV, and the message prints both."""
+        T, H, S, P = self._band(bump=600.0, index=4)
+        with self.assertRaises(errors.ActionRateJitterError) as caught:
+            bd._raise_if_action_rate_jitter_unresolved(
+                self._state(T, H, S, P), self._settings(), 1.0e-4)
+        message = str(caught.exception)
+        self.assertIn("0.004", message,
+                      msg=f"40 internal at CF = 1e-4 is 0.004 GeV; message: {message!r}")
+        self.assertIn("internal T = 40", message,
+                      msg=f"the internal temperature is not reported: {message!r}")
+
+
+class TheModelSetupErrorsSayWhatIsWrongTests(unittest.TestCase):
+    """Codes 4, 5 and 12, which a user meeting a new model hits before anything else.
+
+    None of them was driven by a test. They are the cheapest of the untested codes because none
+    needs a transition: two are raised on the phase count before the tunnelling parameters are
+    assembled, and the third on the potential's own initialisation check.
+    """
+
+    @staticmethod
+    def _potential():
+        """Enough of a potential for the phase-count checks, which run before anything else."""
+        return types.SimpleNamespace(
+            Vtot=lambda X, T: np.zeros(np.shape(T)),
+            gradV=lambda X, T: np.zeros_like(np.atleast_1d(X)),
+            d2V=lambda X, T: np.zeros((1, 1)),
+            config=types.SimpleNamespace(tracingConf=types.SimpleNamespace()))
+
+    def test_no_phases_is_code_4_and_says_so(self):
+        with self.assertRaises(errors.NoPhases) as caught:
+            transitions.Transitions({}, self._potential())
+        self.assertEqual(caught.exception.errorcode, 4)
+        self.assertIn("no phases", str(caught.exception).lower())
+
+    def test_one_phase_is_code_5_and_not_code_4(self):
+        """The two differ by one element, and the message a user reads differs with them."""
+        with self.assertRaises(errors.OnlyOnePhase) as caught:
+            transitions.Transitions({"0": object()}, self._potential())
+        self.assertEqual(caught.exception.errorcode, 5)
+        self.assertIn("only one phase", str(caught.exception).lower())
+        self.assertNotIsInstance(caught.exception, errors.NoPhases,
+                                 "a single phase is not the same diagnosis as no phases")
+
+    def test_a_missing_vev_is_code_12(self):
+        """`checkInitialisation` is what a new model meets first."""
+        from transitionlistener.generic_potential import generic_potential
+        stub = types.SimpleNamespace(v_GeV=None, daisy="ArnoldEspinosa", X0=np.zeros(1))
+        with self.assertRaises(errors.InitPotentialError) as caught:
+            generic_potential.checkInitialisation(stub)
+        self.assertEqual(caught.exception.errorcode, 12)
+        self.assertIn("v_GeV", str(caught.exception))
+
+    def test_an_unknown_daisy_scheme_is_code_12_and_lists_the_choices(self):
+        """A user who mistypes the scheme has to be told what the choices are."""
+        from transitionlistener.generic_potential import generic_potential
+        stub = types.SimpleNamespace(v_GeV=246.22, daisy="ArnoldEspinoza", X0=np.zeros(1))
+        with self.assertRaises(errors.InitPotentialError) as caught:
+            generic_potential.checkInitialisation(stub)
+        self.assertEqual(caught.exception.errorcode, 12)
+        message = str(caught.exception)
+        for choice in ("ArnoldEspinosa", "Parwani", "off"):
+            self.assertIn(choice, message,
+                          msg=f"the message does not offer {choice!r}: {message!r}")
 
 
 if __name__ == "__main__":

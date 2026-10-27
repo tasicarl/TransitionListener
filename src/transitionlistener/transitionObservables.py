@@ -372,13 +372,12 @@ def _record_rescue_outcome(derived: dict, diagnostic) -> None:
 #: How far apart in depth two zero-temperature minima have to be before the chain is said to
 #: have ended somewhere other than `X0`. Relative to the depth of `X0` below the origin,
 #: `|V(X0) - V(0)|`, and not to `|V(X0)|`, which moves with the constant `Vtot` is free to
-#: carry. That depth is 4.398e+07 GeV^4 on the 2HDM benchmark, so this is about 0.44 GeV^4:
-#: far above the 0 the two sides agree to when they are the same minimum, far below the
+#: carry. Being relative, it follows whatever scale the model's potential works in: it is far
+#: above the zero the two sides agree to when they are the same minimum, and far below the
 #: difference between genuinely distinct vacua.
 _T0_MINIMUM_DEPTH_RTOL = 1.0e-8
 #: And how far apart in field space, relative to `|X0|`. The tracer's residual at `Tmin` is
-#: 2.7e-06 of the field scale on the 2HDM benchmark, a factor 370 below this, while two minima
-#: that are genuinely apart are further still.
+#: orders of magnitude below this, while two minima that are genuinely apart are further still.
 _T0_MINIMUM_FIELD_RTOL = 1.0e-3
 
 
@@ -433,9 +432,8 @@ def theChainEndedElsewhere(pot, last_vev) -> bool:
     # the constant `Vtot` is free to carry: adding one to the potential leaves every minimum
     # and every difference in depth where it was while inflating `abs(V_X0)`, so a vacuum that
     # was reported becomes one that passes. The difference of two potential values has no such
-    # freedom. On the shipped models the two scales are close, 5.724e+08 either way on the
-    # conformal dark U(1) where the origin sits at zero, and 4.714e+07 against 4.398e+07 on the
-    # real two Higgs doublet model, whose origin is at -3.161e+06 in GeV^4.
+    # freedom. Where a model's origin sits at zero the two agree, and where it does not only
+    # the difference carries meaning.
     V_origin = float(np.squeeze(pot.Vtot(np.zeros_like(np.atleast_1d(
         np.asarray(pot.X0, dtype=float))), T0)))
     depth = abs(V_X0 - V_origin)
@@ -484,14 +482,14 @@ class TransitionObservables:
         """
         T0 = self.pot.Tmin
         # `valAt` interpolates the tracer's own nodes and carries its resolution rather than
-        # the potential's: on the 2HDM at lambda3 = 5.8672 the traced endpoint sits 1.2e-04
-        # GeV from `X0` in the first field component and 6.5e-04 in the second, so the two
-        # agree to 2.7e-06 in norm and `V` agrees to eight digits. `np.allclose` on those
-        # values still failed, on the smaller component alone and by a factor 1.04, because
-        # a per-component relative test gives the 11.5 GeV component a tolerance 21 times
-        # tighter than the 246 GeV one while the tracer's error is absolute. The tolerances
-        # below are relative to the field scale and to the depth, which is what the two
-        # quantities actually have in common, and they admit that residual by three decades.
+        # the potential's, so the endpoint it returns sits a tracing residual away from `X0`
+        # even where the two are the same minimum. `np.allclose` refused that, on the smallest
+        # field component alone: a per-component relative test gives a small component a far
+        # tighter tolerance than a large one, while the tracer's error is absolute, so a model
+        # whose field components differ by a factor twenty fails on the small one while the
+        # norm and the potential agree to many digits. The tolerances below are relative to the
+        # field scale and to the depth, which is what the two quantities actually have in
+        # common, and they admit a tracing residual by three decades.
         last_vev = self.phases[self.transitions[-1].low_phase].valAt(self.pot.Tmin)
 
         if theChainEndedElsewhere(self.pot, last_vev):
@@ -636,11 +634,12 @@ class TransitionObservables:
                 # wall solution exists at all -- a verdict of "no solution", not a slow wall.
                 # Downstream takes it as a wall velocity: all three kinetic energy fractions
                 # are proportional to it, so the spectrum is identically zero and the SNR comes
-                # out exactly 0.0, which reads as a real prediction of no signal. Measured at
-                # lambda3 = 5.5475 on the 2HDM line, where alpha = 0.0347 is the largest of its
-                # neighbours and betaH_RH = 318 the smallest, both of which should *raise* the
-                # SNR; the two points on either side give 1.83 and 0.058. The only trace was a
-                # `verbose` print. Nothing else accepts this value: the branch below refuses a
+                # out exactly 0.0, which reads as a real prediction of no signal. It appeared
+                # at a coupling whose transition strength was the largest of its neighbours and
+                # whose inverse duration was the smallest, both of which should *raise* the
+                # signal, while the points on either side gave signal-to-noise ratios of order
+                # one. The only trace was a `verbose` print. Nothing else accepts this value:
+                # the branch below refuses a
                 # user-supplied wall velocity unless 0 < vw <= 1.
                 derived["WARNING:v_wall_no_solution"] = (
                     float(derived["v_wall"]) <= 0.0

@@ -12,7 +12,7 @@ import numpy as np
 from scipy import optimize
 
 from transitionlistener import errors
-from transitionlistener.pathDeformation import bounceAction
+from transitionlistener.pathDeformation import bounceActionOverImages
 
 
 def findTunnelingTmax(DV: callable, Tmin: float, Tmax: float, tol=1e-15, maxiter=100):
@@ -124,11 +124,15 @@ def computeNucleationTemperature(
     verbose=False,
     fullTunneling_params=None,
     allow_second_order_fallback=True,
+    invGroupElements=(),
 ):
     """Find the instanton and nucleation temperature for one transition."""
 
     outdict = {}
     fullTunneling_params = {} if fullTunneling_params is None else fullTunneling_params
+    # Appended at the end, and `args` is forwarded unchanged by `checkNucleationPossibility`
+    # and `findTminFromUShapedNucl`, so that the positions of the existing entries do not
+    # move: `brentq` passes this tuple positionally.
     args = (
         start_phase,
         end_phase,
@@ -142,6 +146,7 @@ def computeNucleationTemperature(
         verbose,
         outdict,
         CF,
+        invGroupElements,
     )
     Tmin = max(start_phase.Tmin, end_phase.Tmin)
 
@@ -356,6 +361,7 @@ def evalNucleationCriterion(
     verbose,
     outdict,
     conversionFactor,
+    invGroupElements=(),
 ):
     """Evaluate the nucleation criterion and cache the action in ``outdict``."""
 
@@ -403,12 +409,17 @@ def evalNucleationCriterion(
         )
 
     tdict = dict(low_vev=x1, high_vev=x0, Tnuc=T, low_phase=end_phase.key, high_phase=start_phase.key)
-    bounceAction(
+    # Over every image of the false vacuum, as the percolation routes' `calcAction` does.
+    # The nucleation-temperature search reads the same two traced phases, so it inherits the
+    # same mismatched pairing, and on the fixed step size route a criterion that is never
+    # fulfilled is what drops the transition: the percolation fix would never be reached.
+    bounceActionOverImages(
         T,
         V,
         dV,
         outdict,
         tdict,
+        invGroupElements,
         verbose=verbose,
         conversionFactor=conversionFactor,
         **fullTunneling_params,

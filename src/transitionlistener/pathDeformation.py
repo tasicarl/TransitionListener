@@ -1316,23 +1316,21 @@ def _deform_path(
     return TunnelingOutputs(path, tobj, profile1D, phi, dphi, pts, deform_obj, converged)
 
 
-# Measured at lambda3 = 5.8205024605, T = 15.202392 GeV, where the force ratio floors at
-# 0.00855 against a target of 0.005:
+# A path that cannot reach its force target is under-resolved rather than a second branch, and
+# enlarging the basis moves its action onto the curve its neighbours occupy. The improvement is
+# not monotonic, though: past some size the deformation is destabilised and both the force ratio
+# and the action get worse, so a loop that kept doubling would return a worse path than one that
+# stopped. The loop therefore enlarges while enlarging helps and no further, and the cap holds
+# the default basis at or under nb = 40.
 #
-#   nb    fRatio     S_3/T
-#   10    0.00855   286.43   <- the sample the jitter gate rejects on
-#   20    0.00799   299.92
-#   40    0.00581   299.62   <- on the smooth curve its neighbours occupy
-#   80    0.09998   300.78   <- the deformation is destabilised, 17x worse
+# One reference, since the cap is a tuned number. Measured on commit 065ef81 with
+# `models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml` at `lambda3 = 5.8205024605`, T = 15.202392 GeV, where the force ratio
+# floors above its target of 0.005: nb = 10, 20 and 40 give force ratios 0.00855, 0.00799 and
+# 0.00581 with `S_3/T` of 286.43, 299.92 and 299.62, while nb = 80 gives 0.09998 and 300.78, a
+# force ratio an order of magnitude worse, and at T = 16.33 GeV the action collapsed by 34.
 #
-# Enlarging the basis both lowers the force ratio and moves the action by +13.2 onto the
-# curve, so the low outlier was an under-resolved path rather than a second branch. But the
-# improvement is not monotonic: at nb = 80 the force ratio is an order of magnitude worse
-# than at nb = 10, and at T = 16.33 GeV the action collapsed by 34. So the loop stops
-# enlarging as soon as enlarging stops helping, and the cap below keeps the default basis
-# at or under nb = 40, short of the size that was measured to destabilise it. The returned
-# path is still the last iteration's, exactly as before this change; nothing here selects
-# among the iterations.
+# The returned path is still the last iteration's, exactly as before this change; nothing here
+# selects among the iterations.
 _PLATEAU_IMPROVEMENT = 0.9      # less than 10% better than the previous iteration is a plateau
 _MAX_BASIS_DOUBLINGS = 2        # nb 10 -> 40; 80 was measured to destabilise the deformation
 _DEFAULT_BASIS_SIZE = 10        # Deformation_Spline's own default when nb is unset
@@ -1533,10 +1531,9 @@ def fullTunneling(
     # The shooting brackets the bounce between an undershoot and an overshoot, and at
     # convergence both must give the same action. `findProfile` records how far apart they
     # were for the profile being kept here; a large spread means the bisection stalled and
-    # the profile returned is whichever trial came last. Measured on the 2HDM at
-    # lambda3 = 5.816407666 with `TL_2HDM_BSMPT_highacc`: the branches agree to 8.9e-06 at
-    # T = 60 GeV, 7.0e-04 at 40 and 7.0e-03 at 25, and disagree by 0.42 at 9.8514 and 1.13
-    # at 9.8546, where one branch returns a negative action. Reporting an unresolved bounce
+    # the profile returned is whichever trial came last. The spread grows as the transition
+    # cools and the barrier becomes harder to resolve, and at the cold end one branch can
+    # return a negative action while the other is positive. Reporting an unresolved bounce
     # lets the controller drop the sample, as it already does for an action it cannot
     # compute, instead of carrying a number decided by which trial ran last.
     spread = float(getattr(last_output.tobj, "bracket_action_spread", 0.0) or 0.0)
@@ -1603,8 +1600,8 @@ def _execute_full_tunneling(
 ):
     """Try to compute the instanton and translate known failure modes."""
     # The straight line between the two minima. Each temperature is solved independently;
-    # seeding a retry from a neighbouring temperature's converged path was measured to
-    # return a non-finite action on the 2HDM and is not part of the solver.
+    # seeding a retry from a neighbouring temperature's converged path was measured to return
+    # a non-finite action and is not part of the solver.
     initial_path = [tdict["low_vev"], tdict["high_vev"]]
     try:
         result = fullTunneling(initial_path, V_, dV_, callback_data=T, verbose=verbose, **settings)
@@ -1630,10 +1627,16 @@ def _execute_full_tunneling(
                     "GeV failed because the potential is stable and not metastable.",
                 )
             return {'action': np.inf, 'trantype': 0, 'instanton': None}, False
+        # `err.error_type`, not `err.args[1]`: `PotentialError.__init__` passes only the
+        # message to `Exception.__init__`, so `args` has one entry and `args[1]` raised
+        # `IndexError` here instead of the `UnexpectedError` the line was written to raise.
+        # Unreachable today, since the only two error types in the package are the two
+        # handled above, and kept as the defence it was meant to be against a third.
         if verbose:
-            print("Unexpected error message: ", err.args[1])
+            print("Unexpected PotentialError type: ", err.error_type)
         raise errors.UnexpectedError(
-            "In _tunnelFromPhaseAtT: Unexpected error message: %s" % err.args[1]
+            "In _execute_full_tunneling: Unexpected PotentialError type %r: %s"
+            % (err.error_type, err.args[0])
         ) from err
     except errors.ZeroActionError:
         if verbose:
@@ -1670,6 +1673,338 @@ def _execute_full_tunneling(
                 err,
             )
         raise
+
+
+#: How far apart two images of the false vacuum have to be, as a fraction of the length of the
+#: path the bounce traverses, before they are treated as two pairings and each given its own
+#: bounce.
+#:
+#: The criterion is the resolution of the phase tracing that produced the false vacuum. A
+#: separation does not bound the difference of two bounce actions for a general potential, so
+#: this is not a tolerance on the action; it is the statement that two points closer together
+#: than the tracer can place a minimum are one point. The tracer locates each node by finite
+#: differences of step ``deltaX_target * 1e-2``, and `phases.py` already applies that reasoning,
+#: with this same constant, to the sign of a field component in ``phases._IMAGE_SIGN_RTOL``.
+#:
+#: An equality test at machine precision was tried and withdrawn. A symmetric phase is a false
+#: vacuum at a fixed point of the group, and the tracer leaves it a few times 1e-10 from that
+#: point rather than on it, so an exact test saw two images at every temperature of such a
+#: transition and the solver computed one path twice. What a merge at this threshold can hide is
+#: bounded by what the solver can tell apart: the two paths then differ by less than 1e-4 of
+#: their length, and the solver's action on one path recomputed repeats only to a few times
+#: 1e-5.
+#:
+#: One reference, since the threshold is a tuned number. Measured on commit 065ef81 with
+#: ``models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml`` at ``lambda3 = 5.6518``, where the symmetric phase is the false
+#: vacuum at all 7 temperatures that resolve: the two images lay 3.6e-13 to 2.3e-12 of the path
+#: length apart, the two actions agreed to 3.0e-05 relative, and the second bounce took 49 per
+#: cent of all the time spent on bounces. The tracer's own step would put the threshold at
+#: 4e-06 of the path length instead, which merges the same pairs and splits the same pairs; the
+#: looser constant is used so that one number serves both this test and the sign test.
+_IMAGE_SEPARATION_RTOL = 1.0e-4
+
+
+def _actionOfOnePairing(entry: dict) -> float:
+    """The action :func:`bounceAction` stored for one pairing, as a float.
+
+    `nan` where the entry carries no action at all, so that a missing key cannot take part
+    in a comparison as if it were a number; the comparisons below refuse a `nan`.
+    `bounceAction` stores a ``numpy.float64``, and ``np.squeeze`` before ``float`` because
+    nothing pins the shape it arrives in.
+
+    Parameters
+    ----------
+    entry : dict
+        One temperature's entry as :func:`bounceAction` leaves it.
+
+    Returns
+    -------
+    float
+        The action, or `nan` where the entry has none.
+    """
+    return float(np.squeeze(entry.get("action", np.nan)))
+
+
+def _isAnOrdinaryBounce(entry: dict) -> bool:
+    """Whether :func:`bounceAction` resolved a first-order bounce for one pairing.
+
+    ``trantype`` 1 with a finite positive action is a bounce. The other two outcomes are
+    not: ``trantype`` 2 with action 0 says the two points it was handed coincide, and
+    ``trantype`` 0 with an infinite action says the pairing gave no action at all.
+
+    Parameters
+    ----------
+    entry : dict
+        One temperature's entry as :func:`bounceAction` leaves it.
+
+    Returns
+    -------
+    bool
+        True where the entry carries a bounce the solver resolved.
+    """
+    action = _actionOfOnePairing(entry)
+    return bool(entry.get("trantype") == 1 and np.isfinite(action) and action > 0.0)
+
+
+def _isACheaperPairing(action: float, best: float) -> bool:
+    """Whether `action` is the smaller of two pairings' actions.
+
+    Written as a pair of refused comparisons rather than as ``action < best``, because
+    every comparison against a `nan` is false: ``action < best`` rejects a `nan` candidate,
+    which is right, but also keeps a `nan` incumbent against every later candidate, which
+    is not. ``+inf`` needs the same care in the other direction, since a positivity test
+    alone accepts it. The Euclidean action of a bounce is finite and non-negative, and
+    :func:`bounceAction` stores 0 for a path whose two points coincide and ``+inf`` for a
+    pairing it could not resolve, so a value that is not finite and non-negative is not an
+    action: it never wins, and it is displaced by the first value that is one.
+
+    Parameters
+    ----------
+    action : float
+        The candidate pairing's action.
+    best : float
+        The action of the pairing kept so far.
+
+    Returns
+    -------
+    bool
+        True where the candidate's action is the one to keep.
+    """
+    if not (np.isfinite(action) and action >= 0.0):
+        return False
+    if not (np.isfinite(best) and best >= 0.0):
+        return True
+    return bool(action < best)
+
+
+def imagesOfTheFalseVacuum(x_false: np.ndarray, x_true: np.ndarray,
+                           invGroupElements) -> list:
+    r"""Every image of the false vacuum, the one nearest the true vacuum first.
+
+    Where the potential is invariant under a group, each minimum stands for a set of
+    images, all of them the same physics. Which image a phase was traced onto is settled by
+    the sign of a numerical step and not by the potential, so the two phases of a transition
+    can be stored on different images, and the bounce is then computed along a path between
+    images rather than the path the field takes. The field separation and the action of that
+    path are those of no physical channel, and the action can come out a factor of two wrong
+    without anything downstream being able to tell. That defect is what this exists for, and
+    it is worth the one specific reference: on commit 065ef81 with `models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml` at
+    `lambda3 = 5.868` the path between images gave `S_3/T = 336.84` at T = 30.0 GeV where the
+    path the field takes gives 152.97.
+
+    The bubble nucleates along whichever pairing carries the smallest action, so all of the
+    images are candidates and :func:`bounceActionOverImages` computes the bounce for each of
+    them. The transformation is applied to the false vacuum, leaving the true vacuum where
+    the phase tracing put it, so that every candidate ends at the same point.
+
+    The images are returned with the one nearest the true vacuum first, and the point as it
+    was traced wins a tie, which makes the order independent of the order the group is given
+    in. The order decides nothing: every candidate is computed and the smallest action is
+    kept, so it only settles which bounce is solved first and which entry a tie goes to. It
+    is the order it is because a shorter path usually carries the smaller action, so the
+    pairing solved first is usually the one kept. The two pairings approach each other as the
+    false vacuum approaches a fixed point of the group, which is the point they share, and
+    where the false vacuum sits at such a point there is one pairing and the group costs
+    nothing.
+
+    An image equal to the traced point is dropped, so the identity, which most models'
+    groups contain, costs nothing, and a false vacuum sitting at a fixed point of the group,
+    the origin in particular, yields one candidate and costs one bounce however large the
+    group is.
+
+    Parameters
+    ----------
+    x_false, x_true : np.ndarray
+        The two minima at this temperature, as traced.
+    invGroupElements : list[np.ndarray]
+        The transformations the potential is invariant under, right-multiplying a point.
+
+    Returns
+    -------
+    list[np.ndarray]
+        The distinct images of `x_false`, nearest to `x_true` first. Never empty: the point
+        as it was traced is always one of them, and it is the first entry where no other
+        image is strictly nearer.
+    """
+    x_false = np.asarray(x_false, dtype=float)
+    x_true = np.asarray(x_true, dtype=float)
+    if not (np.isfinite(x_false).all() and np.isfinite(x_true).all()):
+        # Nothing to choose between, and saying so here rather than leaving it to the
+        # comparisons below keeps the arithmetic off a non-finite point: `x_false @ g`
+        # warns on it, and a distance that is `nan` decides the question only because every
+        # comparison against a `nan` is false.
+        return [x_false]
+    # The length of the path the bounce traverses, which is what "the same path" has to be
+    # measured against. Taking the false vacuum's own length instead would make the test
+    # meaningless for a false vacuum sitting at the origin, where that length is whatever the
+    # tracing left behind rather than a scale of the problem, and taking an absolute
+    # separation would make it depend on the units the model works in, which differ between
+    # models by orders of magnitude. Where the two minima
+    # coincide the path has no length and every image is the same point, so the comparison
+    # falls back on the fields' own scale.
+    path = float(np.linalg.norm(x_false - x_true))
+    scale = path if path > 0.0 else max(float(np.linalg.norm(x_true)), 1.0)
+    candidates = [(path, x_false)]
+    for g in invGroupElements:
+        image = np.asarray(x_false @ g, dtype=float)
+        if not np.isfinite(image).all():
+            continue
+        # An image equal to one already accepted is the same bounce, so it is offered to the
+        # solver once. The group may name a map more than once and contains the identity for
+        # most models, so an image is compared against every candidate already accepted and not
+        # only against the point as it was traced. Two images closer than
+        # `_IMAGE_SEPARATION_RTOL` of the path are the same point to the resolution of the
+        # tracing that produced them, and the note on that constant says what the test is and
+        # why an exact one was withdrawn. Every image that is a distinct point is computed and
+        # its action compared, which is what the function promises.
+        if any(float(np.linalg.norm(image - accepted)) <= _IMAGE_SEPARATION_RTOL * scale
+               for _, accepted in candidates):
+            continue
+        candidates.append((float(np.linalg.norm(image - x_true)), image))
+    # Python's sort is stable, so two images the true vacuum is equally far from keep the
+    # order they were appended in. The point as it was traced is appended first, so it stays
+    # first on a tie and the answer does not depend on the order the group is given in.
+    candidates.sort(key=lambda entry: entry[0])
+    return [image for _, image in candidates]
+
+
+def imagesToPairOver(pot) -> list:
+    """The symmetry elements the bounce should be computed over, for this potential.
+
+    Empty unless `pair_transition_over_images` is on, which leaves one bounce per temperature.
+    A model with no symmetry group gives the same thing and costs the same either way.
+
+    Off by default because the defect it guards against is now fixed where it arises. The bounce
+    used to be computed between two images because the phase tracing could put the two phases on
+    different ones, and `phases.canonicalImageElement` now puts a whole phase on its canonical
+    image, so the pairing recomputes a bounce whose answer is rejected. Measured on commit
+    065ef81 with `models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml` at `lambda3 = 5.868`, the coupling the pairing was added
+    for: of 76 temperatures, 66 have two images genuinely apart, between 0.12 and 0.25 of the
+    path length, and at none of the 66 did the image the tracing did not produce carry the
+    smaller action. Its action was larger by a median factor 2.1, and the second bounce took 66
+    per cent of all the time spent on bounces, raising the whole point from 426.96 s to
+    1075.64 s. At `lambda3 = 5.6518`, where the false vacuum is the symmetric phase, the two
+    images are the same point to the tracer's resolution and the switch costs 5 per cent.
+
+    Turning it on is the way to check that on a new model or a new group, which is why the
+    switch is here rather than the code removed.
+    """
+    group = list(getattr(pot, "invGroupElements", []) or [])
+    if not group:
+        return []
+    conf = getattr(getattr(pot, "config", None), "tracingConf", None)
+    if not getattr(conf, "pair_transition_over_images", False):
+        return []
+    return group
+
+
+def bounceActionOverImages(
+    T: float,
+    V: Callable[[np.ndarray, float], np.ndarray],
+    dV: Callable[[np.ndarray, float], np.ndarray],
+    outdict: dict,
+    tdict: dict,
+    invGroupElements=(),
+    verbose: bool = False,
+    conversionFactor: float = 1.0,
+    **fullTunneling_params,
+) -> dict:
+    """Compute the bounce for every image of the false vacuum and keep the smallest action.
+
+    Where the potential is invariant under a group, the false vacuum stands for a set of
+    images, all of them the same physical state, and which of them the phase tracing landed
+    on is settled by the sign of a numerical step rather than by the potential. The paths
+    from those images to the true vacuum are different paths and carry different actions,
+    and the bubble nucleates along the one with the smallest action, so that is the action
+    the bubble nucleation rate is built from.
+
+    Each image is offered to :func:`bounceAction` in turn, nearest to the true vacuum
+    first, and the entry with the smallest action is the one stored. A pairing whose bounce
+    the solver could not resolve comes back as ``trantype`` 0 with an infinite action, which
+    loses every comparison, so it does not cost the temperature when another pairing
+    resolved; where no pairing resolved, the first one's entry is kept and the caller sees
+    the infinite action it would have seen before any of the images were tried. A pairing
+    whose two points coincide comes back as ``trantype`` 2 with action 0, and only the
+    nearest image can do that, since an image equal to the true vacuum is at distance zero
+    and so is ordered first.
+
+    Nothing here catches an exception. Every ``transitionlistener`` error the bounce code
+    raises about a path is already absorbed by :func:`bounceAction` into one of those two
+    ``trantype`` values, except the one that reports a fault in the code, and the two
+    modules' ``raise`` statements are pinned against that census in the tests, each entry
+    measured by injecting the failure where it is really raised. So there is nothing left
+    for a handler here to pass over, and what would still reach it is the run deadline, a
+    fault in the code, or a failure from outside the package such as a ``ValueError`` out of
+    scipy. None of those may be read as a pairing that happened not to resolve, and the last
+    of them ends the temperature, which is what the single pairing already did.
+
+    Parameters
+    ----------
+    T : float
+        Temperature at which to compute the bounce action.
+    V, dV : callable
+        The potential and its gradient, as :func:`bounceAction` takes them.
+    outdict : dict
+        A dictionary mapping temperatures to tunnelling results. A result already stored
+        under `T` is returned as it stands, without computing anything.
+    tdict : dict
+        Dictionary describing the tunnelling phase at temperature `T`, as
+        :func:`bounceAction` takes it. Must contain the keys ``'low_vev'`` and
+        ``'high_vev'`` for the field values of the two minima, the second of which is the
+        false vacuum whose images are enumerated. Every other key is carried through onto
+        the entry that is stored, so a caller that puts ``'Tnuc'`` or the phase keys in it
+        gets them back.
+    invGroupElements : list[np.ndarray], optional
+        The transformations the potential is invariant under, right-multiplying a point.
+        An empty group leaves one candidate and one bounce, the one the caller asked for.
+    verbose : bool, optional
+        If True, print diagnostic messages while computing the bounce action.
+    conversionFactor : float, optional
+        Factor to convert the temperature from internal units to GeV when printing messages.
+    fullTunneling_params : dict, optional
+        Extra parameters forwarded to :func:`fullTunneling`.
+
+    Returns
+    -------
+    outdict : dict
+        The updated output dictionary. The entry under `T` carries the usual keys, and in
+        addition ``pairings_tried`` and ``pairings_resolved``, the number of images that
+        were offered to the solver and the number for which it resolved a bounce, and
+        ``high_vev_as_traced``, the false vacuum as the phase tracing produced it, since
+        ``high_vev`` carries the image the bounce was computed on.
+    """
+    if T in outdict:
+        return outdict
+
+    images = imagesOfTheFalseVacuum(tdict["high_vev"], tdict["low_vev"], invGroupElements)
+    best, best_action, resolved = None, float("nan"), 0
+    for image in images:
+        # A fresh dictionary per candidate, and `outdict` is written once at the end, so a
+        # pairing that raises cannot leave a partial entry behind for the caller to read.
+        trial: dict = {}
+        bounceAction(T, V, dV, trial, dict(tdict, high_vev=image),
+                     verbose, conversionFactor, **fullTunneling_params)
+        candidate = trial[T]
+        action = _actionOfOnePairing(candidate)
+        if _isAnOrdinaryBounce(candidate):
+            resolved += 1
+        elif verbose:
+            print("Tunneling at T = ", T * conversionFactor,
+                  "GeV gave no bounce on one image of the false vacuum: trantype ",
+                  candidate.get("trantype"), " action ", action)
+        if best is None or _isACheaperPairing(action, best_action):
+            best, best_action = candidate, action
+    best["pairings_tried"] = len(images)
+    best["pairings_resolved"] = resolved
+    # The false vacuum as the phase tracing produced it, beside the image the bounce was
+    # computed on. A caller holding this entry and the two traced phases cannot otherwise tell
+    # that it belongs to them: the entry's `high_vev` is the winning image, which for a group
+    # that reverses the fields is a reflection of the traced point rather than the point
+    # itself, and `bubbledynamics` compares the two to decide whether a cached action can be
+    # reused.
+    best["high_vev_as_traced"] = tdict["high_vev"]
+    outdict[T] = best
+    return outdict
 
 
 def bounceAction(

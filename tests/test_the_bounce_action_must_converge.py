@@ -122,7 +122,7 @@ class TheSpreadIsRecordedNotActedOn(unittest.TestCase):
 class AnUnresolvedBounceIsReportedAsNoAction(unittest.TestCase):
     """A spread past the tolerance must raise `InfiniteActionError`, not `TunnelingError`.
 
-    `_tunnelFromPhaseAtT` catches `InfiniteActionError` and returns an infinite action for
+    `_execute_full_tunneling` catches `InfiniteActionError` and returns an infinite action
     that temperature, which the controller drops. `TunnelingError` is not caught there and
     ends the coupling.
     """

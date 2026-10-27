@@ -22,6 +22,13 @@ class TracingConf:
     tracing_field_accuracy = 1e-3   # Target field-space accuracy during tracing (1e-3 works well).
     tracing_temp_accuracy = 1e-3    # Target temperature accuracy during tracing.
     gen_mirror_phases = False       # If True, also generate mirror-transformed phases of the potential.
+    pair_transition_over_images = False  # If True, compute the bounce on every image of the
+                                    # false vacuum and keep the smallest action, at the cost of
+                                    # one bounce per image wherever the false vacuum is not at a
+                                    # fixed point of the group. Off by default because the phase
+                                    # tracing now puts both phases on the same image, which is
+                                    # what the pairing was added to repair; see
+                                    # `pathDeformation.imagesToPairOver`.
     nucleation_Ttol = 1e-8          # Nucleation-temperature tolerance (internal units).
     do_tachyon_test = True          # If True, verify the potential is stable at T = 0.
     approx_strength_threshold = 1e-4  # Transitions with DV / T^4 below this are treated as second-order.

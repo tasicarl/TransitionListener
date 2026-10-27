@@ -25,11 +25,18 @@ class TestCalcActionCache(unittest.TestCase):
         phase_lo = _DummyPhase()
         outdict = {1.23: {"action": 42.0}}
 
-        with mock.patch("transitionlistener.bubbledynamics.bounceAction") as bounce_action:
+        # Both steps the cached path must skip, so that removing the short-circuit fails on
+        # one of these assertions rather than on whatever the dummy potential does next.
+        # `bounceActionOverImages` is the one `calcAction` calls; patching `bounceAction`
+        # asserts nothing, because `calcAction` does not call it on any path.
+        with mock.patch("transitionlistener.phases.findLocalMinimum") as find_minimum, \
+             mock.patch(
+                 "transitionlistener.bubbledynamics.bounceActionOverImages") as bounce_action:
             result = calcAction(pot, 1.23, phase_hi, phase_lo, outdict)
 
-        self.assertEqual(result, 42.0)
+        find_minimum.assert_not_called()
         bounce_action.assert_not_called()
+        self.assertEqual(result, 42.0)
 
 
 if __name__ == "__main__":

@@ -34,6 +34,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_YAML = REPO_ROOT / "examples/example_point.yaml"
+EXAMPLE_CONFIGS = sorted((REPO_ROOT / "examples").glob("*.yaml"))
 SCAN_OUT = REPO_ROOT / "scans/example_point"
 ALL_PARAMS = SCAN_OUT / "1_All_params.txt"
 
@@ -276,3 +277,39 @@ def test_smoke_alpha_consistency(smoke_run: Path) -> None:
             "On the release branch alpha must equal alpha_thetabar "
             f"(got alpha={values['alpha']}, alpha_thetabar={values['alpha_thetabar']})"
         )
+
+
+@pytest.mark.parametrize("config", EXAMPLE_CONFIGS, ids=lambda p: p.name)
+def test_every_shipped_example_names_a_model_that_is_here(config: Path) -> None:
+    """A shipped example a user cannot run is a defect they meet before anything else.
+
+    `examples/bp_lisa.yaml` named `arxiv/reproducibility/models/TL_2HDM_BSMPT_highacc.py` from
+    the v2.0 release preparations until v2.2. No `arxiv/` directory is tracked on any branch,
+    while the model it wants is tracked at `models/TL_2HDM_BSMPT_highacc.py`, so the example
+    failed at the first step for two releases and nothing noticed.
+
+    Static, so it costs no runtime: the file is read and parsed, nothing is solved.
+    """
+    import yaml
+
+    spec = yaml.safe_load(config.read_text())
+    model = spec.get("Modelfile")
+    assert isinstance(model, str) and model.strip(), f"{config.name} names no Modelfile"
+    # Resolved and checked for containment, not just for existence. `REPO_ROOT / "/etc/passwd"`
+    # is `/etc/passwd`, so a config naming an absolute path, or climbing out with `..`, would
+    # pass a bare `is_file()` while naming a model outside the repository that no one else can
+    # run. The claim this test makes is that the example works from a fresh checkout.
+    path = (REPO_ROOT / model.strip()).resolve()
+    assert path.is_relative_to(REPO_ROOT.resolve()), (
+        f"{config.name} names {model.strip()!r}, which resolves to {path}, outside the "
+        f"repository. A fresh checkout has no such file.")
+    assert path.is_file(), (
+        f"{config.name} names {model.strip()!r}, which is not in the repository. "
+        f"Run it and it fails before the first temperature.")
+
+    potential = spec.get("Potential")
+    assert isinstance(potential, str) and potential.strip(), (
+        f"{config.name} names no Potential")
+    name = potential.strip()
+    assert re.search(rf"^class\s+{re.escape(name)}\b", path.read_text(), re.M), (
+        f"{config.name} asks for class {name!r}, which {model.strip()} does not define")
