@@ -16,6 +16,7 @@ import numpy as np
 from scipy import interpolate, optimize
 
 from transitionlistener import errors
+from transitionlistener import helper_functions as hf
 from transitionlistener.bubbledynamics import (
     PercolationGrid,
     PercolationState,
@@ -377,12 +378,14 @@ def _refine_percolation_temperature(
 
                         eBRO = energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
-                    if state.Tb[i] < TSYM[i]:
-                        raise ValueError(
-                            "There was a problem with the T_bro calculation, "
-                            "T_bro < T_sym. This is (usually) not allowed by the "
-                            "second law of thermodynamics."
-                        )
+                    state.Tb[i], _clamped = hf.enforce_broken_not_below_symmetric(
+                        state.Tb[i], TSYM[i], rtol=float(settings.acc_tperc),
+                        where="the fixed-step percolation profile")
+                    if _clamped:
+                        # As in the adaptive copy: the Hubble rate below reads `eBRO`, which
+                        # was evaluated before the clamp moved the temperature.
+                        TBRO = state.Tb[i]
+                        eBRO = energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
                 state.Sr[i] = calcAction(pot, T, phase_symmetric, phase_broken, outdict)
                 state.Hr[i] = HubbleParameter(Pprev[i] * eBRO + (1 - Pprev[i]) * eSYM_PT + e_decoupled, CF)

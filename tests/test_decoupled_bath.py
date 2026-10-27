@@ -69,7 +69,7 @@ class Step3ProfileTests(unittest.TestCase):
         P = np.clip((1.0 - TSYM) / 0.15, 0.0, 1.0) ** 2 * 0.95
         n = TSYM.size
         state = bd.PercolationState(TSYM=TSYM, Sr=np.zeros(n), Hr=np.zeros(n), Pr=np.zeros(n), Tb=np.zeros(n))
-        settings = types.SimpleNamespace(f_final=0.99, time_temperature_mode="sound_speed", integral_method="ode")
+        settings = types.SimpleNamespace(f_final=0.99, acc_tperc=1e-2, time_temperature_mode="sound_speed", integral_method="ode")
         with mock.patch.object(bd, "energyDensity", energy_density), \
                 mock.patch.object(bd, "calcAction", lambda *args: 100.0), \
                 mock.patch.object(bd, "h_eff_DS", lambda T, pot, phase: H_DS), \
@@ -129,7 +129,7 @@ class FixedStepProfileTests(unittest.TestCase):
         state = bd.PercolationState(TSYM=TSYM.copy(), Sr=np.zeros(n), Hr=np.zeros(n), Pr=P.copy(), Tb=np.zeros(n))
         grid = bd.PercolationGrid(TSYM=TSYM, Tstart=1.0, TpercApprox=Tperc, tmin=0.5, tmax=1.5, TBROmin=0.5, TBROmax=5.0)
         settings = types.SimpleNamespace(f_start=1e-3, f_final=0.99, f_perc=0.3, max_boundary_n=2, maxit=10,
-                                         rel_increment=0.1)
+                                         rel_increment=0.1, acc_tperc=1e-2)
         with mock.patch.object(bd, "energyDensity", energy_density), \
                 mock.patch.object(pfs, "energyDensity", energy_density), \
                 mock.patch.object(pfs, "calcAction", lambda *args: 100.0), \

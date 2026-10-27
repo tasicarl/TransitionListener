@@ -184,6 +184,18 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
+- A broken-phase temperature below the symmetric one failed the point without an error code.
+  The guard was an exact comparison raising a bare `ValueError`, so the CLI reported an
+  unclassified failure, code -1, and the user never saw the diagnosis the solver had. It is
+  now compared against the run's own `acc_tperc`: below the accuracy the temperatures carry,
+  `T_bro` is clamped to `T_sym` with a `RuntimeWarning`, and above it the profile is refused
+  as a `PercolationError`, code 10. Measured on the 2HDM at `lambda4` = -2.0807692307692305:
+  the shortfall was 31.7 parts per million against an `acc_tperc` of 1 per cent, the energy
+  criterion behind it changed sign exactly once in its bracket, and the real fault was a jump
+  of the true-vacuum fraction from 0 to 1 across a support interval 1.17 parts per million
+  wide, which the solver reports itself once it is allowed to continue. The rule lived in
+  three copies, the adaptive module and both fixed-step twins; all three now call one shared
+  function, so it cannot drift apart again.
 - The transition could be built between two images of the same minimum, so the bounce was
   computed along a path the field does not take. On the 2HDM at `lambda3` = 5.868 that gave
   `S_3/T` = 336.6 against 152.6 and 153.3 at the neighbouring couplings, and the point returned

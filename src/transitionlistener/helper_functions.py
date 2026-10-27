@@ -9,11 +9,15 @@ Authors:
     Carlo Tasillo <carlo.tasillo@ific.uv.es>
 """
 
+import warnings
+
 import numpy as np
 from collections import namedtuple
 import importlib.util
 from itertools import product as _product
 from typing import Any
+
+from transitionlistener import errors
 
 
 """
@@ -982,6 +986,67 @@ def temperatureDerivativeStep(pot, T: float, X=None,
     if T_abs > 0.0:
         dT = min(dT, 0.25 * T_abs)
     return dT
+
+
+def enforce_broken_not_below_symmetric(T_bro, T_sym, *, rtol: float,
+                                       where: str = "the percolation profile"):
+    """Keep the broken-phase temperature at or above the symmetric one.
+
+    The broken phase is reheated by the latent heat it releases, so ``T_bro < T_sym`` is
+    thermodynamically wrong and the step-3 profile guards against it. That guard used to be an
+    exact ``<`` raising a bare :class:`ValueError`, which carries no ``errorcode``: a point
+    that tripped it was reported as an unclassified failure, CLI code -1, and the user never
+    saw what had actually gone wrong.
+
+    Measured on the 2HDM at ``lambda4 = -2.0807692307692305``: the shortfall was **31.7 parts
+    per million**, against the ``acc_tperc`` of 1 per cent the run was working to, so the two
+    temperatures were not distinguishable at the accuracy they had been determined to. The
+    root solve behind it was sound -- the energy criterion changes sign exactly once in its
+    bracket -- and the real fault was upstream, a jump of the true-vacuum fraction from 0 to 1
+    across an interval 1.17 parts per million wide. Clamping and continuing let the solver
+    reach that diagnosis itself and report it with its own code.
+
+    So a shortfall within ``rtol`` is clamped and warned about, and one larger than ``rtol``
+    still refuses the profile, now as a :class:`errors.PercolationError` rather than an
+    unclassified one.
+
+    Parameters
+    ----------
+    T_bro, T_sym : float
+        Broken- and symmetric-phase temperatures at the same support point.
+    rtol : float
+        Relative tolerance, normally the run's ``acc_tperc``: below the accuracy the
+        temperatures themselves carry, their difference is not a measurement.
+    where : str
+        Named in both the warning and the error, so the two call sites are distinguishable.
+
+    Returns
+    -------
+    tuple[float, float]
+        The temperature to use, and the relative shortfall that was clamped, zero if none.
+    """
+    t_bro = float(T_bro)
+    t_sym = float(T_sym)
+    if not (t_bro < t_sym):
+        return t_bro, 0.0
+    scale = abs(t_sym) if t_sym != 0.0 else 1.0
+    shortfall = (t_sym - t_bro) / scale
+    if shortfall <= float(rtol):
+        warnings.warn(
+            f"T_bro fell {shortfall:.3e} below T_sym in {where}, which is within the "
+            f"{float(rtol):.3g} accuracy the temperatures carry; clamping T_bro to T_sym. "
+            "A jump of the true-vacuum fraction across a collapsed support interval is the "
+            "usual cause and is reported separately if it persists.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return t_sym, shortfall
+    raise errors.PercolationError(
+        f"T_bro = {t_bro!r} is below T_sym = {t_sym!r} in {where}, short by "
+        f"{shortfall:.3e} relative, more than the {float(rtol):.3g} accuracy the "
+        "temperatures are determined to. The broken phase is reheated by the latent heat it "
+        "releases, so it cannot be the colder of the two by a resolvable amount."
+    )
 
 
 def thermalDerivativeStep(pot, T: float, X=None) -> float:

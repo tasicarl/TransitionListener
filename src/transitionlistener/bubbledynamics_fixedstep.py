@@ -22,6 +22,7 @@ from transitionlistener import thermodynamics as td
 from transitionlistener import constants as cn
 from transitionlistener.helper_functions import derivative
 from transitionlistener import errors
+from transitionlistener import helper_functions as hf
 from transitionlistener.helper_functions import thermalDerivativeStep
 from transitionlistener.pathDeformation import (bounceAction,
                                                 bounceActionOverImages,
@@ -960,6 +961,12 @@ class PercolationSettings:
     maxit: int
     rel_increment: float
     max_boundary_n: int
+    #: Relative accuracy goal on the percolation temperature, carried from
+    #: `percolationConf.acc_tperc`. The step-3 profile compares the broken- and
+    #: symmetric-phase temperatures against it: below the accuracy they are determined to,
+    #: their difference is not a measurement. Appended rather than inserted, so the released
+    #: positional order of this dataclass is unchanged.
+    acc_tperc: float = 1e-2
 
 
 @dataclass
@@ -1021,6 +1028,7 @@ def _build_percolation_settings(pot, nAction: int) -> PercolationSettings:
         maxit=conf.maxit,
         rel_increment=conf.rel_increment,
         max_boundary_n=max_boundary_n,
+        acc_tperc=conf.acc_tperc,
     )
 
 
@@ -1536,12 +1544,14 @@ def _refine_percolation_temperature(
 
                         eBRO = energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
-                    if state.Tb[i] < TSYM[i]:
-                        raise ValueError(
-                            "There was a problem with the T_bro calculation, "
-                            "T_bro < T_sym. This is (usually) not allowed by the "
-                            "second law of thermodynamics."
-                        )
+                    state.Tb[i], _clamped = hf.enforce_broken_not_below_symmetric(
+                        state.Tb[i], TSYM[i], rtol=float(settings.acc_tperc),
+                        where="the fixed-step bubble-dynamics profile")
+                    if _clamped:
+                        # As in the adaptive copy: the Hubble rate below reads `eBRO`, which
+                        # was evaluated before the clamp moved the temperature.
+                        TBRO = state.Tb[i]
+                        eBRO = energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
                 state.Sr[i] = calcAction(pot, T, phase_symmetric, phase_broken, outdict)
                 state.Hr[i] = HubbleParameter(Pprev[i] * eBRO + (1 - Pprev[i]) * eSYM_PT + e_decoupled, CF)
