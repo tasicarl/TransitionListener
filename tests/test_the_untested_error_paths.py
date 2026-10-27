@@ -114,20 +114,37 @@ class TheTachyonMessageNamesTheModeTests(unittest.TestCase):
         msg = self._raise([-2.5], [True])
         self.assertIn("1.0, 0.0", msg)
 
-    def test_a_field_scale_that_is_not_a_positive_number_still_gets_a_message(self):
+    def test_a_field_scale_whose_square_is_not_a_normal_double_still_gets_a_message(self):
         """The routine reports a refusal and must not fail while reporting it.
 
         Dividing by the square of the scale is what makes the numbers comparable, and a scale
         of zero would make that division raise `ZeroDivisionError` from inside the message,
         losing the error and its code. The squared masses are then reported as they are, and
         the message says which unit it is using.
+
+        `1e-160` is the case a positivity test alone lets through: its square, `1e-320`, is
+        subnormal rather than zero, so it passes a truth test and then turns every mass of
+        order one into an infinity. `1e-100` is the control at the small end, where the square
+        is still normal and the scaled numbers are finite.
         """
-        for scale in (0.0, None, float("inf"), float("nan"), -2.0, 1.0e200):
+        for scale in (0.0, None, float("inf"), float("nan"), -2.0, 1.0e200, 1.0e-160,
+                      5.0e-324):
             with self.subTest(v_stable=scale):
                 msg = self._raise([-2.5, 4.0], [True, True], v_stable=scale)
                 self.assertIn("boson 0: m^2 = -2.5", msg)
                 self.assertIn("below m^2 = -1e-05", msg)
                 self.assertNotIn("m^2/v^2", msg)
+
+    def test_a_small_scale_whose_square_is_still_normal_is_used(self):
+        """The control for the bound above: it must not refuse a scale that works.
+
+        At `v_stable` = 1e-100 the square is 1e-200, a normal double, so the listed mass is
+        -2.5e+200 and the threshold -1e+195. Without this the bound could be set anywhere and
+        the test above would still pass.
+        """
+        msg = self._raise([-2.5], [True], v_stable=1.0e-100)
+        self.assertIn("boson 0: m^2/v^2 = -2.5e+200", msg)
+        self.assertIn("below m^2/v^2 = -1e+195", msg)
 
     def test_an_unphysical_tachyonic_mode_is_not_an_error(self):
         """Goldstone bosons are tachyonic off the minimum and are flagged unphysical."""

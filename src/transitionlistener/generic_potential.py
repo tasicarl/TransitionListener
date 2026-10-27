@@ -577,15 +577,19 @@ class generic_potential():
             # scale itself, as this message did, leaves a quantity that is neither a squared
             # mass nor a mass. A scale that is not a positive number leaves the squared masses
             # as they are: this routine reports a refusal and must not fail while doing it.
-            # A scale that is not a positive finite number, or one large enough that its
-            # square overflows, would report every mass as zero or as a nan instead of the
-            # spectrum. Python raises `OverflowError` on the square rather than returning
-            # infinity, so the bound is checked before squaring. The raw squared masses are the
-            # fallback and the unit label below follows them; the tachyon criterion itself is
-            # on `m20` and is unaffected either way.
+            # A scale whose square is not a normal positive double would report every mass as
+            # zero, as an infinity or as a nan instead of the spectrum, so the scale is
+            # accepted only between the square roots of the smallest normal double and the
+            # largest, 1.49e-154 and 1.34e+154. Both ends are checked before squaring: Python
+            # raises `OverflowError` on a square that overflows rather than returning infinity,
+            # and a square that lands among the subnormals stays non-zero, so it passes a
+            # truth test and then turns every mass of order one into an infinity on division.
+            # The raw squared masses are the fallback and the unit label below follows them;
+            # the tachyon criterion itself is on `m20` and is unaffected either way.
             scale = float(self.v_stable) if self.v_stable is not None else 0.0
             largest = float(np.sqrt(np.finfo(float).max))
-            scale_sq = scale**2 if 0.0 < scale < largest else None
+            smallest = float(np.sqrt(np.finfo(float).tiny))
+            scale_sq = scale**2 if smallest <= scale < largest else None
             raw = np.ravel(np.asarray(m20, dtype=float))
             scaled = raw / scale_sq if scale_sq else raw
             unit = "m^2/v^2" if scale_sq else "m^2"
