@@ -203,8 +203,10 @@ Each line says what was wrong and when it bit.
   where it comes out negative the worst case is -5.91e-14, 266 units in the last place. The one
   point whose ordering was reversed for a physical reason, `lambda4` = -2.0807692307692305, had
   a relative temperature shortfall of 3.167e-05 and a relative latent heat of -1.264e-04,
-  because the phase-chain walk had paired the symmetric phase with a broken phase other than
-  the one the transition ends in; the correct pair carries +5.299e-02. The run's `acc_tperc`,
+  because the walk's starting phase carries a vev of about 10 GeV at that temperature while
+  its only child there is the symmetric phase at the origin, so the candidate transition runs
+  into the phase of higher energy density. Which transition that point really has is filed
+  rather than answered here. The run's `acc_tperc`,
   1 per cent by default, is seven orders too loose to separate the two and would have admitted
   that point silently, which is why the threshold is not taken from it. The rule lived in three
   copies, the adaptive module and both fixed-step twins; all three now call one shared
