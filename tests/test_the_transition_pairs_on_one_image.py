@@ -1504,6 +1504,40 @@ class TheBounceMarkerFollowsTheImageTheBounceUsedTests(unittest.TestCase):
                     "marker moved on the strength of a transformation nothing asked for")
 
 
+class TheNewFieldGoesAtTheEndOfThePublicDataclassTests(unittest.TestCase):
+    """`TransitionInfo` is public and constructible positionally, so field order is a contract.
+
+    `high_vev_as_traced` is new in this branch. Every field after it in the declaration shifts
+    one place to the right, and because all of them have defaults nothing raises: a call that
+    passed ten positional arguments to set `step` sets `high_vev_as_traced` instead and leaves
+    `step` at 0. Appending the field keeps the order the released version has, so the test
+    names that order rather than only counting the fields.
+    """
+
+    RELEASED_ORDER = ("Tcrit", "high_vev", "high_phase", "low_vev", "low_phase", "type",
+                      "Tnuc", "Tperc", "action_Tnuc", "step", "total_steps")
+
+    def test_the_released_fields_keep_their_positions(self):
+        import dataclasses
+
+        from transitionlistener.transitions import TransitionInfo
+
+        names = [f.name for f in dataclasses.fields(TransitionInfo)]
+        self.assertEqual(tuple(names[:len(self.RELEASED_ORDER)]), self.RELEASED_ORDER,
+                         "a field was inserted among the released ones, so every positional "
+                         "argument after it now lands on the wrong attribute")
+
+    def test_the_tenth_positional_argument_is_still_the_step(self):
+        from transitionlistener.transitions import TransitionInfo
+
+        tr = TransitionInfo(120.0, np.array([1.0]), 1, np.array([0.0]), 0, 1,
+                            90.0, 85.0, 150.0, 7)
+        self.assertEqual(tr.step, 7)
+        self.assertIsNone(tr.high_vev_as_traced,
+                          "the tenth positional argument reached the new field, so a caller "
+                          "written against the released signature now sets the wrong one")
+
+
 if __name__ == "__main__":
     unittest.main()
 

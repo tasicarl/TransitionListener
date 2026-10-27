@@ -56,6 +56,12 @@ class TransitionInfo():
     computation."""
     action_Tnuc: float = 0.0
     """Action at the nucleation."""
+    instanton = {}
+    """Instanton solution at the nucleation temperature."""
+    step: int = 0
+    """Ordering number of the possible transitions"""
+    total_steps: int = 0
+    """Total number of transitions."""
     high_vev_as_traced: np.ndarray | None = None
     """The false vacuum as the phase tracing produced it, where that differs from `high_vev`.
 
@@ -64,12 +70,6 @@ class TransitionInfo():
     action. Anything drawing the bounce beside its endpoints needs to know which of the two the
     profile belongs to; `None` means they are the same point.
     """
-    instanton = {}
-    """Instanton solution at the nucleation temperature."""
-    step: int = 0
-    """Ordering number of the possible transitions"""
-    total_steps: int = 0
-    """Total number of transitions."""
     derived_params = {}
     """Computed observables."""
 
