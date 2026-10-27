@@ -29,18 +29,24 @@ from transitionlistener import errors
 from transitionlistener import pathDeformation as pd
 from transitionlistener import transitions
 from transitionlistener import tunneling1D
+from transitionlistener.helper_functions import IntegrationError
 
 
 class TheSplineFitTranslatesItsFailuresTests(unittest.TestCase):
     """Code 13 comes from `_fit_spline_path`, which translates what `SplinePath` raises.
 
-    The two `nx > _MAX_EXTENSION_KNOTS` raises inside `SplinePath.__init__` cannot fire: the
-    search that produces `nx` walks a ladder whose last point IS `_MAX_EXTENSION_KNOTS`, and a
-    minimum is accepted only when a rise is seen after it, which past the last point is never
-    sampled. Measured: with the minimum beyond the ladder, at its end, and with a potential
-    that falls for ever, `_extension_minimum` returns 0, 0 and 0. The test below pins the
-    invariant that keeps those raises unreachable, so that raising the ladder's end without
-    raising the cap would be caught.
+    The two `nx > _MAX_EXTENSION_KNOTS` raises inside `SplinePath.__init__` cannot fire, and
+    the reason is the last interval of the ladder rather than its end. `_extension_minimum`
+    accepts a minimum only once a sampled point rises above the lowest one seen, then refines
+    between the two samples that bracket it. The ladder's last two points are 17914.33 and
+    20000.00, so a minimum past the midpoint 18957.16 leaves the end itself as the lowest
+    sample, no rise is ever passed, and the search returns 0. A minimum before the midpoint is
+    returned, but then `nx` is bounded by that midpoint. Measured over a sweep of 211 minima
+    across the last interval and five potential shapes, the largest `nx` the search can
+    produce is 18951 against the cap of 20000, 1049 knots of headroom.
+
+    The test below sweeps that interval, which is where the margin is smallest, so raising the
+    ladder's end without raising the cap would be caught.
     """
 
     PTS = np.array([[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]])
@@ -88,7 +94,7 @@ class TheSplineFitTranslatesItsFailuresTests(unittest.TestCase):
         self.assertIn("identical", str(caught.exception))
 
     def test_distinct_endpoints_with_the_same_message_stay_a_spline_failure(self):
-        """"Invalid inputs." alone does not mean the barrier is gone."""
+        """The message `Invalid inputs.` alone does not mean the barrier is gone."""
         with self.assertRaises(errors.SplineError) as caught:
             self._fit(RuntimeError("Invalid inputs."))
         self.assertIn("phitol", str(caught.exception))
@@ -97,22 +103,67 @@ class TheSplineFitTranslatesItsFailuresTests(unittest.TestCase):
         with self.assertRaises(errors.Timeout):
             self._fit(errors.Timeout("the run's deadline"))
 
-    def test_the_path_extension_never_returns_more_knots_than_the_cap(self):
-        """The invariant that makes the two `nx > _MAX_EXTENSION_KNOTS` raises unreachable."""
+    @staticmethod
+    def _knots_for_a_minimum_at(distance):
+        """`nx` as `SplinePath.__init__` computes it, for a minimum `distance` from the end."""
         p0, dp0 = np.array([0.0, 0.0]), np.array([1.0, 0.0])
+
+        def V(x, t=distance):
+            walked = -np.asarray(x, dtype=float)[..., 0]
+            return ((walked - t) ** 2) * 1e-12
+
+        xmin = pd._extension_minimum(V, p0, dp0, -1.0)
+        return np.ceil(abs(xmin) - 0.5) + 1
+
+    def test_the_path_extension_never_returns_more_knots_than_the_cap(self):
+        """Swept across the last ladder interval, where the margin to the cap is smallest."""
         cap = float(pd._MAX_EXTENSION_KNOTS)
-        for name, target in (("beyond the ladder", -3.0 * cap),
-                             ("at the ladder's end", -cap),
-                             ("inside the ladder", -0.5 * cap)):
-            with self.subTest(minimum=name):
-                def V(x, t=target):
-                    return ((np.asarray(x, dtype=float)[..., 0] - t) ** 2) * 1e-12
-                xmin = pd._extension_minimum(V, p0, dp0, -1.0)
-                self.assertLessEqual(abs(xmin), cap)
-                self.assertLessEqual(np.ceil(abs(xmin) - 0.5) + 1, cap,
-                                     "the extension can now exceed the knot cap, so the "
-                                     "raises in SplinePath.__init__ are reachable and need "
-                                     "a test of their own")
+        worst, worst_at = 0.0, None
+        # Out to three times the cap, so that a ladder reaching further than the cap would
+        # put a minimum within its own reach and be caught here rather than pass unseen.
+        for distance in np.linspace(0.85 * cap, 3.0 * cap, 211):
+            nx = self._knots_for_a_minimum_at(distance)
+            if nx > worst:
+                worst, worst_at = nx, distance
+        self.assertLessEqual(
+            worst, cap,
+            f"a minimum at {worst_at} asks for {worst:.0f} knots against a cap of {cap:.0f}, "
+            "so the two raises in SplinePath.__init__ are reachable and need tests of their "
+            "own rather than this invariant")
+
+    def test_a_minimum_past_the_midpoint_of_the_last_interval_is_not_extended_to(self):
+        """The mechanism that bounds `nx`, named rather than only its consequence.
+
+        Past the midpoint the ladder's end is the lowest sample, so no rise is passed and the
+        search returns 0 instead of a distance. Before it the distance is returned, which is
+        what keeps the two sides of this test from both passing for the same reason.
+        """
+        cap = float(pd._MAX_EXTENSION_KNOTS)
+        ladder = np.concatenate([[0.0], np.geomspace(1e-10, cap, 300)])
+        midpoint = 0.5 * (ladder[-2] + ladder[-1])
+        self.assertEqual(self._knots_for_a_minimum_at(midpoint + 100.0), 1.0,
+                         "a minimum past the midpoint was extended to, so the bound on nx "
+                         "is not the midpoint of the last interval")
+        self.assertGreater(self._knots_for_a_minimum_at(midpoint - 100.0), 1.0,
+                           "a minimum before the midpoint was not extended to either, so "
+                           "the test above passes for the wrong reason")
+
+
+def _quartic_instanton():
+    """A quartic with two minima, the shallow one metastable, as the solver expects."""
+    def V(phi):
+        phi = np.asarray(phi, dtype=float)
+        return 0.25 * phi**4 - 0.49 * phi**3 + 0.235 * phi**2
+
+    def dV(phi):
+        phi = np.asarray(phi, dtype=float)
+        return phi**3 - 1.47 * phi**2 + 0.47 * phi
+
+    def d2V(phi):
+        phi = np.asarray(phi, dtype=float)
+        return 3.0 * phi**2 - 2.94 * phi + 0.47
+
+    return tunneling1D.SingleFieldInstanton(1.0, 0.0, V, dV, d2V)
 
 
 class TheThinWallMessageOfTheShootingTests(unittest.TestCase):
@@ -127,24 +178,9 @@ class TheThinWallMessageOfTheShootingTests(unittest.TestCase):
     reports no tunnelling.
     """
 
-    @staticmethod
-    def _instanton():
-        """A quartic with two minima, the shallow one metastable, as the solver expects."""
-        def V(phi):
-            phi = np.asarray(phi, dtype=float)
-            return 0.25 * phi**4 - 0.49 * phi**3 + 0.235 * phi**2
+    _instanton = staticmethod(_quartic_instanton)
 
-        def dV(phi):
-            phi = np.asarray(phi, dtype=float)
-            return phi**3 - 1.47 * phi**2 + 0.47 * phi
-
-        def d2V(phi):
-            phi = np.asarray(phi, dtype=float)
-            return 3.0 * phi**2 - 2.94 * phi + 0.47
-
-        return tunneling1D.SingleFieldInstanton(1.0, 0.0, V, dV, d2V)
-
-    def test_a_failure_of_the_exact_solution_is_code_11(self):
+    def test_a_failure_to_bracket_the_starting_radius_is_code_11(self):
         inst = self._instanton()
         with mock.patch.object(tunneling1D.optimize, "brentq",
                                side_effect=ValueError("no solution here")):
@@ -181,6 +217,57 @@ class TheThinWallMessageOfTheShootingTests(unittest.TestCase):
         r0, phi, dphi = inst.initialConditions(1e-3, 1e-4, 1e-2)
         self.assertTrue(np.isfinite(r0))
         self.assertTrue(np.isfinite(phi))
+
+
+class TheProfileSearchTranslatesWhatItsHelpersRaiseTests(unittest.TestCase):
+    """The other two code-11 sites, both inside `findProfile`.
+
+    `findProfile` over- and undershoots the starting field value, and on each trial it asks
+    `initialConditions` for the starting radius and `integrateProfile` to integrate outward.
+    Each call is wrapped: a `TunnelingError` from the first is re-raised with a message that
+    names the initial-conditions step, and an `IntegrationError` from the second becomes a
+    `TunnelingError` saying the integration failed. Without these two the shooting would hand
+    the caller a bare helper failure with no statement of which step of the bounce stopped.
+    """
+
+    def test_a_failure_of_the_initial_conditions_names_that_step(self):
+        inst = _quartic_instanton()
+        with mock.patch.object(inst, "initialConditions",
+                               side_effect=errors.TunnelingError("no bracket")):
+            with self.assertRaises(errors.TunnelingError) as caught:
+                inst.findProfile()
+        message = " ".join(str(caught.exception).split())
+        self.assertEqual(caught.exception.errorcode, 11)
+        self.assertIn("findProfile", message)
+        self.assertIn("initial conditions", message)
+        self.assertIn("no bracket", message,
+                      "the failure that stopped the step is what says why it stopped")
+
+    def test_a_failure_of_the_outward_integration_says_so(self):
+        inst = _quartic_instanton()
+        with mock.patch.object(inst, "integrateProfile",
+                               side_effect=IntegrationError("dr < drmin")):
+            with self.assertRaises(errors.TunnelingError) as caught:
+                inst.findProfile()
+        message = " ".join(str(caught.exception).split())
+        self.assertEqual(caught.exception.errorcode, 11)
+        self.assertIn("Integration failed", message)
+        self.assertIn("dr < drmin", message)
+
+    def test_the_run_deadline_is_not_read_as_a_failed_integration(self):
+        """`Timeout` must not come back as a verdict on the profile."""
+        inst = _quartic_instanton()
+        with mock.patch.object(inst, "integrateProfile",
+                               side_effect=errors.Timeout("the run's deadline")):
+            with self.assertRaises(errors.Timeout):
+                inst.findProfile()
+
+    def test_an_ordinary_potential_returns_a_profile(self):
+        """The control: these messages must not be what the routine usually produces."""
+        profile = _quartic_instanton().findProfile()
+        self.assertTrue(np.all(np.isfinite(profile.R)))
+        self.assertTrue(np.all(np.isfinite(profile.Phi)))
+        self.assertGreater(len(profile.R), 1)
 
 
 class TheFirstTransitionMustStartFromTheHighTemperaturePhaseTests(unittest.TestCase):
