@@ -57,7 +57,12 @@ class TheSplineFitTranslatesItsFailuresTests(unittest.TestCase):
         self.assertIn("the knots are not increasing", str(caught.exception))
 
     def test_a_path_carrying_a_nan_is_an_infinite_action_rather_than_a_spline_failure(self):
-        """A `nan` in the path is the bounce failing, not the spline: different code, 10."""
+        """A `nan` in the path is the bounce failing, not the spline.
+
+        `InfiniteActionError` carries no `errorcode` at all, unlike `SplineError`: it is not
+        one of the numbered outcomes a point can be reported with, it is how the bounce says it
+        found no finite action. So this is not a different code, it is no code.
+        """
         settings = types.SimpleNamespace(V_spline_samples=None)
         pts = np.array([[0.0, 0.0], [np.nan, 0.0], [2.0, 0.0]])
         with mock.patch.object(pd, "SplinePath", side_effect=ValueError("knots")):
