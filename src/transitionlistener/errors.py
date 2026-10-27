@@ -207,11 +207,15 @@ class PotentialError(Exception):
     Used when the potential does not have the expected characteristics.
 
     The message is the human-readable explanation and reaches ``args[0]``. The
-    machine-readable tag is the separate ``error_type`` argument, kept on the instance, and
-    every handler of this exception translates one of ``"no barrier"`` and
-    ``"stable, not metastable"`` and reports anything else as
-    :class:`UnexpectedError`. An earlier convention passed both inside the message as a
-    tuple, which is why a handler once read ``args[1]``; that index does not exist.
+    machine-readable tag is the separate ``error_type`` argument, kept on the instance. Both
+    handlers translate ``"no barrier"`` and ``"stable, not metastable"``; the one in
+    ``pathDeformation.bounceAction`` reports any third tag as :class:`UnexpectedError`, which
+    is the intended contract and what this version fixes. The handler in
+    ``pathDeformation._execute_full_tunneling`` still reads ``args[1]`` on that branch and so
+    raises :class:`IndexError` instead, because an earlier convention passed the tag inside
+    the message as a tuple and that index does not exist. No third tag is produced anywhere
+    in the package, so neither branch is reached today; the second handler is corrected in the
+    image-pairing change.
     """
 
     def __init__(
