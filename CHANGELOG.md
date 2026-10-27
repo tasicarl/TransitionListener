@@ -232,7 +232,10 @@ Each line says what was wrong and when it bit.
   rather than left to be read as describing the new results, since the CLI reuses
   `output_path` and does not clean the directory between runs. Every whitespace run in a
   position or a message collapses to one space as it is written, so a cause carrying a tab or
-  a carriage return stays one parseable row in a tab-separated file.
+  a carriage return stays one parseable row in a tab-separated file. On the random-scan path
+  the cause has its commas replaced by semicolons as well, because that output table is
+  comma-separated and quotes nothing, and the message names two phases, a latent heat and two
+  energy densities in one sentence.
 - The transition could be built between two images of the same minimum, so the bounce was
   computed along a path the field does not take. On the 2HDM at `lambda3` = 5.868 that gave
   `S_3/T` = 336.6 against 152.6 and 153.3 at the neighbouring couplings, and the point returned

@@ -81,6 +81,19 @@ def sample_and_export_to_csv(args):
     return pd.Series([lnL_value], name="lnL")
 
 
+def _csv_safe(message) -> str:
+    """Make a failure message safe for the random scan's output table.
+
+    `output_schema.OutputRandomscan.write_row` serialises a row as
+    `','.join(str(val) for val in data.values())` and quotes nothing, so a value carrying a
+    comma would split into extra columns and one carrying a newline into extra rows. The
+    guard's message carries both: it names two phases, a latent heat and two energy densities
+    in one sentence. Commas become semicolons and every whitespace run becomes one space, so
+    one failed point stays one row.
+    """
+    return " ".join(str(message).replace(",", ";").split())
+
+
 def rand_listener(q, output_path, derived_params) -> None:
     """Listener which appends the output to a file.
     
@@ -143,8 +156,9 @@ def rand_worker(inp_params, q):
         res_params["error"] = errcode
         # The cause, not an empty string. `get_empty_result` blanks every column, so a failed
         # random-scan row used to carry its code and nothing else, while the line and grid
-        # paths carry both; `errms` was read here and then discarded.
-        res_params["errormsg"] = errms
+        # paths carry both; `errms` was read here and then discarded. It goes through
+        # `_csv_safe` because this row is written to an unquoted comma-separated file.
+        res_params["errormsg"] = _csv_safe(errms)
     else:
         res_params = extract_parameters(res, derived_params)
 

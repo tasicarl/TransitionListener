@@ -24,13 +24,14 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import tempfile
 import unittest
 from unittest import mock
 
 import numpy as np
 
 from transitionlistener import errors
-from transitionlistener.interface import pipeline, samplers
+from transitionlistener.interface import output_schema, pipeline, samplers
 
 
 class ALogger:
@@ -127,6 +128,71 @@ class TheRandomScanRowCarriesItsCauseTests(unittest.TestCase):
         row = self.run_worker({"error": 10, "errormsg": "T_bro is below T_sym"})
         self.assertIn("smoothened_lnL", row)
         self.assertTrue(np.isnan(row["smoothened_lnL"]))
+
+
+class TheRandomScanRowStaysOneCsvRowTests(unittest.TestCase):
+    """The random scan's output table is comma-separated and quotes nothing.
+
+    `OutputRandomscan.write_row` builds a row as `','.join(str(val) for val in
+    data.values())`. The guard's message names two phases, a latent heat and two energy
+    densities in one sentence, so it carries commas, and a wrapped message carries newlines.
+    Written verbatim, one failed point would become several columns and several rows.
+    """
+
+    THE_REAL_MESSAGE = (
+        "ERROR in TransitionListener of type 10: The phase pair 1 -> 8-6-7-5-4-3-2 carries a "
+        "relative latent heat (e_sym - e_bro) / |e_sym| = -1.2637e-04 (e_sym = 5488013000.0 "
+        "GeV^4,\ne_bro = 5488707000.0 GeV^4) at T_sym, so this pair of phases does not release "
+        "energy there and cannot be the transition."
+    )
+
+    def write(self, message):
+        """Write one failed row the way the listener does and return the file's lines."""
+        directory = pathlib.Path(tempfile.mkdtemp())
+        path = str(directory / "output_table.csv")
+        open(path, "w").close()
+        outputter = output_schema.OutputRandomscan(path)
+        row = {"error": 10, "errormsg": samplers._csv_safe(message), "alpha": 0.72}
+        outputter.write_row({"lambda4": -2.0807692307692305}, row)
+        outputter.stop()
+        return [line for line in pathlib.Path(path).read_text().splitlines() if line]
+
+    def test_the_real_message_stays_one_row_with_one_field_per_column(self):
+        lines = self.write(self.THE_REAL_MESSAGE)
+        self.assertEqual(len(lines), 2, "a header and exactly one data row")
+        header, data = lines
+        self.assertEqual(len(data.split(",")), len(header.split(",")),
+                         "the cause added columns to the row")
+
+    def test_a_comma_in_the_message_does_not_add_a_column(self):
+        lines = self.write("T_bro below T_sym, which cannot be")
+        self.assertEqual(len(lines[1].split(",")), len(lines[0].split(",")))
+
+    def test_a_newline_in_the_message_does_not_add_a_row(self):
+        lines = self.write("T_bro below T_sym\nsecond line")
+        self.assertEqual(len(lines), 2)
+
+    def test_the_numbers_in_the_cause_survive(self):
+        """Only the separators are touched, so the diagnosis is still readable."""
+        lines = self.write(self.THE_REAL_MESSAGE)
+        self.assertIn("-1.2637e-04", lines[1])
+        self.assertIn("1 -> 8-6-7-5-4-3-2", lines[1])
+
+    def test_the_worker_sends_a_safe_message(self):
+        """Not only the helper: the row the worker puts on the queue is already safe."""
+        queue = []
+        with mock.patch.object(samplers, "load_potential", return_value=object()), \
+             mock.patch.object(samplers, "Logger", lambda path: ALogger()), \
+             mock.patch.object(samplers, "call_by_sampler",
+                               return_value={"error": 10,
+                                             "errormsg": self.THE_REAL_MESSAGE}):
+            samplers.rand_worker(
+                ({"lambda4": -2.08}, "model.py", "R2HDM", "/tmp/unused/", {}, 10),
+                type("Q", (), {"put": lambda _self, item: queue.append(item)})())
+        written = queue[0][1]["errormsg"]
+        self.assertNotIn(",", written)
+        self.assertNotIn("\n", written)
+        self.assertIn("-1.2637e-04", written)
 
 
 class TheCauseReachesTheStructuredOutputTests(unittest.TestCase):
