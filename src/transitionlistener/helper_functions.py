@@ -988,65 +988,169 @@ def temperatureDerivativeStep(pot, T: float, X=None,
     return dT
 
 
-def enforce_broken_not_below_symmetric(T_bro, T_sym, *, rtol: float,
-                                       where: str = "the percolation profile"):
-    """Keep the broken-phase temperature at or above the symmetric one.
+#: Relative slack allowed on the broken-phase temperature in
+#: :func:`enforce_broken_not_below_symmetric`, measured rather than configured.
+#:
+#: Energy is released by the transition, so the broken phase at ``T_bro`` carries the energy
+#: the symmetric phase had at ``T_sym``, and ``T_bro > T_sym`` holds by construction, whatever
+#: accuracy the solver is working to. The only reason the ordering can come out reversed on a
+#: sound transition is that the root solve behind ``T_bro`` sets two nearly equal energy
+#: densities against each other, and double precision cannot keep the sign of a difference
+#: that small.
+#:
+#: Measured on the 2HDM line ``lambda3 = 5.5 .. 5.87``, over 2313 step-3 support points and
+#: the four phase pairings the line visits (``1 -> 0``, ``2 -> 0``, ``3 -> 0``, ``2-1 -> 0``):
+#: the relative latent heat ``(e_sym - e_bro) / |e_sym|`` has a median of ``+9.74e-04``, comes
+#: out exactly zero at 22 points, and where it comes out negative the worst case is
+#: ``-5.91e-14``, 266 units in the last place. Since ``e`` follows ``T**4`` closely enough here
+#: that ``de / e = 4 dT / T``, that worst case is a relative temperature shortfall of about
+#: ``1.5e-14``.
+#:
+#: The one point whose ordering was reversed for a physical reason, ``lambda4 =
+#: -2.0807692307692305``, had a relative temperature shortfall of ``3.167e-05`` and a relative
+#: latent heat of ``-1.264e-04``, a third of a typical latent heat carrying the wrong sign,
+#: because the phase-chain walk had paired the symmetric phase with a broken phase that is not
+#: the one the transition ends in.
+#:
+#: ``1e-09`` sits between the two: five orders above the worst round-off, four and a half
+#: orders below the real inversion. The run's ``acc_tperc``, 1 per cent by default, is seven
+#: orders too loose and admits the real inversion silently, which is why this threshold is not
+#: taken from it.
+BROKEN_TEMPERATURE_ROUNDOFF = 1e-9
 
-    The broken phase is reheated by the latent heat it releases, so ``T_bro < T_sym`` is
-    thermodynamically wrong and the step-3 profile guards against it. That guard used to be an
-    exact ``<`` raising a bare :class:`ValueError`, which carries no ``errorcode``: a point
-    that tripped it was reported as an unclassified failure, CLI code -1, and the user never
-    saw what had actually gone wrong.
 
-    Measured on the 2HDM at ``lambda4 = -2.0807692307692305``: the shortfall was **31.7 parts
-    per million**, against the ``acc_tperc`` of 1 per cent the run was working to, so the two
-    temperatures were not distinguishable at the accuracy they had been determined to. The
-    root solve behind it was sound -- the energy criterion changes sign exactly once in its
-    bracket -- and the real fault was upstream, a jump of the true-vacuum fraction from 0 to 1
-    across an interval 1.17 parts per million wide. Clamping and continuing let the solver
-    reach that diagnosis itself and report it with its own code.
+def enforce_broken_not_below_symmetric(T_bro, T_sym, *,
+                                       where: str = "the percolation profile",
+                                       e_sym=None, measure_broken_energy=None,
+                                       phase_symmetric=None, phase_broken=None):
+    """Assert that the broken phase is the warmer of the two, and say which phases if not.
 
-    So a shortfall within ``rtol`` is clamped and warned about, and one larger than ``rtol``
-    still refuses the profile, now as a :class:`errors.PercolationError` rather than an
-    unclassified one.
+    The transition releases energy and happens below the critical temperature, so the broken
+    phase into which the bubbles grow is reheated: ``T_bro > T_sym`` is a property of the
+    physics, not an accuracy the solver achieves. ``T_bro < T_sym`` therefore means one of two
+    things, and the size of the shortfall tells them apart.
+
+    Below :data:`BROKEN_TEMPERATURE_ROUNDOFF` the latent heat was too small for double precision to
+    keep its sign, the two temperatures are the same number, and the broken one is clamped to
+    the symmetric one with a warning.
+
+    Above it the ordering is reversed for a reason, and the profile is refused as a classified
+    :class:`errors.PercolationError` naming both phases and the measured latent heat. The one
+    case seen so far was the phase-chain walk pairing the symmetric phase with a broken phase
+    other than the one the transition ends in; the pair it compared carried a latent heat of
+    ``-1.264e-04`` relative, while the correct pair carried ``+5.299e-02``. Before this guard
+    was classified the same point raised a bare :class:`ValueError`, which has no
+    ``errorcode``, and reached the user as an unclassified failure with no message.
 
     Parameters
     ----------
     T_bro, T_sym : float
-        Broken- and symmetric-phase temperatures at the same support point.
-    rtol : float
-        Relative tolerance, normally the run's ``acc_tperc``: below the accuracy the
-        temperatures themselves carry, their difference is not a measurement.
+        Broken- and symmetric-phase temperatures at the same support point, in GeV.
     where : str
-        Named in both the warning and the error, so the two call sites are distinguishable.
+        Named in both the warning and the error, so the three call sites are distinguishable.
+    e_sym : float, optional
+        Energy density of the symmetric phase at ``T_sym``, in GeV^4.
+    measure_broken_energy : callable, optional
+        Returns the energy density of the broken phase **at** ``T_sym``, in GeV^4. It has to be
+        measured there and not at the broken-phase temperature the root solve returned, because
+        that solve sets ``e_bro(T_bro) = e_sym(T_sym)`` by construction: the latent heat read at
+        the returned temperature is identically zero and says nothing. Called only when the
+        profile is refused, so a healthy point pays nothing for it, and its own failure is
+        swallowed rather than allowed to replace the error being reported. Given together with
+        ``e_sym``, the error quotes the relative latent heat whose sign decides the ordering;
+        the decision itself does not depend on either.
+    phase_symmetric, phase_broken : optional
+        The two phases being paired. Their ``key`` is named in the error, which is what points
+        at a mispairing rather than at the root solve.
 
     Returns
     -------
     tuple[float, float]
         The temperature to use, and the relative shortfall that was clamped, zero if none.
+
+    Raises
+    ------
+    errors.PercolationError
+        If either temperature is not finite, or the shortfall exceeds
+        :data:`BROKEN_TEMPERATURE_ROUNDOFF`.
     """
     t_bro = float(T_bro)
     t_sym = float(T_sym)
-    if not (t_bro < t_sym):
+    # `not (t_bro < t_sym)` is True for a nan, so a nan would pass an ordering test unnoticed
+    # and be returned as a temperature. Both have to be finite before they can be compared.
+    if not (np.isfinite(t_bro) and np.isfinite(t_sym)):
+        raise errors.PercolationError(
+            f"{_pair_description(phase_symmetric, phase_broken)} reached {where} with "
+            f"T_bro = {t_bro!r} and T_sym = {t_sym!r}, at least one of which is not a finite "
+            "temperature, so the two cannot be ordered. The step-3 root solve for the "
+            "reheated broken-phase temperature is the usual source."
+        )
+    if t_bro >= t_sym:
         return t_bro, 0.0
     scale = abs(t_sym) if t_sym != 0.0 else 1.0
     shortfall = (t_sym - t_bro) / scale
-    if shortfall <= float(rtol):
+    if shortfall <= BROKEN_TEMPERATURE_ROUNDOFF:
         warnings.warn(
-            f"T_bro fell {shortfall:.3e} below T_sym in {where}, which is within the "
-            f"{float(rtol):.3g} accuracy the temperatures carry; clamping T_bro to T_sym. "
-            "A jump of the true-vacuum fraction across a collapsed support interval is the "
-            "usual cause and is reported separately if it persists.",
+            f"T_bro fell {shortfall:.3e} below T_sym in {where}, which is round-off on a "
+            f"latent heat too small for double precision to keep the sign of (the threshold "
+            f"is {BROKEN_TEMPERATURE_ROUNDOFF:.3g} relative); clamping T_bro to T_sym.",
             RuntimeWarning,
             stacklevel=2,
         )
         return t_sym, shortfall
     raise errors.PercolationError(
-        f"T_bro = {t_bro!r} is below T_sym = {t_sym!r} in {where}, short by "
-        f"{shortfall:.3e} relative, more than the {float(rtol):.3g} accuracy the "
-        "temperatures are determined to. The broken phase is reheated by the latent heat it "
-        "releases, so it cannot be the colder of the two by a resolvable amount."
+        f"T_bro = {t_bro!r} GeV is below T_sym = {t_sym!r} GeV in {where}, short by "
+        f"{shortfall:.3e} relative, {shortfall / BROKEN_TEMPERATURE_ROUNDOFF:.3g} times the "
+        f"{BROKEN_TEMPERATURE_ROUNDOFF:.3g} that round-off on the energy difference behind "
+        "T_bro can account for. "
+        "The transition releases energy and happens below the critical temperature, so the "
+        "broken phase is reheated and cannot be the colder of the two. "
+        f"{_pair_description(phase_symmetric, phase_broken)} carries "
+        f"{_latent_heat_description(e_sym, _measured(measure_broken_energy))} at T_sym, so "
+        "this pair of phases does not release energy there and cannot be the transition. "
+        "A phase-chain walk that "
+        "paired the symmetric phase with a broken phase other than the one the transition "
+        "ends in is the cause seen so far."
     )
+
+
+def _pair_description(phase_symmetric, phase_broken) -> str:
+    """Name the two phases being paired, for the guard's warning and error messages."""
+    sym = getattr(phase_symmetric, "key", None)
+    bro = getattr(phase_broken, "key", None)
+    if sym is None and bro is None:
+        return "The phase pair"
+    return f"The phase pair {sym} -> {bro}"
+
+
+def _measured(measure):
+    """Call `measure` for the error message, returning None rather than raising.
+
+    The energy density is evaluated here only to describe a failure that has already been
+    decided. If that evaluation fails in turn, the message loses one number; letting it
+    propagate would replace the percolation error with an unrelated one and lose the
+    diagnosis entirely.
+    """
+    if measure is None:
+        return None
+    try:
+        return float(measure())
+    except Exception:
+        return None
+
+
+def _latent_heat_description(e_sym, e_bro) -> str:
+    """Describe the relative latent heat of a phase pair, for the guard's error message."""
+    if e_sym is None or e_bro is None:
+        return "a latent heat that was not measured here"
+    e_sym = float(e_sym)
+    e_bro = float(e_bro)
+    if not (np.isfinite(e_sym) and np.isfinite(e_bro)) or e_sym == 0.0:
+        return f"energy densities e_sym = {e_sym!r} GeV^4 and e_bro = {e_bro!r} GeV^4"
+    relative = (e_sym - e_bro) / abs(e_sym)
+    return (f"a relative latent heat (e_sym - e_bro) / |e_sym| = {relative:+.4e} "
+            f"(e_sym = {e_sym!r} GeV^4, e_bro = {e_bro!r} GeV^4)")
+
 
 
 def thermalDerivativeStep(pot, T: float, X=None) -> float:

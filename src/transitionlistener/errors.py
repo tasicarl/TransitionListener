@@ -519,9 +519,17 @@ class ActionRateJitterError(Exception):
 
 
 class UnexpectedError(Exception):
-    """Raised when an unclassified failure occurs in the CLI."""
+    """Raised when an unclassified failure occurs in the CLI.
+
+    The code is exposed as a class constant because the CLI needs it before an instance
+    exists: an exception that reaches the per-point handler carrying no ``errorcode`` is
+    reported under this one rather than as the unnamed -1 it used to be.
+    """
+
+    #: CLI error code for an unclassified failure.
+    ERRORCODE = 999
 
     def __init__(self, message="An unexpected error occurred."):
         """Attach the catch-all CLI error code."""
         super().__init__(message)
-        self.errorcode = 999
+        self.errorcode = self.ERRORCODE

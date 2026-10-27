@@ -21,6 +21,7 @@ from ultranest import ReactiveNestedSampler
 
 from transitionlistener.observability import PTA_LIKELIHOOD_SETTINGS
 from transitionlistener.helper_functions import import_file, load_potential
+from transitionlistener import errors
 
 from . import state
 from .logging_utils import Logger
@@ -195,14 +196,21 @@ def call_by_sampler(potential: object, inputparams_dict: dict,
             res['errormsg'] = line
             res['error'] = err.errorcode
         else:
+            # Same rule as the per-point handler in `pipeline.py`: an exception with no
+            # `errorcode` is reported under `UnexpectedError`, not as the unnamed -1, with
+            # its own type named so a genuine 999 stays distinguishable.
             line = (
-                "ERROR in TransitionListener of type -1 for input parameters "
+                "ERROR in TransitionListener of type "
+                + str(errors.UnexpectedError.ERRORCODE)
+                + " for input parameters "
                 + str(inputparams_dict)
+                + ": "
+                + type(err).__name__
                 + ": "
                 + getattr(err, 'message', str(err))
             )
             res['errormsg'] = line
-            res['error'] = -1
+            res['error'] = errors.UnexpectedError.ERRORCODE
     return res
 
 

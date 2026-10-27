@@ -263,6 +263,32 @@ def _random_prior_transform(cube: np.ndarray, conf) -> np.ndarray:
     return params
 
 
+def _save_error_messages(messages: list[tuple[str, str]], outpath: str) -> None:
+    """Write the cause of every failed point beside the numeric scan output.
+
+    `errormsg` is a registered result column, but a scan's numeric output cannot carry it: the
+    arrays `save_results_1d` and `save_results_2d` fill are float, and `errormsg` is not among
+    the observable names they iterate. So a failed point reached the output as a bare code in
+    `error.txt`, and the sentence saying what went wrong existed only in the run's error log,
+    which is a different file in a different place and is not written per scan.
+
+    Nothing is written when no point failed, so a clean scan does not gain an empty file.
+
+    Parameters
+    ----------
+    messages : list of (str, str)
+        The grid position of each failed point, formatted by the caller, and its message.
+    outpath : str
+        The scan's output prefix, as the numeric writers use it.
+    """
+    if not messages:
+        return
+    with open(outpath + "errormsg.txt", "w") as fh:
+        fh.write("# point\tcause\n")
+        for position, message in messages:
+            fh.write(f"{position}\t{message}\n")
+
+
 def save_results_2d(res_dict: Iterable[dict], N: int, xrange: np.ndarray,
                     yrange: np.ndarray, outpath: str, outnames: dict,
                     format: str, grid_names: dict, other_params: dict):
@@ -270,6 +296,7 @@ def save_results_2d(res_dict: Iterable[dict], N: int, xrange: np.ndarray,
     outnames.update({"error": "error"})
     h = np.array(res_dict).reshape(N, N)
     res = np.full((N, N, len(outnames)), np.nan)
+    error_messages: list[tuple[str, str]] = []
 
     for i in range(N):
         for j in range(N):
@@ -280,6 +307,9 @@ def save_results_2d(res_dict: Iterable[dict], N: int, xrange: np.ndarray,
                         res[i, j, k] = _to_scalar_or_nan(val)
             if "error" in h[i, j]:
                 res[i, j, k] = _to_scalar_or_nan(h[i, j]["error"])
+            if h[i, j].get("errormsg"):
+                error_messages.append(
+                    (f"{i},{j}", str(h[i, j]["errormsg"]).replace("\n", " ")))
 
     if format == "hdf5":
         with h5py.File(outpath + "data.hdf5", "w") as f:
@@ -316,6 +346,10 @@ def save_results_2d(res_dict: Iterable[dict], N: int, xrange: np.ndarray,
         with open(outpath + "other_params.txt", "w") as fh:
             fh.write("# " + "\t".join(other_params.keys()) + "\n")
             fh.write("\t".join(str(v) for v in other_params.values()) + "\n")
+
+    # Outside the format branches: neither the hdf5 datasets nor the txt arrays can carry a
+    # string column, so the cause of a failed point is written the same way for both.
+    _save_error_messages(error_messages, outpath)
 
 
 def plot_results_2d(results_dict: Iterable[dict], conf, xrange: np.ndarray, yrange: np.ndarray, outpath: str):
@@ -378,6 +412,7 @@ def save_results_1d(res_dict: Iterable[dict], N: int, xrange: np.ndarray, outpat
     outnames.update({"error": "error"})
     h = np.array(res_dict).reshape(N)
     res = np.full((N, len(outnames)), np.nan)
+    error_messages: list[tuple[str, str]] = []
 
     for i in range(N):
         for k, name in enumerate(outnames):
@@ -387,6 +422,8 @@ def save_results_1d(res_dict: Iterable[dict], N: int, xrange: np.ndarray, outpat
                     res[i, k] = _to_scalar_or_nan(val)
         if "error" in h[i]:
             res[i, k] = _to_scalar_or_nan(h[i]["error"])
+        if h[i].get("errormsg"):
+            error_messages.append((str(i), str(h[i]["errormsg"]).replace("\n", " ")))
 
     if format == "hdf5":
         with h5py.File(outpath + "data.hdf5", "w") as f:
@@ -414,6 +451,10 @@ def save_results_1d(res_dict: Iterable[dict], N: int, xrange: np.ndarray, outpat
         with open(outpath + "other_params.txt", "w") as fh:
             fh.write("# " + "\t".join(other_params.keys()) + "\n")
             fh.write("\t".join(str(v) for v in other_params.values()) + "\n")
+
+    # Outside the format branches: neither the hdf5 datasets nor the txt arrays can carry a
+    # string column, so the cause of a failed point is written the same way for both.
+    _save_error_messages(error_messages, outpath)
 
 
 def plot_results_1d(results_dict: Iterable[dict], conf, xrange: np.ndarray, outpath: str):

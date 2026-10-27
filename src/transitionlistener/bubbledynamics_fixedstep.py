@@ -961,12 +961,6 @@ class PercolationSettings:
     maxit: int
     rel_increment: float
     max_boundary_n: int
-    #: Relative accuracy goal on the percolation temperature, carried from
-    #: `percolationConf.acc_tperc`. The step-3 profile compares the broken- and
-    #: symmetric-phase temperatures against it: below the accuracy they are determined to,
-    #: their difference is not a measurement. Appended rather than inserted, so the released
-    #: positional order of this dataclass is unchanged.
-    acc_tperc: float = 1e-2
 
 
 @dataclass
@@ -1028,7 +1022,6 @@ def _build_percolation_settings(pot, nAction: int) -> PercolationSettings:
         maxit=conf.maxit,
         rel_increment=conf.rel_increment,
         max_boundary_n=max_boundary_n,
-        acc_tperc=conf.acc_tperc,
     )
 
 
@@ -1545,8 +1538,11 @@ def _refine_percolation_temperature(
                         eBRO = energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
                     state.Tb[i], _clamped = hf.enforce_broken_not_below_symmetric(
-                        state.Tb[i], TSYM[i], rtol=float(settings.acc_tperc),
-                        where="the fixed-step bubble-dynamics profile")
+                        state.Tb[i], TSYM[i], where="the fixed-step bubble-dynamics profile",
+                        e_sym=eSYM_PT,
+                        measure_broken_energy=lambda: energyDensity(
+                            pot, phase_broken, TSYM[i], include_decoupled=False),
+                        phase_symmetric=phase_symmetric, phase_broken=phase_broken)
                     if _clamped:
                         # As in the adaptive copy: the Hubble rate below reads `eBRO`, which
                         # was evaluated before the clamp moved the temperature.

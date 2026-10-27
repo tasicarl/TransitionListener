@@ -1423,8 +1423,11 @@ def _compute_step3_profile(
                     eBRO = bd.energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
                 state.Tb[i], _clamped = hf.enforce_broken_not_below_symmetric(
-                    state.Tb[i], TSYM[i], rtol=float(settings.acc_tperc),
-                    where="the adaptive step-3 profile")
+                    state.Tb[i], TSYM[i], where="the adaptive step-3 profile",
+                    e_sym=eSYM_PT,
+                    measure_broken_energy=lambda: bd.energyDensity(
+                        pot, phase_broken, TSYM[i], include_decoupled=False),
+                    phase_symmetric=phase_symmetric, phase_broken=phase_broken)
                 if _clamped:
                     # The clamp moved the broken-phase temperature, so the energy density the
                     # Hubble rate below is built from has to follow it; it was evaluated at

@@ -185,17 +185,46 @@ account of every one is in its pull request.
 Each line says what was wrong and when it bit.
 
 - A broken-phase temperature below the symmetric one failed the point without an error code.
-  The guard was an exact comparison raising a bare `ValueError`, so the CLI reported an
+  The transition releases energy and happens below the critical temperature, so the broken
+  phase into which the bubbles grow is reheated and `T_bro > T_sym` holds by construction,
+  whatever accuracy the solver is working to. The guard against the reverse was an exact
+  comparison raising a bare `ValueError`, which carries no error code, so the CLI reported an
   unclassified failure, code -1, and the user never saw the diagnosis the solver had. It is
-  now compared against the run's own `acc_tperc`: below the accuracy the temperatures carry,
-  `T_bro` is clamped to `T_sym` with a `RuntimeWarning`, and above it the profile is refused
-  as a `PercolationError`, code 10. Measured on the 2HDM at `lambda4` = -2.0807692307692305:
-  the shortfall was 31.7 parts per million against an `acc_tperc` of 1 per cent, the energy
-  criterion behind it changed sign exactly once in its bracket, and the real fault was a jump
-  of the true-vacuum fraction from 0 to 1 across a support interval 1.17 parts per million
-  wide, which the solver reports itself once it is allowed to continue. The rule lived in
-  three copies, the adaptive module and both fixed-step twins; all three now call one shared
+  now an assertion of that ordering whose only slack is the floating-point grid: below a
+  relative shortfall of 1e-9 the two temperatures are the same number and `T_bro` is clamped
+  to `T_sym` with a `RuntimeWarning`; above it the profile is refused as a `PercolationError`,
+  code 10, in a message naming both phases and the relative latent heat that came out
+  negative, measured at `T_sym`, which is the only place it carries information: the step-3
+  root solve sets `e_bro(T_bro) = e_sym(T_sym)` by construction, so read at the broken-phase
+  temperature that solve returned the latent heat is identically zero. The measurement is made
+  only when the profile is refused, so a healthy point pays nothing for it. The threshold is measured, not configured. Over 2313 step-3 support points on the
+  2HDM line `lambda3` = 5.5 to 5.87 and the four phase pairings it visits, the relative latent
+  heat `(e_sym - e_bro) / |e_sym|` has a median of +9.74e-04, is exactly zero at 22 points, and
+  where it comes out negative the worst case is -5.91e-14, 266 units in the last place. The one
+  point whose ordering was reversed for a physical reason, `lambda4` = -2.0807692307692305, had
+  a relative temperature shortfall of 3.167e-05 and a relative latent heat of -1.264e-04,
+  because the phase-chain walk had paired the symmetric phase with a broken phase other than
+  the one the transition ends in; the correct pair carries +5.299e-02. The run's `acc_tperc`,
+  1 per cent by default, is seven orders too loose to separate the two and would have admitted
+  that point silently, which is why the threshold is not taken from it. The rule lived in three
+  copies, the adaptive module and both fixed-step twins; all three now call one shared
   function, so it cannot drift apart again.
+- No failing point is reported as error -1 any more, and every one carries its cause. Code -1
+  named no cause and is documented nowhere. It came from two places: the per-point handler,
+  whose `getattr(error, "errorcode", -1)` turned any exception without a code into it, and the
+  `else` branch of the sampler path, which wrote it literally. Both now report
+  `UnexpectedError`, code 999, which is what the package already calls an unclassified failure,
+  and both name the original exception type in the message, so a genuine 999 stays
+  distinguishable from a stray `ValueError` that reached the handler. The per-point handler
+  also fills `errormsg`, a registered result column it had left empty while the random-scan
+  path filled it: the cause reached the error log and never the structured output, so a point
+  failed, the user saw a number, and the reason sat in a file beside it. A scan's output now
+  carries the cause as well, in `errormsg.txt` beside the numeric columns, one row per failed
+  point with its grid position. Neither writer could carry it before: both fill a float array
+  over the observable names, and `errormsg` is not among them, so for a scan the sentence
+  existed only in the run's error log, which is a different file in a different place and is
+  not written per scan. The file is written for both output formats, since the hdf5 datasets
+  cannot carry a string column either, and is not written at all when no point failed.
 - The transition could be built between two images of the same minimum, so the bounce was
   computed along a path the field does not take. On the 2HDM at `lambda3` = 5.868 that gave
   `S_3/T` = 336.6 against 152.6 and 153.3 at the neighbouring couplings, and the point returned
