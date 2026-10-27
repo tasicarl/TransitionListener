@@ -172,6 +172,49 @@ class NonFiniteTemperaturesCannotBeOrderedTests(unittest.TestCase):
         self.assertNotEqual(raised.exception.errorcode, -1)
 
 
+class TheDeadlineSurvivesTheDiagnosticMeasurementTests(unittest.TestCase):
+    """The latent heat is measured only to describe a failure, and the measurement calls back
+    into the potential, so the run's deadline can land inside it.
+
+    `errors.Timeout` is raised from the `SIGALRM` handler and is an ordinary `Exception`, so a
+    broad catch around the measurement takes it. Swallowed, an aborted run would be reported as
+    a percolation failure with one number missing, which is a claim about the physics that
+    nothing measured.
+    """
+
+    def test_a_timeout_in_the_measurement_propagates(self):
+        def deadline():
+            raise errors.Timeout("deadline reached")
+
+        with self.assertRaises(errors.Timeout):
+            hf.enforce_broken_not_below_symmetric(
+                LAMBDA4_T_BRO, LAMBDA4_T_SYM, e_sym=LAMBDA4_E_SYM,
+                measure_broken_energy=deadline)
+
+    def test_any_other_failure_in_the_measurement_keeps_the_percolation_error(self):
+        """The guard's own verdict must not be replaced by a failure of its diagnostics."""
+        def boom():
+            raise ValueError("the potential could not be evaluated")
+
+        with self.assertRaises(errors.PercolationError) as caught:
+            hf.enforce_broken_not_below_symmetric(
+                LAMBDA4_T_BRO, LAMBDA4_T_SYM, e_sym=LAMBDA4_E_SYM,
+                measure_broken_energy=boom)
+        self.assertIn("not measured", str(caught.exception))
+
+    def test_the_measurement_is_not_called_on_a_healthy_point(self):
+        """So a healthy point cannot be aborted by a deadline inside a diagnostic."""
+        calls = []
+
+        def counted():
+            calls.append(1)
+            raise errors.Timeout("deadline reached")
+
+        hf.enforce_broken_not_below_symmetric(
+            120.0, 110.0, e_sym=LAMBDA4_E_SYM, measure_broken_energy=counted)
+        self.assertEqual(calls, [], "the diagnostic ran on a point that was not refused")
+
+
 class TheErrorNamesThePairAndItsLatentHeatTests(unittest.TestCase):
     """What points at a mispairing rather than at the root solve."""
 

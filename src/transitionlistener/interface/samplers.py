@@ -141,7 +141,10 @@ def rand_worker(inp_params, q):
         errms = res["errormsg"]
         res_params = get_empty_result()
         res_params["error"] = errcode
-        res_params["errormsg"] = ""
+        # The cause, not an empty string. `get_empty_result` blanks every column, so a failed
+        # random-scan row used to carry its code and nothing else, while the line and grid
+        # paths carry both; `errms` was read here and then discarded.
+        res_params["errormsg"] = errms
     else:
         res_params = extract_parameters(res, derived_params)
 

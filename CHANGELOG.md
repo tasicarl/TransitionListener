@@ -218,15 +218,21 @@ Each line says what was wrong and when it bit.
   `UnexpectedError`, code 999, which is what the package already calls an unclassified failure,
   and both name the original exception type in the message, so a genuine 999 stays
   distinguishable from a stray `ValueError` that reached the handler. The per-point handler
-  also fills `errormsg`, a registered result column it had left empty while the random-scan
-  path filled it: the cause reached the error log and never the structured output, so a point
-  failed, the user saw a number, and the reason sat in a file beside it. A scan's output now
-  carries the cause as well, in `errormsg.txt` beside the numeric columns, one row per failed
-  point with its grid position. Neither writer could carry it before: both fill a float array
-  over the observable names, and `errormsg` is not among them, so for a scan the sentence
-  existed only in the run's error log, which is a different file in a different place and is
-  not written per scan. The file is written for both output formats, since the hdf5 datasets
-  cannot carry a string column either, and is not written at all when no point failed.
+  also fills `errormsg`, a registered result column that no failing path had filled: the
+  per-point handler left it empty, and the random-scan worker read the message and then wrote
+  the empty string into the row it returns. So the cause reached the error log and never the
+  structured output, a point failed, the user saw a number, and the reason sat in a file beside
+  it. Both now carry it. A scan's output carries it as well, in `errormsg.txt` beside the
+  numeric columns, one row per failed point with its grid position. Neither writer could carry
+  it before: both fill a float array over the observable names, and `errormsg` is not among
+  them, so for a scan the sentence existed only in the run's error log, which is a different
+  file in a different place and is not written per scan. The file is written for both output
+  formats, since the hdf5 datasets cannot carry a string column either, and is not written at
+  all when no point failed. A file left by an earlier run over the same output path is removed
+  rather than left to be read as describing the new results, since the CLI reuses
+  `output_path` and does not clean the directory between runs. Every whitespace run in a
+  position or a message collapses to one space as it is written, so a cause carrying a tab or
+  a carriage return stays one parseable row in a tab-separated file.
 - The transition could be built between two images of the same minimum, so the bounce was
   computed along a path the field does not take. On the 2HDM at `lambda3` = 5.868 that gave
   `S_3/T` = 336.6 against 152.6 and 153.3 at the neighbouring couplings, and the point returned

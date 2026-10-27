@@ -9,9 +9,10 @@ original exception type in the message so a genuine 999 stays distinguishable fr
 `ValueError` that reached the handler.
 
 The second half is that the cause reached the user at all. `errormsg` is a registered base
-result column, filled on the random-scan path and left empty by the per-point handler, so the
-message went to the error log and never to the structured output: a point failed, the user saw
-a number, and the reason was in a file beside it.
+result column that no failing path filled: the per-point handler left it empty, and
+`rand_worker` read the message into a local name and then wrote the empty string into the row
+it returns. So the message went to the error log and never to the structured output: a point
+failed, the user saw a number, and the reason was in a file beside it.
 
 Measured case behind this: the 2HDM at `lambda4 = -2.0807692307692305` raised a bare
 `ValueError` from the step-3 ordering guard, and came out of the scan as error -1 with no
@@ -29,7 +30,7 @@ from unittest import mock
 import numpy as np
 
 from transitionlistener import errors
-from transitionlistener.interface import pipeline
+from transitionlistener.interface import pipeline, samplers
 
 
 class ALogger:
@@ -75,6 +76,57 @@ class AnUncodedExceptionIsNotReportedAsMinusOneTests(unittest.TestCase):
     def test_an_exception_with_no_message_attribute_still_gets_a_code(self):
         result, _ = handle(ZeroDivisionError())
         self.assertEqual(int(result["error"][0]), errors.UnexpectedError.ERRORCODE)
+
+
+class TheRandomScanRowCarriesItsCauseTests(unittest.TestCase):
+    """`rand_worker` builds its failed row from `get_empty_result`, which blanks every column.
+
+    The row it returns is what the random scan writes, so a cause dropped here is invisible
+    whatever the per-point handler did. The worker already read the message into `errms`
+    before discarding it, which is why this is one line rather than a new path.
+    """
+
+    def run_worker(self, result):
+        """Drive the worker with the potential, the loggers and the solver call stubbed."""
+        queue = []
+        with mock.patch.object(samplers, "load_potential", return_value=object()), \
+             mock.patch.object(samplers, "Logger", lambda path: ALogger()), \
+             mock.patch.object(samplers, "call_by_sampler", return_value=result), \
+             mock.patch.object(samplers, "extract_parameters",
+                               side_effect=AssertionError("the failing branch was not taken")):
+            samplers.rand_worker(
+                ({"lambda4": -2.0807692307692305}, "model.py", "R2HDM", "/tmp/unused/",
+                 {}, 10),
+                type("Q", (), {"put": lambda _self, item: queue.append(item)})())
+        self.assertEqual(len(queue), 1)
+        return queue[0][1]
+
+    def test_a_failed_row_carries_the_message(self):
+        row = self.run_worker({
+            "error": 10,
+            "errormsg": "ERROR in TransitionListener of type 10: T_bro is below T_sym",
+        })
+        self.assertEqual(row["error"], 10)
+        self.assertIn("T_bro is below T_sym", row["errormsg"])
+
+    def test_the_unclassified_code_carries_its_message_too(self):
+        row = self.run_worker({
+            "error": errors.UnexpectedError.ERRORCODE,
+            "errormsg": "ERROR in TransitionListener of type 999: ValueError: boom",
+        })
+        self.assertEqual(row["error"], errors.UnexpectedError.ERRORCODE)
+        self.assertIn("ValueError: boom", row["errormsg"])
+
+    def test_an_empty_message_stays_empty_rather_than_becoming_none(self):
+        """A failure with nothing to say must still produce a writable string column."""
+        row = self.run_worker({"error": 10, "errormsg": ""})
+        self.assertEqual(row["errormsg"], "")
+
+    def test_the_row_still_carries_every_other_column(self):
+        """The row is `get_empty_result`, so the numeric columns are present and nan."""
+        row = self.run_worker({"error": 10, "errormsg": "T_bro is below T_sym"})
+        self.assertIn("smoothened_lnL", row)
+        self.assertTrue(np.isnan(row["smoothened_lnL"]))
 
 
 class TheCauseReachesTheStructuredOutputTests(unittest.TestCase):

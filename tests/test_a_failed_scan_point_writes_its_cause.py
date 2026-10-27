@@ -29,6 +29,101 @@ def a_good_point(alpha=0.1):
     return {"strongestTransitionObservables": {"alpha": alpha}}
 
 
+class TheMessageFileDoesNotOutliveItsFailuresTests(unittest.TestCase):
+    """The CLI reuses `output_path` and does not clean it between runs."""
+
+    def save_into(self, directory, points):
+        outpath = str(directory) + "/"
+        scans.save_results_1d(
+            list(points), len(points), np.linspace(1.0, 2.0, len(points)), outpath,
+            {"alpha": "alpha"}, "txt", "lambda4", {"lambda1": 0.28894})
+        return directory / "errormsg.txt"
+
+    def test_a_clean_rerun_removes_the_earlier_message_file(self):
+        """Otherwise the old causes are read as if they described the new results."""
+        directory = pathlib.Path(tempfile.mkdtemp())
+        path = self.save_into(directory, [a_good_point(), a_failed_point("T_bro below T_sym")])
+        self.assertTrue(path.exists(), "the failing run must write the file")
+        self.save_into(directory, [a_good_point(), a_good_point()])
+        self.assertFalse(path.exists(),
+                         "a clean rerun over the same output path left a stale cause behind")
+
+    def test_a_clean_rerun_removes_it_for_a_grid_scan_too(self):
+        directory = pathlib.Path(tempfile.mkdtemp())
+        outpath = str(directory) + "/"
+        path = directory / "errormsg.txt"
+        grid = np.linspace(1.0, 2.0, 2)
+        scans.save_results_2d([a_good_point(), a_failed_point("T_bro below T_sym"),
+                               a_good_point(), a_good_point()],
+                              2, grid, grid, outpath, {"alpha": "alpha"}, "txt",
+                              {"x": "lambda4", "y": "lambda5"}, {"lambda1": 0.28894})
+        self.assertTrue(path.exists(), "the failing run must write the file")
+        scans.save_results_2d([a_good_point()] * 4, 2, grid, grid, outpath,
+                              {"alpha": "alpha"}, "txt", {"x": "lambda4", "y": "lambda5"},
+                              {"lambda1": 0.28894})
+        self.assertFalse(path.exists(), "a clean grid rerun left a stale cause behind")
+
+    def test_a_missing_file_is_not_an_error(self):
+        """The usual case: a clean scan into a fresh directory."""
+        directory = pathlib.Path(tempfile.mkdtemp())
+        self.assertFalse(self.save_into(directory, [a_good_point()]).exists())
+
+
+class OneFailureIsOneParseableRowTests(unittest.TestCase):
+    """The file is tab-separated, so no field may carry whitespace of its own."""
+
+    def written(self, message):
+        directory = pathlib.Path(tempfile.mkdtemp())
+        outpath = str(directory) + "/"
+        scans.save_results_1d(
+            [a_good_point(), a_failed_point(message)], 2, np.linspace(1.0, 2.0, 2), outpath,
+            {"alpha": "alpha"}, "txt", "lambda4", {"lambda1": 0.28894})
+        return (directory / "errormsg.txt").read_text()
+
+    def rows(self, message):
+        return [line for line in self.written(message).splitlines()
+                if line and not line.startswith("#")]
+
+    def test_a_tab_in_the_message_does_not_add_a_column(self):
+        """A `repr` of a dict, or an exception quoting a tabulated file, can carry one."""
+        rows = self.rows("T_bro\tbelow\tT_sym")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].count("\t"), 1,
+                         "the position and the cause are the only two fields")
+        self.assertIn("T_bro below T_sym", rows[0])
+
+    def test_a_carriage_return_does_not_add_a_row(self):
+        rows = self.rows("T_bro below T_sym\r\nsecond line")
+        self.assertEqual(len(rows), 1)
+        self.assertIn("T_bro below T_sym second line", rows[0])
+
+    def test_a_run_of_whitespace_collapses_to_one_space(self):
+        rows = self.rows("T_bro   below \t\n  T_sym")
+        self.assertEqual(rows[0].split("\t")[1], "T_bro below T_sym")
+
+    def test_both_fields_are_sanitised_not_only_the_message(self):
+        """Driven through the writer directly, because the two callers build the position from
+        integers and so cannot tell the difference. The contract is that the file holds one
+        parseable row per failure for whatever the caller hands it, and that it is enforced in
+        the writer rather than remembered at each call site, which is the reason a third
+        caller would be safe.
+        """
+        directory = pathlib.Path(tempfile.mkdtemp())
+        outpath = str(directory) + "/"
+        scans._save_error_messages([("3\t4", "T_bro below T_sym")], outpath)
+        rows = [line for line in (directory / "errormsg.txt").read_text().splitlines()
+                if line and not line.startswith("#")]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].count("\t"), 1,
+                         "the position carried a tab into the output and split the row")
+        self.assertEqual(rows[0].split("\t")[0], "3 4")
+
+    def test_the_message_is_not_otherwise_rewritten(self):
+        """Only whitespace is touched, so the numbers in the sentence survive intact."""
+        rows = self.rows("relative latent heat (e_sym - e_bro) / |e_sym| = -1.2637e-04")
+        self.assertIn("(e_sym - e_bro) / |e_sym| = -1.2637e-04", rows[0])
+
+
 class ALineScanWritesTheCauseOfEachFailureTests(unittest.TestCase):
     """`save_results_1d`, both formats."""
 

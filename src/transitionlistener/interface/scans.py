@@ -11,6 +11,7 @@ Authors:
 from __future__ import annotations
 
 import multiprocessing
+import os
 from typing import Iterable
 
 import h5py
@@ -272,7 +273,16 @@ def _save_error_messages(messages: list[tuple[str, str]], outpath: str) -> None:
     `error.txt`, and the sentence saying what went wrong existed only in the run's error log,
     which is a different file in a different place and is not written per scan.
 
-    Nothing is written when no point failed, so a clean scan does not gain an empty file.
+    Nothing is written when no point failed, so a clean scan does not gain an empty file, and
+    a file left by an earlier run over the same output path is removed rather than left to be
+    read as if it described the new results. The CLI reuses `output_path` and does not clean
+    the directory between runs, so a scan that now succeeds everywhere would otherwise still
+    appear to have failures.
+
+    One row per failure, so every whitespace run in a message collapses to a single space
+    here, in one place rather than in each caller: the file is tab-separated, and a message
+    carrying a tab or a carriage return would otherwise split into extra columns or extra
+    lines and break the promise that one failure is one parseable row.
 
     Parameters
     ----------
@@ -281,12 +291,15 @@ def _save_error_messages(messages: list[tuple[str, str]], outpath: str) -> None:
     outpath : str
         The scan's output prefix, as the numeric writers use it.
     """
+    path = outpath + "errormsg.txt"
     if not messages:
+        if os.path.exists(path):
+            os.remove(path)
         return
-    with open(outpath + "errormsg.txt", "w") as fh:
+    with open(path, "w") as fh:
         fh.write("# point\tcause\n")
         for position, message in messages:
-            fh.write(f"{position}\t{message}\n")
+            fh.write(f"{' '.join(str(position).split())}\t{' '.join(str(message).split())}\n")
 
 
 def save_results_2d(res_dict: Iterable[dict], N: int, xrange: np.ndarray,
@@ -309,7 +322,7 @@ def save_results_2d(res_dict: Iterable[dict], N: int, xrange: np.ndarray,
                 res[i, j, k] = _to_scalar_or_nan(h[i, j]["error"])
             if h[i, j].get("errormsg"):
                 error_messages.append(
-                    (f"{i},{j}", str(h[i, j]["errormsg"]).replace("\n", " ")))
+                    (f"{i},{j}", str(h[i, j]["errormsg"])))
 
     if format == "hdf5":
         with h5py.File(outpath + "data.hdf5", "w") as f:
@@ -423,7 +436,7 @@ def save_results_1d(res_dict: Iterable[dict], N: int, xrange: np.ndarray, outpat
         if "error" in h[i]:
             res[i, k] = _to_scalar_or_nan(h[i]["error"])
         if h[i].get("errormsg"):
-            error_messages.append((str(i), str(h[i]["errormsg"]).replace("\n", " ")))
+            error_messages.append((str(i), str(h[i]["errormsg"])))
 
     if format == "hdf5":
         with h5py.File(outpath + "data.hdf5", "w") as f:

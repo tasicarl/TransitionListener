@@ -1130,11 +1130,19 @@ def _measured(measure):
     decided. If that evaluation fails in turn, the message loses one number; letting it
     propagate would replace the percolation error with an unrelated one and lose the
     diagnosis entirely.
+
+    `errors.Timeout` is the one exception that must still propagate. It is raised from the
+    `SIGALRM` handler and can land inside this evaluation like anywhere else, and it is an
+    ordinary `Exception`, so a broad catch takes it. Swallowed here it would turn an aborted
+    run into a percolation failure with one number missing, which is a claim about the
+    physics that nothing measured.
     """
     if measure is None:
         return None
     try:
         return float(measure())
+    except errors.Timeout:
+        raise
     except Exception:
         return None
 
