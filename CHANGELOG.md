@@ -184,58 +184,30 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
-- A broken-phase temperature below the symmetric one failed the point without an error code.
+- A broken-phase temperature below the symmetric one now fails the point with an error code.
   The transition releases energy and happens below the critical temperature, so the broken
-  phase into which the bubbles grow is reheated and `T_bro > T_sym` holds by construction,
-  whatever accuracy the solver is working to. The guard against the reverse was an exact
-  comparison raising a bare `ValueError`, which carries no error code, so the CLI reported an
-  unclassified failure, code -1, and the user never saw the diagnosis the solver had. It is
-  now an assertion of that ordering whose only slack is the floating-point grid: below a
-  relative shortfall of 1e-9 the two temperatures are the same number and `T_bro` is clamped
-  to `T_sym` with a `RuntimeWarning`; above it the profile is refused as a `PercolationError`,
-  code 10, in a message naming both phases and the relative latent heat that came out
-  negative, measured at `T_sym`, which is the only place it carries information: the step-3
-  root solve sets `e_bro(T_bro) = e_sym(T_sym)` by construction, so read at the broken-phase
-  temperature that solve returned the latent heat is identically zero. The measurement is made
-  only when the profile is refused, so a healthy point pays nothing for it. The threshold is measured, not configured. Over 2313 step-3 support points on the
-  2HDM line `lambda3` = 5.5 to 5.87 and the four phase pairings it visits, the relative latent
-  heat `(e_sym - e_bro) / |e_sym|` has a median of +9.74e-04, is exactly zero at 22 points, and
-  where it comes out negative the worst case is -5.91e-14, 266 units in the last place. The one
-  point whose ordering was reversed for a physical reason, `lambda4` = -2.0807692307692305, had
-  a relative temperature shortfall of 3.167e-05 and a relative latent heat of -1.264e-04,
-  because the walk's starting phase carries a vev of about 10 GeV at that temperature while
-  its only child there is the symmetric phase at the origin, so the candidate transition runs
-  into the phase of higher energy density. Which transition that point really has is filed
-  rather than answered here. The run's `acc_tperc`,
-  1 per cent by default, is seven orders too loose to separate the two and would have admitted
-  that point silently, which is why the threshold is not taken from it. The rule lived in three
-  copies, the adaptive module and both fixed-step twins; all three now call one shared
-  function, so it cannot drift apart again.
-- No failing point is reported as error -1 any more, and every one carries its cause. Code -1
-  named no cause and is documented nowhere. It came from two places: the per-point handler,
-  whose `getattr(error, "errorcode", -1)` turned any exception without a code into it, and the
-  `else` branch of the sampler path, which wrote it literally. Both now report
-  `UnexpectedError`, code 999, which is what the package already calls an unclassified failure,
-  and both name the original exception type in the message, so a genuine 999 stays
-  distinguishable from a stray `ValueError` that reached the handler. The per-point handler
-  also fills `errormsg`, a registered result column that no failing path had filled: the
-  per-point handler left it empty, and the random-scan worker read the message and then wrote
-  the empty string into the row it returns. So the cause reached the error log and never the
-  structured output, a point failed, the user saw a number, and the reason sat in a file beside
-  it. Both now carry it. A scan's output carries it as well, in `errormsg.txt` beside the
-  numeric columns, one row per failed point with its grid position. Neither writer could carry
-  it before: both fill a float array over the observable names, and `errormsg` is not among
-  them, so for a scan the sentence existed only in the run's error log, which is a different
-  file in a different place and is not written per scan. The file is written for both output
-  formats, since the hdf5 datasets cannot carry a string column either, and is not written at
-  all when no point failed. A file left by an earlier run over the same output path is removed
-  rather than left to be read as describing the new results, since the CLI reuses
-  `output_path` and does not clean the directory between runs. Every whitespace run in a
-  position or a message collapses to one space as it is written, so a cause carrying a tab or
-  a carriage return stays one parseable row in a tab-separated file. On the random-scan path
-  the cause has its commas replaced by semicolons as well, because that output table is
-  comma-separated and quotes nothing, and the message names two phases, a latent heat and two
-  energy densities in one sentence.
+  phase is reheated and `T_bro > T_sym` holds by construction, whatever accuracy the solver
+  works to. The old guard raised a bare `ValueError`, which carries no code, so the CLI
+  reported an unclassified failure, code -1. It is now an assertion of that ordering whose
+  only slack is the floating-point grid: a relative shortfall below 1e-9 is clamped with a
+  `RuntimeWarning`, and anything larger is refused as a `PercolationError`, code 10, naming
+  both phases and the relative latent heat at `T_sym`. The threshold is measured: over 2313
+  step-3 support points on the 2HDM `lambda3` line the worst negative latent heat among
+  correctly ordered points is -5.91e-14, while the one reversed point, `lambda4` =
+  -2.0807692307692305, carries -1.264e-04, which the default `acc_tperc` would have admitted
+  silently. A non-finite temperature now raises rather than being returned, and the rule,
+  previously in three copies, lives in one shared function.
+- No failing point is reported as error -1 any more, and every one carries its cause. An
+  exception without an `errorcode` now reports `UnexpectedError`, code 999, with its original
+  type named. `errormsg` is a registered result column that no failing path filled, the
+  per-point handler leaving it empty and the random-scan worker blanking it after reading it;
+  both now carry it. A scan writes the cause beside its numeric columns in `errormsg.txt`, one
+  row per failed point with its grid position, for both formats, since neither the float arrays
+  nor the hdf5 datasets hold a string column. The file is absent when no point failed, and one
+  left by an earlier run over the same output path is removed rather than read as describing
+  the new results. Each field stays one row: whitespace runs collapse to a space, and on the
+  random-scan path commas become semicolons, because that table is comma-separated and quotes
+  nothing.
 - The transition could be built between two images of the same minimum, so the bounce was
   computed along a path the field does not take. On the 2HDM at `lambda3` = 5.868 that gave
   `S_3/T` = 336.6 against 152.6 and 153.3 at the neighbouring couplings, and the point returned

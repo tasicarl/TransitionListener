@@ -251,8 +251,7 @@ def _handle_single_point_error(
     errorlogger.log(line + "\n")
     console.print(Panel.fit(line, border_style="red"))
 
-    # `errormsg` is a registered base result column that no path filled on a failure: this one
-    # did not, and the random-scan worker blanked it while reading it, so the cause reached the
+    # `errormsg` is a registered column that no failing path filled, so the cause reached the
     # log and never the structured output.
     result = {
         "error": np.array([error_code]),

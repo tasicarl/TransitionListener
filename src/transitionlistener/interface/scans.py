@@ -267,22 +267,10 @@ def _random_prior_transform(cube: np.ndarray, conf) -> np.ndarray:
 def _save_error_messages(messages: list[tuple[str, str]], outpath: str) -> None:
     """Write the cause of every failed point beside the numeric scan output.
 
-    `errormsg` is a registered result column, but a scan's numeric output cannot carry it: the
-    arrays `save_results_1d` and `save_results_2d` fill are float, and `errormsg` is not among
-    the observable names they iterate. So a failed point reached the output as a bare code in
-    `error.txt`, and the sentence saying what went wrong existed only in the run's error log,
-    which is a different file in a different place and is not written per scan.
-
-    Nothing is written when no point failed, so a clean scan does not gain an empty file, and
-    a file left by an earlier run over the same output path is removed rather than left to be
-    read as if it described the new results. The CLI reuses `output_path` and does not clean
-    the directory between runs, so a scan that now succeeds everywhere would otherwise still
-    appear to have failures.
-
-    One row per failure, so every whitespace run in a message collapses to a single space
-    here, in one place rather than in each caller: the file is tab-separated, and a message
-    carrying a tab or a carriage return would otherwise split into extra columns or extra
-    lines and break the promise that one failure is one parseable row.
+    The numeric writers fill float arrays over the observable names, so they cannot carry the
+    `errormsg` column. Tab-separated, one row per failure; whitespace runs in either field
+    collapse to a space so a row stays parseable. Removed when no point failed, since the CLI
+    reuses `output_path` between runs.
 
     Parameters
     ----------
