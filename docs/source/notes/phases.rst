@@ -71,5 +71,5 @@ Scaling the test by the curvature at the node before it does not help, because t
 
 One reference, since the withdrawal rests on a measurement: commit 065ef81 with `models/TL_conformal_dark_u1.py` at g = 0.7, v_GeV = 0.1, in the internal units the tracer works in. At the internal temperature 1e-6 the origin's `d2V` reads -6.771e-08, -1.693e-08, -4.232e-09, -1.058e-09 and -2.645e-10 as `x_eps` halves from 4e-3 to 2.5e-4, extrapolating to the zero a conformal potential has there, while the broken phase's endpoint holds +9160 across the same steps.
 
-So the endpoint is accepted on the slope alone, as it was before this branch. A trace can still finish on a point that is not a minimum. The test that would decide it is the one above: evaluate the curvature at two steps and ask whether it scales with the step, which separates a flat direction from a saddle without thresholding an absolute number. That belongs in its own change, not here.
+So the endpoint is accepted on the slope alone, and a trace can still finish on a point that is not a minimum. The check that would decide it is not implemented: evaluate the curvature at two steps and ask whether it scales with the step, which separates a flat direction from a saddle without thresholding an absolute number.
 

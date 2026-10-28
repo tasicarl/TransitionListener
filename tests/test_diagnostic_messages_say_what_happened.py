@@ -155,8 +155,9 @@ class SupercoolingErrorNamesItsReasonTests(unittest.TestCase):
     def test_seedless_refusal_path_count_is_guarded(self):
         """Hold the number of refusal paths, so that adding one forces the documents to follow.
 
-        The enumeration in the `NoViablePhasePairError` docstring and in the error reference is
-        prose, with nothing holding it to the code, and it has already been wrong once: the list
+        The enumeration in the `NoViablePhasePairError` docstring in `errors.py` and in the
+        code-19 paragraph of `docs/source/usage.rst` is prose, with nothing holding it to the
+        code, and it has already been wrong once: the list
         named no temperature overlap, the starting phase not reaching high enough, and duplicate
         children, which mixes "never evaluated" with "evaluated then refused" and leaves out the
         refusal that actually fires on the 2HDM band, `dv_min < 0`. Counting the paths is what
@@ -174,9 +175,8 @@ class SupercoolingErrorNamesItsReasonTests(unittest.TestCase):
         self.assertEqual(
             len(refusals), 3,
             f"seedlessFirstOrderCandidate now has {len(refusals)} refusal paths, not 3. Both "
-            "the NoViablePhasePairError docstring in errors.py and its section in "
-            "docs/source/error_reference.rst enumerate three; update both before changing "
-            "this number")
+            "the NoViablePhasePairError docstring in errors.py and the code-19 paragraph in "
+            "docs/source/usage.rst enumerate three; update both before changing this number")
 
         # The wording is deliberately not asserted. Matching substrings in a docstring and in
         # usage.rst tested documentation prose rather than behaviour: it could not tell a

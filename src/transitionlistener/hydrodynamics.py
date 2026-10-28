@@ -192,8 +192,11 @@ class Hydrodynamics():
         Returns
         -------
         tuple[bool, float]
-            ``(noisy, relative_change)``, the change being the larger of the two the step variation
-            produces.
+            ``(noisy, relative_change)``, the change being the larger of the two the step
+            variation produces. The change is ``nan`` wherever none could be measured: when
+            the value is a sound speed at one step and not at another, when the base step
+            gives nothing usable, and when a varied step does. Callers must not do arithmetic
+            on it without checking.
         """
         # The step is varied both ways. A coarser step adds truncation error and a finer one
         # adds round-off, and only the second is the failure this looks for, so testing one

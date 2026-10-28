@@ -1622,8 +1622,9 @@ def _bracket_sign(value) -> float:
     -------
     float
         ``+1.0`` or ``-1.0`` where the value carries a definite sign, ``0.0`` where it carries
-        none. ``-inf`` is a definite answer and gives ``-1.0``; ``+inf`` carries no information
-        and gives ``0.0``, so that bracketing against it cannot manufacture a root.
+        none. ``-inf`` is a definite answer and gives ``-1.0``; ``+inf`` and ``nan`` carry no
+        information and give ``0.0``, so that bracketing against either cannot manufacture a
+        root.
     """
     value = float(np.squeeze(value))
     if np.isnan(value) or value == np.inf:

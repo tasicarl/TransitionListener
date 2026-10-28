@@ -468,9 +468,10 @@ def _dynamiczoomwindow_accuracy_verdict(
     Returns
     -------
     bool or None
-        ``True`` where every accuracy target the settings ask for is met, ``False`` where one is
-        missed, and ``None`` where the profile cannot be judged at all. ``None`` is undecided,
-        which is not the same claim as missed.
+        ``True`` where every accuracy target the settings ask for is met, ``False`` where one
+        is missed. ``None`` only where ``Tperc`` and ``Tf`` have both met theirs and
+        ``RH_uncertainty`` is not finite, so that the reheating ratio alone is undecided.
+        Undecided is not the same claim as missed.
     """
     for observable in ("Tperc", "Tf", "RH"):
         if not np.isfinite(float(estimate[observable])):

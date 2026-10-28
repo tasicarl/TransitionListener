@@ -608,7 +608,10 @@ class gradientFunction(object):
     >>> df = gradientFunction(f, eps=.01, Ndim=2, order=4)
     >>> x = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
     >>> print(df(x))
-    array([[ 0.,  0.], [ 1.,  9.], [ 2.,  1.], [ 3., 10.]])
+    [[ 0.  0.]
+     [ 1.  9.]
+     [ 2.  1.]
+     [ 3. 10.]]
     """
 
     def __init__(self, f, eps, Ndim, order=4):

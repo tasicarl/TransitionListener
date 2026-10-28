@@ -1217,8 +1217,7 @@ def _deform_path(
 # 0.00581 with `S_3/T` of 286.43, 299.92 and 299.62, while nb = 80 gives 0.09998 and 300.78, a
 # force ratio an order of magnitude worse, and at T = 16.33 GeV the action collapsed by 34.
 #
-# The returned path is still the last iteration's, exactly as before this change; nothing here
-# selects among the iterations.
+# The returned path is the last iteration's; nothing here selects among the iterations.
 _PLATEAU_IMPROVEMENT = 0.9      # less than 10% better than the previous iteration is a plateau
 _MAX_BASIS_DOUBLINGS = 2        # nb 10 -> 40; 80 was measured to destabilise the deformation
 _DEFAULT_BASIS_SIZE = 10        # Deformation_Spline's own default when nb is unset

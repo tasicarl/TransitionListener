@@ -29,5 +29,5 @@ The truncation above is right that nothing new nucleates below the saturation po
 
 Dropping the points instead does not work: it removes the growth along with the nucleation and leaves `I` at 10.4. The last computed action is the cheapest choice and costs nothing, since the rate there is negligible whatever the action is.
 
-It has to be the last USABLE action, not merely the last finite one. `percIntegralODE`'s validity mask is `np.isfinite(S) & (S > 0.0) & ...`, so carrying a zero or negative action forward would leave the sample invalid and the integral floored exactly as a `nan` does, which is the failure this branch exists to prevent. A non-positive action is not physical for a bounce and means that solve did not succeed.
+It has to be the last USABLE action, not merely the last finite one. `percIntegralODE`'s validity mask is `np.isfinite(S) & (S > 0.0) & ...`, so carrying a zero or negative action forward would leave the sample invalid and the integral floored at its starting value exactly as a `nan` does, which is the failure this guard exists to prevent: a percolation integral that never grows, and a transition reported as never percolating. A non-positive action is not physical for a bounce and means that solve did not succeed.
 
