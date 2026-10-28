@@ -265,18 +265,8 @@ class TLPlots():
     def _bounce_false_vacuum_at_temperature(self, tr, temperature):
         """The false vacuum the bounce was computed from, evaluated at ``temperature``.
 
-        The profile drawn beside this marker starts at the image `bounceActionOverImages`
-        chose, which is the traced point unless `pair_transition_over_images` is on and a
-        transformed image carried the smaller action. Evaluating the traced phase alone would
-        then put the marker a reflection away from the curve it labels, and on a model whose
-        fields are hundreds of GeV that is the whole width of the plot.
-
-        The phase is evaluated at `temperature`, because the plot is not always at `Tnuc` and
-        `tr.high_vev` is, and the group element that took the traced point to the one used is
-        then applied to it. Where no element of the potential's group reproduces that map, the
-        phase point is returned unmapped: a marker in the traced place is wrong in the same way
-        as before this, and inventing a transformation the potential does not have would be
-        worse.
+        See :ref:`note-plots-tlplots-bounce-false-vacuum-at-temperature` for the reasoning and
+        the measurements behind this.
         """
         traced = getattr(tr, "high_vev_as_traced", None)
         # The fallback has to be in the same frame as the element applied below. `valAt` fails

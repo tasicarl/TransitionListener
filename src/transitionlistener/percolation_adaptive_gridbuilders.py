@@ -374,16 +374,8 @@ def _dead_rate_floor(log10_rate: np.ndarray) -> float:
 def _nucleation_is_dead(temperature: float, action: float) -> bool:
     """True when ``S_3/T`` is too large for a bubble to nucleate at any Hubble rate.
 
-    The cold actions of a completed transition do not fail - they *saturate*. Measured on
-    the 2HDM edge line with the full action cache: the action settles at its
-    zero-temperature value near 4357 and ``S_3/T`` runs up to 1.15e+09 by
-    T = 3.8e-06 (internal). Such a point has a perfectly finite action, so it is promoted
-    into the active grid as a legitimate cached temperature, the grid's cold boundary
-    lands there, and the rate-step refinement then fills six orders of magnitude in
-    temperature with support that cannot influence ``P`` or the rate peak.
-
-    Guarding on action finiteness cannot catch this, which is why two earlier attempts
-    produced bit-identical runs.
+    See :ref:`note-percolation-adaptive-gridbuilders-nucleation-is-dead` for the reasoning and
+    the measurements behind this.
     """
     try:
         T = float(temperature)
@@ -401,20 +393,8 @@ _COLD_WALK_MAX_FAILED_ACTIONS = 3
 def _cold_walk_has_left_the_bounce_region(actions, computed=None) -> bool:
     """True when the coldest support points no longer have a computable bounce.
 
-    Below the transition the symmetric phase stops being metastable, so the bounce stops
-    existing and every action there comes back non-finite. Those samples are dropped by
-    the percolation integral and by the profile rebuild, so they tell the controller
-    nothing, yet each one costs a bounce solve. Measured on the 2HDM edge line, 38-57% of
-    all support points in every one of five dumps had no computable action, in a single
-    contiguous run at the cold end: at lambda3 = 5.8109479409, 75 finite-action points
-    from 76.4 down to 25.4 GeV followed by 56 non-finite ones down to 3.8e-06 GeV.
-
-    The test is deliberately a *trailing* run rather than a count: a hole in the middle
-    of the grid is a solver hiccup, not the edge of the bounce region. It also requires
-    some finite action to exist, so a grid that has not started yet is never mistaken for
-    one that has run past the edge, and tolerates
-    ``_COLD_WALK_MAX_FAILED_ACTIONS - 1`` isolated failures so that a transition lying
-    just below one bad solve is still found.
+    See :ref:`note-percolation-adaptive-gridbuilders-cold-walk-has-left-the-bounce-region` for
+    the reasoning and the measurements behind this.
     """
     values = np.asarray(actions, dtype=float)
     if values.size == 0:
@@ -1222,14 +1202,8 @@ def _acceptance_jump_is_exempted_inert(
 ) -> bool:
     """Is the fatal jump interval one that only the inert exemption makes refinable?
 
-    A jump past the rate peak cannot usually be repaired by more support -- the action
-    there is dead -- so the inert veto skips it. An interval selected by the *acceptance*
-    criterion is exempt, because leaving it unrepaired is fatal. Such an exempted repair
-    must not preempt the anchor remesh: at lambda3 = 5.8136778037 the direct repair took
-    the refinement slot the remesh needed and the run ended one support update short at
-    Delta P = 0.0578, while at lambda3 = 5.8177725978 the same repair is the only thing
-    that resolves the profile. The caller uses this to try the remesh first and fall back
-    to the direct repair, so both cases are served.
+    See :ref:`note-percolation-adaptive-gridbuilders-acceptance-jump-is-exempted-inert` for the
+    reasoning and the measurements behind this.
     """
 
     jump_interval, _, threshold_mode = _preferred_probability_jump_interval(

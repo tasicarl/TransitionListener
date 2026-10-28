@@ -766,16 +766,8 @@ def sm_bath(pot) -> str:
 def reheating_geff(pot, X_broken, T_DS: float, T_dec: float) -> tuple[float, float, float]:
     """Energy and entropy degrees of freedom right after reheating, referred to the SM bath.
 
-    Three baths contribute: the fields of the potential (the transitioning sector, "DS") in
-    the broken phase at ``X_broken``, reheated to ``T_DS``; the coupled bath, reheated with
-    them; and the decoupled bath, still at ``T_dec``. Each enters with its temperature ratio to
-    the bath that holds the Standard Model, ``g = sum g_i (T_i/T_SM)^4`` and
-    ``h = sum h_i (T_i/T_SM)^3`` (arXiv:2109.06208, 2311.06346). Returns ``(g, h, T_SM)``.
-
-    The fields of the potential count in the Landau gauge counting, every mode including the
-    Goldstone modes and the ghosts of the gauge bosons subtracted, as in
-    ``radiationEnergyDensity``. Fields flagged ``is_SM`` count there and are removed from the
-    tabulated bath by ``sm_fields_in_potential_geff``, so that each is counted once.
+    See :ref:`note-thermodynamics-reheating-geff` for the reasoning and the measurements behind
+    this.
     """
     CF = pot.conversionFactor
     T_c = T_DS
