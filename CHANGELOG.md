@@ -184,6 +184,30 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
+- A broken-phase temperature below the symmetric one now fails the point with an error code.
+  The transition releases energy and happens below the critical temperature, so the broken
+  phase is reheated and `T_bro > T_sym` holds by construction, whatever accuracy the solver
+  works to. The old guard raised a bare `ValueError`, which carries no code, so the CLI
+  reported an unclassified failure, code -1. It is now an assertion of that ordering whose
+  only slack is the floating-point grid: a relative shortfall below 1e-9 is clamped with a
+  `RuntimeWarning`, and anything larger is refused as a `PercolationError`, code 10, naming
+  both phases and the relative latent heat at `T_sym`. The threshold is measured: over 2313
+  step-3 support points on the 2HDM `lambda3` line the worst negative latent heat among
+  correctly ordered points is -5.91e-14, while the one reversed point, `lambda4` =
+  -2.0807692307692305, carries -1.264e-04, which the default `acc_tperc` would have admitted
+  silently. A non-finite temperature now raises rather than being returned, and the rule,
+  previously in three copies, lives in one shared function.
+- No failing point is reported as error -1 any more, and every one carries its cause. An
+  exception without an `errorcode` now reports `UnexpectedError`, code 999, with its original
+  type named. `errormsg` is a registered result column that no failing path filled, the
+  per-point handler leaving it empty and the random-scan worker blanking it after reading it;
+  both now carry it. A scan writes the cause beside its numeric columns in `errormsg.txt`, one
+  row per failed point with its grid position, for both formats, since neither the float arrays
+  nor the hdf5 datasets hold a string column. The file is absent when no point failed, and one
+  left by an earlier run over the same output path is removed rather than read as describing
+  the new results. Each field stays one row: whitespace runs collapse to a space, and on the
+  random-scan path commas become semicolons, because that table is comma-separated and quotes
+  nothing.
 - The transition could be built between two images of the same minimum, so the bounce was
   computed along a path the field does not take. On the 2HDM at `lambda3` = 5.868 that gave
   `S_3/T` = 336.6 against 152.6 and 153.3 at the neighbouring couplings, and the point returned

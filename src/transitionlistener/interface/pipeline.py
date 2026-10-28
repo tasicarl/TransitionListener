@@ -175,8 +175,8 @@ def _compute_single_point(
                 # and `return context, None` -- a success. A deadline reaching it would be
                 # reported as a finished point with no error at all, not even a wrong code.
                 # Re-raised here it is caught by the handler below, which returns it as the
-                # point's error, and `error_code = getattr(error, "errorcode", -1)` maps it to
-                # 16. That outer handler is the intended terminus and is deliberately not
+                # point's error, and the handler below maps its `errorcode` to 16. That
+                # outer handler is the intended terminus and is deliberately not
                 # guarded: it has to keep swallowing the exception to return it.
                 raise
             except Exception as err:
@@ -230,8 +230,16 @@ def _handle_single_point_error(
 ):
     """Log the error and shape a result dictionary containing
     available partial results."""
-    error_code = getattr(error, "errorcode", -1)
+    # An exception that carries no `errorcode` used to be reported as -1, which names no
+    # cause and is documented nowhere. `UnexpectedError`, code 999, is what the package
+    # already calls an unclassified failure, so that is what the user is told; the original
+    # exception type is named in the message, which keeps a genuine 999 distinguishable from
+    # a stray `ValueError` that reached here.
+    error_code = getattr(error, "errorcode", None)
     message = getattr(error, "message", str(error))
+    if error_code is None:
+        error_code = errors.UnexpectedError.ERRORCODE
+        message = f"{type(error).__name__}: {message}"
     line = (
         "ERROR of type "
         + str(error_code)
@@ -243,8 +251,11 @@ def _handle_single_point_error(
     errorlogger.log(line + "\n")
     console.print(Panel.fit(line, border_style="red"))
 
+    # `errormsg` is a registered column that no failing path filled, so the cause reached the
+    # log and never the structured output.
     result = {
         "error": np.array([error_code]),
+        "errormsg": line,
     }
     transition_observables = context.get("transition_observables")
     if transition_observables is not None:

@@ -21,6 +21,7 @@ from ultranest import ReactiveNestedSampler
 
 from transitionlistener.observability import PTA_LIKELIHOOD_SETTINGS
 from transitionlistener.helper_functions import import_file, load_potential
+from transitionlistener import errors
 
 from . import state
 from .logging_utils import Logger
@@ -78,6 +79,15 @@ def sample_and_export_to_csv(args):
     # Return only the PTArcade log-likelihood value for sampler use
     lnL_value = res_params.get("PTArcade_lnL", np.nan)
     return pd.Series([lnL_value], name="lnL")
+
+
+def _csv_safe(message) -> str:
+    """Keep a failure message inside one row of the random scan's output table.
+
+    `OutputRandomscan.write_row` joins values with commas and quotes nothing, so commas become
+    semicolons and whitespace runs become single spaces.
+    """
+    return " ".join(str(message).replace(",", ";").split())
 
 
 def rand_listener(q, output_path, derived_params) -> None:
@@ -140,7 +150,9 @@ def rand_worker(inp_params, q):
         errms = res["errormsg"]
         res_params = get_empty_result()
         res_params["error"] = errcode
-        res_params["errormsg"] = ""
+        # `get_empty_result` blanks every column, so this row used to carry its code and
+        # nothing else while the line and grid paths carried both.
+        res_params["errormsg"] = _csv_safe(errms)
     else:
         res_params = extract_parameters(res, derived_params)
 
@@ -195,14 +207,21 @@ def call_by_sampler(potential: object, inputparams_dict: dict,
             res['errormsg'] = line
             res['error'] = err.errorcode
         else:
+            # Same rule as the per-point handler in `pipeline.py`: an exception with no
+            # `errorcode` is reported under `UnexpectedError`, not as the unnamed -1, with
+            # its own type named so a genuine 999 stays distinguishable.
             line = (
-                "ERROR in TransitionListener of type -1 for input parameters "
+                "ERROR in TransitionListener of type "
+                + str(errors.UnexpectedError.ERRORCODE)
+                + " for input parameters "
                 + str(inputparams_dict)
+                + ": "
+                + type(err).__name__
                 + ": "
                 + getattr(err, 'message', str(err))
             )
             res['errormsg'] = line
-            res['error'] = -1
+            res['error'] = errors.UnexpectedError.ERRORCODE
     return res
 
 

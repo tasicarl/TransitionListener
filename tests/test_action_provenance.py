@@ -103,7 +103,7 @@ class ProfileRecordsProvenanceTests(unittest.TestCase):
         n = TSYM.size
         state = bd.PercolationState(TSYM=TSYM, Sr=np.zeros(n), Hr=np.zeros(n),
                                     Pr=np.zeros(n), Tb=np.zeros(n))
-        settings = types.SimpleNamespace(f_final=0.99, time_temperature_mode="sound_speed",
+        settings = types.SimpleNamespace(f_final=0.99, acc_tperc=1e-2, time_temperature_mode="sound_speed",
                                          integral_method="ode")
         with mock.patch.object(bd, "energyDensity", energy_density), \
                 mock.patch.object(bd, "calcAction", action), \

@@ -20,6 +20,7 @@ from scipy import optimize
 
 from transitionlistener import constants as cn
 from transitionlistener import errors
+from transitionlistener import energy_ordering as eo
 from transitionlistener.bubbledynamics import (
     PercolationGrid,
     PercolationState,
@@ -1421,11 +1422,16 @@ def _compute_step3_profile(
                         TBRO = state.Tb[i]
                     eBRO = bd.energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
-                if state.Tb[i] < TSYM[i]:
-                    raise ValueError(
-                        "There was a problem with the T_bro calculation, "
-                        "T_bro < T_sym. This is usually not allowed."
-                    )
+                state.Tb[i], _clamped = eo.enforce_broken_not_below_symmetric(
+                    state.Tb[i], TSYM[i], where="the adaptive step-3 profile",
+                    e_sym=eSYM_PT,
+                    measure_broken_energy=lambda: bd.energyDensity(
+                        pot, phase_broken, TSYM[i], include_decoupled=False),
+                    phase_symmetric=phase_symmetric, phase_broken=phase_broken)
+                if _clamped:
+                    # `eBRO` below was evaluated before the clamp moved the temperature.
+                    TBRO = state.Tb[i]
+                    eBRO = bd.energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
                 state.Hr[i] = bd.HubbleParameter(P * eBRO + (1.0 - P) * eSYM_PT + e_decoupled, CF)
         else:
