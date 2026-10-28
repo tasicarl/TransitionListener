@@ -478,32 +478,8 @@ def traceMinimum(
             # The saddle flag is deliberately not applied here, and the slope is read at
             # `xnext` only so that what is stored describes the node that is kept.
             #
-            # Applying it was tried and withdrawn. A conformal potential has no quadratic term
-            # at its origin, and `d2V` is a finite difference of step `x_eps`, so what the
-            # difference returns there is the step squared times the quartic: a small negative
-            # number, which `(eigs <= 0).any()` calls a saddle. The trace then stops short of
-            # T = 0 and the run dies with `WrongT0MinimumError` on a symmetric phase that ends
-            # at the origin, which is where it should end. Halving `x_eps` divides that number
-            # by four, which is how it can be told from a curvature.
-            #
-            # Scaling the test by the curvature at the node before it does not help, because
-            # the quantity compared is still step-dependent: it passed locally and failed on
-            # the CI runner at the same threshold. Measuring against the largest eigenvalue is
-            # wrong in the other direction, admitting a genuinely negative endpoint wherever
-            # the spectrum spans many decades.
-            #
-            # One reference, since the withdrawal rests on a measurement: commit 065ef81 with
-            # `models/TL_conformal_dark_u1.py` at g = 0.7, v_GeV = 0.1, in the internal units
-            # the tracer works in. At the internal temperature 1e-6 the origin's `d2V` reads
-            # -6.771e-08, -1.693e-08, -4.232e-09, -1.058e-09 and -2.645e-10 as `x_eps` halves
-            # from 4e-3 to 2.5e-4, extrapolating to the zero a conformal potential has there,
-            # while the broken phase's endpoint holds +9160 across the same steps.
-            #
-            # So the endpoint is accepted on the slope alone, as it was before this branch.
-            # A trace can still finish on a point that is not a minimum. The test that would
-            # decide it is the one above: evaluate the curvature at two steps and ask whether
-            # it scales with the step, which separates a flat direction from a saddle without
-            # thresholding an absolute number. That belongs in its own change, not here.
+            # The reasoning and the measurements are in the implementation notes for phases.py,
+            # under `traceMinimum.check`.
             if dxdt_next is None:
                 # No usable slope at the endpoint; the trace ends at the last node that had
                 # one rather than reaching `tstop`.

@@ -18,3 +18,12 @@ An absolute floor of one made the presence tolerance 1e-6 absolute, which is lar
 
 ``max(|v|, |candidate|)`` rather than ``|candidate|`` alone is deliberate but makes no measurable difference: writing ``v = candidate (1 + d)``, the two disagree only for ``d`` in ``(relative, relative / (1 - relative)]``, a window of relative width ``relative**2``.
 
+.. _note-percolation-adaptive-rate-rate-interval-is-post-peak-inert-comment:
+
+``_rate_interval_is_post_peak_inert``, implementation comment
+-------------------------------------------------------------
+
+``relative`` is 2e-6 rather than the 1e-6 of ``_temperature_present`` because the tolerance it replaces was the sum of the presence tolerances of the two endpoints. The width is therefore the one this lookup already had; only its scale changed. Both values answer the same question - is this the support point the caller named - so the wider one is kept here only to leave the acceptance behaviour of a warm support untouched.
+
+Taking the closest entry rather than the first makes the width of this window inert on every path that reaches here: all three callers hand over two entries of ``temps`` itself, either an adjacent pair from a loop over the array or the endpoints ``_largest_probability_jump_interval`` read off it, so the matching entry is at distance zero and wins any argmin. No test can therefore separate this tolerance from the one it replaces, and none here tries to; what the tests pin is the index selection. The scale is made relative anyway, because an endpoint that has been through arithmetic would be looked up against the hottest support point instead of against itself.
+

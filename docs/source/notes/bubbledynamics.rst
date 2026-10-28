@@ -143,3 +143,59 @@ Two numbers, both on the support that fixed the percolation temperature:
 
 Pass ``configured_history`` as the ``(logEntropyInt, coolingInt)`` pair already built for the configured scheme, and only the other scheme is evaluated: one further history rather than two, and the comparison is then made against the very history the observables came from. One history is three `entropy_density` evaluations per support point, at the temperature and at both endpoints of the derivative stencil, so handing the configured one over halves the cost of the comparison.
 
+.. _note-bubbledynamics-log-gamma-source-floor-comment:
+
+``_LOG_GAMMA_SOURCE_FLOOR``, implementation comment
+---------------------------------------------------
+
+The standard ``percIntegral`` computes I(T) via a nested double integral at O(N^2) per evaluation (O(N^3) for a full sweep over the grid).  The functions below reformulate I(T) as a 4-component ODE chain that can be integrated in a single O(N) sweep from T_hot to T_cold:
+
+::
+
+   A(T)  = Gamma(T) / (T^4 * H(T))          (nucleation-rate density)
+   J_0'  = -A              J_0(T_hot) = 0
+   J_1'  = -J_0 / H        J_1(T_hot) = 0
+   J_2'  = -2 J_1 / H      J_2(T_hot) = 0
+   J_3'  = -3 J_2 / H      J_3(T_hot) = 0
+
+::
+
+   I(T)  = (4 pi / 3) * v_w^3 * J_3(T)
+   P(T)  = 1 - exp(-I(T))
+
+Here ' = d/dT (with T *decreasing* toward the cold boundary). See the derivation in the module-level docstring of ``percolation_adaptivestepsize.py``. ---------------------------------------------------------------------------
+
+
+.. _note-bubbledynamics-calc-approx-percolation-comment:
+
+``calcApproxPercolation``, implementation comment
+-------------------------------------------------
+
+Find the *hottest* temperature at which the criterion is met, by walking down from `Tmax` until it changes sign, and only then handing that sub-bracket to `brentq`.
+
+Handing `brentq` the whole interval does not work, because the interval carries more than one root and `brentq` assumes one. The criterion is positive below the percolation point and negative above it, but as `T` falls the rate vanishes, so it turns negative again at the cold end, and `T <= Tmin` returns `+inf` by construction. Percolation is the first temperature the universe meets on the way down, so the hottest root is the one wanted and the others are artefacts of the bracket.
+
+The walk is geometric at `_APPROX_PERCOLATION_SCAN_RATIO` per step, which costs two action evaluations each and reaches the root in a handful of steps because the root sits within a factor of a few of `Tmax`, so the whole estimate costs on the order of ten criterion calls rather than a walk over the interval. It stops where no bubble can nucleate at any Hubble rate, since no root below that is physical, and separately after `_APPROX_PERCOLATION_MAX_BLIND_STEPS` consecutive steps whose action could not be computed, which is the case the first stop cannot see because it has no `S_3/T` to read.
+
+
+.. _note-bubbledynamics-jitter-dead-rate-decades-comment:
+
+``_JITTER_DEAD_RATE_DECADES``, implementation comment
+-----------------------------------------------------
+
+Both ends of the window are constrained, and by different things. Open it much wider and the gate goes back to rejecting the dead tail it was written to ignore, since every false rejection seen came from samples forty decades or more below the peak. Close it much further and the window starves the fit, which needs five active samples for its quadratic: by thirty decades a profile can already have only two support points inside the window, and narrowing it moves more profiles into the "unassessable" state, which measures nothing. 30 sits between the two, with 1.35x margin to the shallowest observed false positive.
+
+Note what this does *not* claim: that a sample below the floor cannot matter at all. The grid builders' comment records contributing intervals -- worth more than a millionth of the percolation integral -- as deep as 448 decades below a profile's own peak, with a median of 34, so depth alone does not bound a sample's weight. What the floor says is that below it the gate cannot tell a bad solve from its own inability to fit, so it reports the exclusion in `n_dead_rate_excluded` rather than a verdict.
+
+
+.. _note-bubbledynamics-try-action-jitter-tunneltight-rescue-comment:
+
+``_try_action_jitter_tunneltight_rescue``, implementation comment
+-----------------------------------------------------------------
+
+What the discard does and does not do. The non-finite action is dropped by the action interpolants built from the returned `Sr`, so the rate feature it carried no longer reaches `R_*`, `betaH_RH`, `betaH_S3`, the spline nucleation-temperature estimate or the jitter diagnostic itself. What it does not do is re-derive the profile, and the percolation integral has already run with the sample in it: this is called from `_raise_if_action_rate_jitter_unresolved`, which runs after `_refine_percolation_temperature` and `_finalize_percolation_state`, so `Pr`, `Tb`, `Tperc` and the support bank still describe the profile that included it, and the Delta P and hot-head acceptance gates are not run again on what remains. The returned `Sr` and `Pr` therefore describe slightly different supports.
+
+That is tolerated rather than hidden, because both alternatives measured worse. Re-deriving the profile from the reduced support and re-running the gates leaves the coupling's inverse duration far from the trend its neighbours set, and refusing the point instead costs every coupling that discards at all.
+
+The couplings that reached the discard were sick for a reason outside this file: the traced symmetric phase was interpolated with an overshooting cubic, so the bounce tunnelled from a displaced point and returned too small an action, and it was that step which tripped the gate above. `PhaseInfo._build_interpolator` now interpolates the trace with a shape-preserving `PchipInterpolator`, which removes that cause. The discard stays, because nothing stops another model from tripping the gate for a reason of its own, and the state it leaves is still the price; whether it fires at a given point is not visible in the output, because `action_jitter_rescue_discarded_temperatures` has no consumer.
+

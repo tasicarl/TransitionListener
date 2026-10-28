@@ -79,6 +79,7 @@ failed solve may mean the transition is genuinely too supercooled, or that the s
 failed numerically, and the raise does not tell those two apart. This class is the
 narrower statement, that no candidate below this phase reached the solver at all, so
 nothing about the rate at this step was computed either way.
+
 .. _err-eternal-inflation-error:
 
 EternalInflationError

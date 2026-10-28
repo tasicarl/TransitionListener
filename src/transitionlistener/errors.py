@@ -316,7 +316,7 @@ class TooMuchSupercoolingError(Exception):
 class NoViablePhasePairError(Exception):
     """Raised when no phase pair below the current phase was ever a tunnelling candidate.
 
-     Two reasons a child never becomes a candidate at all, which is what this error reports:
+    Two reasons a child never becomes a candidate at all, which is what this error reports:
     it duplicates a child already offered, so `getUniqueTunnelingPhases` drops it, or the two
     phases do not overlap in temperature. The counts in the message keep those apart from a
     pair that was evaluated and then refused, which in the adaptive backend happens when the

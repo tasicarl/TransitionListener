@@ -1006,20 +1006,8 @@ def _rate_interval_is_post_peak_inert(
     # them to ``high_index >= low_index``, which returned "not inert" for an interval whose
     # rate it never looked at.
     #
-    # ``relative`` is 2e-6 rather than the 1e-6 of ``_temperature_present`` because the
-    # tolerance it replaces was the sum of the presence tolerances of the two endpoints. The
-    # width is therefore the one this lookup already had; only its scale changed. Both values
-    # answer the same question - is this the support point the caller named - so the wider one
-    # is kept here only to leave the acceptance behaviour of a warm support untouched.
-    #
-    # Taking the closest entry rather than the first makes the width of this window inert on
-    # every path that reaches here: all three callers hand over two entries of ``temps``
-    # itself, either an adjacent pair from a loop over the array or the endpoints
-    # ``_largest_probability_jump_interval`` read off it, so the matching entry is at distance
-    # zero and wins any argmin. No test can therefore separate this tolerance from the one it
-    # replaces, and none here tries to; what the tests pin is the index selection. The scale is
-    # made relative anyway, because an endpoint that has been through arithmetic would be
-    # looked up against the hottest support point instead of against itself.
+    # The reasoning and the measurements are in the implementation notes for
+    # percolation_adaptive_rate.py, under `_rate_interval_is_post_peak_inert`.
     high_matches = np.flatnonzero(_temperatures_match(temps, high, relative=2.0e-6))
     low_matches = np.flatnonzero(_temperatures_match(temps, low, relative=2.0e-6))
     if high_matches.size == 0 or low_matches.size == 0:

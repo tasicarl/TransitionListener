@@ -4,8 +4,8 @@ Implementation notes
 ====================
 
 Why the implementation is shaped the way it is, and what was measured to decide it.
-These passages were in the docstrings of the modules; each docstring now carries the
-summary and a pointer to the section here.
+These passages were in the docstrings and inline comments of the modules; each now
+carries the summary and a pointer to the section here.
 
 .. toctree::
    :maxdepth: 1
@@ -22,4 +22,5 @@ summary and a pointer to the section here.
    plots
    thermodynamics
    transitionObservables
+   transitions
    tunneling1D

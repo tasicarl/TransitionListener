@@ -125,3 +125,14 @@ Each image is offered to :func:`bounceAction` in turn, nearest to the true vacuu
 
 Nothing here catches an exception. Every ``transitionlistener`` error the bounce code raises about a path is already absorbed by :func:`bounceAction` into one of those two ``trantype`` values, except the one that reports a fault in the code, and the two modules' ``raise`` statements are pinned against that census in the tests, each entry measured by injecting the failure where it is really raised. So there is nothing left for a handler here to pass over, and what would still reach it is the run deadline, a fault in the code, or a failure from outside the package such as a ``ValueError`` out of scipy. None of those may be read as a pairing that happened not to resolve, and the last of them ends the temperature, which is what the single pairing already did.
 
+.. _note-path-deformation-image-separation-rtol-comment:
+
+``_IMAGE_SEPARATION_RTOL``, implementation comment
+--------------------------------------------------
+
+The criterion is the resolution of the phase tracing that produced the false vacuum. A separation does not bound the difference of two bounce actions for a general potential, so this is not a tolerance on the action; it is the statement that two points closer together than the tracer can place a minimum are one point. The tracer locates each node by finite differences of step ``deltaX_target * 1e-2``, and `phases.py` already applies that reasoning, with this same constant, to the sign of a field component in ``phases._IMAGE_SIGN_RTOL``.
+
+An equality test at machine precision was tried and withdrawn. A symmetric phase is a false vacuum at a fixed point of the group, and the tracer leaves it a few times 1e-10 from that point rather than on it, so an exact test saw two images at every temperature of such a transition and the solver computed one path twice. What a merge at this threshold can hide is bounded by what the solver can tell apart: the two paths then differ by less than 1e-4 of their length, and the solver's action on one path recomputed repeats only to a few times 1e-5.
+
+One reference, since the threshold is a tuned number. Measured on commit 065ef81 with ``models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml`` at ``lambda3 = 5.6518``, where the symmetric phase is the false vacuum at all 7 temperatures that resolve: the two images lay 3.6e-13 to 2.3e-12 of the path length apart, the two actions agreed to 3.0e-05 relative, and the second bounce took 49 per cent of all the time spent on bounces. The tracer's own step would put the threshold at 4e-06 of the path length instead, which merges the same pairs and splits the same pairs; the looser constant is used so that one number serves both this test and the sign test.
+

@@ -1567,28 +1567,8 @@ def _execute_full_tunneling(
 #: path the bounce traverses, before they are treated as two pairings and each given its own
 #: bounce.
 #:
-#: The criterion is the resolution of the phase tracing that produced the false vacuum. A
-#: separation does not bound the difference of two bounce actions for a general potential, so
-#: this is not a tolerance on the action; it is the statement that two points closer together
-#: than the tracer can place a minimum are one point. The tracer locates each node by finite
-#: differences of step ``deltaX_target * 1e-2``, and `phases.py` already applies that reasoning,
-#: with this same constant, to the sign of a field component in ``phases._IMAGE_SIGN_RTOL``.
-#:
-#: An equality test at machine precision was tried and withdrawn. A symmetric phase is a false
-#: vacuum at a fixed point of the group, and the tracer leaves it a few times 1e-10 from that
-#: point rather than on it, so an exact test saw two images at every temperature of such a
-#: transition and the solver computed one path twice. What a merge at this threshold can hide is
-#: bounded by what the solver can tell apart: the two paths then differ by less than 1e-4 of
-#: their length, and the solver's action on one path recomputed repeats only to a few times
-#: 1e-5.
-#:
-#: One reference, since the threshold is a tuned number. Measured on commit 065ef81 with
-#: ``models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml`` at ``lambda3 = 5.6518``, where the symmetric phase is the false
-#: vacuum at all 7 temperatures that resolve: the two images lay 3.6e-13 to 2.3e-12 of the path
-#: length apart, the two actions agreed to 3.0e-05 relative, and the second bounce took 49 per
-#: cent of all the time spent on bounces. The tracer's own step would put the threshold at
-#: 4e-06 of the path length instead, which merges the same pairs and splits the same pairs; the
-#: looser constant is used so that one number serves both this test and the sign test.
+#: The reasoning and the measurements are in the implementation notes for pathDeformation.py,
+#: under `_IMAGE_SEPARATION_RTOL`.
 _IMAGE_SEPARATION_RTOL = 1.0e-4
 
 
