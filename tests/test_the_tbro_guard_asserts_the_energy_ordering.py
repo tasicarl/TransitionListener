@@ -40,7 +40,7 @@ from transitionlistener import bubbledynamics as bd
 from transitionlistener import bubbledynamics_fixedstep as bf
 from transitionlistener import percolation_adaptivestepsize as pas
 from transitionlistener import errors
-from transitionlistener import helper_functions as hf
+from transitionlistener import energy_ordering as eo
 
 
 def a_phase(key):
@@ -68,7 +68,7 @@ class TheGuardAssertsTheOrderingTests(unittest.TestCase):
     """The outcomes of `enforce_broken_not_below_symmetric` on the measured cases."""
 
     def test_a_broken_temperature_above_the_symmetric_one_is_returned_unchanged(self):
-        value, shortfall = hf.enforce_broken_not_below_symmetric(120.0, 110.0)
+        value, shortfall = eo.enforce_broken_not_below_symmetric(120.0, 110.0)
         self.assertEqual(value, 120.0)
         self.assertEqual(shortfall, 0.0)
 
@@ -80,7 +80,7 @@ class TheGuardAssertsTheOrderingTests(unittest.TestCase):
         """
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            value, shortfall = hf.enforce_broken_not_below_symmetric(110.0, 110.0)
+            value, shortfall = eo.enforce_broken_not_below_symmetric(110.0, 110.0)
         self.assertEqual(value, 110.0)
         self.assertEqual(shortfall, 0.0)
         self.assertEqual([str(w.message) for w in caught], [])
@@ -88,7 +88,7 @@ class TheGuardAssertsTheOrderingTests(unittest.TestCase):
     def test_a_temperature_above_the_symmetric_one_is_not_warned_about_either(self):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            hf.enforce_broken_not_below_symmetric(120.0, 110.0)
+            eo.enforce_broken_not_below_symmetric(120.0, 110.0)
         self.assertEqual([str(w.message) for w in caught], [])
 
     def test_the_measured_roundoff_inversion_is_clamped_rather_than_refused(self):
@@ -96,7 +96,7 @@ class TheGuardAssertsTheOrderingTests(unittest.TestCase):
         t_bro = t_sym * (1.0 - ROUNDOFF_SHORTFALL)
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            value, shortfall = hf.enforce_broken_not_below_symmetric(t_bro, t_sym)
+            value, shortfall = eo.enforce_broken_not_below_symmetric(t_bro, t_sym)
         self.assertEqual(value, t_sym)
         self.assertGreater(shortfall, 0.0)
         self.assertEqual(len(caught), 1)
@@ -104,7 +104,7 @@ class TheGuardAssertsTheOrderingTests(unittest.TestCase):
 
     def test_the_measured_lambda4_inversion_is_refused_with_an_error_code(self):
         with self.assertRaises(errors.PercolationError) as raised:
-            hf.enforce_broken_not_below_symmetric(LAMBDA4_T_BRO, LAMBDA4_T_SYM)
+            eo.enforce_broken_not_below_symmetric(LAMBDA4_T_BRO, LAMBDA4_T_SYM)
         self.assertEqual(raised.exception.errorcode,
                          errors.PercolationError().errorcode)
 
@@ -117,31 +117,31 @@ class TheGuardAssertsTheOrderingTests(unittest.TestCase):
         t_sym = 110.0
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            clamped, _ = hf.enforce_broken_not_below_symmetric(
+            clamped, _ = eo.enforce_broken_not_below_symmetric(
                 t_sym * (1.0 - ROUNDOFF_SHORTFALL), t_sym)
         self.assertEqual(clamped, t_sym, "the measured round-off must be clamped")
         with self.assertRaises(errors.PercolationError):
-            hf.enforce_broken_not_below_symmetric(LAMBDA4_T_BRO, LAMBDA4_T_SYM)
+            eo.enforce_broken_not_below_symmetric(LAMBDA4_T_BRO, LAMBDA4_T_SYM)
 
     def test_the_run_s_percolation_accuracy_would_not_separate_them(self):
         """Why the threshold is not `acc_tperc`: at 1 per cent it clamps the real inversion."""
         shortfall = (LAMBDA4_T_SYM - LAMBDA4_T_BRO) / LAMBDA4_T_SYM
         self.assertLess(shortfall, 1e-2)
-        self.assertGreater(shortfall, hf.BROKEN_TEMPERATURE_ROUNDOFF)
+        self.assertGreater(shortfall, eo.BROKEN_TEMPERATURE_ROUNDOFF)
 
     def test_a_zero_symmetric_temperature_does_not_divide_by_zero(self):
         with self.assertRaises(errors.PercolationError):
-            hf.enforce_broken_not_below_symmetric(-5.0, 0.0)
+            eo.enforce_broken_not_below_symmetric(-5.0, 0.0)
 
     def test_the_call_site_is_named_in_both_the_warning_and_the_error(self):
         t_sym = 110.0
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            hf.enforce_broken_not_below_symmetric(
+            eo.enforce_broken_not_below_symmetric(
                 t_sym * (1.0 - ROUNDOFF_SHORTFALL), t_sym, where="a named profile")
         self.assertIn("a named profile", str(caught[0].message))
         with self.assertRaises(errors.PercolationError) as raised:
-            hf.enforce_broken_not_below_symmetric(
+            eo.enforce_broken_not_below_symmetric(
                 LAMBDA4_T_BRO, LAMBDA4_T_SYM, where="a named profile")
         self.assertIn("a named profile", str(raised.exception))
 
@@ -151,23 +151,23 @@ class NonFiniteTemperaturesCannotBeOrderedTests(unittest.TestCase):
 
     def test_a_nan_broken_temperature_is_refused_rather_than_returned(self):
         with self.assertRaises(errors.PercolationError) as raised:
-            hf.enforce_broken_not_below_symmetric(np.nan, 110.0)
+            eo.enforce_broken_not_below_symmetric(np.nan, 110.0)
         self.assertIn("finite", str(raised.exception))
 
     def test_a_nan_symmetric_temperature_is_refused(self):
         with self.assertRaises(errors.PercolationError):
-            hf.enforce_broken_not_below_symmetric(110.0, np.nan)
+            eo.enforce_broken_not_below_symmetric(110.0, np.nan)
 
     def test_an_infinite_temperature_is_refused(self):
         for pair in ((np.inf, 110.0), (110.0, np.inf), (-np.inf, 110.0)):
             with self.subTest(pair=pair):
                 with self.assertRaises(errors.PercolationError):
-                    hf.enforce_broken_not_below_symmetric(*pair)
+                    eo.enforce_broken_not_below_symmetric(*pair)
 
     def test_the_error_is_classified_and_not_a_bare_value_error(self):
         """A bare `ValueError` has no `errorcode` and reached the user as code -1."""
         with self.assertRaises(errors.PercolationError) as raised:
-            hf.enforce_broken_not_below_symmetric(np.nan, 110.0)
+            eo.enforce_broken_not_below_symmetric(np.nan, 110.0)
         self.assertTrue(hasattr(raised.exception, "errorcode"))
         self.assertNotEqual(raised.exception.errorcode, -1)
 
@@ -187,7 +187,7 @@ class TheDeadlineSurvivesTheDiagnosticMeasurementTests(unittest.TestCase):
             raise errors.Timeout("deadline reached")
 
         with self.assertRaises(errors.Timeout):
-            hf.enforce_broken_not_below_symmetric(
+            eo.enforce_broken_not_below_symmetric(
                 LAMBDA4_T_BRO, LAMBDA4_T_SYM, e_sym=LAMBDA4_E_SYM,
                 measure_broken_energy=deadline)
 
@@ -197,7 +197,7 @@ class TheDeadlineSurvivesTheDiagnosticMeasurementTests(unittest.TestCase):
             raise ValueError("the potential could not be evaluated")
 
         with self.assertRaises(errors.PercolationError) as caught:
-            hf.enforce_broken_not_below_symmetric(
+            eo.enforce_broken_not_below_symmetric(
                 LAMBDA4_T_BRO, LAMBDA4_T_SYM, e_sym=LAMBDA4_E_SYM,
                 measure_broken_energy=boom)
         self.assertIn("not measured", str(caught.exception))
@@ -210,7 +210,7 @@ class TheDeadlineSurvivesTheDiagnosticMeasurementTests(unittest.TestCase):
             calls.append(1)
             raise errors.Timeout("deadline reached")
 
-        hf.enforce_broken_not_below_symmetric(
+        eo.enforce_broken_not_below_symmetric(
             120.0, 110.0, e_sym=LAMBDA4_E_SYM, measure_broken_energy=counted)
         self.assertEqual(calls, [], "the diagnostic ran on a point that was not refused")
 
@@ -220,7 +220,7 @@ class TheErrorNamesThePairAndItsLatentHeatTests(unittest.TestCase):
 
     def raise_lambda4(self, **kwargs):
         with self.assertRaises(errors.PercolationError) as raised:
-            hf.enforce_broken_not_below_symmetric(
+            eo.enforce_broken_not_below_symmetric(
                 LAMBDA4_T_BRO, LAMBDA4_T_SYM, **kwargs)
         return str(raised.exception)
 
@@ -280,7 +280,7 @@ class TheErrorNamesThePairAndItsLatentHeatTests(unittest.TestCase):
             calls.append(1)
             return LAMBDA4_E_BRO_AT_SYM
 
-        hf.enforce_broken_not_below_symmetric(
+        eo.enforce_broken_not_below_symmetric(
             120.0, 110.0, e_sym=LAMBDA4_E_SYM, measure_broken_energy=measure)
         self.assertEqual(calls, [])
 
@@ -294,7 +294,7 @@ class TheErrorNamesThePairAndItsLatentHeatTests(unittest.TestCase):
         t_sym = 110.0
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
-            hf.enforce_broken_not_below_symmetric(
+            eo.enforce_broken_not_below_symmetric(
                 t_sym * (1.0 - ROUNDOFF_SHORTFALL), t_sym,
                 e_sym=LAMBDA4_E_SYM, measure_broken_energy=measure)
         self.assertEqual(calls, [])
@@ -307,7 +307,7 @@ class EveryCopyOfTheProfileUsesTheSharedRuleTests(unittest.TestCase):
                "bubbledynamics_fixedstep")
 
     def source_of(self, module):
-        path = (pathlib.Path(hf.__file__).parent / f"{module}.py")
+        path = (pathlib.Path(eo.__file__).parent / f"{module}.py")
         return path.read_text()
 
     def guard_calls_in(self, module):
@@ -373,12 +373,12 @@ class TheThresholdIsNotARunSettingTests(unittest.TestCase):
     """It is a property of double precision, so it does not belong in the configuration."""
 
     def test_the_guard_takes_no_tolerance_argument(self):
-        parameters = inspect.signature(hf.enforce_broken_not_below_symmetric).parameters
+        parameters = inspect.signature(eo.enforce_broken_not_below_symmetric).parameters
         self.assertNotIn("rtol", parameters)
 
     def test_the_guard_takes_the_broken_energy_as_a_measurement_not_a_value(self):
         """A value would have to be the one at T_bro, which the root solve makes meaningless."""
-        parameters = inspect.signature(hf.enforce_broken_not_below_symmetric).parameters
+        parameters = inspect.signature(eo.enforce_broken_not_below_symmetric).parameters
         self.assertIn("measure_broken_energy", parameters)
         self.assertNotIn("e_bro", parameters)
 
