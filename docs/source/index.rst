@@ -91,6 +91,7 @@ Contributors
    usage
    features
    method
+   error_reference
    changelog
    contributing
    documentation
