@@ -889,6 +889,13 @@ class generic_potential():
 
         See :ref:`note-generic-potential-generic-potential-daisy-outside-validity` for the
         reasoning and the measurements behind this.
+
+        Returns
+        -------
+        tuple[bool, float]
+            ``(outside, ratio)``, the ratio being the daisy term over the field-independent
+            radiation. ``(False, nan)`` where it cannot be decided, and where the model is not using
+            this resummation at all.
         """
         if getattr(self, "daisy", None) != "ArnoldEspinosa":
             return False, float("nan")
@@ -947,6 +954,14 @@ class generic_potential():
 
         See :ref:`note-generic-potential-generic-potential-debye-mass-sq` for the reasoning and
         the measurements behind this.
+
+        Returns
+        -------
+        numpy.ndarray or None
+            An array shaped like the boson mass spectrum, or ``None``. ``None`` is not the default:
+            the base class measures the thermal part and returns ``None`` only where that measurement
+            fails its own check, and a subclass returns it to decline giving the Debye masses
+            directly.
         """
         coefficient = self._debye_coefficient(X)
         if coefficient is None:

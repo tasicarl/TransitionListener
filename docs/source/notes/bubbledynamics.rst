@@ -80,7 +80,14 @@ beta/H = T d(S3/T)/dT at ``T``, estimated by a local least-squares quadratic thr
 
 The sample selection is controlled by ``percolationConf``:
 
-* ``betaH_S3_fit_points`` nearest samples are used; * at least ``betaH_S3_fit_min_per_side`` of them must lie on each side of ``T`` and none further than ``betaH_S3_fit_max_rel_span`` in ``|T'/T - 1|``, otherwise five new actions are computed at T (1 + k step), k = -2..2, with step ``betaH_S3_fallback_rel_step``, and the same fit is applied; * the fit is repeated with the ``betaH_S3_fit_check_points`` nearest samples, and a relative difference above ``betaH_S3_fit_rel_tol``, measured against the larger of the two, is reported through ``diagnostics["fit_unstable"]``.
+* ``betaH_S3_fit_points`` nearest samples are used.
+* At least ``betaH_S3_fit_min_per_side`` of them must lie on each side of ``T`` and none
+  further than ``betaH_S3_fit_max_rel_span`` in ``|T'/T - 1|``, otherwise five new actions
+  are computed at T (1 + k step), k = -2..2, with step ``betaH_S3_fallback_rel_step``, and
+  the same fit is applied.
+* The fit is repeated with the ``betaH_S3_fit_check_points`` nearest samples, and a relative
+  difference above ``betaH_S3_fit_rel_tol``, measured against the larger of the two, is
+  reported through ``diagnostics["fit_unstable"]``.
 
 Both sample counts are clamped: a quadratic needs three samples, and the check fit uses at most as many as the fit itself, in which case it is skipped.
 
@@ -148,7 +155,7 @@ Pass ``configured_history`` as the ``(logEntropyInt, coolingInt)`` pair already 
 ``_LOG_GAMMA_SOURCE_FLOOR``, implementation comment
 ---------------------------------------------------
 
-The standard ``percIntegral`` computes I(T) via a nested double integral at O(N^2) per evaluation (O(N^3) for a full sweep over the grid).  The functions below reformulate I(T) as a 4-component ODE chain that can be integrated in a single O(N) sweep from T_hot to T_cold:
+The standard ``percIntegral`` computes I(T) via a nested double integral at O(N^2) per evaluation (O(N^3) for a full sweep over the grid).  ``percIntegralODE`` reformulates I(T) as a 4-component ODE chain that can be integrated in a single O(N) sweep from T_hot to T_cold:
 
 ::
 
@@ -163,7 +170,7 @@ The standard ``percIntegral`` computes I(T) via a nested double integral at O(N^
    I(T)  = (4 pi / 3) * v_w^3 * J_3(T)
    P(T)  = 1 - exp(-I(T))
 
-Here ' = d/dT (with T *decreasing* toward the cold boundary). See the derivation in the module-level docstring of ``percolation_adaptivestepsize.py``. ---------------------------------------------------------------------------
+Here ' = d/dT (with T *decreasing* toward the cold boundary).
 
 
 .. _note-bubbledynamics-calc-approx-percolation-comment:

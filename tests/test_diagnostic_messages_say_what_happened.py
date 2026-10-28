@@ -152,18 +152,19 @@ class SupercoolingErrorNamesItsReasonTests(unittest.TestCase):
                          "this raise means only that every solve failed")
 
 
-    def test_the_documented_refusal_reasons_match_the_code(self):
-        """The enumeration in two documents is prose, with nothing holding it to the code.
+    def test_seedless_refusal_path_count_is_guarded(self):
+        """Hold the number of refusal paths, so that adding one forces the documents to follow.
 
-        It has already been wrong once: the list named no temperature overlap, the starting phase
-        not reaching high enough, and duplicate children, which mixes "never evaluated" with
-        "evaluated then refused" and leaves out the refusal that actually fires on the 2HDM band,
-        `dv_min < 0`. A fourth refusal path added later would make both documents wrong again and
-        nothing would notice, so this counts the paths and checks each is described.
+        The enumeration in the `NoViablePhasePairError` docstring and in the error reference is
+        prose, with nothing holding it to the code, and it has already been wrong once: the list
+        named no temperature overlap, the starting phase not reaching high enough, and duplicate
+        children, which mixes "never evaluated" with "evaluated then refused" and leaves out the
+        refusal that actually fires on the 2HDM band, `dv_min < 0`. Counting the paths is what
+        catches a fourth one being added. The wording is deliberately not asserted; see the
+        comment at the end of this test.
         """
         import ast as _ast
         import textwrap
-        from pathlib import Path
 
         fn = _ast.parse(textwrap.dedent(
             inspect.getsource(transitions.Transitions.seedlessFirstOrderCandidate))).body[0]
@@ -173,8 +174,9 @@ class SupercoolingErrorNamesItsReasonTests(unittest.TestCase):
         self.assertEqual(
             len(refusals), 3,
             f"seedlessFirstOrderCandidate now has {len(refusals)} refusal paths, not 3. Both "
-            "the NoViablePhasePairError docstring in errors.py and the code-19 paragraph in "
-            "docs/source/usage.rst enumerate three; update them before changing this number")
+            "the NoViablePhasePairError docstring in errors.py and its section in "
+            "docs/source/error_reference.rst enumerate three; update both before changing "
+            "this number")
 
         # The wording is deliberately not asserted. Matching substrings in a docstring and in
         # usage.rst tested documentation prose rather than behaviour: it could not tell a

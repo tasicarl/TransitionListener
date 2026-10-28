@@ -583,8 +583,32 @@ def deriv23_const_dx(y, dx=1.0):
 class gradientFunction(object):
     """Make a function which returns the gradient of some scalar function.
 
-    See :ref:`note-helper-functions-gradient-function` for the reasoning and the measurements
-    behind this.
+    Parameters
+    ----------
+    f : callable
+        The first argument `x` should either be a single point with length
+        `Ndim` or an array (or matrix, etc.) of points with shape
+        ``(..., Ndim)``, where ``...`` is some arbitrary shape. The return
+        shape should be the same as the input shape, but with the last axis
+        stripped off (i.e., it should be a scalar function). Additional
+        required or optional arguments are allowed.
+    eps : float or array_like
+        The small change in `x` used to calculate the finite differences.
+        Can either be a scalar or have length `Ndim`.
+    Ndim : int
+        Number of dimensions for each point.
+    order : 2 or 4
+        Calculate the derivatives to either 2nd or 4th order in `eps`.
+
+    Examples
+    --------
+    >>> def f(X):
+    ...     x, y = np.asarray(X).T
+    ...     return (x*x + x*y + 3.*y*y*y).T
+    >>> df = gradientFunction(f, eps=.01, Ndim=2, order=4)
+    >>> x = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
+    >>> print(df(x))
+    array([[ 0.,  0.], [ 1.,  9.], [ 2.,  1.], [ 3., 10.]])
     """
 
     def __init__(self, f, eps, Ndim, order=4):

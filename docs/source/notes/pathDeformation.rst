@@ -49,7 +49,12 @@ The barrier is the region between the two minima where the potential rises above
 
 Measured counts, which is what the threshold is set from:
 
-* conformal U(1) at g = 0.54 with 10000 samples, so a spacing of 0.1 on a path of 1000: 1 sample inside the barrier at T_int = 0.1, and 0 at 0.01 and below; * the 2HDM benchmark, whose barrier spans a generic part of a path 240 to 247 units long and stands 3.8e+06 to 1.5e+07 above the minima: 400 to 760 at every temperature; * `fullTunneling`'s own default of 100 samples on that same conformal path at T_int = 15: 2.
+* Conformal U(1) at g = 0.54 with 10000 samples, so a spacing of 0.1 on a path of 1000:
+  1 sample inside the barrier at T_int = 0.1, and 0 at 0.01 and below.
+* The 2HDM benchmark, whose barrier spans a generic part of a path 240 to 247 units long
+  and stands 3.8e+06 to 1.5e+07 above the minima: 400 to 760 at every temperature.
+* ``fullTunneling``'s own default of 100 samples on that same conformal path at
+  T_int = 15: 2.
 
 The threshold sits below that last one deliberately. A grid of 100 knots cannot carry the re-placed spacing, so the sample count is checked as well, and the two together mean a path is only re-sampled when its grid is blind to the barrier and has the knots to do better.
 
@@ -81,7 +86,7 @@ The spline-fitting happens in several steps:
      re-evaluated using the spline. A new spline is fit with more accurate
      knots.
 
-The potential as a function of distance can be defined in one of two ways. If `V_spline_samples` is None, the potential as a function of distance `x` along the path is given by `V[pts(x)]`, where `pts(x)` is the spline function that defines the path. If `V_spline_samples` is not None, the potential is first evaluated `V_spline_samples` times along the path, and another spline is fit to the output. In other words, when `V_spline_samples` is None, the input potential `V` is evaluated for every value `x` passed to to the class method :meth:`V`, whereas if `V_spline_samples` is not None, the input potential is only evaluated during initialization.
+The potential as a function of distance can be defined in one of two ways. If `V_spline_samples` is None, the potential as a function of distance `x` along the path is given by `V[pts(x)]`, where `pts(x)` is the spline function that defines the path. If `V_spline_samples` is not None, the potential is first evaluated `V_spline_samples` times along the path, and another spline is fit to the output. In other words, when `V_spline_samples` is None, the input potential `V` is evaluated for every value `x` passed to the class method :meth:`V`, whereas if `V_spline_samples` is not None, the input potential is only evaluated during initialization.
 
 .. _note-path-deformation-is-acheaper-pairing:
 
@@ -134,5 +139,5 @@ The criterion is the resolution of the phase tracing that produced the false vac
 
 An equality test at machine precision was tried and withdrawn. A symmetric phase is a false vacuum at a fixed point of the group, and the tracer leaves it a few times 1e-10 from that point rather than on it, so an exact test saw two images at every temperature of such a transition and the solver computed one path twice. What a merge at this threshold can hide is bounded by what the solver can tell apart: the two paths then differ by less than 1e-4 of their length, and the solver's action on one path recomputed repeats only to a few times 1e-5.
 
-One reference, since the threshold is a tuned number. Measured on commit 065ef81 with ``models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml`` at ``lambda3 = 5.6518``, where the symmetric phase is the false vacuum at all 7 temperatures that resolve: the two images lay 3.6e-13 to 2.3e-12 of the path length apart, the two actions agreed to 3.0e-05 relative, and the second bounce took 49 per cent of all the time spent on bounces. The tracer's own step would put the threshold at 4e-06 of the path length instead, which merges the same pairs and splits the same pairs; the looser constant is used so that one number serves both this test and the sign test.
+One reference, since the threshold is a tuned number. Measured on commit 065ef81 with ``models/TL_2HDM.py`` class ``R2HDM`` at shipped settings, with the benchmark parameters of ``examples/bp_lisa.yaml`` at ``lambda3 = 5.6518``, where the symmetric phase is the false vacuum at all 7 temperatures that resolve: the two images lay 3.6e-13 to 2.3e-12 of the path length apart, the two actions agreed to 3.0e-05 relative, and the second bounce took 49 per cent of all the time spent on bounces. The tracer's own step would put the threshold at 4e-06 of the path length instead, which merges the same pairs and splits the same pairs; the looser constant is used so that one number serves both this test and the sign test.
 

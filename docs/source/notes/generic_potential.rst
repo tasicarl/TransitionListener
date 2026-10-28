@@ -31,7 +31,8 @@ The `__init__` function performs initialization specific for this abstract class
 
 One of the main jobs of this class is to provide an easy interface for calculating the phase structure and phase transitions. These are given by the methods :func:`getPhases`, :func:`calcTcTrans`, and :func:`findAllTransitions`.
 
-The following attributes can (and should!) be set during initialiation:
+The attributes that can (and should!) be set during initialisation are listed in the class
+docstring of :class:`generic_potential`.
 
 .. _note-generic-potential-generic-potential-daisy-outside-validity:
 

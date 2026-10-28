@@ -188,6 +188,12 @@ class Hydrodynamics():
 
         See :ref:`note-hydrodynamics-hydrodynamics-sound-speed-is-step-dependent` for the
         reasoning and the measurements behind this.
+
+        Returns
+        -------
+        tuple[bool, float]
+            ``(noisy, relative_change)``, the change being the larger of the two the step variation
+            produces.
         """
         # The step is varied both ways. A coarser step adds truncation error and a finer one
         # adds round-off, and only the second is the failure this looks for, so testing one

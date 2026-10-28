@@ -18,38 +18,6 @@ The same number as `np.nan_to_num(np.max(np.min([a, b], axis=0)))`, computed wit
 
 `np.nan_to_num` is spelled out rather than called because it is a general-purpose function working on a single number here: it sends a `nan` to zero, so that a step whose error cannot be judged is accepted, which is the behaviour the solver has always had, and an infinity to the largest value the reduction's own dtype can hold. That dtype is read from the reduction rather than fixed at `float64`, because that is what `np.nan_to_num` does: a `float32` `yerr` gives 3.4028235e+38 and not 1.7976931e+308.
 
-.. _note-helper-functions-gradient-function:
-
-``gradientFunction``
---------------------
-
-parameters
-----------
-f : callable
-    The first argument `x` should either be a single point with length
-    `Ndim` or an array (or matrix, etc.) of points with shape
-    ``(..., Ndim)``, where ``...`` is some arbitrary shape. The return
-    shape should be the same as the input shape, but with the last axis
-    stripped off (i.e., it should be a scalar function). Additional
-    required or optional arguments are allowed.
-eps : float or array_like
-    The small change in `x` used to calculate the finite differences.
-    Can either be a scalar or have length `Ndim`.
-Ndim : int
-    Number of dimensions for each point.
-order : 2 or 4
-    Calculate the derivatives to either 2nd or 4th order in `eps`.
-
-Example
--------
->>> def f(X):
-...     x,y = np.asarray(X).T
-...     return (x*x + x*y +3.*y*y*y).T
->>> df = gradientFunction(f, eps=.01, Ndim=2, order=4)
->>> x = np.array([[0,0],[0,1],[1,0],[1,1]])
->>> print df(x)
-    array([[ 0.,  0.], [ 1.,  9.], [ 2.,  1.], [ 3., 10.]])
-
 .. _note-helper-functions-temperature-derivative-step:
 
 ``temperatureDerivativeStep``

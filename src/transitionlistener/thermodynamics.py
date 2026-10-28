@@ -768,6 +768,12 @@ def reheating_geff(pot, X_broken, T_DS: float, T_dec: float) -> tuple[float, flo
 
     See :ref:`note-thermodynamics-reheating-geff` for the reasoning and the measurements behind
     this.
+
+    Returns
+    -------
+    tuple[float, float, float]
+        ``(g, h, T_SM)``: the energy and entropy degrees of freedom referred to the bath that
+        holds the Standard Model, and that bath's temperature in GeV.
     """
     CF = pot.conversionFactor
     T_c = T_DS

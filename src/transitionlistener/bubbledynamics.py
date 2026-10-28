@@ -1617,6 +1617,13 @@ def _bracket_sign(value) -> float:
 
     See :ref:`note-bubbledynamics-bracket-sign` for the reasoning and the measurements behind
     this.
+
+    Returns
+    -------
+    float
+        ``+1.0`` or ``-1.0`` where the value carries a definite sign, ``0.0`` where it carries
+        none. ``-inf`` is a definite answer and gives ``-1.0``; ``+inf`` carries no information
+        and gives ``0.0``, so that bracketing against it cannot manufacture a root.
     """
     value = float(np.squeeze(value))
     if np.isnan(value) or value == np.inf:
@@ -1973,6 +1980,12 @@ def integrate_broken_temperature(
 
     See :ref:`note-bubbledynamics-integrate-broken-temperature` for the reasoning and the
     measurements behind this.
+
+    Returns
+    -------
+    float or None
+        The broken-phase temperature at ``T_target``, in GeV, or ``None`` where the integration
+        could not be carried out. Callers have to handle the ``None``.
     """
     temps = np.asarray(TSYM, dtype=float)
     probs = np.asarray(P, dtype=float)

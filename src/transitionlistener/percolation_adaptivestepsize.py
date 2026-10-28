@@ -464,6 +464,13 @@ def _dynamiczoomwindow_accuracy_verdict(
 
     See :ref:`note-percolation-adaptivestepsize-dynamiczoomwindow-accuracy-verdict` for the
     reasoning and the measurements behind this.
+
+    Returns
+    -------
+    bool or None
+        ``True`` where every accuracy target the settings ask for is met, ``False`` where one is
+        missed, and ``None`` where the profile cannot be judged at all. ``None`` is undecided,
+        which is not the same claim as missed.
     """
     for observable in ("Tperc", "Tf", "RH"):
         if not np.isfinite(float(estimate[observable])):

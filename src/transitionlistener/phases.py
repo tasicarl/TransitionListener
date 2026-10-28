@@ -271,6 +271,13 @@ def descendFromSaddle(
 
     See :ref:`note-phases-descend-from-saddle` for the reasoning and the measurements behind
     this.
+
+    Returns
+    -------
+    numpy.ndarray
+        A minimum near ``x``, or ``x`` itself where the Hessian there is already positive
+        definite and where no minimum is found within ``max_displacement``. The caller decides
+        what to do with a point that is still not a minimum.
     """
     x = np.asarray(x, dtype=float)
     hess = np.atleast_2d(np.squeeze(d2f_dx2(x, t)))
