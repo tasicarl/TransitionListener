@@ -44,3 +44,20 @@ Submit Feedback
 
 The best way to send feedback is to file an issue at
 https://github.com/tasicarl/TransitionListener/issues.
+
+Conventions in the source
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+One convention is easy to undo by accident. A run's time limit is delivered as
+:class:`~transitionlistener.errors.Timeout`, raised from a POSIX alarm handler, so it can
+arrive on any bytecode, including inside a routine whose own failures are converted into a
+stage-specific error. Every broad ``except Exception`` that performs such a conversion is
+therefore preceded by::
+
+    except errors.Timeout:
+        raise
+
+Those two lines look redundant and are not. Without them the time limit is caught by the
+handler below and reported as a physics verdict, so a run that never finished comes out as a
+finished one. There are 42 of them. Keep the guard whenever you add a broad handler, and do
+not merge it into the handler below.
