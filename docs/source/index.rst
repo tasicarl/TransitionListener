@@ -91,6 +91,8 @@ Contributors
    usage
    features
    method
+   error_reference
+   notes/index
    changelog
    contributing
    documentation
