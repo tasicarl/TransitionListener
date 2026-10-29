@@ -20,7 +20,7 @@ from scipy import optimize
 
 from transitionlistener import constants as cn
 from transitionlistener import errors
-from transitionlistener import energy_ordering as eo
+from transitionlistener import thermodynamics
 from transitionlistener.bubbledynamics import (
     PercolationGrid,
     PercolationState,
@@ -1386,7 +1386,7 @@ def _compute_step3_profile(
                         TBRO = state.Tb[i]
                     eBRO = bd.energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
-                state.Tb[i], _clamped = eo.enforce_broken_not_below_symmetric(
+                state.Tb[i], _clamped = thermodynamics.enforce_broken_not_below_symmetric(
                     state.Tb[i], TSYM[i], where="the adaptive step-3 profile",
                     e_sym=eSYM_PT,
                     measure_broken_energy=lambda: bd.energyDensity(

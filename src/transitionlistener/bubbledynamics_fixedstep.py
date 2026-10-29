@@ -22,7 +22,7 @@ from transitionlistener import thermodynamics as td
 from transitionlistener import constants as cn
 from transitionlistener.helper_functions import derivative
 from transitionlistener import errors
-from transitionlistener import energy_ordering as eo
+from transitionlistener import thermodynamics
 from transitionlistener.helper_functions import thermalDerivativeStep
 from transitionlistener.pathDeformation import (bounceAction,
                                                 bounceActionOverImages,
@@ -1518,7 +1518,7 @@ def _refine_percolation_temperature(
 
                         eBRO = energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
-                    state.Tb[i], _clamped = eo.enforce_broken_not_below_symmetric(
+                    state.Tb[i], _clamped = thermodynamics.enforce_broken_not_below_symmetric(
                         state.Tb[i], TSYM[i], where="the fixed-step bubble-dynamics profile",
                         e_sym=eSYM_PT,
                         measure_broken_energy=lambda: energyDensity(

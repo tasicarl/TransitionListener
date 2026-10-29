@@ -16,7 +16,7 @@ import numpy as np
 from scipy import interpolate, optimize
 
 from transitionlistener import errors
-from transitionlistener import energy_ordering as eo
+from transitionlistener import thermodynamics
 from transitionlistener.bubbledynamics import (
     PercolationGrid,
     PercolationState,
@@ -374,7 +374,7 @@ def _refine_percolation_temperature(
 
                         eBRO = energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
-                    state.Tb[i], _clamped = eo.enforce_broken_not_below_symmetric(
+                    state.Tb[i], _clamped = thermodynamics.enforce_broken_not_below_symmetric(
                         state.Tb[i], TSYM[i], where="the fixed-step percolation profile",
                         e_sym=eSYM_PT,
                         measure_broken_energy=lambda: energyDensity(
