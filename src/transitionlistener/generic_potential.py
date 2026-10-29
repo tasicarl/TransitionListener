@@ -20,7 +20,7 @@ rest of the code:
 6. X0 (zero temperature global minimum)
 7. Mass spectrum of the theory.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:
@@ -944,7 +944,6 @@ class generic_potential():
             # goes as T^4, so a large ratio alone is not the signature.
             return bool(ratio > 1.0 and lightest_over_T > 1.0), float(ratio)
         except errors.Timeout:
-            # A diagnostic must not cancel the abort it is being run inside of.
             raise
         except Exception:
             return False, float("nan")

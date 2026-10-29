@@ -4,7 +4,7 @@ Counterterm and quantum-correction utilities.
 This package bundles the Coleman–Weinberg tensor helpers with the registry and
 solver infrastructure used to generate and apply model-specific counterterms.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

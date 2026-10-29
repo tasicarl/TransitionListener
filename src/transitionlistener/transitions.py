@@ -1,7 +1,7 @@
 """This module contains routines to compute the possible transitions
 between phases.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:
@@ -280,10 +280,6 @@ class Transitions():
                     TooMuchSupercooling = True
                     continue
             except errors.Timeout:
-                # The run's deadline is raised from a SIGALRM handler, so it can land anywhere,
-                # including inside the nucleation solve. Read as an unexpected failure it
-                # becomes a `NucleationError` and the run is reported as a physics verdict
-                # instead of CLI error code 16, so an aborted point would look finished.
                 raise
             except Exception as err:
                 raise errors.NucleationError("An unexpected error occurred " + 
@@ -762,11 +758,6 @@ class Transitions():
                     else:
                         continue
                 except errors.Timeout:
-                    # Same reason as in `findAllTransitions`. Note where it would go: the
-                    # `except errors.NucleationError` handler above cannot catch a
-                    # `NucleationError` raised from inside this one, so the deadline would not
-                    # reach `solver_failures` and would not become code 8. It would propagate
-                    # as a nucleation failure, CLI code 2, which is a claim about the solve.
                     raise
                 except Exception as err:
                     raise errors.NucleationError("Unexpected nucleation error:\n" + 
@@ -840,10 +831,6 @@ class Transitions():
             dv_min = DV(tmin)
             dv_max = DV(tmax)
         except errors.Timeout:
-            # The deadline can land inside `DV` like anywhere else. Swallowed here it returns
-            # None, which is a refusal: the candidate is never counted as a solver failure, so
-            # the walk reports code 19, no viable phase pair, and an aborted run is published
-            # as a statement about the phases.
             raise
         except Exception as err:
             if verbose:

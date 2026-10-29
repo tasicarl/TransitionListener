@@ -1,7 +1,7 @@
 """
 Particle and mass spectrum utilities with concrete particle species.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

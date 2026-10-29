@@ -19,7 +19,7 @@ with higher-order terms resummed to guarantee unitarity.  The phases are
 returned as complex numbers so that downstream code can keep track of CP
 violating effects without additional bookkeeping.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

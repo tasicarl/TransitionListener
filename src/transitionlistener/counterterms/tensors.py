@@ -6,7 +6,7 @@ expressions from the generator stage to the runtime evaluation.  They also
 offer a thin numerical wrapper around each expression so that models can keep
 their own code short and declarative.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

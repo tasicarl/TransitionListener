@@ -7,7 +7,7 @@ help text should nonetheless offer a concise overview of what the tool does and
 how it can be used.  The updates in this module focus on surfacing that
 information so that ``tl -h`` is informative for new users.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

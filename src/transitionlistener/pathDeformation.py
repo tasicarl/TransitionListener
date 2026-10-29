@@ -28,7 +28,7 @@ For more explicit details, see the original paper
 
 .. _`arXiv:1109.4189`: http://arxiv.org/abs/1109.4189
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:
@@ -698,9 +698,6 @@ def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> f
         try:
             return float(np.squeeze(V(p0 + (sign * x) * dp0)))
         except errors.Timeout:
-            # The run's own deadline is raised from a POSIX alarm handler, so it can land
-            # inside any call to `V`. Treating it as an impassable wall would turn an aborted
-            # point into a finished one, with an extension chosen from wherever the alarm fell.
             raise
         except Exception:
             return np.inf
@@ -733,8 +730,6 @@ def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> f
         if probes.size != ladder.size:
             raise ValueError("the potential did not broadcast over the ladder")
     except errors.Timeout:
-        # As above, and here the cost of absorbing it is 301 further scalar evaluations of a
-        # potential the run has already been told to stop evaluating.
         raise
     except Exception:
         # The search below stops at the first non-finite probe, so the fallback stops filling
@@ -1098,10 +1093,6 @@ def _fit_spline_path(pts, settings: TunnelingSettings, V, dV, verbose):
             print(err.args[0])
         raise errors.SplineError(err.args[0])
     except errors.Timeout:
-        # The probes inside the path extension re-raise the run's deadline rather than reading
-        # it as a wall, and it has to survive this handler too: turned into a `SplineError` it
-        # reaches `bounceAction`, which treats that as no tunnelling and returns an infinite
-        # action, so a timed-out point would come back as a finished one with a verdict.
         raise
     except Exception as err:
         msg = err.args[0]

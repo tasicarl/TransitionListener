@@ -1,7 +1,7 @@
 """
 Module to calculate the GW energy spectrum from the phase transition parameters.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:
@@ -54,9 +54,6 @@ class FOPTspectrum():
                 (8 * np.pi / 0.28957) ** (1 / 3) / self.RH * max(self.v_wall, self.c_s),
             )  # Default to betaH_RH if not provided
         except errors.Timeout:
-            # The run deadline arrives from the SIGALRM handler in interface/state.py and can land
-            # on any bytecode. Caught by the broad handler below it is reported as `GWParamsError`,
-            # so a run that never finished comes out as a finished one with a verdict.
             raise
         except Exception as err:
             raise errors.GWParamsError(f"Missing necessary GW parameters in gwparams_dict. Error: {err}")

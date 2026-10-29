@@ -1,6 +1,6 @@
 """TransitionListener package providing tools to analyze cosmological phase transitions.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

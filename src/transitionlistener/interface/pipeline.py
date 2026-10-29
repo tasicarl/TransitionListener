@@ -1,6 +1,6 @@
 """Core execution pipeline for evaluating a single parameter point.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:
@@ -169,15 +169,6 @@ def _compute_single_point(
                 context["observability"] = observability
                 notify("gw")
             except errors.Timeout:
-                # The run deadline must not be absorbed as an optional-stage failure. This
-                # fallback exists so that a point with transition observables still returns
-                # them when only the spectrum fails, and it falls through to `signal.alarm(0)`
-                # and `return context, None` -- a success. A deadline reaching it would be
-                # reported as a finished point with no error at all, not even a wrong code.
-                # Re-raised here it is caught by the handler below, which returns it as the
-                # point's error, and the handler below maps its `errorcode` to 16. That
-                # outer handler is the intended terminus and is deliberately not
-                # guarded: it has to keep swallowing the exception to return it.
                 raise
             except Exception as err:
                 if context.get("transition_observables") is None:

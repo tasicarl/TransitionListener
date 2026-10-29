@@ -3,7 +3,7 @@ of the expanding bubbles.
 
 Based on the code snippet provided in `arxiv:2303.10171`.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors of the wrapper:
@@ -666,9 +666,6 @@ class Hydrodynamics():
             try:
                 values.append(float(func(point)))
             except errors.Timeout:
-                # The deadline is the run's, not this residual's. `Timeout` is raised from a
-                # signal handler and subclasses `Exception`, so absorbing it here would turn
-                # the expiry into a hole and let the search keep sampling past its own limit.
                 raise
             except Exception:
                 values.append(np.nan)

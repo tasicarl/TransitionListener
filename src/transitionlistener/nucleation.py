@@ -1,6 +1,6 @@
 """Nucleation-temperature search and tunneling-action bookkeeping.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:
@@ -100,9 +100,6 @@ def findTminFromUShapedNucl(
             )
         return Tmin_u
     except errors.Timeout:
-        # The run deadline arrives from the SIGALRM handler in interface/state.py and can land on
-        # any bytecode. Caught by the broad handler below it is reported as `NucleationError`, so a
-        # run that never finished comes out as a finished one with a verdict.
         raise
     except Exception as err:
         raise errors.NucleationError("Nucleation calculation failed: " + str(err)) from err
@@ -253,10 +250,6 @@ def computeNucleationTemperature(
             if verbose:
                 print("Brentq done after second try! Tnuc = ", Tnuc * CF, "GeV")
         except errors.Timeout:
-            # The run deadline arrives from the SIGALRM handler in interface/state.py and can land
-            # on any bytecode. Caught by the broad handler below it is reported as
-            # `NucleationError`, so a run that never finished comes out as a finished one with a
-            # verdict.
             raise
         except Exception as err:
             if verbose:

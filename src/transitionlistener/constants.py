@@ -6,7 +6,7 @@ in natural units whenever possible.  Additional model-specific inputs (SM
 fermion masses, gauge boson pole masses, Wolfenstein CKM parameters, ...)
 are collected in dedicated containers so that individual models can reuse them.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

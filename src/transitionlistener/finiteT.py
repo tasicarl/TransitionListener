@@ -16,7 +16,7 @@ Here, approx can either be 'exact', 'spline', 'high', or 'low'.
 and ``low`` calculate the high and low x expansions of J to order n.
 Specify the derivative with the ``deriv`` parameter.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

@@ -5,7 +5,7 @@ project uses for plots in the documentation as well as publication-quality
 figures. A couple of helper utilities are provided to make it easy to size
 figures consistently and to configure Matplotlib's global font settings.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

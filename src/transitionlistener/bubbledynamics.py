@@ -4,7 +4,7 @@ It contains functions to calculate the energy density, effective degrees of free
 the Hubble parameter, the bubble nucleation rate, and from this the nucleation
 and percolation temperature.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:
@@ -484,10 +484,6 @@ def g_eff_DS(T_DS: float, pot, phase) -> float:
     try:
         vevT = phase.valAt(T_DS)
     except errors.Timeout:
-        # `except BaseException` below would otherwise absorb the run's own timeout and hand
-        # back the T = 0 vev, so a timed-out point would come out as a finite number. This is
-        # the innermost potential evaluation on the counted entropy route, below the handlers
-        # in `_time_temperature_factors`, so it has to let the timeout through as well.
         raise
     except BaseException:
         print("Warning: TBRO is too low for interpolation of vev, using T = 0 value")
@@ -525,10 +521,6 @@ def h_eff_DS(T_DS: float, pot, phase) -> float:
     try:
         vevT = phase.valAt(T_DS)
     except errors.Timeout:
-        # `except BaseException` below would otherwise absorb the run's own timeout and hand
-        # back the T = 0 vev, so a timed-out point would come out as a finite number. This is
-        # the innermost potential evaluation on the counted entropy route, below the handlers
-        # in `_time_temperature_factors`, so it has to let the timeout through as well.
         raise
     except BaseException:
         print("Warning: TBRO is too low for interpolation of vev, using T = 0 value")
@@ -797,9 +789,6 @@ def _time_temperature_factors(
                 # route can reach that where dV/dT changes sign; the bag fallback applies.
                 cs_sq = np.nan
         except errors.Timeout:
-            # Subclasses Exception and is raised from a signal handler, so it can fire inside any
-            # of these potential evaluations. Swallowing it would turn a timed-out run into a
-            # silent bag fallback.
             raise
         except Exception:
             cs_sq = np.nan
@@ -1451,10 +1440,6 @@ def percolation_temperature_from_ode(
             i_target=target,
         )
     except errors.Timeout:
-        # Returning None here would let the adaptive refinement keep the interpolated Tperc
-        # and finish a run that timed out. The entropy evaluations inside deliberately let the
-        # timeout through, so this fallback, which exists for ordinary solver failures, must
-        # not be the place that absorbs it.
         raise
     except Exception:
         return None
@@ -2170,9 +2155,6 @@ def _solve_for_initial_Tperc(
                 )
         raise errors.PercolationError(err)
     except errors.Timeout:
-        # The run deadline arrives from the SIGALRM handler in interface/state.py and can land on
-        # any bytecode. Caught by the broad handler below it is reported as `PercolationError`, so
-        # a run that never finished comes out as a finished one with a verdict.
         raise
     except Exception as err:
         msg = (
@@ -2547,9 +2529,6 @@ def _action_rate_jitter_diagnostic(
         coeff = np.polyfit(x, y, degree)
         smooth = np.polyval(coeff, x)
     except errors.Timeout:
-        # The run's own deadline is delivered from a signal handler and can arrive
-        # anywhere, this fit included. Absorbing it here would let the solve continue
-        # past the time it was given, so only genuine fit failures are swallowed.
         raise
     except Exception:
         return {
@@ -3900,9 +3879,6 @@ def calcTf(Tperc, Tlow, Pint, pot, verbose=False):
     try:
         Tf = optimize.brentq(lambda TSYM: Pint(TSYM) - f_final, Tlow, Tperc)
     except errors.Timeout:
-        # The run deadline arrives from the SIGALRM handler in interface/state.py and can land on
-        # any bytecode. Caught by the broad handler below it is reported as `PercolationError`, so
-        # a run that never finished comes out as a finished one with a verdict.
         raise
     except Exception as e:
         msg = "Error in calculating Tf: " + str(e)

@@ -1,7 +1,7 @@
 """Module containing routines to calculate thermodynamic quantities
 like the numberdensity, energy density, pressure and entropy density.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

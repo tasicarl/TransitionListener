@@ -6,7 +6,7 @@ the BSMPT counterterm prescriptions.  It is invoked directly from the 2HDM
 model so that the model file itself remains agnostic of the 8-dimensional
 tensor algebra.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:
