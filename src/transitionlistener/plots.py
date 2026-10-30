@@ -9,6 +9,8 @@ Authors:
 """
 
 from pathlib import Path
+
+from .pta_free_spectra import free_spectrum_path
 from typing import Optional
 
 import numpy as np
@@ -1739,7 +1741,8 @@ def plot1d(pot : generic_potential, x1 : float, x2 : float, ax : Optional[plt.Ax
     fig.tight_layout()
     return fig, ax
 
-def add_violins(ax : plt.Axes, violincolor : str = DESYdunkelrot, nfreq : int = 14):
+def add_violins(ax : plt.Axes, violincolor : str = DESYdunkelrot, nfreq : int = 14,
+                product : str | None = None):
     """Add stylistic violin markers to highlight PTA frequency bins.
     
     Parameters
@@ -1750,8 +1753,16 @@ def add_violins(ax : plt.Axes, violincolor : str = DESYdunkelrot, nfreq : int = 
         The color of the violins.
     nfreq : int, optional
         Number of frequency bins for the violins. Default is 14.
+    product : str, optional
+        Which shipped free-spectrum product to draw, a key of
+        :data:`pta_free_spectra.PTA_FREE_SPECTRA`. ``None`` takes the default, which is the
+        one the PTA likelihoods use.
     """
-    directory = DATA_DIR / "30f_fs{hd}_100fDMGP_ceffyl"
+    # The same product the PTA likelihoods are evaluated against. Until v2.2 these two
+    # disagreed: the likelihood used whichever data set PTArcade downloaded, the 2023
+    # common-uncorrelated one, while this figure drew the 2023 Gaussian-process one, so the
+    # free spectrum behind a spectrum was not the free spectrum it had been scored on.
+    directory = Path(free_spectrum_path(product))
 
     def log10_h2O(log10_rho, f, T):
         return np.log10(8 * np.pi**4 / cn.H100_Hz**2 * 10**(2 * log10_rho) * f**5 * T)
