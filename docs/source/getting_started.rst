@@ -149,5 +149,5 @@ For detailed installation instructions and usage examples please refer to the fo
 - Usage: :doc:`usage`
 
 For more information, visit the documentation at
-https://tasillo.de/TransitionListener_development or check out the code
+https://tasillo.de/TransitionListener or check out the code
 repository at https://github.com/tasicarl/TransitionListener.

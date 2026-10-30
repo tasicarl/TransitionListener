@@ -55,9 +55,25 @@ gravitational wave studies:
    interface to compare several dark-sector model classes and quantify how much
    tuning is required to explain the PTA signal.
 
+5. [Gravitational Waves from Dimension-6 Assisted Peccei-Quinn Phase Transitions](https://inspirehep.net/arxiv/2608.13692)  
+   arXiv: [2608.13692](https://arxiv.org/abs/2608.13692).  
+   The first study from outside the project to use TransitionListener. A
+   dimension-6 operator added to the Peccei-Quinn effective potential of the
+   minimal KSVZ axion model makes the symmetry-breaking transition first order,
+   and TransitionListener was used for the refined scan of the parameter space
+   where the resulting gravitational wave signal is observable.
+
+6. [When the HL-LHC is blind, LISA is deaf (but not vice versa): 2HDM collider-cosmology synergies](https://inspirehep.net/arxiv/2608.23679)  
+   arXiv: [2608.23679](https://arxiv.org/abs/2608.23679).  
+   Here TransitionListener supplied the phase-transition and gravitational wave
+   predictions for a scan of the two-Higgs-doublet model, which were then set
+   against what the high-luminosity LHC can exclude in the same parameter
+   points, so that each experiment's reach is measured on the region the other
+   cannot cover.
+
 The following figure is the $\alpha$--$(\beta/H)_{RH}$ comparison
 plot discussed in the TransitionListener v2 paper and attributed there to the
-last study above:
+PTA model-comparison study above:
 
 <p align="center">
   <a href="_static/example_output/fig14_alpha_betaH.png">
