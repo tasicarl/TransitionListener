@@ -3,10 +3,97 @@
 Error reference
 ===============
 
-Why each failure is classified the way it is, and what was measured to decide it.
-This is the detail that used to sit in the exception docstrings in
-``src/transitionlistener/errors.py``; the docstrings now carry the summary and point
-here.
+Every code a run can report, and for four of them why the failure is classified the way it
+is and what was measured to decide it. That detail used to sit in the exception docstrings in
+``src/transitionlistener/errors.py``; the docstrings now carry the summary and point here.
+
+A point that fails writes one integer in the ``error`` column of the output. It is the
+``errorcode`` of the exception that ended the point, and an exception that carries none is
+reported as 999 rather than left unnamed.
+
+.. list-table:: CLI error codes
+   :header-rows: 1
+   :widths: 8 34 58
+
+   * - Code
+     - Exception
+     - What it means
+   * - 1
+     - ``TachyonError``
+     - A tachyonic mass at the zero-temperature minimum.
+   * - 2
+     - ``NucleationError``
+     - The nucleation temperature could not be identified.
+   * - 3
+     - ``WrongT0MinimumError``
+     - The minimum the chain ends in is not the expected zero-temperature minimum.
+   * - 4
+     - ``NoPhases``
+     - Phase tracing identified no phases, or transitions were requested before tracing.
+   * - 5
+     - ``OnlyOnePhase``
+     - Phase tracing yielded a single phase, so there is no pair to tunnel between.
+   * - 6
+     - ``NoTransitionFound``
+     - No viable transition between the phases that were identified.
+   * - 7
+     - ``PercolationApproximation1Error``
+     - The estimate that brackets the percolation temperature did not converge.
+   * - 8
+     - ``TooMuchSupercoolingError``
+     - Either a nucleation solve that did not succeed, or a true vacuum fraction that never
+       reached ``f_perc``. The message says which, and
+       :ref:`err-too-much-supercooling-error` says why the two share a code.
+   * - 9
+     - ``OnlySecondOrderTransitionsError``
+     - Every transition found is second order, so there is no bubble nucleation to compute.
+   * - 10
+     - ``PercolationError``
+     - The percolation temperature could not be determined.
+   * - 11
+     - ``TunnelingError``
+     - Tunnelling produced no action.
+   * - 12
+     - ``InitPotentialError``
+     - The potential could not be built from the input, for instance a potential unbounded
+       from below, unphysical Lagrangian parameters, or an unknown runtime override.
+   * - 13
+     - ``SplineError``
+     - A spline along the tunnelling path could not be constructed.
+   * - 14
+     - ``WrongHighTPhaseError``
+     - The high-temperature phase is not the expected one.
+   * - 15
+     - ``EternalInflationError``
+     - The eternal-inflation criterion is met, or the true vacuum fraction never reached
+       ``f_final``. The second is the common case and is not the first; see
+       :ref:`err-eternal-inflation-error`.
+   * - 16
+     - ``Timeout``
+     - The run exceeded the runtime it was given. It is raised from a POSIX alarm handler, so
+       it can arrive anywhere, and it is a statement about the clock and not about the physics.
+   * - 17
+     - ``ActionRateJitterError``
+     - The sampled bounce action implies a nucleation rate that is not smooth.
+   * - 18
+     - ``SuperluminalSoundSpeedError``
+     - The effective potential gave a sound speed of one or more, in either phase; see
+       :ref:`err-superluminal-sound-speed-error`.
+   * - 19
+     - ``NoViablePhasePairError``
+     - No phase pair below the phase the walk had reached was ever a tunnelling candidate, so
+       nothing about the rate at that step was computed; see
+       :ref:`err-no-viable-phase-pair-error`.
+   * - 999
+     - ``UnexpectedError``
+     - Any failure that carries no code of its own. Ten exception classes have none:
+       ``NoModelError``, ``NoConfigError``, ``NoLoggerError``, ``TooSmalldVError``,
+       ``InfiniteActionError``, ``ZeroActionError``, ``DeformationError``,
+       ``PotentialError``, ``ParamNamesError`` and ``GWParamsError``. A 999 therefore says
+       only that the point failed, and the message is the whole of the diagnosis.
+
+Codes 8, 15, 18 and 19 carry a statement about what was and was not measured, which decides
+how far their verdict reaches. Those four follow.
 
 .. _err-superluminal-sound-speed-error:
 
