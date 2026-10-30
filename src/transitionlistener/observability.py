@@ -15,14 +15,20 @@ import numpy as np
 from scipy import integrate
 try:  # Optional PTA dependencies; skipped if environment lacks tempo2/ptarcade stack.
     from ptarcade import signal_builder  # type: ignore
+    from ptarcade import models_utils  # type: ignore
+    from ceffyl import Ceffyl  # type: ignore
     from enterprise.signals.parameter import Uniform
     _PTA_IMPORT_ERROR: Exception | None = None
 except Exception as exc:  # pragma: no cover - optional dependency
     signal_builder = None  # type: ignore
+    models_utils = None  # type: ignore
+    Ceffyl = None  # type: ignore
     Uniform = None  # type: ignore
     _PTA_IMPORT_ERROR = exc
 
 from . import console, print
+from .pta_free_spectra import (DEFAULT_PTA_FREE_SPECTRUM, bestfit_lnL,
+                               free_spectrum_path)
 from .colors import *
 from .constants import *
 
@@ -342,15 +348,48 @@ class PTAModel_SMBHB:
 
 
 
+def _build_ceffyl(datadir: str, nbins: int, model):
+    """Assemble a ceffyl likelihood for one spectrum against a shipped free spectrum.
+
+    This replaces `ptarcade.signal_builder.ceffyl_builder`, which resolves a data set from a
+    configuration and then downloads it from Zenodo. The assembly is the same, and a test
+    asserts the two give the same log-likelihood; only the data set comes from this package
+    instead of from the network, so a run is reproducible offline and says which product it
+    used.
+
+    `model.smbhb` is false on both adapters this is called with: the binary foreground enters
+    through the spectrum, as `h2OmegaGW_with_astrobg_fun`, not as a second ceffyl signal. The
+    branch of `ceffyl_builder` that adds one is therefore never taken here and is not copied.
+    """
+    pta = Ceffyl.ceffyl(datadir)
+    pta.add_signals([
+        Ceffyl.signal(
+            N_freqs=int(nbins),
+            psd=models_utils.omega2cross(model.spectrum, ceffyl=True),
+            params=list(model.parameters.values()),
+            name="",
+        )
+    ])
+    return pta
+
+
 class Observability(GW_Sensitivity_Data):
     """Compute SNRs, PTA likelihoods and derived quantities for a GW spectrum."""
 
     def __init__(self, gwspec_dict: dict, verbose: bool=False,
-                 include_smbhb: bool=False):
-        """Store the supplied spectrum and immediately evaluate all observables."""
+                 include_smbhb: bool=False, pta_free_spectrum: str | None=None):
+        """Store the supplied spectrum and immediately evaluate all observables.
+
+        ``pta_free_spectrum`` names the shipped free-spectrum product the PTA likelihoods are
+        evaluated against, a key of :data:`pta_free_spectra.PTA_FREE_SPECTRA`. ``None`` takes
+        the default. It is recorded on the instance because the reference log-likelihood each
+        reported sigma is measured from belongs to the product, not to the label.
+        """
         super(Observability, self).__init__()
         self.gwspec_dict = gwspec_dict
         self.verbose = verbose
+        self.pta_free_spectrum = (
+            DEFAULT_PTA_FREE_SPECTRUM if pta_free_spectrum is None else str(pta_free_spectrum))
 
         if include_smbhb:
             self.my_spec = gwspec_dict["h2OmegaGW_with_astrobg_fun"]
@@ -383,7 +422,11 @@ class Observability(GW_Sensitivity_Data):
                         ),
                         "model": PTAModel(self.my_spec),
                     }
-                self.ptas[label] = signal_builder.ceffyl_builder(input_payload)
+                self.ptas[label] = _build_ceffyl(
+                    free_spectrum_path(self.pta_free_spectrum),
+                    int(settings["nbins"]),
+                    input_payload["model"],
+                )
             if include_smbhb:
                 self.calc_PTA_logL_with_astronoise(
                     gwspec_dict.astroparams_dict["A"],
@@ -553,7 +596,11 @@ class Observability(GW_Sensitivity_Data):
         for label, settings in PTA_LIKELIHOOD_SETTINGS.items():
             actual = logL_values.get(label, np.nan)
             threshold = float(settings["threshold"])
-            bestfit = float(settings["bestfit_lnL"])
+            # The reference belongs to the product, not to the label. A label with no
+            # reference for the product in use reports nan rather than a distance from a best
+            # fit obtained on different data.
+            reference = bestfit_lnL(self.pta_free_spectrum, label)
+            bestfit = np.nan if reference is None else float(reference)
             mock = self._compute_mock_likelihood(threshold)
             smooth = self._compute_smoothened_likelihood(actual, mock, threshold)
 
