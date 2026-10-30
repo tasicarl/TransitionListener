@@ -76,6 +76,35 @@ account of every one is in its pull request.
 
 ### Changed
 
+- **The pulsar timing data ships with the code, and the reference likelihoods are recomputed
+  (moves results).** The PTA likelihoods were built by
+  `ptarcade.signal_builder.ceffyl_builder`, which resolves a data set from the configuration
+  and then downloads it from Zenodo while the run is going. Two consequences: a released
+  version could not produce a PTA column without a network, and the record it fetched was the
+  2023 common-uncorrelated free spectrum whatever the configuration said, so every column
+  rested on that one product and nothing in the output recorded which. Eight products now ship
+  under `tab_data/pta_free_spectra`, selected with `pta_free_spectrum`, and nothing is
+  fetched. They are the six versions of the NANOGrav 15 yr free spectrum compared in
+  arXiv:2608.23679's appendix, plus the NANOGrav 12.5 yr and IPTA DR2 sets, the latter two
+  byte-identical to what PTArcade downloaded. The default is `ng15_hd_v2`, the 2026 re-run of
+  the Hellings-Downs spectrum, in place of the 2023 uncorrelated one.
+  The assembly is unchanged: on the products PTArcade fetches, the shipped builder reproduces
+  its log-likelihood to every digit, on all four labels.
+  Because each reported sigma is `bestfit_lnL - lnL`, the reference has to belong to the
+  product. All of them were recomputed with ultranest over the strength, the inverse duration
+  and the reheating temperature of the sound-wave template, flat priors throughout. On the
+  product the released references were made on, three of the four are reproduced to between
+  0.029 and 0.045 in log-likelihood. The fourth, `IPTA2_13bins`, was released as -105.66903
+  and cannot be reached: a nested sampler cannot overshoot a maximum, and a binary foreground
+  with both parameters free, which can only raise it, still reaches -105.854. More live
+  points, and every bin count from 5 to 30, were ruled out by measurement. It is replaced by
+  the reproducible -105.88365. Since a reference that is too high inflates every distance, any
+  IPTA2 significance from an earlier version is too large, by up to 0.66 sigma at the best fit.
+  A label evaluated on a product that carries no reference now reports not-a-number rather
+  than a distance from a best fit obtained on other data.
+  `plots.add_violins` draws the same product the likelihood used; it had been drawing the 2023
+  Gaussian-process set while the likelihood scored against the uncorrelated one.
+
 - **One entropy for the expansion history.** The scale factor came from the counted degrees of
   freedom and the sound speed from the effective potential, which are two forms of the same
   relation. Both now come from the entropy `entropy_definition` selects, taken along the traced
