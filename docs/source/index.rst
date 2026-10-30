@@ -57,8 +57,8 @@ For a detailed list of capabilities, see the :doc:`features` page.
 Usage
 -----
 
-* `Get started! <https://www.tasillo.de/TransitionListener_development/getting_started>`_
-* Read the `full documentation <https://www.tasillo.de/TransitionListener_development/documentation>`_
+* `Get started! <https://www.tasillo.de/TransitionListener/getting_started>`_
+* Read the `full documentation <https://www.tasillo.de/TransitionListener/documentation>`_
 * Have a look at the `GitHub repository <https://github.com/tasicarl/TransitionListener>`_
 
 

@@ -59,7 +59,7 @@ def main():
               tl -c examples/example_grid.yaml -j 10
               mpiexec -n 10 tl -c examples/example_ultranest.yaml
 
-            Documentation: https://www.tasillo.de/transitionlistener_development/
+            Documentation: https://www.tasillo.de/TransitionListener/
             """
         ).strip(),
     )
