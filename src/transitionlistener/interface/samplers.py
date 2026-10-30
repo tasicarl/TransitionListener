@@ -1,6 +1,6 @@
 """Sampler integrations and helpers for TransitionListener.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

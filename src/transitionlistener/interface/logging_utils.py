@@ -1,6 +1,6 @@
 """Small helpers for logging scan output to disk.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

@@ -7,7 +7,7 @@ tensors evaluated at the vacuum configuration and provide gradient / Hessian
 matrices expressed in the physical field basis (i.e. after rotating into the
 mass eigenstates).
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

@@ -1,6 +1,6 @@
 """Compute thermodynamic and gravitational-wave observables for transitions.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

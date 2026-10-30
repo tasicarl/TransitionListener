@@ -1,6 +1,6 @@
 """Configuration loader for TransitionListener scan YAML files.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:
@@ -180,10 +180,6 @@ class ScanConfig:
         try:
             params = potential.model_parameters
         except errors.Timeout:
-            # The run deadline arrives from the SIGALRM handler in interface/state.py and can land
-            # on any bytecode. Caught by the broad handler below it is reported as
-            # `AttributeError`, so a run that never finished comes out as a finished one with a
-            # verdict.
             raise
         except Exception:
             raise AttributeError(

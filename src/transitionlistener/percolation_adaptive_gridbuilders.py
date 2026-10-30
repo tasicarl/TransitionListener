@@ -7,7 +7,7 @@ arrays and settings in and produces candidate temperature grids; the
 top-level scan controllers (and their :class:`PercolationState`
 bookkeeping) stay in the parent module.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

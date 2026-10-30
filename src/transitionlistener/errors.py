@@ -6,7 +6,7 @@ phase reconstruction, tunnelling, percolation, hydrodynamics) and attach
 error codes where the command-line interface needs to surface diagnostic
 information to end users.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

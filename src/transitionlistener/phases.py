@@ -3,7 +3,7 @@ an interface to the phase tracing routines, stores
 the phase information of the potential and provides
 interpolated functions.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

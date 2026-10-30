@@ -5,7 +5,7 @@ adaptive cold-boundary picker, jump-underresolution guards) live in
 :mod:`transitionlistener.percolation_adaptive_gridbuilders`. This module keeps the
 top-level scan controllers and their :class:`PercolationState` bookkeeping.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:
@@ -20,7 +20,7 @@ from scipy import optimize
 
 from transitionlistener import constants as cn
 from transitionlistener import errors
-from transitionlistener import energy_ordering as eo
+from transitionlistener import thermodynamics
 from transitionlistener.bubbledynamics import (
     PercolationGrid,
     PercolationState,
@@ -244,11 +244,6 @@ def _estimate_dynamiczoomwindow_accuracy(
                 bounds_error=False,
             )
         except errors.Timeout:
-            # Building the interpolants is where a SIGALRM most easily lands, since it is the
-            # first thing this function does with the profile. Caught here the deadline becomes
-            # `Pint = Sint = Hint = None`, every estimate below is skipped, and the point is
-            # reported as finished with a partial accuracy record. The guard further down cannot
-            # help: this handler runs first.
             raise
         except Exception:
             Pint = Sint = Hint = None
@@ -267,9 +262,6 @@ def _estimate_dynamiczoomwindow_accuracy(
                 verbose=False,
             )
         except errors.Timeout:
-            # Same reason: `calcTf` integrates, so the deadline can land inside it. Swallowed
-            # here it leaves `Tf` at whatever the crossing gave and the run continues, so a
-            # timed-out point reports an accuracy record it never finished computing.
             raise
         except Exception:
             pass
@@ -311,11 +303,6 @@ def _estimate_dynamiczoomwindow_accuracy(
                     temps, probability_values, action_values, hubble_values,
                     float(estimate["Tperc"]), pot, settings)
         except errors.Timeout:
-            # The run deadline comes from a SIGALRM handler, so it can land inside the
-            # interpolations or the `calcMeanBubbleSeparation` call above. Swallowed by the
-            # fallback below it becomes a missing second estimate and the run carries on, so
-            # a point that never finished would be reported as one that did. The halved
-            # estimate is an optional extra; the deadline is not.
             raise
         except Exception:
             pass
@@ -428,13 +415,6 @@ def _rh_on_halved_support(temps, probabilities, actions, hubble, Tperc, pot, set
             Tperc, float(sub_t[0]), Sint, Pint, Hint, None, None, verbose=False)
         value = float(separation * float(Hint(Tperc)))
     except errors.Timeout:
-        # Propagated, not converted. The deadline is raised from a SIGALRM handler and can land
-        # in either interpolation or inside `calcMeanBubbleSeparation`; re-raising here lets it
-        # reach the caller and be reported as CLI code 16. Returning `nan` instead -- which is
-        # what the handler below does for an ordinary failure -- would make it indistinguishable
-        # from a support this estimate cannot carry, and the point would be reported as finished.
-        # It has to be re-raised *here* because this handler runs before the guard at the call
-        # site, which would otherwise never see it.
         raise
     except Exception:
         return math.nan
@@ -1406,7 +1386,7 @@ def _compute_step3_profile(
                         TBRO = state.Tb[i]
                     eBRO = bd.energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
-                state.Tb[i], _clamped = eo.enforce_broken_not_below_symmetric(
+                state.Tb[i], _clamped = thermodynamics.enforce_broken_not_below_symmetric(
                     state.Tb[i], TSYM[i], where="the adaptive step-3 profile",
                     e_sym=eSYM_PT,
                     measure_broken_energy=lambda: bd.energyDensity(

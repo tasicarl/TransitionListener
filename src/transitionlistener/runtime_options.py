@@ -4,7 +4,7 @@ The core configuration classes live in :mod:`transitionlistener.config`.  This
 module keeps input-dictionary parsing and named precision bundles out of that
 defaults-only file.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

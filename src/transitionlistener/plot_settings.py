@@ -1,6 +1,6 @@
 """Matplotlib defaults and helper utilities for rendering TransitionListener plots.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

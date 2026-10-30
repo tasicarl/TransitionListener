@@ -4,7 +4,7 @@ This module keeps the compatibility path separate from the default adaptive_step
 controller.  It intentionally reuses the shared thermodynamic helpers from
 ``bubbledynamics`` instead of duplicating the physics expressions here.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:
@@ -16,7 +16,7 @@ import numpy as np
 from scipy import interpolate, optimize
 
 from transitionlistener import errors
-from transitionlistener import energy_ordering as eo
+from transitionlistener import thermodynamics
 from transitionlistener.bubbledynamics import (
     PercolationGrid,
     PercolationState,
@@ -365,10 +365,6 @@ def _refine_percolation_temperature(
                             state.Tb[i] = state.Tb[i - 1]
                             TBRO = state.Tb[i]
                         except errors.Timeout:
-                            # The run deadline arrives from the SIGALRM handler in
-                            # interface/state.py and can land on any bytecode. Caught by the broad
-                            # handler below it is reported as `PercolationError`, so a run that
-                            # never finished comes out as a finished one with a verdict.
                             raise
                         except Exception as err:
                             raise errors.PercolationError(
@@ -378,7 +374,7 @@ def _refine_percolation_temperature(
 
                         eBRO = energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
-                    state.Tb[i], _clamped = eo.enforce_broken_not_below_symmetric(
+                    state.Tb[i], _clamped = thermodynamics.enforce_broken_not_below_symmetric(
                         state.Tb[i], TSYM[i], where="the fixed-step percolation profile",
                         e_sym=eSYM_PT,
                         measure_broken_energy=lambda: energyDensity(

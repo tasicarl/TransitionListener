@@ -9,7 +9,7 @@ friction (:class:`WallWithConstFriction`) instead of radius-dependent friction,
 or to calculate the instanton in the presence of gravity (*not yet
 implemented*).
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:
@@ -521,11 +521,6 @@ class SingleFieldInstanton:
         try:
             r0 = optimize.brentq(deltaPhiDiff, rlast, r, disp=False)
         except errors.Timeout:
-            # The run's deadline is raised from a SIGALRM handler, so it can land inside
-            # `brentq` like anywhere else. Read as a root-finding failure it becomes a
-            # `TunnelingError`, which `pathDeformation._find_profile` turns into an
-            # `InfiniteActionError` and `bounceAction` reports as no tunnelling: a timed-out
-            # point would come back as a finished one with a verdict.
             raise
         except Exception as e:
             msg = (

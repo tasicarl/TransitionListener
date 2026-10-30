@@ -4,7 +4,7 @@ It contains functions to calculate the energy density, effective degrees of free
 the Hubble parameter, the bubble nucleation rate, and from this the nucleation
 and percolation temperature.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:
@@ -22,7 +22,7 @@ from transitionlistener import thermodynamics as td
 from transitionlistener import constants as cn
 from transitionlistener.helper_functions import derivative
 from transitionlistener import errors
-from transitionlistener import energy_ordering as eo
+from transitionlistener import thermodynamics
 from transitionlistener.helper_functions import thermalDerivativeStep
 from transitionlistener.pathDeformation import (bounceAction,
                                                 bounceActionOverImages,
@@ -55,10 +55,6 @@ def g_eff_DS(T_DS: float, pot, phase) -> float:
     try:
         vevT = phase.valAt(T_DS)
     except errors.Timeout:
-        # `except BaseException` below would otherwise absorb the run's own timeout and hand
-        # back the T = 0 vev, so a timed-out point would come out as a finite number. This is
-        # the innermost potential evaluation on the counted entropy route, below the handlers
-        # in `_time_temperature_factors`, so it has to let the timeout through as well.
         raise
     except BaseException:
         print("Warning: TBRO is too low for interpolation of vev, using T = 0 value")
@@ -94,10 +90,6 @@ def h_eff_DS(T_DS: float, pot, phase) -> float:
     try:
         vevT = phase.valAt(T_DS)
     except errors.Timeout:
-        # `except BaseException` below would otherwise absorb the run's own timeout and hand
-        # back the T = 0 vev, so a timed-out point would come out as a finite number. This is
-        # the innermost potential evaluation on the counted entropy route, below the handlers
-        # in `_time_temperature_factors`, so it has to let the timeout through as well.
         raise
     except BaseException:
         print("Warning: TBRO is too low for interpolation of vev, using T = 0 value")
@@ -844,10 +836,6 @@ def calcApproxPercolation(
                 if Tperc < float(tmin) or Tperc > float(tmax):
                     raise ValueError("Newton method failed to find a root in the range")
             except errors.Timeout:
-                # The run deadline arrives from the SIGALRM handler in interface/state.py and can
-                # land on any bytecode. Caught by the broad handler below it is reported as
-                # `PercolationApproximation1Error`, so a run that never finished comes out as a
-                # finished one with a verdict.
                 raise
             except Exception as newton_err:
                 if verbose:
@@ -1373,9 +1361,6 @@ def _solve_for_initial_Tperc(
                 )
         raise errors.PercolationError(err)
     except errors.Timeout:
-        # The run deadline arrives from the SIGALRM handler in interface/state.py and can land on
-        # any bytecode. Caught by the broad handler below it is reported as `PercolationError`, so
-        # a run that never finished comes out as a finished one with a verdict.
         raise
     except Exception as err:
         msg = (
@@ -1524,10 +1509,6 @@ def _refine_percolation_temperature(
                             state.Tb[i] = state.Tb[i - 1]
                             TBRO = state.Tb[i]
                         except errors.Timeout:
-                            # The run deadline arrives from the SIGALRM handler in
-                            # interface/state.py and can land on any bytecode. Caught by the broad
-                            # handler below it is reported as `PercolationError`, so a run that
-                            # never finished comes out as a finished one with a verdict.
                             raise
                         except Exception as err:
                             raise errors.PercolationError(
@@ -1537,7 +1518,7 @@ def _refine_percolation_temperature(
 
                         eBRO = energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
-                    state.Tb[i], _clamped = eo.enforce_broken_not_below_symmetric(
+                    state.Tb[i], _clamped = thermodynamics.enforce_broken_not_below_symmetric(
                         state.Tb[i], TSYM[i], where="the fixed-step bubble-dynamics profile",
                         e_sym=eSYM_PT,
                         measure_broken_energy=lambda: energyDensity(
@@ -2287,9 +2268,6 @@ def calcTf(Tperc, Tlow, Pint, pot, verbose=False):
     try:
         Tf = optimize.brentq(lambda TSYM: Pint(TSYM) - f_final, Tlow, Tperc)
     except errors.Timeout:
-        # The run deadline arrives from the SIGALRM handler in interface/state.py and can land on
-        # any bytecode. Caught by the broad handler below it is reported as `PercolationError`, so
-        # a run that never finished comes out as a finished one with a verdict.
         raise
     except Exception as e:
         msg = "Error in calculating Tf: " + str(e)
@@ -2452,9 +2430,6 @@ def findTminFromUShapedNucl(Tmin, Tmax, args, start_phase, end_phase, outdict,
                 print("Finding Tmin_u failed: ", result.message)
             raise errors.NucleationError("Nucleation criterion failed in the finding of Tmin_u:" + str(result.message))
     except errors.Timeout:
-        # The run deadline arrives from the SIGALRM handler in interface/state.py and can land on
-        # any bytecode. Caught by the broad handler below it is reported as `NucleationError`, so a
-        # run that never finished comes out as a finished one with a verdict.
         raise
     except Exception as err:
         raise errors.NucleationError("Nucleation calculation failed: " + str(err))
@@ -2631,10 +2606,6 @@ def computeNucleationTemperature(V, dV, d2V, start_phase, end_phase,
             if verbose:
                 print("Brentq done after second try! Tnuc = ", Tnuc * CF, "GeV")
         except errors.Timeout:
-            # The run deadline arrives from the SIGALRM handler in interface/state.py and can land
-            # on any bytecode. Caught by the broad handler below it is reported as
-            # `NucleationError`, so a run that never finished comes out as a finished one with a
-            # verdict.
             raise
         except Exception:
             if verbose:
@@ -2942,9 +2913,6 @@ def computeNucleationTemperature2(
     try:
         Tnuc = optimize.brentq(evalNucleationCriterion, Tmin, Tmax, args=args, xtol=Ttol, maxiter=maxiter, disp=False)
     except errors.Timeout:
-        # The run deadline arrives from the SIGALRM handler in interface/state.py and can land on
-        # any bytecode. Caught by the broad handler below it is reported as `NucleationError`, so a
-        # run that never finished comes out as a finished one with a verdict.
         raise
     except Exception as e:
         print("Nucleation calculation failed!")

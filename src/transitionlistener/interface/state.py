@@ -1,6 +1,6 @@
 """Shared global state and runtime configuration for the TL interface.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

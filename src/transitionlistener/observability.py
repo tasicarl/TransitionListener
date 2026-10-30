@@ -1,6 +1,6 @@
 """Sensitivity curves and observability metrics for gravitational wave experiments.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:

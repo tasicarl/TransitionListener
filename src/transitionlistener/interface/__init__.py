@@ -5,7 +5,7 @@ scans and single-point evaluations using TransitionListener. It also
 manages global state variables such as debug mode, timeout settings,
 and logging configurations.
 
-Part of TransitionListener v2.0
+Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
 Authors:
