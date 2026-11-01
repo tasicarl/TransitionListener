@@ -113,6 +113,14 @@ The degrees of freedom
 The effective degrees of freedom of the plasma against temperature, in the sense of
 :doc:`the_plasma`, which fix the expansion rate and the redshift of the signal.
 
+.. figure:: ../_static/plots/dofs.png
+   :width: 100%
+
+   The counts and the energy densities of this benchmark point, split into the fields of the
+   potential and the tabulated baths. Each quantity is drawn once per phase, so the pair of
+   curves of one colour is the same quantity in the symmetric and in the broken phase, and
+   the percolation and reheating temperatures are marked.
+
 The percolation history
 -----------------------
 

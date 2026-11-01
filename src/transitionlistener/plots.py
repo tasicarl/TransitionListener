@@ -1149,6 +1149,11 @@ class TLPlots():
 
         add_TL_logo(loc="lower right", ax=axes[1], magnification=2)
         axes[0].set_title(self.plot_description)
+        # Headroom for the legend. The counts rise with temperature, so without it the
+        # legend box and the curve for the total share the upper right corner and the
+        # entries are read through the curve.
+        lo, hi = axes[0].get_ylim()
+        axes[0].set_ylim(lo, lo + 1.45 * (hi - lo))
         axes[0].legend(loc="upper right")
         axes[0].set_ylabel(R"$g_{\mathrm{eff}}(T)$")
         axes[1].set_ylabel(R"$\rho(T) / \mathrm{GeV}^4$")
