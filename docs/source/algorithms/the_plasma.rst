@@ -94,17 +94,23 @@ continues to supply the light species at the temperature in question.
    ``examples/bp_lisa.yaml``, on the same temperature axis, counted separately in each of its
    two phases. Both curves carry the tabulated bath as well as the fields of the potential,
    with the Standard Model fields that appear in both counted once, so this is what the
-   expansion rate is built from. In the symmetric phase the fields of the potential are
-   massless and contribute their full 40.5; in the broken phase they take their masses from
-   the field and leave the plasma one after another, and the arrows mark where each has lost
-   half of its contribution, solved from the same integral the counting uses rather than read
-   off :math:`m = T`. The symmetric phase is drawn only where it exists as a minimum and where
-   that verdict is resolved: the curvature at the origin is a finite difference of the full
-   potential, and above about a TeV the field-independent radiation dominates the potential
-   and is differenced away, leaving a number whose sign is an accident of rounding. The two
-   curves meet where the broken minimum disappears. A model with a transition therefore has
-   two different plasmas on the two sides of its bubble walls, which is why the count is taken
-   at a field value and not only at a temperature.
+   expansion rate is built from. In the broken phase the fields of the potential take their
+   masses from the field and leave the plasma one after another, and the arrows mark where
+   each has lost half of its contribution, solved from the same integral the counting uses
+   rather than read off :math:`m = T`.
+
+   In the symmetric phase those fields are massless and contribute their full 40.5 at every
+   temperature, so the slope of that curve is not theirs: it is the bath around them, which
+   loses degrees of freedom as it cools whether or not a transition happens. The curve ends in
+   an open circle at the temperature below which the origin of this potential stops being a
+   minimum, so that there is no symmetric phase to count. At the other end it is drawn to the
+   top of the range: the origin is certainly a minimum at high temperature, where the thermal
+   masses dominate, although the test cannot confirm it there, because the curvature is a
+   finite difference of the full potential and above about a TeV the field-independent
+   radiation dominates that potential and is differenced away. The two curves meet where the
+   broken minimum disappears. A model with a transition therefore has two different plasmas on
+   the two sides of its bubble walls, which is why the count is taken at a field value and not
+   only at a temperature.
 
 The two radiation baths
 -----------------------

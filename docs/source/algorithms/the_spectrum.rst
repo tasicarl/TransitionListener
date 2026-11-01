@@ -175,18 +175,18 @@ eddy turnovers and :math:`v_A = \sqrt{3\Omega_s/4}` is the Alfvén velocity.
 .. figure:: ../_static/algorithm_spectrum_sources.png
    :width: 100%
 
-   The three templates and their sum, built with the package's own ``FOPTspectrum`` at
-   :math:`\alpha = 0.2`, :math:`R_* = 0.05`, :math:`v_w = 0.65` and
-   :math:`T_{\rm reh} = 100` GeV, with the sound-wave efficiency taken from
-   ``hydrodynamics.kappa_sw`` at that strength and wall velocity and the turbulent one a tenth
-   of it. The collision efficiency is set by hand, since for a wall the plasma holds back it is
-   zero and there would be nothing to draw. The sound waves dominate, which is the usual case,
-   so the sum lies on top of them. Their spectrum rises as :math:`f^3`, turns over to
-   :math:`f` between the two breaks and falls as :math:`f^{-3}`; with the breaks a factor
-   twenty-two apart the middle segment is short, and what the eye reads is the change of
-   curvature rather than a straight piece. The grey curve is LISA's power-law-integrated
-   sensitivity as the package ships it, at the threshold and observation time stored with it.
-   A spectrum that rises above that curve is detectable, and this one does.
+   The three templates, built with the package's own ``FOPTspectrum`` at the parameters shown.
+   The sound-wave efficiency is taken from ``hydrodynamics.kappa_sw`` at that strength and wall
+   velocity and the turbulent one is a tenth of it; the collision efficiency is set by hand,
+   since for a wall the plasma holds back it is zero and there would be nothing to draw. Their
+   sum is not drawn, because the sound waves dominate and it would lie on top of them.
+
+   The sound-wave spectrum rises as :math:`f^3`, turns over to :math:`f` between its two
+   breaks and falls as :math:`f^{-3}`; with the breaks a factor twenty-two apart the middle
+   segment is short, and what the eye reads is the change of curvature rather than a straight
+   piece. The grey curve is LISA's power-law-integrated sensitivity as the package ships it,
+   at the threshold and observation time stored with it. A spectrum that rises above that
+   curve is detectable, and this one does.
 
 Observability
 -------------
