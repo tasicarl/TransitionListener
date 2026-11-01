@@ -28,8 +28,9 @@ distance a bubble nucleated at :math:`T'` has grown by the time the universe has
    P(T) = 1 - e^{-I(T)} .
 
 The percolation temperature is where :math:`P` reaches a fixed fraction, conventionally about
-a third, at which the bubbles form a connected network. The nucleation temperature, the more
-familiar quantity, is where roughly one bubble exists per Hubble volume. Neither is a property
+a third, at which the bubbles form a connected network [GuthWeinberg1981]_. The nucleation temperature, the more
+familiar quantity, is where roughly one bubble exists per Hubble volume [Enqvist1992]_
+[Turner1992]_. Neither is a property
 of the potential alone: both depend on the expansion rate, which in turn depends on how much of
 the universe has already converted.
 
@@ -261,3 +262,17 @@ itself. The adaptive solver lives in ``percolation_adaptivestepsize`` for the co
 the state, ``percolation_adaptive_gridbuilders`` for turning arrays into the next set of
 candidate temperatures, and ``percolation_adaptive_rate`` for locating the rise of the rate. A
 fixed-step solver exists alongside it in the modules ending ``_fixedstep``.
+
+References
+----------
+
+.. [GuthWeinberg1981] A. H. Guth and E. J. Weinberg, *Cosmological consequences of a first
+   order phase transition in the SU(5) grand unified model*, Phys. Rev. D **23** (1981) 876.
+   The percolation criterion.
+
+.. [Enqvist1992] K. Enqvist, J. Ignatius, K. Kajantie and K. Rummukainen, *Nucleation and
+   bubble growth in a first order cosmological electroweak phase transition*,
+   Phys. Rev. D **45** (1992) 3415.
+
+.. [Turner1992] M. S. Turner, E. J. Weinberg and L. M. Widrow, *Bubble nucleation in first
+   order inflation and other cosmological phase transitions*, Phys. Rev. D **46** (1992) 2384.

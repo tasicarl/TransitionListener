@@ -63,7 +63,7 @@ temperature derivatives, or a resummation used outside its range of validity.
 The wall velocity
 -----------------
 
-In local thermal equilibrium the wall velocity follows from matching the flow across the wall
+In local thermal equilibrium [vandeVis2023]_ the wall velocity follows from matching the flow across the wall
 together with entropy conservation, and the code solves that matching. The result is one of
 three kinds of solution: a deflagration, in which the plasma is pushed ahead of a wall slower
 than the sound speed; a detonation, in which the wall outruns the fluid; or a hybrid.
@@ -95,8 +95,8 @@ The efficiency factors
 ----------------------
 
 What fraction of the released energy goes into each source is given by fits to hydrodynamic
-simulations: one for the bulk motion that drives the sound waves, one for the fraction that
-remains in the scalar field and radiates when bubbles collide, and one for the turbulence.
+simulations [Espinosa2010]_: one for the bulk motion that drives the sound waves, one for the fraction that
+remains in the scalar field and radiates when bubbles collide [EllisLewicki2019]_, and one for the turbulence.
 These are fits over a range of strength and wall velocity, and outside that range they are
 extrapolations rather than results.
 
@@ -108,3 +108,18 @@ In the code
 step it was taken with, ``calcWallVelocityLTE`` and ``find_vw`` for the wall velocity,
 ``find_vJ`` for the Jouguet velocity that separates the branches, and ``find_kappa`` for the
 efficiency. ``kappa_sw`` and ``calc_kappas`` are the fits.
+
+References
+----------
+
+.. [Espinosa2010] J. R. Espinosa, T. Konstandin, J. M. No and G. Servant, *Energy budget of
+   cosmological first-order phase transitions*, JCAP **06** (2010) 028,
+   `arXiv:1004.4187 <https://arxiv.org/abs/1004.4187>`_. The efficiency factors.
+
+.. [vandeVis2023] J. van de Vis et al., *The bubble wall velocity in local thermal
+   equilibrium*, `arXiv:2303.10171 <https://arxiv.org/abs/2303.10171>`_. The matching this
+   implementation solves.
+
+.. [EllisLewicki2019] J. Ellis, M. Lewicki, J. M. No and V. Vaskonen, *Gravitational wave
+   energy budget in strongly supercooled phase transitions*,
+   `arXiv:1903.09642 <https://arxiv.org/abs/1903.09642>`_. The bubble-collision efficiency.

@@ -23,7 +23,7 @@ with respect to temperature gives
    \frac{d\phi_{\min}}{dT} = - \left(\nabla\nabla V\right)^{-1}
                                \frac{\partial \nabla V}{\partial T},
 
-so the minimum is followed by integrating this, with a Newton step at each temperature to
+so the minimum is followed by integrating this [WainwrightPhases]_, with a Newton step at each temperature to
 remove the error that accumulates. The step in temperature is chosen from the change in the
 field it produces, so that the tracer takes small steps where the minimum moves quickly and
 large ones where it does not.
@@ -110,3 +110,12 @@ and ``Phases`` is the class that holds the result. ``canonicalImageElement`` cho
 for a whole trace, ``generateMirrorPhases`` and ``symmetrizeInvariantPhases`` handle the images
 of the potential's symmetry group. ``reconstructTransitionHistory`` builds the chain of phases
 in temperature order. ``transitions`` turns that chain into candidate transitions.
+
+References
+----------
+
+.. [WainwrightPhases] C. L. Wainwright, *CosmoTransitions: computing cosmological phase
+   transition temperatures and bubble profiles with multiple fields*,
+   Comput. Phys. Commun. **183** (2012) 2006, `arXiv:1109.4189
+   <https://arxiv.org/abs/1109.4189>`_. The tracing and transition-finding scheme this
+   implementation extends.

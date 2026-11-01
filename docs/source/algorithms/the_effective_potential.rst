@@ -25,7 +25,8 @@ vacuum and masses in place, :math:`V_T` the one-loop thermal correction,
 :math:`V_{\rm rad}` the field-independent radiation, which does not move the minima but does
 set the energy density and so the expansion rate.
 
-The one-loop correction at zero temperature, in the modified minimal subtraction scheme, is
+The one-loop correction at zero temperature [ColemanWeinberg1973]_, in the modified minimal
+subtraction scheme, is
 
 .. math::
    V_1 = \frac{1}{64\pi^2}\left[ \sum_{i\in\text{bosons}} n_i\, m_i^4
@@ -35,7 +36,7 @@ The one-loop correction at zero temperature, in the modified minimal subtraction
 
 with :math:`n` the number of degrees of freedom of each species, :math:`m^2(\phi)` its
 field-dependent mass squared, and :math:`\mu` the renormalisation scale. The thermal part is
-the standard one-loop integral, evaluated from splined forms of the bosonic and fermionic
+the standard one-loop integral [DolanJackiw1974]_, evaluated from splined forms of the bosonic and fermionic
 thermal functions, which take the mass over temperature squared as their argument so that a
 negative mass squared can be handled as the real part of the defining integral.
 
@@ -61,11 +62,11 @@ bosons and for the scalars, because their thermal masses are small against the t
 The remedy is to resum the leading thermal corrections into the masses. Two prescriptions are
 offered, selected per model:
 
-``ArnoldEspinosa``
+``ArnoldEspinosa`` [ArnoldEspinosa1993]_
    The resummation is added as a separate cubic term, built from the difference between the
    thermally corrected and the uncorrected masses, and applied to the longitudinal modes.
 
-``Parwani``
+``Parwani`` [Parwani1992]_
    The thermal masses are substituted into the one-loop thermal integral directly, so that all
    modes are resummed.
 
@@ -150,3 +151,18 @@ finite-temperature loop corrections, ``Vct`` the counterterms, ``Vdaisy`` the re
 temperature derivatives, and ``daisy_outside_validity`` reports when the resummation is being
 used where it does not hold. A model file supplies ``V0``, ``boson_massSq`` and
 ``fermion_massSq``.
+
+References
+----------
+
+.. [ColemanWeinberg1973] S. Coleman and E. Weinberg, *Radiative corrections as the origin of
+   spontaneous symmetry breaking*, Phys. Rev. D **7** (1973) 1888.
+
+.. [DolanJackiw1974] L. Dolan and R. Jackiw, *Symmetry behavior at finite temperature*,
+   Phys. Rev. D **9** (1974) 3320. The one-loop thermal correction.
+
+.. [ArnoldEspinosa1993] P. Arnold and O. Espinosa, *The effective potential and first order
+   phase transitions: beyond leading-order*, Phys. Rev. D **47** (1993) 3546.
+
+.. [Parwani1992] R. R. Parwani, *Resummation in a hot scalar field theory*,
+   Phys. Rev. D **45** (1992) 4695.
