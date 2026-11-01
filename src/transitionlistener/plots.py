@@ -1151,9 +1151,11 @@ class TLPlots():
         axes[0].set_title(self.plot_description)
         # Headroom for the legend. The counts rise with temperature, so without it the
         # legend box and the curve for the total share the upper right corner and the
-        # entries are read through the curve.
+        # entries are read through the curve. The factor leaves the data in the lower half
+        # of the panel, which clears a legend of five entries at this font size; 1.45 was
+        # measured to be too little, the total still passing under the box.
         lo, hi = axes[0].get_ylim()
-        axes[0].set_ylim(lo, lo + 1.45 * (hi - lo))
+        axes[0].set_ylim(lo, lo + 1.9 * (hi - lo))
         axes[0].legend(loc="upper right")
         axes[0].set_ylabel(R"$g_{\mathrm{eff}}(T)$")
         axes[1].set_ylabel(R"$\rho(T) / \mathrm{GeV}^4$")
