@@ -55,6 +55,34 @@ class TestDocumentationStyle(unittest.TestCase):
                 self.assertTrue(found, "the checker missed %s: %r" % (name, line))
 
 
+class TestShippedImages(unittest.TestCase):
+    def test_every_full_width_figure_is_sharp(self):
+        """A figure shown at the width of the text column has to carry the pixels for it.
+
+        Only the figures a page shows at full width, which is what a ``.. figure::`` directive
+        does here. A thumbnail in a table links to its own full-size file and is meant to be
+        small.
+        """
+        import re
+
+        sys.path.insert(0, str(DOCS))
+        import check_figure_style as cfs
+
+        source = DOCS / "source"
+        problems = []
+        for page in sorted(source.rglob("*.rst")):
+            text = page.read_text(encoding="utf-8")
+            for m in re.finditer(r"\.\.\s+figure::\s+(\S+)", text):
+                ref = m.group(1)
+                target = (page.parent / ref).resolve()
+                if not target.exists():
+                    problems.append("%s refers to %s, which is not there"
+                                    % (page.name, ref))
+                    continue
+                problems += cfs.check_image_resolution(target, "%s: %s" % (page.name, ref))
+        self.assertEqual(problems, [], "\n" + "\n".join(problems))
+
+
 class TestFigureStyle(unittest.TestCase):
     """The figure rules, each given a figure that breaks it.
 

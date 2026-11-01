@@ -1,7 +1,7 @@
 .. _algorithm-plots:
 
-The plots a run can make
-========================
+Plots a run can produce
+=======================
 
 Besides the numbers, a run can draw what it computed. Each plot is switched on in the
 ``additional_plots`` section of the configuration file, and each is the state of one stage of
@@ -154,6 +154,107 @@ sensitivity curves of the detectors that ship with the package, as in :doc:`the_
    :width: 100%
 
    The spectrum against the detectors.
+
+
+
+Plots a scan can produce
+------------------------
+
+A scan over a grid of model parameters draws one map per output. The gallery below comes from
+``examples/example_grid.yaml``, a ten by ten grid of the abelian dark Higgs model of
+``models/TL_dark_U1.py``, run with
+
+.. code-block:: console
+
+   $ tl -c examples/example_grid.yaml -j 10
+
+Each panel is a thumbnail; the full-size file is behind it.
+
+Transition strength and the milestone temperatures
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+These panels say how the strength and the characteristic temperatures vary across a
+two-dimensional grid of model parameters.
+
+.. image:: ../_static/example_output/log_plot_alpha.png
+   :width: 31%
+   :target: ../_static/example_output/log_plot_alpha.png
+
+.. image:: ../_static/example_output/log_plot_betaH_RH.png
+   :width: 31%
+   :target: ../_static/example_output/log_plot_betaH_RH.png
+
+.. image:: ../_static/example_output/log_plot_Tcrit_SM_GeV.png
+   :width: 31%
+   :target: ../_static/example_output/log_plot_Tcrit_SM_GeV.png
+
+.. image:: ../_static/example_output/log_plot_Tnuc_SM_GeV.png
+   :width: 31%
+   :target: ../_static/example_output/log_plot_Tnuc_SM_GeV.png
+
+.. image:: ../_static/example_output/log_plot_Tperc_SM_GeV.png
+   :width: 31%
+   :target: ../_static/example_output/log_plot_Tperc_SM_GeV.png
+
+.. image:: ../_static/example_output/log_plot_Tf_SM_GeV.png
+   :width: 31%
+   :target: ../_static/example_output/log_plot_Tf_SM_GeV.png
+
+.. image:: ../_static/example_output/log_plot_Treh_SM_GeV.png
+   :width: 31%
+   :target: ../_static/example_output/log_plot_Treh_SM_GeV.png
+
+The plasma and its thermodynamics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+These expose the background quantities that enter the time-temperature relation and the
+macroscopic observables.
+
+.. image:: ../_static/example_output/lin_plot_c_s_sym.png
+   :width: 31%
+   :target: ../_static/example_output/lin_plot_c_s_sym.png
+
+.. image:: ../_static/example_output/lin_plot_c_s_bro.png
+   :width: 31%
+   :target: ../_static/example_output/lin_plot_c_s_bro.png
+
+.. image:: ../_static/example_output/lin_plot_g_eff_tot_reh.png
+   :width: 31%
+   :target: ../_static/example_output/lin_plot_g_eff_tot_reh.png
+
+.. image:: ../_static/example_output/lin_plot_xi_crit.png
+   :width: 31%
+   :target: ../_static/example_output/lin_plot_xi_crit.png
+
+The peak of the spectrum
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The frequency and the amplitude at which the predicted spectrum peaks, across the scan.
+
+.. image:: ../_static/example_output/Add_info_log10_f_peak_Hz.png
+   :width: 31%
+   :target: ../_static/example_output/Add_info_log10_f_peak_Hz.png
+
+.. image:: ../_static/example_output/Add_info_log10_h2OmegaGW_peak.png
+   :width: 31%
+   :target: ../_static/example_output/Add_info_log10_h2OmegaGW_peak.png
+
+The reach of the detectors
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+How the predicted signals map into the signal-to-noise ratio of three future detectors.
+
+.. image:: ../_static/example_output/SNR_BBO.png
+   :width: 31%
+   :target: ../_static/example_output/SNR_BBO.png
+
+.. image:: ../_static/example_output/SNR_DECIGO.png
+   :width: 31%
+   :target: ../_static/example_output/SNR_DECIGO.png
+
+.. image:: ../_static/example_output/SNR_ET.png
+   :width: 31%
+   :target: ../_static/example_output/SNR_ET.png
 
 In the code
 -----------

@@ -57,8 +57,7 @@ first four are from the group that develops it and the last two are from elsewhe
    </p>
 
    The left panel shows generic model predictions from TransitionListener random scans and the
-   right panel the regions the PTA data favours, obtained with the UltraNest backend. The
-   figure appears as figure 14 of the TransitionListener v2 paper.
+   right panel the regions the PTA data favours, obtained with the UltraNest backend.
 
 5. [Gravitational Waves from Dimension-6 Assisted Peccei-Quinn Phase Transitions](https://inspirehep.net/arxiv/2608.13692)  
    arXiv: [2608.13692](https://arxiv.org/abs/2608.13692).  

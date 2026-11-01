@@ -345,9 +345,10 @@ def check_with_paper_style(fig, name: str = "figure") -> list[str]:
 #: same allowance again.
 MAX_ASPECT_PER_ROW = 0.80
 
-#: The shortest side a figure in the documentation may have, in pixels, so that it stands up
-#: to the reader zooming in.
-MIN_PIXELS = 900
+#: The width a figure in the documentation must have, in pixels. Width and not the shorter
+#: side: every figure is shown at the width of the text column, so a wide short one is not
+#: coarse for being short. 1100 leaves something in hand when the reader zooms in.
+MIN_WIDTH_PIXELS = 1100
 
 
 def check_shape(fig, name: str = "figure") -> list[str]:
@@ -379,8 +380,8 @@ def check_image_resolution(path, name: str = "image") -> list[str]:
     except Exception as exc:
         return ["%s: could not be read (%s)" % (name, exc)]
     h, w = img.shape[0], img.shape[1]
-    if min(h, w) < MIN_PIXELS:
-        return ["%s: %dx%d pixels, shorter side below %d" % (name, w, h, MIN_PIXELS)]
+    if w < MIN_WIDTH_PIXELS:
+        return ["%s: %d pixels wide, below %d" % (name, w, MIN_WIDTH_PIXELS)]
     return []
 
 

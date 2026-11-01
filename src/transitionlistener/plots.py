@@ -1329,9 +1329,11 @@ def plotSensitivities(gw, showplot : bool =False, call_from_spectrum=False, nfre
     ax.set_ylim(-17.5, -6)
 
     #ax.grid()
+    # The logo sits above the legend rather than across it: at the previous size the two
+    # occupied the same strip to the right of the panel and the legend read through it.
     add_TL_logo(loc="outside", ax=ax, small_logo=False,
-                magnification=1.4)
-    ax.legend(bbox_to_anchor=(1, 0.7), ncol=1)
+                magnification=1.0)
+    ax.legend(bbox_to_anchor=(1, 0.70), loc="upper left", ncol=1)
     if not call_from_spectrum:
         plt.tight_layout()
         if showplot:
