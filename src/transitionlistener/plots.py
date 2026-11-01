@@ -1198,7 +1198,9 @@ class TLPlots():
 
         add_TL_logo(loc="lower right", ax=ax)
         ax.set_title(self.plot_description)
-        ax.legend(loc="upper right")
+        # Upper left: the energy density rises with temperature, so on these axes the
+        # upper right corner is the one the curves always run through.
+        ax.legend(loc="upper left")
         ax.set_ylabel(R"$\rho$ / $\mathrm{GeV}^4$")
         ax.set_yscale("log")
         ax.set_xscale("log")

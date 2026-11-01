@@ -10,14 +10,15 @@ Configuration files
 All it takes is a human-readable configuration file, a ``.yaml`` file, which
 specifies the model parameters, scanning ranges, and desired outputs.
 
-You can find example configuration files in the `config/` directory of the
+You can find example configuration files in the ``examples/`` directory of the
 TransitionListener repository.
 
 
 Single point evaluation
 -----------------------
 
-Let's say you have created a configuration file named `example_point.yaml` in the `example/` directory,
+Let's say you have created a configuration file named ``example_point.yaml`` in the
+``examples/`` directory,
 which specifies a benchmark point which you would like to know of whether it features a
 first-order phase transition and what gravitational wave signal it produces.
 

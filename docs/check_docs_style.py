@@ -439,6 +439,40 @@ def _label_violations(text: str) -> list[tuple[int, str, str]]:
     return out
 
 
+#: Directories of the repository that a page may name. A path whose first component is one
+#: of these has to exist, because a reader will type it. ``scans/`` is left out: a run writes
+#: it. ``config`` and ``example`` are here although the repository has neither, which is the
+#: point: both were sent to the reader as if they existed.
+NAMED_DIRECTORIES = ("examples", "example", "models", "tests", "docs", "src", "notes",
+                     "config", "scripts")
+
+#: A literal in either of the two markups, because the pages use both.
+LITERAL_TOKEN = re.compile(r"``([^`]+)``|(?<![`:])`([^`<>]+)`(?!`)")
+
+
+def _repo_path_violations(text: str) -> list[tuple[int, str, str]]:
+    """A path the documentation names has to be a path the repository has.
+
+    The usage page sent the reader to a ``config/`` directory that has never existed and to
+    ``example/`` where the directory is ``examples/``. Both read perfectly well.
+    """
+    root = DOCS.parent.parent
+    out = []
+    for i, line in enumerate(text.splitlines(), 1):
+        for m in LITERAL_TOKEN.finditer(line):
+            token = (m.group(1) or m.group(2)).strip().rstrip(".,;:")
+            if "/" not in token or " " in token:
+                continue
+            if token.startswith(("http", "/", "-", "~", ".")):
+                continue
+            if token.split("/")[0] not in NAMED_DIRECTORIES:
+                continue
+            if not (root / token).exists():
+                out.append((i, "the page names %s, which the repository does not have"
+                            % token, "the path that exists, or drop it"))
+    return out
+
+
 def check(paths: list[pathlib.Path]) -> list[str]:
     problems: list[str] = []
     for path in paths:
@@ -468,6 +502,10 @@ def check(paths: list[pathlib.Path]) -> list[str]:
                 if questions_allowed and "question" in what:
                     continue
                 problems.append("%s:%d: %s -> write %s" % (rel, i, what, instead))
+        # The raw page, because a path is written as a literal and the prose rules blank
+        # literals out before they read a line.
+        for i, what, instead in _repo_path_violations(raw):
+            problems.append("%s:%d: %s -> write %s" % (rel, i, what, instead))
         for i, what, instead in _caption_violations(path, text):
             problems.append("%s:%d: %s -> %s" % (rel, i, what, instead))
     return problems

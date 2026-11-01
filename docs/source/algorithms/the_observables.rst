@@ -134,8 +134,8 @@ the second wins; the criterion is in :doc:`nucleation_and_percolation`. A transi
 percolates and then stalls is reported as such, and is a different outcome from one that never
 percolated.
 
-Warnings and diagnostic outputs
--------------------------------
+Warnings and Diagnosis outputs
+------------------------------
 
 Every run writes a row of warnings and diagnostics beside the observables. A warning is a
 statement that something about this point needs a human; a diagnostic is a measured number

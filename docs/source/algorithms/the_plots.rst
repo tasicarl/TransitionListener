@@ -52,7 +52,10 @@ curve is the tracer losing it, and that is visible here and almost nowhere else.
 .. figure:: ../_static/plots/phases.png
    :width: 100%
 
-   The traced phases.
+   The two phases the tracer followed. The symmetric phase, with the field at the origin,
+   exists at every temperature; the broken phase ends at 0.025 GeV, where its minimum stops
+   being a minimum. A phase that ends where the potential says it should is the tracer
+   working; a phase that ends in the middle of a smooth curve is the tracer losing it.
 
 The action
 ----------
@@ -62,7 +65,7 @@ The action
      action:
        plot?: True
        Tmin_GeV: 0
-       Tmax_GeV: 0.05
+       Tmax_GeV: 0.022
        phase_indices: [0, 1]
        n: 100
 
@@ -83,8 +86,8 @@ The energy density
 
      energy_density:
        plot?: True
-       Tmin_GeV: 0.01
-       Tmax_GeV: 0.05
+       Tmin_GeV: 0.002
+       Tmax_GeV: 0.026
 
 The energy density of each phase against temperature. The gap between the two is the energy
 the transition has to release, so this is where a transition strength that looks surprising

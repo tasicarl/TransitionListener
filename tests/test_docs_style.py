@@ -44,6 +44,7 @@ class TestDocumentationStyle(unittest.TestCase):
             "em dash": "The step is small — smaller than the tolerance.",
             "filler": "Crucially, the step has to be small.",
             "bold label": "**A trial ends in one of three ways.** The field turns around.",
+            "a path that does not exist": "The files are in ``config/``.",
         }
         import tempfile
 
