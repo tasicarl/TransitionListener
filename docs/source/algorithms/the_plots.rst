@@ -158,10 +158,17 @@ The spectrum and the detectors
 The gravitational wave spectrum with its three sources, and the same spectrum against the
 sensitivity curves of the detectors that ship with the package, as in :doc:`the_spectrum`.
 
+.. figure:: ../_static/plots/GW_spectrum.png
+   :width: 100%
+
+   The spectrum of this benchmark point against the detectors, with the three sources drawn
+   separately. The sound waves carry almost all of the signal here, so their curve lies under
+   the total.
+
 .. figure:: ../_static/plots/GW_sensitivities.png
    :width: 100%
 
-   The spectrum against the detectors.
+   The detector sensitivities on their own, which is what ``sensitivities`` draws.
 
 
 
