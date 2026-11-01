@@ -79,16 +79,27 @@ continues to supply the light species at the temperature in question.
    :width: 100%
    :align: center
 
-   The Standard Model bath as the package tabulates it. The step near 0.2 GeV is the
-   quark-gluon plasma turning into hadrons and the one near 100 GeV is the electroweak scale.
-   The plateau at high temperature sits at 104.1 rather than the free-field 106.75, because
-   the fit carries the interaction correction to the quark-gluon free energy. The two counts
-   differ wherever a species is neither relativistic nor gone, which is at and above the
-   quark-hadron step, by at most 6.7 per cent at 0.2 GeV. Below about 0.5 MeV they part
-   permanently, since the neutrinos no longer share the photons' temperature after electrons
-   and positrons annihilate; the inset shows that, since 3.38 against 3.93 is half a per cent
-   of the main panel. The two fits meet at 0.12 GeV, and the small discontinuity there belongs
-   to the fits and not to the physics.
+   The two inventories. Above, the Standard Model bath as the package tabulates it: the step
+   near 0.2 GeV is the quark-gluon plasma turning into hadrons and the one near 100 GeV is the
+   electroweak scale. The plateau at high temperature sits at 104.1 rather than the free-field
+   106.75, because the fit carries the interaction correction to the quark-gluon free energy.
+   The two counts differ wherever a species is neither relativistic nor gone, which is at and
+   above the quark-hadron step, by at most 6.7 per cent at 0.2 GeV; below about 0.5 MeV they
+   part permanently, since the neutrinos no longer share the photons' temperature after
+   electrons and positrons annihilate, and the inset shows that, since 3.38 against 3.93 is
+   half a per cent of the main panel. The two fits meet at 0.12 GeV, and the small
+   discontinuity there belongs to the fits and not to the physics.
+
+   Below, the fields of the two Higgs doublet model's own potential, at the benchmark of
+   ``examples/bp_lisa.yaml``, counted separately in each of its two phases. In the symmetric
+   phase every mode is massless, so the count sits at its relativistic value of 40.5 at every
+   temperature. In the broken phase the modes take their masses from the field, and the count
+   falls as each of them leaves the plasma in turn: the arrows mark the temperature at which a
+   mode has lost half of its contribution, solved from the same integral the counting uses
+   rather than read off :math:`m = T`. The two phases meet where the broken minimum
+   disappears. A model with a transition therefore has two different plasmas on the two sides
+   of its bubble walls, which is why the count has to be taken at a field value and not only
+   at a temperature.
 
 In the code
 -----------

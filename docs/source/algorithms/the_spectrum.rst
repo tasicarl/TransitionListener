@@ -185,7 +185,9 @@ eddy turnovers and :math:`v_A = \sqrt{3\Omega_s/4}` is the Alfvén velocity.
    so the sum lies on top of them. Their spectrum rises as :math:`f^3`, turns over to
    :math:`f` between the two breaks and falls as :math:`f^{-3}`; with the breaks a factor
    twenty-two apart the middle segment is short, and what the eye reads is the change of
-   curvature rather than a straight piece.
+   curvature rather than a straight piece. The grey curve is LISA's power-law-integrated
+   sensitivity as the package ships it, at the threshold and observation time stored with it.
+   A spectrum that rises above that curve is detectable, and this one does.
 
 Observability
 -------------
