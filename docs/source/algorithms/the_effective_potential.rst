@@ -63,6 +63,15 @@ them. They are fixed by requiring that the first and second derivatives of
    barrier still between them. The barrier is what makes the transition first order, and it is
    what the bounce of :doc:`the_bounce_action` tunnels through.
 
+.. figure:: ../_static/algorithm_potential_2d.png
+   :width: 100%
+
+   The same potential in both of its field directions, at a temperature where the origin is a
+   saddle rather than a minimum: the curvature there has one negative eigenvalue, so the field
+   can roll away from the open circle along one direction and not along the other. The deep
+   region at the top is the broken minimum. The colour scale is symmetric and logarithmic
+   about the value at the origin.
+
 Resummation of the infrared modes
 ---------------------------------
 

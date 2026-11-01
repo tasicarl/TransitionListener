@@ -119,18 +119,22 @@ def figure_shooting() -> None:
     ax.set_ylim(-0.30, 0.98)
     ax.text(0.985, 0.028, "false vacuum", transform=ax.get_yaxis_transform(),
             color=DESYdunkelblau, fontsize=7, ha="right", va="bottom")
-    ax.text(31.0, 0.40, "top of the barrier", color="0.45", fontsize=7,
+    # The label of a guide line sits on the line it names, on a white patch, in the one window
+    # where no curve is near it. Set anywhere else it reads as a statement about the figure
+    # rather than about that line.
+    ax.text(12.3, 0.262, "top of the barrier", color="0.45", fontsize=7,
             ha="center", va="center")
 
-    # The label sits below both markers, so that each leader comes up to its own marker almost
-    # vertically. A leader that reaches across the panel crosses every curve on the way at a
-    # glancing angle and reads as a fourth curve.
-    label_x = 0.5 * (rv_o + rv_u)
-    ax.annotate("the verdict is settled here,\nand the shooting stops",
-                xy=(rv_o, pv_o - 0.014), xytext=(label_x, -0.205), color="0.35", fontsize=7,
+    # The label sits to the left of both markers, in the wedge below the bounce and left of
+    # where the overshoot falls, and each leader runs up to its own marker from underneath.
+    # Two short lines: a label wide enough to reach the plunging overshoot cannot be put
+    # anywhere in this band without touching it, so the rest of the sentence is in the
+    # caption rather than in the panel.
+    ax.annotate("the verdict\nis settled here",
+                xy=(rv_o, pv_o - 0.016), xytext=(3.6, -0.175), color="0.35", fontsize=7,
                 ha="center", va="center",
                 arrowprops=dict(arrowstyle="->", color="0.45", lw=0.8))
-    ax.annotate("", xy=(rv_u, pv_u - 0.014), xytext=(label_x, -0.165),
+    ax.annotate("", xy=(rv_u, pv_u - 0.016), xytext=(3.6, -0.135),
                 arrowprops=dict(arrowstyle="->", color="0.45", lw=0.8))
     ax.legend(frameon=False, loc="upper right")
     fig.subplots_adjust(left=0.100, right=0.985, bottom=0.135, top=0.975)
@@ -170,9 +174,8 @@ def figure_rate_and_support() -> None:
     a2.set_xlabel(r"temperature $T$ (arbitrary units)")
     a2.set_ylim(-0.06, 1.30)
     a2.set_xlim(T[0], T[-1])
-    a2.text(0.995, 0.28957, r"$f_\mathrm{perc}$", color=DESYrot, fontsize=7,
-            ha="right", va="center", transform=a2.get_yaxis_transform(),
-            bbox=dict(boxstyle="square,pad=0.12", facecolor="white", edgecolor="none"))
+    a2.text(0.78, 0.50, r"$f_\mathrm{perc}$", color=DESYrot, fontsize=7,
+            ha="center", va="center")
     a2.legend(frameon=False, loc="upper left")
 
     # The two panels share an edge, so the lowest tick of the upper one and the highest of the
@@ -202,9 +205,11 @@ def _check(fig, name: str) -> None:
     import sys
 
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-    from check_figure_style import check_curves_span, check_figure
+    from check_figure_style import (check_curves_span, check_figure,
+                                    check_with_paper_style)
 
     problems = check_figure(fig, name)
+    problems += check_with_paper_style(fig, name)
     for i, ax in enumerate(fig.get_axes()):
         problems += check_curves_span(ax, "%s panel %d" % (name, i))
     if problems:
@@ -276,8 +281,8 @@ def figure_images() -> None:
     # The leader comes down almost vertically on to the end of the branch. A leader that
     # approaches a curve at a shallow angle runs alongside it for a long way and reads as part
     # of the figure; near perpendicular, it touches the curve once.
-    ax.annotate("the barrier\nis gone here", xy=(T_sp, broken[-1] + 0.10),
-                xytext=(T_sp, 1.80), color=DESYcyan, fontsize=7, ha="center", va="bottom",
+    ax.annotate("the barrier\nis gone here", xy=(T_sp + 0.012, broken[-1] + 0.06),
+                xytext=(1.075, 1.52), color=DESYcyan, fontsize=7, ha="left", va="bottom",
                 arrowprops=dict(arrowstyle="->", color=DESYcyan, lw=0.8))
 
     ax.set_xlabel(r"temperature $T/T_{\rm c}$")
@@ -396,7 +401,7 @@ def figure_plasma_dof() -> None:
         half.append((label, float(np.mean(roots))))
 
     use_house_style()
-    fig, (a1, a2) = plt.subplots(2, 1, figsize=(WIDTH, 0.98 * WIDTH), sharex=True)
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(WIDTH, 1.08 * WIDTH), sharex=True)
 
     a1.plot(T, g_rho, color=DESYcyan, lw=1.6, label=r"$g_{\rm eff}$, energy density")
     a1.plot(T, g_s, color=DESYorange, lw=1.6, ls=(0, (4, 2)),
@@ -406,7 +411,7 @@ def figure_plasma_dof() -> None:
             ha="right", va="center")
     a1.set_ylabel("degrees of freedom")
     a1.set_ylim(0.0, 125.0)
-    a1.legend(frameon=False, loc="upper left")
+    a1.legend(frameon=False, loc="lower right")
     a1.set_title("the tabulated Standard Model bath on its own", fontsize=8, pad=4)
 
     a2.plot(T2, tot_bro, color=DESYdunkelblau, lw=1.6, label="broken phase")
@@ -414,29 +419,36 @@ def figure_plasma_dof() -> None:
             label="symmetric phase")
     a2.plot([sym_end[0]], [sym_end[1]], "o", color=DESYmagenta, ms=4.5, mfc="white",
             mew=1.4, zorder=5)
-    a2.annotate("below here the origin\nis not a minimum", xy=(sym_end[0], sym_end[1] - 4.0),
-                xytext=(sym_end[0], 58.0), color=DESYmagenta, fontsize=6.5,
-                ha="center", va="top",
+    a2.annotate("below here the origin\nis not a minimum", xy=(sym_end[0], sym_end[1] + 3.0),
+                xytext=(6.0e0, 148.0), color=DESYmagenta, fontsize=6.5,
+                ha="center", va="center",
                 arrowprops=dict(arrowstyle="->", color=DESYmagenta, lw=0.8))
     # Staggered in height, so that five labels fit into the decade the masses occupy.
-    for i, (label, t_half) in enumerate(half):
+    # The arrows come up from below on to the broken-phase curve, which is the curve they are
+    # about, and the note that names them sits below with them. The open circle on the
+    # symmetric phase is marked from above, so that the two sets of marks do not meet.
+    for label, t_half in half:
         y_curve = float(np.interp(t_half, T2, tot_bro))
-        y_text = 148.0 if i % 2 == 0 else 136.0
-        a2.annotate("", xy=(t_half, y_curve + 1.5), xytext=(t_half, y_text - 3.0),
+        a2.annotate("", xy=(t_half, y_curve - 1.5), xytext=(t_half, 44.0),
                     arrowprops=dict(arrowstyle="->", color="0.60", lw=0.7,
                                     shrinkA=0, shrinkB=0))
-        a2.text(t_half, y_text, "$%s$" % label, color="0.40", fontsize=6.5,
-                ha="center", va="center", bbox=dict(boxstyle="square,pad=0.10", facecolor="white", edgecolor="none"))
+    a2.annotate(", ".join("$%s$" % label for label, _ in half)
+                + "\nleave the plasma here",
+                xy=(float(np.mean([t for _, t in half])), 41.0),
+                xytext=(1.5e-2, 30.0), color="0.40", fontsize=6.5,
+                ha="center", va="center",
+                arrowprops=dict(arrowstyle="->", color="0.60", lw=0.7))
 
     a2.set_xscale("log")
+    a2.yaxis.set_major_locator(mpl.ticker.MaxNLocator(nbins=6, prune="lower"))
     a2.set_xlabel(r"temperature $T$ (GeV)")
     a2.set_ylabel("degrees of freedom")
     a2.set_xlim(T[0], T[-1])
-    a2.set_ylim(0.0, 162.0)
-    a2.legend(frameon=False, loc="lower right")
+    a2.set_ylim(0.0, 168.0)
+    a2.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.20), ncol=2)
     a2.set_title("the whole plasma of the 2HDM, in each of its two phases", fontsize=8, pad=4)
 
-    fig.subplots_adjust(left=0.095, right=0.985, bottom=0.090, top=0.950, hspace=0.33)
+    fig.subplots_adjust(left=0.095, right=0.972, bottom=0.175, top=0.950, hspace=0.36)
     _check(fig, "algorithm_plasma_dof")
     fig.savefig(OUT / "algorithm_plasma_dof.png", dpi=200)
     plt.close(fig)
@@ -548,12 +560,10 @@ def figure_fluid_profiles() -> None:
         ax.set_ylabel(r"$v(\xi)$")
         ax.set_xlim(0.0, 1.0)
         ax.set_ylim(-0.055 * top, top)
-        ax.text(cs, 0.90 * top, r"$c_\mathrm{s}$", color="0.45", fontsize=6.5,
-                ha="center", va="center", bbox=dict(boxstyle="square,pad=0.10", facecolor="white",
-                                     edgecolor="none"))
-        ax.text(v_jouguet, 0.90 * top, r"$v_\mathrm{J}$", color="0.45", fontsize=6.5,
-                ha="center", va="center", bbox=dict(boxstyle="square,pad=0.10", facecolor="white",
-                                     edgecolor="none"))
+        ax.text(cs - 0.022, 0.90 * top, r"$c_\mathrm{s}$", color="0.45", fontsize=6.5,
+                ha="right", va="center")
+        ax.text(v_jouguet + 0.022, 0.90 * top, r"$v_\mathrm{J}$", color="0.45",
+                fontsize=6.5, ha="left", va="center")
 
     # deflagration
     a0 = axes[0]
@@ -587,9 +597,8 @@ def figure_fluid_profiles() -> None:
     a1.text(0.035, 0.27, "a rarefaction behind the wall and a shock ahead:\n"
                          "the wall outruns sound but not the shock", color="0.40",
             fontsize=6.5, ha="left", va="center")
-    a1.text(vw_h - 0.018, 0.5 * (v_ha + v_hb), "wall", color=DESYorange, fontsize=6.5,
-            ha="right", va="center", bbox=dict(boxstyle="square,pad=0.08",
-                                               facecolor="white", edgecolor="none"))
+    a1.text(vw_h - 0.055, 0.56 * v_ha, "wall", color=DESYorange, fontsize=6.5,
+            ha="right", va="center")
     a1.text(0.76, 0.12, "shock front", color=DESYorange, fontsize=6.5, ha="left",
             va="center")
 
@@ -647,7 +656,7 @@ def figure_spectrum_sources() -> None:
              ("Wall collisions", "bubble collisions", DESYaubergine, (0, (1, 1.6)))]
 
     use_house_style()
-    fig, ax = plt.subplots(figsize=(WIDTH, 0.62 * WIDTH))
+    fig, ax = plt.subplots(figsize=(WIDTH, 0.74 * WIDTH))
 
     # The shipped LISA power-law-integrated sensitivity, at the threshold and observation time
     # the package stores with it. A spectrum above this curve is detectable.
@@ -656,19 +665,22 @@ def figure_spectrum_sources() -> None:
     lisa = GW_Sensitivity_Data().det["LISA"]
     f_pli = np.asarray(lisa["f_PLI"], dtype=float)
     pli = np.asarray(lisa["PLI"], dtype=float)
-    band = (f_pli >= f[0]) & (f_pli <= f[-1]) & (pli < 1.0)
+    # Cut at the top of the panel, so the curve leaves the frame instead of stopping in it.
+    band = (f_pli >= f[0]) & (f_pli <= f[-1]) & (pli <= 1.2e-8)
     # A shallow shadow under the curve rather than the whole region below it, which would
     # cover most of the panel and put the two weaker sources inside grey. What rises above the
     # curve is detectable, and the sound-wave peak here does.
     ax.fill_between(f_pli[band], pli[band] / 40.0, pli[band], color="0.88", lw=0, zorder=0)
-    ax.plot(f_pli[band], pli[band], color="0.50", lw=1.1, zorder=1)
-    ax.text(1.6e-7, 2.0e-11, "LISA, power-law integrated", color="0.35", fontsize=7,
-            ha="left", va="center")
+    # Named in the legend rather than beside the band: the band fills the one part of the
+    # panel a label could sit in without touching a curve.
+    ax.plot(f_pli[band], pli[band], color="0.50", lw=1.1, zorder=1,
+            label="LISA, power-law integrated")
+
 
 
     for key, label, color, ls in parts:
         y = np.array([spec.h2Omega_0_sum(x, key) for x in f])
-        ax.plot(f, y, color=color, lw=1.4, ls=ls)
+        ax.plot(f, y, color=color, lw=1.4, ls=ls, label=label)
 
     ax.set_xscale("log")
     ax.set_yscale("log")
@@ -676,25 +688,21 @@ def figure_spectrum_sources() -> None:
     ax.set_ylabel(r"$h^2\Omega_{\rm GW}$")
     ax.set_xlim(0.75 * f[0], 1.35 * f[-1])
     ax.set_ylim(3e-19, 1.2e-8)
-    label_box = dict(boxstyle="square,pad=0.12", facecolor="white", edgecolor="none")
-    for key, text, colour, fx in (("Sound waves", "sound waves", DESYcyan, 2.0e-6),
-                                  ("Turbulence", "turbulence", DESYorange, 2.6e-3),
-                                  ("Wall collisions", "bubble collisions", DESYaubergine,
-                                   6.0e-6)):
-        y = spec.h2Omega_0_sum(fx, key)
-        ax.text(fx, y * 2.6, text, color=colour, fontsize=7, ha="center", va="bottom",
-                bbox=label_box)
-    ax.text(0.980, 0.955,
-            "\n".join([r"$\alpha = 0.2$,  $R_* = 0.05$,  $T_\mathrm{reh} = 100$ GeV",
-                       r"$v_\mathrm{w} = 0.65$,  $c_\mathrm{s} = 1/\sqrt{3}$",
-                       r"$\kappa_\mathrm{sw} = %.3f$ (from the fit),  "
-                       r"$\kappa_\mathrm{turb} = %.3f$" % (k_sw, 0.1 * k_sw),
-                       r"$\kappa_\phi = 0.02$ (set by hand)"]),
-            transform=ax.transAxes, fontsize=6.5, ha="right", va="top",
-            multialignment="left",
-            bbox=dict(boxstyle="round,pad=0.4", facecolor="white", edgecolor="0.75",
-                      linewidth=0.6))
-    fig.subplots_adjust(left=0.115, right=0.985, bottom=0.155, top=0.975)
+    # A legend rather than labels beside the curves: with the LISA band in the panel there is
+    # one block of empty space left, at low frequency and high amplitude, and it is too far
+    # from any of the three curves to label them there.
+    # Below the panel: with four curves and a shaded band there is no block inside it that
+    # a legend fits into without covering something.
+    ax.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.155),
+              ncol=2, fontsize=7)
+    ax.set_title(
+        r"$\alpha = 0.2$,  $R_* = 0.05$,  $T_\mathrm{reh} = 100$ GeV,  "
+        r"$v_\mathrm{w} = 0.65$,  $c_\mathrm{s} = 1/\sqrt{3}$" "\n"
+        r"$\kappa_\mathrm{sw} = %.3f$ from the fit" "\n"
+        r"$\kappa_\mathrm{turb} = %.3f$,  $\kappa_\phi = 0.02$ set by hand"
+        % (k_sw, 0.1 * k_sw),
+        fontsize=7, pad=5, loc="left")
+    fig.subplots_adjust(left=0.105, right=0.985, bottom=0.255, top=0.890)
     _check(fig, "algorithm_spectrum_sources")
     fig.savefig(OUT / "algorithm_spectrum_sources.png", dpi=200)
     plt.close(fig)
@@ -733,10 +741,9 @@ def figure_potential_2d() -> None:
     cb.set_label(r"$V(\phi_1,\phi_2,T) - V(0,0,T)$   (GeV$^4$)", fontsize=8)
     cb.ax.tick_params(labelsize=7)
 
+    # Only the marker: every part of a filled panel is a non-uniform background, so a label
+    # inside it would sit on the map whatever its position. The caption says what it marks.
     ax.plot([0.0], [0.0], "o", color="black", ms=5, mfc="white", mew=1.4, zorder=5)
-    ax.text(2.0, -24.0, "the origin, a saddle at this temperature", color="black",
-            fontsize=7, ha="left", va="center",
-            bbox=dict(boxstyle="square,pad=0.14", facecolor="white", edgecolor="none"))
 
     ax.set_xlabel(r"field $\phi_1$ (GeV)")
     ax.set_ylabel(r"field $\phi_2$ (GeV)")

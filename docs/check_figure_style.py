@@ -25,8 +25,10 @@ import numpy as np
 TEXT_PAD_PT = 3.0
 
 #: The fraction of a text's padded box that may be covered by ink before it counts as sitting
-#: on something. A leader touching one corner is not the same as a curve running behind it.
-MAX_BUSY_FRACTION = 0.02
+#: on something. One curve of the usual width crossing a two-line label covers about two per
+#: cent of it, which is plainly visible, so the threshold is well below that and leaves only
+#: the stray antialiased pixel.
+MAX_BUSY_FRACTION = 0.004
 
 #: A leader crossing a curve below this angle, in degrees, runs alongside it.
 MIN_CROSSING_ANGLE_DEG = 35.0
@@ -57,11 +59,25 @@ def _text_boxes(fig, renderer):
             if not t.get_text().strip() or not t.get_visible():
                 continue
             try:
-                bb = t.get_window_extent(renderer=renderer)
+                bb = _text_only_extent(t, renderer)
             except Exception:
                 continue
             out.append((t, ax, bb))
     return out
+
+
+def _text_only_extent(t, renderer):
+    """The box of a label's words, without its leader.
+
+    ``Annotation.get_window_extent`` covers the arrow as well, so for an annotation it returns
+    a box stretching along the whole leader, and every curve the leader passes then counts as
+    ink under the label. Calling the base class's method gives the words alone.
+    """
+    import matplotlib.text as mtext
+
+    if isinstance(t, mtext.Annotation):
+        return mtext.Text.get_window_extent(t, renderer=renderer)
+    return t.get_window_extent(renderer=renderer)
 
 
 def check_figure(fig, name: str = "figure") -> list[str]:
@@ -73,45 +89,58 @@ def check_figure(fig, name: str = "figure") -> list[str]:
     pad = TEXT_PAD_PT * fig.dpi / 72.0
 
     ink, _ = _render(fig)
+    # For the text-on-ink rule the leaders are rendered away rather than masked out. Masking
+    # out a leader's bounding box also hides every curve inside that box, which is a large
+    # rectangle for any leader that reaches across the panel: the rule then passes a text that
+    # a curve runs straight through. This was got wrong once and is the reason for the second
+    # render.
     boxes = _text_boxes(fig, renderer)
+
+    leaders = [a for ax in fig.get_axes() for t in ax.texts
+               if (a := getattr(t, "arrow_patch", None)) is not None]
+    leader_vis = [a.get_visible() for a in leaders]
+    for a in leaders:
+        a.set_visible(False)
+    texts = [t for ax in fig.get_axes() for t in ax.texts]
+    text_vis = [t.get_visible() for t in texts]
+    for t in texts:
+        t.set_visible(False)
+    ink_background, _ = _render(fig)
+    for t, v in zip(texts, text_vis):
+        t.set_visible(v)
+    for a, v in zip(leaders, leader_vis):
+        a.set_visible(v)
+    fig.canvas.draw()
 
     # --- a text must not sit on ink, counting its margin --------------------------------
     for t, ax, bb in boxes:
         if t in (ax.xaxis.label, ax.yaxis.label) or t in ax.get_xticklabels() \
                 or t in ax.get_yticklabels() or t is ax.title:
             continue
-        # A text drawn on an opaque patch covers whatever is behind it, which is what the
-        # patch is for, so the rule has nothing to say about it.
-        bbox_patch = t.get_bbox_patch()
-        if bbox_patch is not None:
-            fc = bbox_patch.get_facecolor()
-            if len(fc) < 4 or fc[3] > 0.9:
-                continue
+        # A white patch under a label is not a way past this rule. It hides whatever is
+        # behind it, so the curve that was there is now missing from the figure, which is the
+        # same defect seen from the other side. Labels go in clear space.
         x0 = int(max(0, bb.x0 - pad))
         x1 = int(min(ink.shape[1], bb.x1 + pad))
         y0 = int(max(0, height - bb.y1 - pad))
         y1 = int(min(ink.shape[0], height - bb.y0 + pad))
         if x1 <= x0 or y1 <= y0:
             continue
-        patch = ink[y0:y1, x0:x1].copy()
-        own = ink[int(height - bb.y1):int(height - bb.y0), int(bb.x0):int(bb.x1)]
-        # An annotation's own leader is allowed to touch its own box: that is what makes it a
-        # leader. Its pixels are taken out before the box is judged.
-        arrow = getattr(t, "arrow_patch", None)
-        if arrow is not None:
-            try:
-                ab = arrow.get_window_extent(renderer=renderer)
-                ax0 = int(max(x0, ab.x0)) - x0
-                ax1 = int(min(x1, ab.x1)) - x0
-                ay0 = int(max(y0, height - ab.y1)) - y0
-                ay1 = int(min(y1, height - ab.y0)) - y0
-                if ax1 > ax0 and ay1 > ay0:
-                    patch[max(0, ay0):ay1, max(0, ax0):ax1] = False
-            except Exception:
-                pass
-        busy = (patch.sum() - own.sum()) / max(1, patch.size - own.size)
+        # Measured against a render with every label and leader taken out, so that what is
+        # counted is ink from the figure itself and nothing else. Subtracting the text's own
+        # box from a full render instead leaves the antialiased edge of the glyphs in the
+        # margin, which at a strict threshold reports a label standing in empty space.
+        patch = ink_background[y0:y1, x0:x1]
+        busy = patch.sum() / max(1, patch.size)
         if busy > MAX_BUSY_FRACTION:
-            problems.append("%s: text %r sits on ink, %.0f%% of its padded box"
+            import os
+            if os.environ.get("TL_FIGURE_DEBUG"):
+                ys, xs = np.nonzero(patch)
+                print("      DEBUG %r box x[%d,%d] y[%d,%d]; ink at x %s y %s"
+                      % (t.get_text()[:20], x0, x1, y0, y1,
+                         (xs.min() + x0, xs.max() + x0) if xs.size else None,
+                         (ys.min() + y0, ys.max() + y0) if ys.size else None))
+            problems.append("%s: text %r sits on ink, %.1f%% of its padded box"
                             % (name, t.get_text()[:34], 100 * busy))
 
     # --- texts must not sit on each other -----------------------------------------------
@@ -141,11 +170,17 @@ def check_figure(fig, name: str = "figure") -> list[str]:
         y0, y1 = int(height - bb.y1), int(height - bb.y0)
         if x1 <= x0 or y1 <= y0:
             continue
+        axbb = ax.get_window_extent(renderer=renderer)
         for line in ax.get_lines():
             pts = ax.transData.transform(np.column_stack(
                 [np.asarray(line.get_xdata(), dtype=float),
                  np.asarray(line.get_ydata(), dtype=float)]))
-            inside = ((pts[:, 0] >= x0) & (pts[:, 0] <= x1)
+            # Only the part of the curve that is actually drawn. A curve leaves the panel at
+            # its limits and is clipped there; its points beyond that land wherever the
+            # transform puts them, which can be inside a legend drawn outside the panel.
+            drawn = ((pts[:, 0] >= axbb.x0) & (pts[:, 0] <= axbb.x1)
+                     & (pts[:, 1] >= axbb.y0) & (pts[:, 1] <= axbb.y1))
+            inside = (drawn & (pts[:, 0] >= x0) & (pts[:, 0] <= x1)
                       & (height - pts[:, 1] >= y0) & (height - pts[:, 1] <= y1))
             if inside.any():
                 problems.append("%s: the legend sits on the curve %r"
@@ -222,6 +257,46 @@ def _angle_between(a, b) -> float:
         return 90.0
     c = abs(float(np.dot(a, b)) / (na * nb))
     return float(np.degrees(np.arccos(min(1.0, c))))
+
+
+def check_with_paper_style(fig, name: str = "figure") -> list[str]:
+    """The project's older text checker, run as a second opinion.
+
+    ``smbhb.paper_style.check_text`` predates this module and is used on the papers. Keeping
+    both means a hole in one is covered by the other; this one found the defects first, and
+    the hole that let a curve run through a label was in this module, not in that one.
+    Returns an empty list where it is not importable, which is the case outside the author's
+    own checkout.
+    """
+    import sys
+
+    for candidate in ("/lhome/ific/t/tasicarl/AccurateAstro-SMBHB-PT-PTA",):
+        if candidate not in sys.path:
+            sys.path.append(candidate)
+    try:
+        from smbhb.paper_style import check_text
+    except Exception:
+        return []
+    try:
+        found = check_text(fig)
+    except Exception as exc:
+        return ["%s: paper_style.check_text could not run: %s" % (name, exc)]
+
+    # That checker cannot hide a leader before it looks, so it counts an annotation's own
+    # leader as something the label is sitting on. Only that case is dropped, and only for
+    # labels that do have a leader; everything else it says is kept, because it has caught
+    # what this module missed before.
+    # Matched on the first line of the label, because that checker prints the text through
+    # ``repr``, where a newline comes out as two characters and a plain membership test fails.
+    leadered = {t.get_text().splitlines()[0].strip()
+                for ax in fig.get_axes() for t in ax.texts
+                if getattr(t, "arrow_patch", None) is not None and t.get_text().strip()}
+    out = []
+    for m in (found or []):
+        if "busy background" in m and any(t and t in m for t in leadered):
+            continue
+        out.append("%s: paper_style says %s" % (name, m))
+    return out
 
 
 def check_curves_span(ax, name: str = "panel", skip: tuple = ()) -> list[str]:

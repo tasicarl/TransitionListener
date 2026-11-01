@@ -63,7 +63,10 @@ bisecting on the starting value finds it.
 
    One bisection step. A start too far from the true vacuum leaves the field without the energy
    to reach the false one, and friction turns it back. A start too near it arrives with energy
-   to spare and passes through. The solution lies between the two.
+   to spare and passes through. The solution lies between the two. The two markers are where
+   each trial's verdict is settled and the shooting stops. Carried past that point, which is
+   what the figure does, the undershoot oscillates about the top of the barrier, damped by the
+   friction term, and the overshoot crosses the false vacuum and runs away.
 
 Three details make this work in practice.
 
