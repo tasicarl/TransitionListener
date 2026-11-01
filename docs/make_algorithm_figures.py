@@ -163,9 +163,46 @@ def _check(fig, name: str) -> None:
     print("   %s: %s" % (name, "no text overlaps" if not bad else bad))
 
 
+def figure_images() -> None:
+    """Why a traced phase has to be put on one image of the potential's symmetry."""
+    use_house_style()
+    fig, ax = plt.subplots(figsize=(WIDTH, 0.52 * WIDTH))
+
+    # A potential even in the field has two images of every broken minimum. The tracer follows
+    # whichever one the numerical step lands on, which can differ between the two phases.
+    T = np.linspace(0.0, 1.0, 400)
+    broken = 1.6 * np.sqrt(np.clip(1.0 - T ** 2, 0.0, None))
+
+    ax.plot(T, broken, color=DESYcyan, lw=1.8)
+    ax.plot(T, -broken, color=DESYcyan, lw=1.8, ls=(0, (4, 3)))
+    ax.axhline(0.0, color=DESYdunkelblau, lw=1.4)
+
+    ax.annotate("", xy=(0.45, 1.43), xytext=(0.45, 0.0),
+                arrowprops=dict(arrowstyle="->", color=DESYorange, lw=1.6))
+    ax.annotate("", xy=(0.45, -1.43), xytext=(0.45, 0.0),
+                arrowprops=dict(arrowstyle="->", color=DESYaubergine, lw=1.6,
+                                linestyle=(0, (3, 2))))
+
+    ax.text(0.03, 1.15, "broken phase", color=DESYcyan, fontsize=7, va="center")
+    ax.text(0.03, -1.15, "its mirror image", color=DESYcyan, fontsize=7, va="center")
+    ax.text(0.03, 0.14, "symmetric phase", color=DESYdunkelblau, fontsize=7, va="center")
+    ax.text(0.50, 0.80, "the channel", color=DESYorange, fontsize=7, va="center")
+    ax.text(0.50, -0.80, "not a channel", color=DESYaubergine, fontsize=7, va="center")
+
+    ax.set_xlabel(r"temperature $T/T_{\rm c}$")
+    ax.set_ylabel(r"field $\phi$")
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(-1.75, 1.75)
+    fig.subplots_adjust(left=0.105, right=0.985, bottom=0.165, top=0.975)
+    fig.savefig(OUT / "algorithm_images.png", dpi=200)
+    plt.close(fig)
+    print("wrote", OUT / "algorithm_images.png")
+
+
 def main() -> int:
     figure_shooting()
     figure_rate_and_support()
+    figure_images()
     return 0
 
 

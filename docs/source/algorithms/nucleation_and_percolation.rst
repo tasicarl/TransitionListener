@@ -52,95 +52,129 @@ temperature of the phase the bubbles grow into, which is heated by the energy re
 iterated to consistency, and it is the one that gives the reheating temperature and decides
 whether the transition completes.
 
-Placing the support points
---------------------------
+Two backends
+------------
 
-Every evaluation of the integrand needs a bounce action, and a bounce action costs far more
-than everything else combined. The solver is therefore built around a budget: it may compute
-only a few dozen actions, and the whole question is where to spend them. Its internal name is
-the dynamic zoom window, which is what the ``_dynamiczoomwindow_`` functions in the source
-refer to.
+The history above can be computed by either of two solvers, chosen with
+``percolation_algorithm_mode``. They differ in one thing: how the temperatures at which an
+action is evaluated are chosen. That choice is the whole cost of a run and most of its
+accuracy.
 
-The difficulty is the shape of the integrand. The rate goes as :math:`e^{-S_3/T}` and the
-action falls steeply as the universe cools, so :math:`\Gamma/H^4` rises through tens of orders
-of magnitude over a narrow range of temperature, is appreciable over a short interval, and
-dies again. A grid that steps across that rise without resolving it returns a smooth curve and
-a plausible number that is wrong by orders of magnitude, with nothing in the output to show it.
+.. list-table::
+   :header-rows: 1
+   :widths: 22 39 39
+
+   * -
+     - ``fixed_step_size``
+     - ``adaptive_step_size`` (default)
+   * - Support
+     - A fixed number of temperatures, evenly spaced over the current range.
+     - A budget of temperatures, placed where the profile is not yet resolved.
+   * - When it refines
+     - By moving or rescaling the whole grid and recomputing it.
+     - By adding points inside the intervals that need them, keeping what is computed.
+   * - Cost
+     - Known in advance: ``n_action`` actions per range it tries.
+     - Bounded by the budget; a temperature whose action is cached is free.
+   * - Strength
+     - Simple, predictable, and adequate when the transition is not supercooled.
+     - Resolves a rise that occupies a small fraction of the range.
+   * - Weakness
+     - A rise narrower than the spacing is stepped over, and widening the range makes that
+       worse.
+     - More machinery, and its refinement decisions are harder to follow.
+
+Both share the thermodynamics: the rate, the integral, the energy densities and the expansion
+history come from the same routines, so a difference between the two backends is a difference
+in sampling and not in physics.
+
+The fixed-step backend
+----------------------
+
+It lays ``n_action`` temperatures evenly across a trial range and computes the profile on them.
+If the result is unusable it changes the range rather than the sampling: it moves the window
+when the transition sits outside it, narrows it around a jump in the converted fraction when
+one is found, and tries again with the same number of points. The grid is always uniform and
+always the same size, so the cost of each attempt is known before it starts.
+
+This is adequate when the rise of the rate occupies a decent fraction of the temperature range,
+which is the ordinary case. It fails when the rise is narrow compared with the range, because
+then a uniform grid steps over it: the profile comes back as a jump from zero converted to
+fully converted between two neighbouring points, and the percolation temperature is read off a
+curve that was never resolved.
+
+The adaptive backend
+--------------------
+
+Its internal name is the dynamic zoom window, which is what the ``_dynamiczoomwindow_``
+functions in the source refer to. It treats the number of actions as a budget and spends it
+where the profile needs it.
 
 .. figure:: ../_static/algorithm_rate_and_support.png
-   :width: 92%
+   :width: 100%
    :align: center
 
-   Why the support has to be placed on the rise. Above, the nucleation rate in Hubble units,
-   which is appreciable over a short interval and negligible elsewhere. Below, the fraction of
-   space converted. A grid spread evenly over the temperature range steps across the rise and
-   sees the fraction jump from zero to one with nothing in between, so the percolation
-   temperature is read off a curve the grid never resolved.
+   The rate in Hubble units is appreciable over a short interval and negligible elsewhere. A
+   grid spread evenly over the temperature range steps across the rise and sees the converted
+   fraction jump from zero to one with nothing in between.
 
 Scouting
 ~~~~~~~~
 
-The first pass works on the logarithm of the rate in Hubble units,
-:math:`\log_{10}(\Gamma/H^4)`, because that is the quantity whose shape matters and it is
-well behaved over the whole range. It computes a sparse set of actions, reconstructs an
-approximate profile from them, and asks two questions: is the hot end far enough out that
-nucleation has not yet begun, and is the cold end far enough down that it can no longer
-contribute. The second has a quantitative answer: once the rate has fallen a thousand decades
-below its peak, no colder point can change the converted fraction, and the tail below that is
-dead.
+The first pass works on :math:`\log_{10}(\Gamma/H^4)` rather than on the converted fraction,
+because that is the quantity whose shape matters and it is well behaved over the whole range.
+It computes a sparse set of actions, reconstructs an approximate profile, and asks two
+questions: whether the hot end is far enough out that nucleation has not begun, and whether the
+cold end is far enough down that it can no longer contribute. The second has a quantitative
+answer: once the rate has fallen a thousand decades below its peak no colder point can change
+the converted fraction, and the tail below that is dead.
 
-If either end fails, the window is widened and more actions are spent, up to a ceiling on how
-many the scout may use. When the transition is bracketed, the interior peak of the rate is
-located and a window is built around it. That window is the starting grid for the next pass.
+If either end fails the window is widened and more actions are spent, up to a ceiling. When the
+transition is bracketed the interior peak of the rate is located and a window is built around
+it, and that window is the starting grid for the next pass.
 
 Refinement
 ~~~~~~~~~~
 
-The later passes add support points where the profile is not yet resolved. Several strategies
-exist because there are several ways for a profile to be unresolved, and each has its own
-signature:
+Several strategies exist because there are several ways for a profile to be unresolved, and
+each has its own signature:
 
-**A jump in the converted fraction.** If two neighbouring support points differ by more than
-:math:`\Delta P = 0.1`, the rise between them is not resolved and intermediate temperatures
-are added. This is the commonest case and the most important: it is the direct statement that
-the grid has stepped over the transition.
+**A jump in the converted fraction.** Two neighbouring support points differing by more than
+:math:`\Delta P = 0.1` means the rise between them is unresolved, and intermediate
+temperatures are added. This is the commonest case and the most direct statement that the grid
+has stepped over the transition.
 
 **The rise of the rate.** Points are added across the interval where
-:math:`\log(\Gamma/H^4)` climbs, located from the sampled rate rather than from the
-converted fraction, so that the rise is resolved before it has had any visible effect on
-:math:`P`.
+:math:`\log(\Gamma/H^4)` climbs, located from the sampled rate rather than from the converted
+fraction, so that the rise is resolved before it has had any visible effect on :math:`P`.
 
-**The peak of the rate**, and the approach to it, refined where the sampled maximum is a
-single point rather than a resolved shape.
+**The peak of the rate**, refined where the sampled maximum is a single point rather than a
+resolved shape.
 
 **The hot shoulder**, where the converted fraction is still near zero but the rate is already
 appreciable, so the integral is accumulating in a region the grid treats as empty.
 
 **The hot head**, the hottest retained support point, which has to sit where nothing has
-happened yet. If the profile still rises at its hot end, the window did not start early enough.
+happened yet. If the profile still rises there, the window did not start early enough.
 
-**Remeshing from anchors.** Rather than adding points to an existing grid, a fresh batch is
-placed at fixed values of :math:`P`, which distributes effort by how much of the transition
-each interval carries rather than by temperature.
+**Remeshing from anchors**, placing a fresh batch at fixed values of :math:`P` rather than
+adding to the existing grid, which distributes effort by how much of the transition each
+interval carries.
 
-**Extending the range**, in small batches, when the window itself is too narrow, with the cold
-boundary chosen from how much the last extension gained.
+**Extending the range** in small batches, with the cold boundary chosen from how much the last
+extension gained.
 
 Acceptance
 ~~~~~~~~~~
 
-A profile is accepted only if it passes two tests that the refinement might not have reached:
+A profile is accepted only if no two neighbouring support points differ by more than
+:math:`\Delta P = 0.2`, and the hot head is resolved. An interval is exempt from the first
+test where the rate there is so far past its peak that it cannot contribute, which is the same
+dead-tail criterion the scout uses.
 
-- No two neighbouring support points differ by more than :math:`\Delta P = 0.2`. A profile
-  that still has a jump that large has not resolved the transition, whatever else converged.
-- The hot head is not underresolved, in the sense above.
-
-An interval is exempted from the first test where the rate there is so far past its peak that
-the interval cannot contribute, which is the same dead-tail criterion the scout uses.
-
-If neither the refinement budget nor the range can fix a failure, the point is refused, and
-the message says which resource ran out: the number of actions, the number of iterations, or
-the temperature range.
+If neither the refinement budget nor the range can fix a failure, the point is refused, and the
+message says which resource ran out: the number of actions, the number of iterations, or the
+temperature range.
 
 .. versionchanged:: 2.2
    The refinement strategies above, the acceptance tests, and the distinction between running
@@ -158,21 +192,27 @@ Settings
    * - Setting
      - Default
      - Meaning
+   * - ``percolation_algorithm_mode``
+     - adaptive
+     - Which backend computes the history.
+   * - ``n_action``
+     - 30
+     - Support points of the fixed-step backend.
    * - ``n_action_min``
      - 15
-     - Support points built before the first refinement sweep.
+     - Support points built before the first adaptive refinement sweep.
    * - ``n_action_increment``
      - 5
-     - Support points added per refinement iteration.
+     - Support points added per adaptive refinement iteration.
    * - ``n_action_max``
      - 60
-     - Most new support points in one update; a point whose action is cached is free.
+     - Most new support points in one update; a cached action is free.
    * - ``max_action_temperatures``
      - 100
-     - Most action evaluations the scout may spend bracketing the transition.
+     - Most actions the scout may spend bracketing the transition.
    * - ``large_delta_p_refine_threshold``
      - 0.1
-     - Neighbouring jump in :math:`P` above which extra refinement is triggered.
+     - Neighbouring jump in :math:`P` above which refinement is triggered.
    * - ``large_delta_p_success_threshold``
      - 0.2
      - Neighbouring jump in :math:`P` above which a profile is refused.
@@ -184,7 +224,7 @@ Settings
      - Converted fraction defining the percolation temperature.
    * - ``max_boundary_ratio``
      - 0.45
-     - Most of the temperature range that may sit on a plateau where :math:`P` is zero or one.
+     - Most of the range that may sit on a plateau where :math:`P` is zero or one.
 
 The expansion history
 ---------------------

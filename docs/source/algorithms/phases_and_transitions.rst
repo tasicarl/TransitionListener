@@ -49,6 +49,14 @@ Where the potential is invariant under a group, a minimum is not one point but a
 of the same physical state. Which image a trace ends up on is decided by the sign of a numerical
 step and carries no physical meaning.
 
+.. figure:: ../_static/algorithm_images.png
+   :width: 100%
+   :align: center
+
+   A potential even in the field has two images of every broken minimum, and which one a trace
+   lands on is settled by the sign of a numerical step. A bounce computed from the symmetric
+   phase to the image the field does not occupy is not a tunnelling channel.
+
 This matters because a bounce is computed between two phases. If the two sit on different
 images, the path between them crosses field space from one copy of the vacuum to another copy
 of the other, which is not a tunnelling channel, and the action computed along it is not the
