@@ -20,4 +20,8 @@ number that was wrong without saying so.
 
    the_effective_potential
    the_plasma
+   phases_and_transitions
    the_bounce_action
+   nucleation_and_percolation
+   hydrodynamics
+   the_spectrum
