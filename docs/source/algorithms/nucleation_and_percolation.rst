@@ -67,6 +67,16 @@ of magnitude over a narrow range of temperature, is appreciable over a short int
 dies again. A grid that steps across that rise without resolving it returns a smooth curve and
 a plausible number that is wrong by orders of magnitude, with nothing in the output to show it.
 
+.. figure:: ../_static/algorithm_rate_and_support.png
+   :width: 92%
+   :align: center
+
+   Why the support has to be placed on the rise. Above, the nucleation rate in Hubble units,
+   which is appreciable over a short interval and negligible elsewhere. Below, the fraction of
+   space converted. A grid spread evenly over the temperature range steps across the rise and
+   sees the fraction jump from zero to one with nothing in between, so the percolation
+   temperature is read off a curve the grid never resolved.
+
 Scouting
 ~~~~~~~~
 

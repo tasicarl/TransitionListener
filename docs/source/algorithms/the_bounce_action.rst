@@ -58,6 +58,16 @@ energy: friction stops it before it reaches the false vacuum, and it falls back.
 and it arrives with energy to spare and shoots past. The solution lies between the two, and
 bisecting on the starting value finds it.
 
+.. figure:: ../_static/algorithm_bounce_profile.png
+   :width: 90%
+   :align: center
+
+   A solved bounce for a thick-walled bubble. The field starts near the true vacuum at the
+   centre and relaxes to the false vacuum at large radius. The shooting unknown is the value at
+   the centre; the distance inside which a trial is accepted as having reached the false vacuum
+   is a fraction of the excursion the bounce covers, which at the default tolerance is far too
+   narrow to draw.
+
 Three details make this work in practice.
 
 **The integration cannot start at the centre.** The friction term diverges at :math:`r = 0`.
