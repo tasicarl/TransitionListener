@@ -23,7 +23,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 from transitionlistener.colors import (DESYcyan, DESYorange, DESYdunkelblau,
-                                       DESYaubergine, DESYrot)
+                                       DESYaubergine, DESYrot, DESYmagenta)
 
 OUT = pathlib.Path(__file__).resolve().parent / "source" / "_static"
 OUT.mkdir(parents=True, exist_ok=True)
@@ -58,7 +58,13 @@ def figure_shooting() -> None:
         return phi * (phi - 0.2) * (phi - 1.0)
 
     inst = SingleFieldInstanton(1.0, 0.0, V, dV)
-    solved = inst.findProfile()
+    # Solved at a tight tolerance, which is what carries the bounce out to a radius where it
+    # has genuinely reached the false vacuum rather than stopping in the middle of the panel.
+    # The bounce is a separatrix, so continuing it by hand past where the solver stops only
+    # shows the drift of whatever integrator is doing the continuing; the tolerance is the
+    # real control. At the default tolerance it ends at r = 24 with phi = 7e-5, here at
+    # r = 42 with phi = 1e-23.
+    solved = inst.findProfile(rmax=1e5, phitol=1e-10, xtol=1e-12)
     delta_phi = inst.phi_metaMin - inst.phi_absMin
     x_solved = -np.log(abs(solved.Phi[0] - inst.phi_absMin) / abs(delta_phi))
     rmax = solved.R[-1]
@@ -92,13 +98,14 @@ def figure_shooting() -> None:
     # phi(0) = phi_true + exp(-x) (phi_false - phi_true), so a larger x starts nearer the
     # true vacuum, with more energy, and overshoots.
     r_o, p_o, rv_o, pv_o, c_o = trial(x_solved * 1.30, 14.2)
-    r_u, p_u, rv_u, pv_u, c_u = trial(x_solved * 0.78, 55.0)
+    r_u, p_u, rv_u, pv_u, c_u = trial(x_solved * 0.78, 44.0)
     assert c_u == "undershoot" and c_o == "overshoot", (c_u, c_o)
 
     ax.plot(r_u, p_u, color=DESYorange, lw=1.4,
             label="too far from the true vacuum: turns back")
     ax.plot(r_o, p_o, color=DESYaubergine, lw=1.4,
             label="too near the true vacuum: runs past")
+    assert abs(solved.Phi[-1] - inst.phi_metaMin) < 1e-6 * abs(delta_phi), solved.Phi[-1]
     ax.plot(solved.R, solved.Phi, color=DESYcyan, lw=2.2, label="the bounce")
     ax.plot([rv_u], [pv_u], "o", color=DESYorange, ms=4)
     ax.plot([rv_o], [pv_o], "o", color=DESYaubergine, ms=4)
@@ -108,19 +115,18 @@ def figure_shooting() -> None:
 
     ax.set_xlabel(r"radius $r$")
     ax.set_ylabel(r"field $\phi$")
-    ax.set_xlim(0, 55.0)
+    ax.set_xlim(0, 44.0)
     ax.set_ylim(-0.30, 0.98)
-    ax.text(54.0, 0.028, "false vacuum", color=DESYdunkelblau, fontsize=7,
+    ax.text(43.2, 0.028, "false vacuum", color=DESYdunkelblau, fontsize=7,
             ha="right", va="bottom")
-    ax.text(54.0, 0.235, "top of the barrier", color="0.45", fontsize=7,
+    ax.text(43.2, 0.235, "top of the barrier", color="0.45", fontsize=7,
             ha="right", va="bottom")
-    ax.text(15.0, -0.268, "and keeps falling", color=DESYaubergine, fontsize=7,
-            ha="left", va="center")
+
     ax.annotate("the verdict is settled here,\nand the shooting stops",
-                xy=(rv_o, pv_o - 0.012), xytext=(28.0, -0.150), color="0.35", fontsize=7,
+                xy=(rv_o, pv_o - 0.012), xytext=(24.0, -0.150), color="0.35", fontsize=7,
                 ha="center", va="center",
                 arrowprops=dict(arrowstyle="->", color="0.45", lw=0.8))
-    ax.annotate("", xy=(rv_u, pv_u - 0.012), xytext=(28.0, -0.115),
+    ax.annotate("", xy=(rv_u, pv_u - 0.012), xytext=(24.0, -0.115),
                 arrowprops=dict(arrowstyle="->", color="0.45", lw=0.8))
     ax.legend(frameon=False, loc="upper right")
     fig.subplots_adjust(left=0.100, right=0.985, bottom=0.135, top=0.975)
@@ -222,25 +228,28 @@ def figure_images() -> None:
                 arrowprops=dict(arrowstyle="->", color=DESYaubergine, lw=1.6,
                                 linestyle=(0, (3, 2)), shrinkA=0, shrinkB=0))
 
-    ax.text(0.30, 1.62, "the broken phase, as traced", color=DESYcyan, fontsize=7,
-            ha="center", va="center")
-    ax.text(0.30, -1.62, "its mirror image, the same physical state", color=DESYcyan,
-            fontsize=7, ha="center", va="center")
-    ax.text(0.055, 0.22, "the symmetric phase", color=DESYdunkelblau, fontsize=7,
+    # Every label is placed in empty space with room around it, so that nothing crosses the
+    # box a reader's eye draws around the words.
+    ax.text(0.10, 1.88, "the broken phase, as traced", color=DESYcyan, fontsize=7,
             ha="left", va="center")
-    ax.text(T_arrow + 0.035, 0.80, "the bubble tunnels\nalong this path", color=DESYorange,
+    ax.text(0.10, -1.88, "its mirror image, the same physical state", color=DESYcyan,
             fontsize=7, ha="left", va="center")
-    ax.text(T_arrow + 0.035, -0.80, "a path to the other image\nis not a tunnelling channel",
+    ax.text(0.10, 0.30, "the symmetric phase", color=DESYdunkelblau, fontsize=7,
+            ha="left", va="center")
+    ax.text(T_arrow + 0.045, 0.80, "the bubble tunnels\nalong this path", color=DESYorange,
+            fontsize=7, ha="left", va="center")
+    ax.text(T_arrow + 0.045, -0.80, "a path to the other image\nis not a tunnelling channel",
             color=DESYaubergine, fontsize=7, ha="left", va="center")
-    ax.text(0.985, 1.95, r"$T_\mathrm{c}$", color="0.45", fontsize=7, ha="right", va="top")
-    ax.annotate("the barrier\nis gone here", xy=(T_sp - 0.004, broken[-1] - 0.06),
-                xytext=(0.72, 0.17), color=DESYcyan, fontsize=7, ha="center", va="center",
+    ax.text(0.975, -2.22, r"$T_\mathrm{c}$", color="0.45", fontsize=7, ha="right",
+            va="center")
+    ax.annotate("the barrier is gone here", xy=(T_sp + 0.008, broken[-1]),
+                xytext=(0.62, 2.22), color=DESYcyan, fontsize=7, ha="center", va="center",
                 arrowprops=dict(arrowstyle="->", color=DESYcyan, lw=0.8))
 
     ax.set_xlabel(r"temperature $T/T_{\rm c}$")
     ax.set_ylabel(r"field $\phi$")
-    ax.set_xlim(0.0, 1.22)
-    ax.set_ylim(-2.10, 2.10)
+    ax.set_xlim(0.0, 1.30)
+    ax.set_ylim(-2.55, 2.55)
     fig.subplots_adjust(left=0.105, right=0.985, bottom=0.165, top=0.975)
     _check(fig, "algorithm_images")
     fig.savefig(OUT / "algorithm_images.png", dpi=200)
@@ -265,20 +274,18 @@ def _two_higgs_doublet_model():
 
 
 def figure_plasma_dof() -> None:
-    """The two inventories: the tabulated bath, and the fields of a model's own potential."""
+    """The tabulated bath, and the whole plasma of a model in each of its two phases."""
     from scipy.optimize import brentq
 
     from transitionlistener import thermodynamics as td
     from transitionlistener.bubbledynamics import g_eff_DS
 
-    # ---- upper panel: the Standard Model bath, from the package's own fits -----------------
     # The dispatchers, not the two fits directly: each fit is valid on one side of the seam at
     # 0.12 GeV only, and below it the high-temperature one returns nonsense.
-    T = np.logspace(-6.0, 4.0, 2000)
+    T = np.logspace(-3.0, 4.0, 1400)
     g_rho = td.e_geffSM_fit(T, 1.0)
     g_s = td.s_geffSM_fit(T, 1.0)
 
-    # ---- lower panel: the fields of the 2HDM potential, in each of its two phases ----------
     pot = _two_higgs_doublet_model()
 
     class _FixedPhase:
@@ -290,81 +297,107 @@ def figure_plasma_dof() -> None:
         def valAt(self, T):
             return self.X
 
-    symmetric = _FixedPhase(np.zeros(pot.Ndim))
-    T2 = np.logspace(0.0, np.log10(134.0), 140)
+    # The whole plasma, not the potential's fields alone: the tabulated bath, less the fields
+    # of the potential that are Standard Model ones and would otherwise be counted twice, plus
+    # the potential's own fields at the field value of the phase. This is what the expansion
+    # rate is built from, and it is on the same scale as the panel above.
+    origin = np.zeros(pot.Ndim)
+    symmetric = _FixedPhase(origin)
+    T2 = np.logspace(-3.0, 4.0, 220)
     X = np.asarray(pot.X0, dtype=float)
-    g_sym, g_bro = [], []
+    tot_sym, tot_bro, stable = [], [], []
     for t in T2:
-        X = np.asarray(pot.findMinimum(X, float(t)), dtype=float)
-        g_sym.append(g_eff_DS(float(t), pot, symmetric))
-        g_bro.append(g_eff_DS(float(t), pot, _FixedPhase(X)))
-    g_sym = np.array(g_sym)
-    g_bro = np.array(g_bro)
+        t = float(t)
+        bath = float(td.e_geffSM_fit(t, 1.0))
+        overlap = float(np.squeeze(td.sm_fields_in_potential_geff(pot, t, "e")))
+        X = np.asarray(pot.findMinimum(X, t), dtype=float)
+        tot_bro.append(bath - overlap + g_eff_DS(t, pot, _FixedPhase(X)))
+        # Whether the origin is a minimum, and whether that verdict means anything. `d2V` is a
+        # finite difference of the full potential, which at high temperature is dominated by
+        # the field-independent radiation and is differenced away: the result is then quantised
+        # to the spacing of doubles at |V| divided by the step squared, and its sign is an
+        # accident of the last bits of T. Above about 1 TeV here the eigenvalue is at that
+        # floor, so the verdict is not drawn rather than drawn wrong.
+        hess = np.atleast_2d(np.squeeze(pot.d2V(origin, t)))
+        eig_min = float(np.linalg.eigvalsh(hess).min())
+        floor = float(np.spacing(abs(float(np.squeeze(pot.Vtot(origin, t)))))) / pot.x_eps ** 2
+        stable.append(eig_min > 0.0 and abs(eig_min) > 30.0 * floor)
+        tot_sym.append(bath - overlap + g_eff_DS(t, pot, symmetric))
+    tot_sym = np.array(tot_sym)
+    tot_bro = np.array(tot_bro)
+
+    # The symmetric phase is drawn on the one contiguous stretch that carries the transition,
+    # near 100 GeV. At this benchmark the origin also stops being a minimum in a band near
+    # 30 GeV and is one again below it; that lower piece is a different branch, and the
+    # universe never occupies it.
+    stable = np.array(stable)
+    keep = np.zeros_like(stable)
+    i0 = int(np.argmin(abs(T2 - 100.0)))
+    if stable[i0]:
+        lo = i0
+        while lo > 0 and stable[lo - 1]:
+            lo -= 1
+        hi = i0
+        while hi < len(stable) - 1 and stable[hi + 1]:
+            hi += 1
+        keep[lo:hi + 1] = True
+    tot_sym[~keep] = np.nan
 
     # The temperature at which each mode's contribution has fallen to half of its relativistic
-    # value, solved from the same integral the counting uses rather than taken as m/T = 1.
-    masses = [("A", 411.9, "b"), (r"H^\pm", 409.4, "b"), ("H", 184.4, "b"),
-              ("t", 172.5, "f"), ("h", 125.0, "b"), ("Z", 91.2, "b"), ("W", 80.4, "b")]
+    # value, solved from the same integral the counting uses rather than taken as m = T.
+    # Modes whose masses are within a few per cent of each other leave together and share one
+    # label, because two arrows a pixel apart say nothing a reader can use.
+    groups = [(r"W,\,Z", [(80.4, "b"), (91.2, "b")]),
+              ("h", [(125.0, "b")]),
+              ("t", [(172.5, "f")]),
+              ("H", [(184.4, "b")]),
+              (r"A,\,H^\pm", [(411.9, "b"), (409.4, "b")])]
     half = []
-    for label, mass, kind in masses:
-        rel = td.e_geff(0.0, 1.0, 1.0, kind)
-        root = brentq(lambda t: td.e_geff(mass, t, 1.0, kind) - 0.5 * rel,
-                      mass / 50.0, mass * 50.0)
-        half.append((label, root))
+    for label, modes in groups:
+        roots = []
+        for mass, kind in modes:
+            rel = td.e_geff(0.0, 1.0, 1.0, kind)
+            roots.append(brentq(lambda t: td.e_geff(mass, t, 1.0, kind) - 0.5 * rel,
+                                mass / 50.0, mass * 50.0))
+        half.append((label, float(np.mean(roots))))
 
     use_house_style()
-    fig, (a1, a2) = plt.subplots(2, 1, figsize=(WIDTH, 1.00 * WIDTH))
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(WIDTH, 0.98 * WIDTH), sharex=True)
 
     a1.plot(T, g_rho, color=DESYcyan, lw=1.6, label=r"$g_{\rm eff}$, energy density")
     a1.plot(T, g_s, color=DESYorange, lw=1.6, ls=(0, (4, 2)),
             label=r"$h_{\rm eff}$, entropy density")
     a1.axvline(0.12, color="0.75", lw=0.6, ls=":", zorder=0)
-    a1.text(0.105, 70.0, "seam between the two fits", color="0.45", fontsize=7,
+    a1.text(0.105, 36.0, "seam between\nthe two fits", color="0.45", fontsize=6.5,
             ha="right", va="center")
-    # The two counts differ by 0.48 at the coldest temperatures, which is 0.4 % of this
-    # panel's range, so the inset is the only place it can be seen.
-    inset = a1.inset_axes([0.085, 0.40, 0.24, 0.34])
-    low = T < 3.0e-3
-    inset.plot(T[low], g_rho[low], color=DESYcyan, lw=1.2)
-    inset.plot(T[low], g_s[low], color=DESYorange, lw=1.2, ls=(0, (3, 1.6)))
-    inset.set_xscale("log")
-    inset.set_xlim(1e-6, 3e-3)
-    inset.set_ylim(2.8, 11.5)
-    inset.tick_params(labelsize=6, direction="in", top=True, right=True)
-    inset.set_xticks([1e-6, 1e-4])
-    inset.minorticks_off()
-    a1.set_xscale("log")
-    a1.set_xlabel(r"temperature $T$ (GeV)")
     a1.set_ylabel("degrees of freedom")
-    a1.set_xlim(0.6 * T[0], 1.6 * T[-1])
     a1.set_ylim(0.0, 125.0)
-    a1.legend(frameon=False, loc="lower right")
-    a1.set_title("the tabulated Standard Model bath", fontsize=8, pad=4)
+    a1.legend(frameon=False, loc="upper left")
+    a1.set_title("the tabulated Standard Model bath on its own", fontsize=8, pad=4)
 
-    a2.plot(T2, g_sym, color=DESYrot, lw=1.6, label="symmetric phase")
-    a2.plot(T2, g_bro, color=DESYdunkelblau, lw=1.6, ls=(0, (4, 2)),
-            label="broken phase")
-    # Each arrow runs from the label down to the broken-phase curve, which is where the mode
-    # leaves the plasma; in the symmetric phase it never does, because there it is massless.
-    for label, t_half in half:
-        if T2[0] <= t_half <= T2[-1]:
-            y_curve = float(np.interp(t_half, T2, g_bro))
-            a2.annotate("", xy=(t_half, y_curve + 0.7), xytext=(t_half, 44.2),
-                        arrowprops=dict(arrowstyle="->", color="0.60", lw=0.7,
-                                        shrinkA=0, shrinkB=0))
-            a2.text(t_half, 44.8, "$%s$" % label, color="0.40", fontsize=6.5,
-                    ha="center", va="bottom")
+    a2.plot(T2, tot_bro, color=DESYdunkelblau, lw=1.6, label="broken phase")
+    a2.plot(T2, tot_sym, color=DESYmagenta, lw=1.6, ls=(0, (4, 2)),
+            label="symmetric phase")
+    # Staggered in height, so that five labels fit into the decade the masses occupy.
+    for i, (label, t_half) in enumerate(half):
+        y_curve = float(np.interp(t_half, T2, tot_bro))
+        y_text = 148.0 if i % 2 == 0 else 136.0
+        a2.annotate("", xy=(t_half, y_curve + 1.5), xytext=(t_half, y_text - 3.0),
+                    arrowprops=dict(arrowstyle="->", color="0.60", lw=0.7,
+                                    shrinkA=0, shrinkB=0))
+        a2.text(t_half, y_text, "$%s$" % label, color="0.40", fontsize=6.5,
+                ha="center", va="center")
+    a2.text(0.985, 0.955, "each mode has lost half\nof its contribution here",
+            transform=a2.transAxes, color="0.40", fontsize=6.5, ha="right", va="top")
     a2.set_xscale("log")
     a2.set_xlabel(r"temperature $T$ (GeV)")
     a2.set_ylabel("degrees of freedom")
-    a2.set_xlim(0.88 * T2[0], 1.12 * T2[-1])
-    a2.set_ylim(0.0, 50.0)
-    a2.legend(frameon=False, loc="center left")
-    a2.set_title("the fields of the 2HDM potential, in each phase, with the temperature\n"
-                 "at which each mode has lost half of its contribution",
-                 fontsize=8, pad=4)
+    a2.set_xlim(0.7 * T[0], 1.4 * T[-1])
+    a2.set_ylim(0.0, 162.0)
+    a2.legend(frameon=False, loc="lower right")
+    a2.set_title("the whole plasma of the 2HDM, in each of its two phases", fontsize=8, pad=4)
 
-    fig.subplots_adjust(left=0.095, right=0.985, bottom=0.090, top=0.955, hspace=0.50)
+    fig.subplots_adjust(left=0.095, right=0.985, bottom=0.090, top=0.950, hspace=0.33)
     _check(fig, "algorithm_plasma_dof")
     fig.savefig(OUT / "algorithm_plasma_dof.png", dpi=200)
     plt.close(fig)
@@ -409,13 +442,43 @@ def figure_potential_vs_temperature() -> None:
 def figure_fluid_profiles() -> None:
     """The fluid velocity around the wall, from the module's own flow equations."""
     from scipy.integrate import solve_ivp
+    from scipy.optimize import brentq
 
     from transitionlistener.hydrodynamics import Hydrodynamics
 
     cs2 = 1.0 / 3.0
     cs = np.sqrt(cs2)
+    # One strength for both curves, so that the two pictures are the same transition seen at
+    # two wall velocities and not two different transitions. At 0.3 the Jouguet velocity is
+    # 0.858, so a wall at 0.40 is a clean subsonic deflagration and one at 0.90 a clean
+    # detonation, with neither of them the hybrid that lives between the two. It is also
+    # strong enough that the shock sits four per cent outside the sound speed rather than on
+    # top of it, which a weaker transition would not show.
+    alpha = 0.3
+    v_jouguet = float(Hydrodynamics.find_vJ(None, alpha, cs2))
 
-    def flow(v_wall: float, v_at_wall: float):
+    def velocity_at_wall(v_wall, branch):
+        """The fluid velocity just at the wall, in the plasma frame.
+
+        Taken from the module's own junction condition rather than chosen to make the picture
+        look right. For a deflagration the plasma behind the wall is at rest, so the wall-frame
+        velocity behind it is the wall velocity itself; for a detonation the plasma ahead is at
+        rest, so it is the wall-frame velocity in front that equals the wall velocity.
+        """
+        if branch < 0:
+            v_minus = v_wall
+            v_plus = float(Hydrodynamics.get_vp(None, v_minus, alpha, cs2, branch=-1))
+        else:
+            v_plus = v_wall
+            # Bracketed from the sound speed up: the detonation branch is single valued
+            # there, and below it the same expression runs off to one.
+            v_minus = float(brentq(
+                lambda vm: Hydrodynamics.get_vp(None, vm, alpha, cs2, branch=+1) - v_plus,
+                cs, 0.9999))
+        other = v_plus if branch < 0 else v_minus
+        return abs((v_wall - other) / (1.0 - v_wall * other))
+
+    def flow(v_wall, v_at_wall):
         """Integrate `Hydrodynamics.dfdv` outward from the wall until the profile ends.
 
         The integration runs in the fluid velocity, from its value at the wall down to zero,
@@ -431,58 +494,69 @@ def figure_fluid_profiles() -> None:
 
         at_shock.terminal = True
         sol = solve_ivp(deriv, (v_at_wall, 1e-20), [v_wall, 1.0], events=at_shock,
-                        args=(cs2,), rtol=1e-10, atol=1e-10, dense_output=True)
-        v = np.linspace(sol.t[0], sol.t[-1], 400)
-        return sol.sol(v)[0], v
+                        args=(cs2,), rtol=1e-10, atol=1e-10)
+        return sol.y[0], sol.t
 
     use_house_style()
-    fig, ax = plt.subplots(figsize=(WIDTH, 0.52 * WIDTH))
+    fig, ax = plt.subplots(figsize=(WIDTH, 0.56 * WIDTH))
 
-    # A deflagration: the fluid inside the bubble is at rest, the wall pushes the plasma ahead
-    # of it, and the disturbance ends at a shock front where the velocity drops to zero.
-    vw_d, v0_d = 0.45, 0.32
+    # A deflagration: the wall is slower than sound, the plasma inside the bubble is at rest,
+    # the wall pushes the plasma ahead of it, and the disturbance ends at a shock front.
+    vw_d = 0.40
+    v0_d = velocity_at_wall(vw_d, -1)
     xi_d, v_d = flow(vw_d, v0_d)
     ax.plot([0.0, vw_d], [0.0, 0.0], color=DESYcyan, lw=1.6)
     ax.plot([vw_d, vw_d], [0.0, v0_d], color=DESYcyan, lw=1.6)
-    ax.plot(xi_d, v_d, color=DESYcyan, lw=1.6, label=r"deflagration, $v_\mathrm{w} = 0.45$")
+    ax.plot(xi_d, v_d, color=DESYcyan, lw=1.6,
+            label=r"deflagration, $v_\mathrm{w} = %.2f < c_\mathrm{s}$" % vw_d)
     ax.plot([xi_d[-1], xi_d[-1]], [v_d[-1], 0.0], color=DESYcyan, lw=1.6)
     ax.plot([xi_d[-1], 1.0], [0.0, 0.0], color=DESYcyan, lw=1.6)
 
-    # A detonation: the wall outruns any signal, so the plasma ahead of it is undisturbed, and
-    # behind it a rarefaction carries the velocity back to zero at the speed of sound.
-    vw_t, v0_t = 0.80, 0.22
+    # A detonation: the wall outruns any signal, so the plasma ahead is undisturbed, and a
+    # rarefaction behind it carries the velocity back to zero at the speed of sound.
+    vw_t = 0.90
+    v0_t = velocity_at_wall(vw_t, +1)
     xi_t, v_t = flow(vw_t, v0_t)
-    ax.plot([0.0, xi_t[-1]], [0.0, 0.0], color=DESYorange, lw=1.6, ls=(0, (4, 2)))
-    ax.plot(xi_t, v_t, color=DESYorange, lw=1.6, ls=(0, (4, 2)),
-            label=r"detonation, $v_\mathrm{w} = 0.80$")
-    ax.plot([vw_t, vw_t], [v0_t, 0.0], color=DESYorange, lw=1.6, ls=(0, (4, 2)))
-    ax.plot([vw_t, 1.0], [0.0, 0.0], color=DESYorange, lw=1.6, ls=(0, (4, 2)))
+    ax.plot([0.0, xi_t[-1]], [0.0, 0.0], color=DESYmagenta, lw=1.6, ls=(0, (4, 2)))
+    ax.plot(xi_t, v_t, color=DESYmagenta, lw=1.6, ls=(0, (4, 2)),
+            label=r"detonation, $v_\mathrm{w} = %.2f > v_\mathrm{J}$" % vw_t)
+    ax.plot([vw_t, vw_t], [v0_t, 0.0], color=DESYmagenta, lw=1.6, ls=(0, (4, 2)))
+    ax.plot([vw_t, 1.0], [0.0, 0.0], color=DESYmagenta, lw=1.6, ls=(0, (4, 2)))
 
     ax.axvline(cs, color=DESYdunkelblau, lw=0.8, ls=":")
-    ax.text(cs - 0.015, 0.370, r"$c_\mathrm{s}$", color=DESYdunkelblau, fontsize=7,
+    ax.axvline(v_jouguet, color="0.70", lw=0.8, ls=":")
+    top = 1.18 * max(v0_d, v0_t)
+    ax.text(cs - 0.016, 0.96 * top, r"$c_\mathrm{s}$", color=DESYdunkelblau, fontsize=7,
             ha="right", va="center")
-    ax.annotate("shock front", xy=(xi_d[-1] - 0.004, 0.045), xytext=(0.300, 0.070),
-                color=DESYcyan, fontsize=7, ha="center", va="center",
+    ax.text(v_jouguet + 0.016, 0.96 * top, r"$v_\mathrm{J}$", color="0.45", fontsize=7,
+            ha="left", va="center")
+    ax.text(vw_d - 0.020, 1.04 * v0_d, "bubble wall", color=DESYcyan, fontsize=7,
+            ha="right", va="bottom")
+    ax.text(vw_t, 1.035 * v0_t, "bubble wall", color=DESYmagenta, fontsize=7,
+            ha="center", va="bottom")
+    ax.annotate("shock front", xy=(xi_d[-1] + 0.004, 0.22 * v_d[-1]),
+                xytext=(0.655, 0.30 * top), color=DESYcyan, fontsize=7,
+                ha="center", va="center",
                 arrowprops=dict(arrowstyle="->", color=DESYcyan, lw=0.8))
-    ax.text(vw_d - 0.014, 0.323, "bubble wall", color=DESYcyan, fontsize=7, ha="right",
-            va="bottom")
-    ax.text(vw_t + 0.016, 0.218, "bubble wall", color=DESYorange, fontsize=7, ha="left",
-            va="center")
-    ax.annotate("rarefaction wave", xy=(0.690, 0.066), xytext=(0.760, 0.400),
-                color=DESYorange, fontsize=7, ha="center", va="center",
-                arrowprops=dict(arrowstyle="->", color=DESYorange, lw=0.8))
-    ax.text(0.225, 0.172, "bubble interior,\nplasma at rest", color=DESYcyan, fontsize=7,
+    ax.annotate("rarefaction wave", xy=(0.74, float(np.interp(0.74, xi_t[::-1], v_t[::-1]))),
+                xytext=(0.645, 0.76 * top), color=DESYmagenta, fontsize=7,
+                ha="center", va="center",
+                arrowprops=dict(arrowstyle="->", color=DESYmagenta, lw=0.8))
+    ax.text(0.17, 0.11 * top, "bubble interior,\nplasma at rest", color="0.40", fontsize=7,
             ha="center", va="center")
+
     ax.set_xlabel(r"self-similar coordinate $\xi = r/t$")
     ax.set_ylabel(r"fluid velocity $v(\xi)$")
     ax.set_xlim(-0.015, 1.0)
-    ax.set_ylim(-0.014, 0.46)
+    ax.set_ylim(-0.035 * top, 1.09 * top)
     ax.legend(frameon=False, loc="upper left")
-    fig.subplots_adjust(left=0.105, right=0.985, bottom=0.165, top=0.975)
+    fig.subplots_adjust(left=0.105, right=0.985, bottom=0.155, top=0.975)
     _check(fig, "algorithm_fluid_profiles")
     fig.savefig(OUT / "algorithm_fluid_profiles.png", dpi=200)
     plt.close(fig)
     print("wrote", OUT / "algorithm_fluid_profiles.png")
+    print("   alpha = %.3f, v_J = %.4f, v at the wall: %.4f and %.4f, shock at %.4f"
+          % (alpha, v_jouguet, v0_d, v0_t, xi_d[-1]))
 
 
 def figure_spectrum_sources() -> None:
