@@ -5,8 +5,8 @@ The gravitational wave spectrum
 
 The transition leaves a stochastic background of gravitational waves. Its amplitude and the
 frequency at which it peaks follow from four numbers computed earlier: the strength
-:math:`\alpha`, the mean bubble separation :math:`R_*`, the temperature :math:`T_{\rm reh}`
-after the released energy has been shared out, and the wall velocity :math:`v_w`.
+:math:`\alpha`, the mean bubble separation :math:`R_*`, the temperature :math:`T_\mathrm{reh}`
+after the released energy has been shared out, and the wall velocity :math:`v_\mathrm{w}`.
 
 This page gives the spectrum as the code builds it. The templates follow the report of the
 LISA Cosmology Working Group [LISACosWG2024]_, and the equation numbers quoted below are that
@@ -18,17 +18,17 @@ The three sources
 Three processes radiate, and their spectra are added:
 
 .. math::
-   h^2\Omega_{\rm GW}(f) = h^2\Omega_{\phi}(f) + h^2\Omega_{\rm sw}(f)
-                           + h^2\Omega_{\rm turb}(f).
+   h^2\Omega_\mathrm{GW}(f) = h^2\Omega_{\phi}(f) + h^2\Omega_\mathrm{sw}(f)
+                           + h^2\Omega_\mathrm{turb}(f).
 
 **Bubble collisions**, :math:`\Omega_\phi`, from the energy that stays in the scalar field and
 radiates when walls meet. This matters when the wall runs away, so that much of the energy
 never reaches the plasma.
 
-**Sound waves**, :math:`\Omega_{\rm sw}`, from the bulk motion left in the plasma after the
+**Sound waves**, :math:`\Omega_\mathrm{sw}`, from the bulk motion left in the plasma after the
 walls have passed. On most transitions this dominates.
 
-**Turbulence**, :math:`\Omega_{\rm turb}`, from the fraction of that motion which becomes
+**Turbulence**, :math:`\Omega_\mathrm{turb}`, from the fraction of that motion which becomes
 vortical.
 
 Kinetic energy fractions
@@ -49,24 +49,24 @@ field :math:`\varepsilon = 1`.
 Redshift to today
 -----------------
 
-A spectrum produced at :math:`T_{\rm reh}` is diluted by the expansion since then. The
+A spectrum produced at :math:`T_\mathrm{reh}` is diluted by the expansion since then. The
 amplitude carries
 
 .. math::
    R = \frac{\Omega_{\gamma,0} h^2}{D^{4/3}}
-       \left(\frac{h_{\rm eff,0}}{h_{\rm eff,reh}}\right)^{4/3}
-       \frac{g_{\rm eff,reh}}{g_{\rm eff,0}},
+       \left(\frac{h_\mathrm{eff,0}}{h_\mathrm{eff,reh}}\right)^{4/3}
+       \frac{g_\mathrm{eff,reh}}{g_\mathrm{eff,0}},
 
-with :math:`g_{\rm eff}` and :math:`h_{\rm eff}` the degrees of freedom in the energy density
+with :math:`g_\mathrm{eff}` and :math:`h_\mathrm{eff}` the degrees of freedom in the energy density
 and in the entropy from :doc:`the_plasma`, and :math:`D` the dilution factor where the
 transitioning sector is not in equilibrium with the bath that carries the entropy. The Hubble
 rate at the transition, redshifted to today, is
 
 .. math::
    H_{*,0} = 1.65\times 10^{-5}\,\mathrm{Hz}\; D^{-1/3}\,
-             \frac{T_{\rm reh}}{100\,\mathrm{GeV}}
-             \left(\frac{g_{\rm eff,reh}}{100}\right)^{1/2}
-             \left(\frac{100}{h_{\rm eff,reh}}\right)^{1/3},
+             \frac{T_\mathrm{reh}}{100\,\mathrm{GeV}}
+             \left(\frac{g_\mathrm{eff,reh}}{100}\right)^{1/2}
+             \left(\frac{100}{h_\mathrm{eff,reh}}\right)^{1/3},
 
 and every frequency below is quoted in units of it.
 
@@ -81,8 +81,8 @@ Spectral shapes
 Two shapes are used. A broken power law, their equation (2.4),
 
 .. math::
-   S(f) = \left(\frac{f}{f_b}\right)^{n_1}
-          \left[\frac{1}{2} + \frac{1}{2}\left(\frac{f}{f_b}\right)^{a_1}
+   S(f) = \left(\frac{f}{f_\mathrm{b}\right)^{n_1}
+          \left[\frac{1}{2} + \frac{1}{2}\left(\frac{f}{f_\mathrm{b}\right)^{a_1}
           \right]^{(n_2-n_1)/a_1},
 
 which rises as :math:`f^{n_1}` below the break and falls as :math:`f^{n_2}` above it, with
@@ -101,14 +101,14 @@ Bubble collisions
 A single break, with
 
 .. math::
-   h^2\Omega_\phi^{\rm peak} = R\, A_\phi\, \frac{K_\phi^2}{(\beta/H)^2},
+   h^2\Omega_\phi^\mathrm{peak} = R\, A_\phi\, \frac{K_\phi^2}{(\beta/H)^2},
    \qquad
-   f_b = 0.11\,\frac{\beta}{H}\, H_{*,0},
+   f_\mathrm{b} = 0.11\,\frac{\beta}{H}\, H_{*,0},
 
 their equation (2.7), and the shape parameters
 :math:`A_\phi = 0.05`, :math:`n_1 = 2.4`, :math:`n_2 = -2.4`, :math:`a_1 = 1.2`. The inverse
 duration here is the one read off the bubble separation,
-:math:`\beta/H = (8\pi/f_{\rm perc})^{1/3}\max(v_w,c_s)/R_*`.
+:math:`\beta/H = (8\pi/f_\mathrm{perc})^{1/3}\max(v_\mathrm{w},c_\mathrm{s})/R_*`.
 
 Sound waves
 -----------
@@ -119,11 +119,11 @@ of the sound shell:
 .. math::
    f_1 = \frac{0.2}{R_*}H_{*,0},
    \qquad
-   f_2 = \frac{0.5}{R_*\,\Delta_w}H_{*,0},
+   f_2 = \frac{0.5}{R_*\,\Delta_\mathrm{w}}H_{*,0},
    \qquad
-   \Delta_w = \frac{|v_w - c_s|}{\max(v_w, c_s)} .
+   \Delta_\mathrm{w} = \frac{|v_\mathrm{w} - c_\mathrm{s}|}{\max(v_\mathrm{w}, c_\mathrm{s})} .
 
-:math:`\Delta_w` is the shell thickness as a fraction of the bubble radius. A wall moving close
+:math:`\Delta_\mathrm{w}` is the shell thickness as a fraction of the bubble radius. A wall moving close
 to the speed of sound leaves a thin shell, which pushes :math:`f_2` far above :math:`f_1` and
 widens the flat part of the spectrum between them. This estimate assumes a detonation or a
 deflagration; a general solution would need the full hydrodynamic profile.
@@ -131,17 +131,17 @@ deflagration; a general solution would need the full hydrodynamic profile.
 The integrated amplitude is their equation (2.10),
 
 .. math::
-   h^2\Omega_{\rm sw}^{\rm int} = R\, A_{\rm sw}\, K_{\rm sw}^2\, (H\tau_{\rm sw})\, R_* ,
+   h^2\Omega_\mathrm{sw}^\mathrm{int} = R\, A_\mathrm{sw}\, K_\mathrm{sw}^2\, (H\tau_\mathrm{sw})\, R_* ,
 
-with :math:`A_{\rm sw} = 0.11` and the slopes :math:`n_1 = 3`, :math:`n_2 = 1`,
+with :math:`A_\mathrm{sw} = 0.11` and the slopes :math:`n_1 = 3`, :math:`n_2 = 1`,
 :math:`n_3 = -3`, :math:`a_1 = 2`, :math:`a_2 = 4`. The source does not last forever: the
 sound waves decay once the shells have crossed, after a time
 
 .. math::
-   H\tau_{\rm sh} = \frac{R_*}{\sqrt{\tfrac{3}{4}\,\varepsilon\,\kappa_{\rm sw}\,
-                    \alpha_{\rm hyd}/(1+\alpha_{\rm hyd})}},
+   H\tau_\mathrm{sh} = \frac{R_*}{\sqrt{\tfrac{3}{4}\,\varepsilon\,\kappa_\mathrm{sw}\,
+                    \alpha_\mathrm{hyd}/(1+\alpha_\mathrm{hyd})}},
 
-and the lifetime entering the amplitude is :math:`H\tau_{\rm sw} = \min(1, H\tau_{\rm sh})`,
+and the lifetime entering the amplitude is :math:`H\tau_\mathrm{sw} = \min(1, H\tau_\mathrm{sh})`,
 capped at one Hubble time. The rising part of the spectrum is :math:`f^3`, which is the causal
 slope any uncorrelated source must have.
 
@@ -151,10 +151,10 @@ Turbulence
 Their equation (2.15), the full form rather than the approximation of their equation (2.25):
 
 .. math::
-   h^2\Omega_{\rm turb}(f) = 3 A_{\rm turb}\, \Omega_s^2\, R\, R_*^3
+   h^2\Omega_\mathrm{turb}(f) = 3 A_\mathrm{turb}\, \Omega_s^2\, R\, R_*^3
        \left(\frac{f}{H_{*,0}}\right)^3 p(f)\, T(f),
 
-with :math:`\Omega_s = K_{\rm turb}` and :math:`A_{\rm turb} = 0.085`. The anisotropic
+with :math:`\Omega_s = K_\mathrm{turb}` and :math:`A_\mathrm{turb} = 0.085`. The anisotropic
 spectrum is
 
 .. math::
@@ -194,8 +194,8 @@ Observability
 For an interferometer the spectrum is compared with a noise curve by the signal-to-noise ratio
 
 .. math::
-   \mathrm{SNR} = \sqrt{\mathcal{T} \int df
-                  \left[\frac{h^2\Omega_{\rm GW}(f)}{h^2\Omega_{\rm noise}(f)}\right]^2},
+   \mathrm{SNR} = \sqrt{\mathcal{T} \int \mathrm{d}f
+                  \left[\frac{h^2\Omega_\mathrm{GW}(f)}{h^2\Omega_\mathrm{noise}(f)}\right]^2},
 
 with :math:`\mathcal{T}` the observation time. Curves for the interferometers and the pulsar
 timing arrays ship with the package.
@@ -207,11 +207,11 @@ posteriors evaluated at the amplitudes it predicts. What the code reports is the
 the best fit achievable on that data, as
 
 .. math::
-   \sigma = \sqrt{2\,\big(\ln L_{\rm best} - \ln L\big)} .
+   \sigma = \sqrt{2\,\big(\ln L_\mathrm{best} - \ln L\big)} .
 
 .. versionchanged:: 2.2
    Eight free spectra ship with the package and are selected by name, where one was previously
-   downloaded while the run was in progress. The reference :math:`\ln L_{\rm best}` belongs to
+   downloaded while the run was in progress. The reference :math:`\ln L_\mathrm{best}` belongs to
    the data set, so there is one per data set; a data set with no reference reports no distance
    rather than a distance from a reference obtained on different data.
 

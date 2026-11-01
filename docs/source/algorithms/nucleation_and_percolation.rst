@@ -12,36 +12,36 @@ The fraction of space that has converted
 ----------------------------------------
 
 The probability that a given point is still in the false vacuum at temperature :math:`T` is
-:math:`e^{-I(T)}`, where :math:`I` counts the bubbles whose growth has reached that point:
+:math:`\mathrm{e}^{-I(T)}`, where :math:`I` counts the bubbles whose growth has reached that point:
 
 .. math::
-   I(T) = \int_{T}^{T_{\rm start}} \frac{dT'}{T'}\,
+   I(T) = \int_{T}^{T_\mathrm{start}} \frac{\mathrm{d}T'}{T'}\,
           \frac{\Gamma(T')}{H(T')^4}\,
-          \frac{4\pi}{3}\, v_w^3 \left[\int_{T}^{T'} \frac{dT''}{H(T'')\,T''}\right]^3 ,
+          \frac{4\pi}{3}\, v_\mathrm{w}^3 \left[\int_{T}^{T'} \frac{\mathrm{d}T''}{H(T'')\,T''}\right]^3 ,
 
 with :math:`\Gamma` the nucleation rate from :doc:`the_bounce_action`, :math:`H` the expansion
-rate and :math:`v_w` the speed at which a bubble wall advances. The inner integral is the
+rate and :math:`v_\mathrm{w}` the speed at which a bubble wall advances. The inner integral is the
 distance a bubble nucleated at :math:`T'` has grown by the time the universe has cooled to
 :math:`T`, and the cube of it is its volume. The converted fraction is
 
 .. math::
-   P(T) = 1 - e^{-I(T)} .
+   P(T) = 1 - \mathrm{e}^{-I(T)} .
 
 Written as it stands, the inner integral has to be redone for every value of the outer one, so
 one evaluation of :math:`I` costs the square of the number of support points and a sweep over
 the grid costs the cube. The same quantity is the end of a chain of four first-order equations,
 
 .. math::
-   \frac{dJ_0}{dT} = -\frac{\Gamma}{T^4 H}, \qquad
-   \frac{dJ_1}{dT} = -\frac{J_0}{H}, \qquad
-   \frac{dJ_2}{dT} = -\frac{2 J_1}{H}, \qquad
-   \frac{dJ_3}{dT} = -\frac{3 J_2}{H},
+   \frac{\mathrm{d}J_0}{\mathrm{d}T} = -\frac{\Gamma}{T^4 H}, \qquad
+   \frac{\mathrm{d}J_1}{\mathrm{d}T} = -\frac{J_0}{H}, \qquad
+   \frac{\mathrm{d}J_2}{\mathrm{d}T} = -\frac{2 J_1}{H}, \qquad
+   \frac{\mathrm{d}J_3}{\mathrm{d}T} = -\frac{3 J_2}{H},
 
-each starting at zero at the hot end, with :math:`I = (4\pi/3)\,v_w^3\,J_3`. One sweep from the
+each starting at zero at the hot end, with :math:`I = (4\pi/3)\,v_\mathrm{w}^3\,J_3`. One sweep from the
 hot end to the cold one gives :math:`I` at every support point, at a cost linear in their
 number, which is what makes a support of several hundred temperatures affordable. Where the
 sound speed is not that of radiation the same chain carries :math:`a(T)` and
-:math:`3 c_{\rm s}^2` explicitly; in the radiation limit they cancel.
+:math:`3 c_\mathrm{s}^2` explicitly; in the radiation limit they cancel.
 
 The percolation temperature is where :math:`P` reaches a fixed fraction, conventionally about
 a third, at which the bubbles form a connected network [GuthWeinberg1981]_. The nucleation temperature, the more
@@ -250,7 +250,7 @@ energy density. It follows from entropy conservation, :math:`a^3 s = \mathrm{con
 
 .. versionchanged:: 2.2
    The scale factor comes from entropy conservation rather than from integrating
-   :math:`d\ln a/dT = -1/(3 c_s^2 T)` across a grid that can span ten or more decades of
+   :math:`\mathrm{d}\ln a/\mathrm{d}T = -1/(3 c_\mathrm{s}^2 T)` across a grid that can span ten or more decades of
    temperature. The entropy and the sound speed used anywhere in the history are now the same
    one, selected by a single setting, rather than one coming from the counted degrees of
    freedom and the other from the effective potential.
@@ -288,15 +288,15 @@ Completion
 ----------
 
 Percolating is not the same as finishing. The false vacuum occupies a physical volume
-:math:`\mathcal{V} \propto a^3 e^{-I}`, which has two competing factors: the expansion inflates
+:math:`\mathcal{V} \propto a^3 \mathrm{e}^{-I}`, which has two competing factors: the expansion inflates
 it and the growth of the bubbles eats it. The transition finishes only where the second wins,
 
 .. math::
-   \frac{1}{\mathcal{V}}\frac{d\mathcal{V}}{dt}
-   = 3H\left(1 + c_{\rm s}^2\, T\,\frac{dI}{dT}\right) < 0 ,
+   \frac{1}{\mathcal{V}}\frac{\mathrm{d}\mathcal{V}}{\mathrm{d}t}
+   = 3H\left(1 + c_\mathrm{s}^2\, T\,\frac{\mathrm{d}I}{\mathrm{d}T}\right) < 0 ,
 
 which is the criterion of [Turner1992]_ in the form of [EllisLewickiNo2018]_, written for the
-time-temperature relation :math:`dT/dt = -3 c_{\rm s}^2 H T` rather than the radiation one. A
+time-temperature relation :math:`\mathrm{d}T/\mathrm{d}t = -3 c_\mathrm{s}^2 H T` rather than the radiation one. A
 transition that percolates but never satisfies this is reported as stalled, not as complete.
 
 The mean separation between bubbles
@@ -306,10 +306,10 @@ The number density of bubbles that have nucleated by temperature :math:`T`, each
 expansion since it appeared, is
 
 .. math::
-   n_b(T) = \int_T^{T_{\rm start}} \frac{dT'}{T'}\,\frac{\Gamma(T')}{H(T')}\,
-            e^{-I(T')} \left[\frac{a(T')}{a(T)}\right]^3 ,
+   n_\mathrm{b}(T) = \int_T^{T_\mathrm{start}} \frac{\mathrm{d}T'}{T'}\,\frac{\Gamma(T')}{H(T')}\,
+            \mathrm{e}^{-I(T')} \left[\frac{a(T')}{a(T)}\right]^3 ,
 
-and the mean separation is :math:`R_* = n_b^{-1/3}`. The factor :math:`e^{-I}` is there because
+and the mean separation is :math:`R_* = n_\mathrm{b}^{-1/3}`. The factor :math:`\mathrm{e}^{-I}` is there because
 a bubble can only nucleate in space that is still in the false vacuum. :math:`R_*` is what sets
 the frequency at which the spectrum peaks, and it is the quantity the second of the two inverse
 durations below is read from.
@@ -323,11 +323,11 @@ step plus an energy correction for the fraction converted during that step, whic
 discretisation of
 
 .. math::
-   \frac{dT_b}{dT} = \frac{3\,S(T_b)}{T\,S'(T_b)}
-   + \frac{P'(T)}{P(T)}\,\frac{e_{\rm s}(T) - E(T_b)}{E'(T_b)} ,
+   \frac{\mathrm{d}T_\mathrm{b}}{\mathrm{d}T} = \frac{3\,S(T_\mathrm{b})}{T\,S'(T_\mathrm{b})}
+   + \frac{P'(T)}{P(T)}\,\frac{e_\mathrm{s}(T) - E(T_\mathrm{b})}{E'(T_\mathrm{b})} ,
 
 with :math:`S` and :math:`E` the entropy and energy density of the broken phase and
-:math:`e_{\rm s}` the energy density of the symmetric one. The first term is the cooling the
+:math:`e_\mathrm{s}` the energy density of the symmetric one. The first term is the cooling the
 expansion alone would give; the second is the heating.
 
 .. versionchanged:: 2.2
@@ -343,7 +343,7 @@ How fast the transition proceeds is quoted as :math:`\beta/H`, and there are two
 which answer different questions.
 
 The first is local: the logarithmic derivative of the rate at the percolation temperature,
-:math:`\beta/H = T\,d(S_3/T)/dT`. The second is integral: it is read off the mean separation
+:math:`\beta/H = T\,d(S_\mathrm{3}/T)/\mathrm{d}T`. The second is integral: it is read off the mean separation
 between bubbles, :math:`R_*`, which follows from the whole nucleation history rather than from
 one temperature.
 

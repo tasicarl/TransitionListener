@@ -20,8 +20,9 @@ obtained from the condition that the gradient of the potential stays zero. Diffe
 with respect to temperature gives
 
 .. math::
-   \frac{d\phi_{\min}}{dT} = - \left(\nabla\nabla V\right)^{-1}
-                               \frac{\partial \nabla V}{\partial T},
+   \frac{\mathrm{d}\phi_{\min}}{\mathrm{d}T}
+   = - \left(\frac{\partial^2 V}{\partial\phi_i\,\partial\phi_j}\right)^{-1}
+       \frac{\partial}{\partial T}\frac{\partial V}{\partial\phi_j},
 
 so the minimum is followed by integrating this [WainwrightPhases]_, with a Newton step at each temperature to
 remove the error that accumulates. The step in temperature is chosen from the change in the

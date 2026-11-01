@@ -15,23 +15,23 @@ The quantity
 The effective potential is assembled as
 
 .. math::
-   V(\phi, T) = V_0(\phi) + V_1(\phi) + V_{\rm ct}(\phi) + V_T(\phi, T)
-                + V_{\rm daisy}(\phi, T) + V_{\rm rad}(T),
+   V(\phi, T) = V_0(\phi) + V_1(\phi) + V_\mathrm{ct}(\phi) + V_\mathrm{T}(\phi, T)
+                + V_\mathrm{daisy}(\phi, T) + V_\mathrm{rad}(T),
 
 where :math:`V_0` is the tree-level potential from the model, :math:`V_1` the one-loop
-correction at zero temperature, :math:`V_{\rm ct}` the counterterms that hold the tree-level
-vacuum and masses in place, :math:`V_T` the one-loop thermal correction,
-:math:`V_{\rm daisy}` the resummation of the infrared-sensitive modes, and
-:math:`V_{\rm rad}` the field-independent radiation, which does not move the minima but does
+correction at zero temperature, :math:`V_\mathrm{ct}` the counterterms that hold the tree-level
+vacuum and masses in place, :math:`V_\mathrm{T}` the one-loop thermal correction,
+:math:`V_\mathrm{daisy}` the resummation of the infrared-sensitive modes, and
+:math:`V_\mathrm{rad}` the field-independent radiation, which does not move the minima but does
 set the energy density and so the expansion rate.
 
 The one-loop correction at zero temperature [ColemanWeinberg1973]_, in the modified minimal
 subtraction scheme, is
 
 .. math::
-   V_1 = \frac{1}{64\pi^2}\left[ \sum_{i\in\mathrm{bosons}} n_i\, m_i^4
-         \left( \ln\frac{|m_i^2|}{\mu^2} - c_i \right)
-         - \sum_{f\in\mathrm{fermions}} n_f\, m_f^4
+   V_1 = \frac{1}{64\pi^2}\left[ \sum_\mathrm{i}\in \mathrm{bosons}} n_i\, m_\mathrm{i}^4
+         \left( \ln\frac{|m_\mathrm{i}^2|}{\mu^2} - c_i \right)
+         - \sum_{f \in \mathrm{fermions}} n_f\, m_f^4
          \left( \ln\frac{|m_f^2|}{\mu^2} - \frac{3}{2} \right) \right],
 
 with :math:`n` the number of degrees of freedom of each species, :math:`m^2(\phi)` its
@@ -47,7 +47,7 @@ The one-loop correction shifts the minimum of the tree-level potential and the m
 The counterterms undo that, so that the parameters a user supplies remain the physical vacuum
 expectation value and the physical masses rather than tree-level inputs that happen to be near
 them. They are fixed by requiring that the first and second derivatives of
-:math:`V_1 + V_{\rm ct}` vanish at the zero-temperature vacuum.
+:math:`V_1 + V_\mathrm{ct}` vanish at the zero-temperature vacuum.
 
 .. versionchanged:: 2.2
    The derivatives that fix the counterterms used to take their step from the tolerance of the
@@ -59,7 +59,7 @@ them. They are fixed by requiring that the first and second derivatives of
 
    The shape the thermal corrections produce. Well above the critical temperature the only
    minimum is the symmetric one. A second minimum appears, the two are degenerate at
-   :math:`T_{\rm c}`, and below that the broken minimum is the deeper of the two with a
+   :math:`T_\mathrm{c}`, and below that the broken minimum is the deeper of the two with a
    barrier still between them. The barrier is what makes the transition first order, and it is
    what the bounce of :doc:`the_bounce_action` tunnels through.
 

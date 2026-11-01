@@ -119,14 +119,18 @@ def figure_shooting() -> None:
     ax.set_ylim(-0.30, 0.98)
     ax.text(0.985, 0.028, "false vacuum", transform=ax.get_yaxis_transform(),
             color=DESYdunkelblau, fontsize=7, ha="right", va="bottom")
-    ax.text(0.985, 0.235, "top of the barrier", transform=ax.get_yaxis_transform(),
-            color="0.45", fontsize=7, ha="right", va="bottom")
+    ax.text(31.0, 0.40, "top of the barrier", color="0.45", fontsize=7,
+            ha="center", va="center")
 
+    # The label sits below both markers, so that each leader comes up to its own marker almost
+    # vertically. A leader that reaches across the panel crosses every curve on the way at a
+    # glancing angle and reads as a fourth curve.
+    label_x = 0.5 * (rv_o + rv_u)
     ax.annotate("the verdict is settled here,\nand the shooting stops",
-                xy=(rv_o, pv_o - 0.012), xytext=(24.0, -0.150), color="0.35", fontsize=7,
+                xy=(rv_o, pv_o - 0.014), xytext=(label_x, -0.205), color="0.35", fontsize=7,
                 ha="center", va="center",
                 arrowprops=dict(arrowstyle="->", color="0.45", lw=0.8))
-    ax.annotate("", xy=(rv_u, pv_u - 0.012), xytext=(24.0, -0.115),
+    ax.annotate("", xy=(rv_u, pv_u - 0.014), xytext=(label_x, -0.165),
                 arrowprops=dict(arrowstyle="->", color="0.45", lw=0.8))
     ax.legend(frameon=False, loc="upper right")
     fig.subplots_adjust(left=0.100, right=0.985, bottom=0.135, top=0.975)
@@ -153,7 +157,7 @@ def figure_rate_and_support() -> None:
     a1.plot(uniform, np.interp(uniform, T, logG), "v", color=DESYorange, ms=5, ls="none")
     a1.plot(adaptive, np.interp(adaptive, T, logG), "o", color=DESYdunkelblau, ms=3.6, ls="none")
     a1.set_ylabel(r"$\log_{10}\,\Gamma/H^4$")
-    a1.set_ylim(-32, 14)
+    a1.set_ylim(-34, 14)
     a1.set_xlim(T[0], T[-1])
 
     a2.plot(T, P, color=DESYcyan, lw=1.6)
@@ -166,29 +170,52 @@ def figure_rate_and_support() -> None:
     a2.set_xlabel(r"temperature $T$ (arbitrary units)")
     a2.set_ylim(-0.06, 1.30)
     a2.set_xlim(T[0], T[-1])
-    a2.text(0.995, 0.255, r"$f_\mathrm{perc}$", color=DESYrot, fontsize=7,
-            ha="right", va="top", transform=a2.get_yaxis_transform())
+    a2.text(0.995, 0.28957, r"$f_\mathrm{perc}$", color=DESYrot, fontsize=7,
+            ha="right", va="center", transform=a2.get_yaxis_transform(),
+            bbox=dict(boxstyle="square,pad=0.12", facecolor="white", edgecolor="none"))
     a2.legend(frameon=False, loc="upper left")
 
-    fig.subplots_adjust(left=0.125, right=0.985, bottom=0.11, top=0.985, hspace=0.07)
+    # The two panels share an edge, so the lowest tick of the upper one and the highest of the
+    # lower one meet across it. Each panel drops the tick nearest that edge.
+    a1.yaxis.set_major_locator(mpl.ticker.MaxNLocator(nbins=5, prune="lower"))
+    a2.yaxis.set_major_locator(mpl.ticker.MaxNLocator(nbins=5, prune="upper"))
+
+    fig.subplots_adjust(left=0.125, right=0.985, bottom=0.11, top=0.985, hspace=0.12)
+    _check(fig, "algorithm_rate_and_support")
     fig.savefig(OUT / "algorithm_rate_and_support.png", dpi=200)
     plt.close(fig)
     print("wrote", OUT / "algorithm_rate_and_support.png")
 
 
+#: Figures that are reported but not failed on, with the reason. A figure is only ever put
+#: here with a reason that is about the physics and not about the effort of moving a label.
+TOLERATED: dict[str, str] = {}
+
+
 def _check(fig, name: str) -> None:
-    """Run the house text checker where it is importable, and say what it found."""
-    try:
-        import sys
-        sys.path.insert(0, "/lhome/ific/t/tasicarl/AccurateAstro-SMBHB-PT-PTA")
-        from smbhb.paper_style import check_text
-    except Exception:
-        return
-    try:
-        bad = check_text(fig)
-    except Exception as exc:
-        print("   check_text could not run on %s: %s" % (name, exc)); return
-    print("   %s: %s" % (name, "no text overlaps" if not bad else bad))
+    """Hold the figure to the house rules, and fail the build if it breaks one.
+
+    The rules are in ``docs/check_figure_style.py``. A figure that breaks one is a defect in
+    the figure, so this raises rather than printing: a warning in a build log is read once and
+    then never again.
+    """
+    import sys
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    from check_figure_style import check_figure
+
+    problems = check_figure(fig, name)
+    for ax in fig.get_axes():
+        pass
+    if problems:
+        if name in TOLERATED:
+            print("   %s: %d tolerated (%s)" % (name, len(problems), TOLERATED[name]))
+            for p in problems:
+                print("      " + p)
+            return
+        raise AssertionError("%s breaks the house figure rules:\n  %s"
+                             % (name, "\n  ".join(problems)))
+    print("   %s: clean" % name)
 
 
 def figure_images() -> None:
@@ -399,7 +426,7 @@ def figure_plasma_dof() -> None:
                     arrowprops=dict(arrowstyle="->", color="0.60", lw=0.7,
                                     shrinkA=0, shrinkB=0))
         a2.text(t_half, y_text, "$%s$" % label, color="0.40", fontsize=6.5,
-                ha="center", va="center")
+                ha="center", va="center", bbox=dict(boxstyle="square,pad=0.10", facecolor="white", edgecolor="none"))
 
     a2.set_xscale("log")
     a2.set_xlabel(r"temperature $T$ (GeV)")
@@ -441,8 +468,8 @@ def figure_potential_vs_temperature() -> None:
     ax.axhline(0.0, color="0.75", lw=0.6, zorder=0)
     ax.set_xlabel(r"field $\phi$")
     ax.set_ylabel(r"$V(\phi, T) - V(0, T)$")
-    ax.set_xlim(phi[0], phi[-1])
-    ax.set_ylim(-0.058, 0.052)
+    ax.set_xlim(phi[0] - 0.04, phi[-1] + 0.04)
+    ax.set_ylim(-0.066, 0.052)
     ax.legend(frameon=False, loc="upper left", ncol=2)
     fig.subplots_adjust(left=0.125, right=0.985, bottom=0.155, top=0.975)
     _check(fig, "algorithm_potential_vs_temperature")
@@ -522,9 +549,11 @@ def figure_fluid_profiles() -> None:
         ax.set_xlim(0.0, 1.0)
         ax.set_ylim(-0.055 * top, top)
         ax.text(cs, 0.90 * top, r"$c_\mathrm{s}$", color="0.45", fontsize=6.5,
-                ha="right", va="center")
+                ha="center", va="center", bbox=dict(boxstyle="square,pad=0.10", facecolor="white",
+                                     edgecolor="none"))
         ax.text(v_jouguet, 0.90 * top, r"$v_\mathrm{J}$", color="0.45", fontsize=6.5,
-                ha="left", va="center")
+                ha="center", va="center", bbox=dict(boxstyle="square,pad=0.10", facecolor="white",
+                                     edgecolor="none"))
 
     # deflagration
     a0 = axes[0]
@@ -639,7 +668,7 @@ def figure_spectrum_sources() -> None:
 
     for key, label, color, ls in parts:
         y = np.array([spec.h2Omega_0_sum(x, key) for x in f])
-        ax.plot(f, y, color=color, lw=1.4, ls=ls, label=label)
+        ax.plot(f, y, color=color, lw=1.4, ls=ls)
 
     ax.set_xscale("log")
     ax.set_yscale("log")
@@ -647,7 +676,14 @@ def figure_spectrum_sources() -> None:
     ax.set_ylabel(r"$h^2\Omega_{\rm GW}$")
     ax.set_xlim(0.75 * f[0], 1.35 * f[-1])
     ax.set_ylim(3e-19, 1.2e-8)
-    ax.legend(frameon=False, loc="lower right", ncol=1)
+    label_box = dict(boxstyle="square,pad=0.12", facecolor="white", edgecolor="none")
+    for key, text, colour, fx in (("Sound waves", "sound waves", DESYcyan, 2.0e-6),
+                                  ("Turbulence", "turbulence", DESYorange, 2.6e-3),
+                                  ("Wall collisions", "bubble collisions", DESYaubergine,
+                                   6.0e-6)):
+        y = spec.h2Omega_0_sum(fx, key)
+        ax.text(fx, y * 2.6, text, color=colour, fontsize=7, ha="center", va="bottom",
+                bbox=label_box)
     ax.text(0.980, 0.955,
             "\n".join([r"$\alpha = 0.2$,  $R_* = 0.05$,  $T_\mathrm{reh} = 100$ GeV",
                        r"$v_\mathrm{w} = 0.65$,  $c_\mathrm{s} = 1/\sqrt{3}$",

@@ -51,7 +51,7 @@ support point to the next, an entropy-conserving update followed by an energy co
 the fraction converted during the step, is a discretisation of
 
 .. math::
-   \frac{dT_\mathrm{b}}{dT} = \frac{3\,S(T_\mathrm{b})}{T\,S'(T_\mathrm{b})}
+   \frac{\mathrm{d}T_\mathrm{b}}{\mathrm{d}T} = \frac{3\,S(T_\mathrm{b})}{T\,S'(T_\mathrm{b})}
    + \frac{P_\mathrm{t}'(T)}{P_\mathrm{t}(T)}\,
      \frac{e_\mathrm{s}(T) - E(T_\mathrm{b})}{E'(T_\mathrm{b})} ,
 
@@ -76,8 +76,8 @@ velocity it feeds is computed. Several strengths appear in a run, evaluated at d
 places, and the important thing is that they share a normalisation, because the efficiency
 with which bubble collisions radiate depends on ratios of them.
 
-The inverse duration, of which there are two
---------------------------------------------
+The two inverse durations
+-------------------------
 
 How fast the transition proceeds is quoted as :math:`\beta/H`, and two different quantities go
 by that name. They answer different questions and they are not interchangeable.
@@ -85,7 +85,7 @@ by that name. They answer different questions and they are not interchangeable.
 **The local one** is the logarithmic derivative of the rate at the percolation temperature,
 
 .. math::
-   \left(\frac{\beta}{H}\right)_{S_3} = T\,\frac{d}{dT}\left(\frac{S_3}{T}\right)
+   \left(\frac{\beta}{H}\right)_{S_\mathrm{3} = T\,\frac{d}{\mathrm{d}T}\left(\frac{S_\mathrm{3}}{T}\right)
    \;\Bigg|_{T_\mathrm{perc}} ,
 
 read off the action at one temperature. It is what the exponential approximation to the rate
@@ -122,7 +122,7 @@ the universe converts, and a negative value there is the correct answer rather t
    fit to the action samples rather than from a two-point difference. The adaptive support can
    place samples :math:`10^{-6}` of a temperature apart, and a difference across two of those
    turns the irregular :math:`10^{-2}` error that the path deformation leaves in
-   :math:`S_3/T` into errors of hundreds.
+   :math:`S_\mathrm{3}/T` into errors of hundreds.
 
 Completion
 ----------

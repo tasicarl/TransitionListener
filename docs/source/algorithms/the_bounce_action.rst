@@ -17,23 +17,23 @@ At a temperature :math:`T` the relevant configuration is the three-dimensional b
 static solution that is symmetric under rotations in space. It satisfies
 
 .. math::
-   \frac{d^2\phi}{dr^2} + \frac{2}{r}\frac{d\phi}{dr} = \frac{\partial V}{\partial\phi},
+   \frac{d^2\phi}{\mathrm{d}r^2} + \frac{2}{r}\frac{\mathrm{d}\phi}{\mathrm{d}r} = \frac{\partial V}{\partial\phi},
 
-with :math:`\phi \to \phi_{\rm false}` as :math:`r \to \infty` and :math:`d\phi/dr = 0` at the
+with :math:`\phi \to \phi_\mathrm{false}` as :math:`r \to \infty` and :math:`\mathrm{d}\phi/\mathrm{d}r = 0` at the
 origin, where :math:`r` is the distance from the centre of the bubble and :math:`V` is the
 effective potential at that temperature. The second term is a friction term whose coefficient
 is the number of spatial dimensions minus one. Its action is
 
 .. math::
-   S_3 = \int_0^\infty \left[ \frac{1}{2}\left(\frac{d\phi}{dr}\right)^2
-         + V(\phi) - V(\phi_{\rm false}) \right] 4\pi r^2 \, dr ,
+   S_\mathrm{3} = \int_0^\infty \left[ \frac{1}{2}\left(\frac{\mathrm{d}\phi}{\mathrm{d}r}\right)^2
+         + V(\phi) - V(\phi_\mathrm{false}) \right] 4\pi r^2 \, \mathrm{d}r ,
 
 and the rate per unit volume follows as
 
 .. math::
-   \Gamma(T) = T^4 \left(\frac{S_3}{2\pi T}\right)^{3/2} e^{-S_3/T}.
+   \Gamma(T) = T^4 \left(\frac{S_\mathrm{3}}{2\pi T}\right)^{3/2} \mathrm{e}^{-S_\mathrm{3}/T}.
 
-The exponent :math:`S_3/T` is what matters: it runs over tens of orders of magnitude across
+The exponent :math:`S_\mathrm{3}/T` is what matters: it runs over tens of orders of magnitude across
 the temperatures of a transition, so the rate is set by the action and the prefactor only
 shades it.
 
@@ -78,7 +78,7 @@ the interior back in, so the profile that the action is computed from does start
 **The starting value is parametrised logarithmically.** Writing the field at the centre as
 
 .. math::
-   \phi(0) = \phi_{\rm true} + e^{-x}\,(\phi_{\rm false} - \phi_{\rm true}),
+   \phi(0) = \phi_\mathrm{true} + \mathrm{e}^{-x}\,(\phi_\mathrm{false} - \phi_\mathrm{true}),
 
 the solver bisects on :math:`x` rather than on the field directly. A thin-walled bubble, which
 appears when the two minima are nearly degenerate, starts exponentially close to the true
@@ -108,7 +108,7 @@ one-dimensional problem leaves out. Along the path the field obeys the equation 
 :math:`V` replaced by the potential restricted to the path. Across it, the field must satisfy
 
 .. math::
-   \left(\frac{d\phi}{dr}\right)^2 \frac{d^2\phi}{ds^2}
+   \left(\frac{\mathrm{d}\phi}{\mathrm{d}r}\right)^2 \frac{d^2\phi}{\mathrm{d}s^2}
    = \left. \nabla V \right|_\perp ,
 
 where :math:`s` is the distance along the path and :math:`\perp` denotes the component of the

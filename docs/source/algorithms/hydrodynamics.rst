@@ -14,7 +14,7 @@ The transition strength
 The energy released, measured against the energy already present, is
 
 .. math::
-   \alpha = \frac{\Delta\theta}{3 w_{\rm sym}},
+   \alpha = \frac{\Delta\theta}{3 w_\mathrm{sym}},
    \qquad \theta = \frac{e - 3p}{4},
 
 where :math:`\theta` is the trace anomaly, :math:`e` and :math:`p` are the energy density and
@@ -42,11 +42,11 @@ The sound speed
 The speed of sound in each phase follows from the effective potential,
 
 .. math::
-   c_s^2 = \frac{\partial V/\partial T}{T\,\partial^2 V/\partial T^2},
+   c_\mathrm{s}^2 = \frac{\partial V/\partial T}{T\,\partial^2 V/\partial T^2},
 
 evaluated separately in the symmetric and the broken phase. It is not a constant: only for a
 bag equation of state does it take the radiation value :math:`1/3`. It enters the matching
-below, the speed at which bubbles expand, which is :math:`\max(v_w, c_s)`, and the thickness of
+below, the speed at which bubbles expand, which is :math:`\max(v_\mathrm{w}, c_\mathrm{s})`, and the thickness of
 the sound shell that sets the peak of the spectrum.
 
 A value of one or more is not a speed, so nothing computed from it means anything. Such a point
@@ -71,13 +71,13 @@ just ahead of the wall, :math:`v_+` and :math:`w_+`, to those just behind it, :m
 between the velocities and the strength at the wall,
 
 .. math::
-   v_+ = \frac{1}{2}\,\frac{c_b^2 + v_-^2 \;\pm\; \sqrt{\mathcal{D}}}
-                           {v_-\left(1 + 3 c_b^2 \alpha\right)},
+   v_+ = \frac{1}{2}\,\frac{c_\mathrm{b}^2 + v_-^2 \;\pm\; \sqrt{\mathcal{D}}}
+                           {v_-\left(1 + 3 c_\mathrm{b}^2 \alpha\right)},
    \qquad
-   \mathcal{D} = v_-^4 - 2c_b^2 v_-^2 (1-6\alpha)
-                 + c_b^4\left[1 - 12 v_-^2 \alpha (1-3\alpha)\right],
+   \mathcal{D} = v_-^4 - 2c_\mathrm{b}^2 v_-^2 (1-6\alpha)
+                 + c_\mathrm{b}^4\left[1 - 12 v_-^2 \alpha (1-3\alpha)\right],
 
-with :math:`c_b` the sound speed behind the wall. The two signs are the two branches,
+with :math:`c_\mathrm{b}` the sound speed behind the wall. The two signs are the two branches,
 deflagration and detonation, separated by the Jouguet velocity.
 
 Away from the wall the fluid obeys the relativistic hydrodynamic equations for a self-similar
@@ -86,33 +86,34 @@ flow, which depend only on :math:`\xi = r/t`. Writing
 two ordinary differential equations along the velocity,
 
 .. math::
-   \frac{d\xi}{dv} = \frac{\xi\,(1-v\xi)}{2v\,(1-v^2)}
-                     \left(\frac{\mu^2}{c_s^2} - 1\right),
+   \frac{\mathrm{d}\xi}{\mathrm{d}v} = \frac{\xi\,(1-v\xi)}{2v\,(1-v^2)}
+                     \left(\frac{\mu^2}{c_\mathrm{s}^2} - 1\right),
    \qquad
-   \frac{dw}{dv} = w\left(1 + \frac{1}{c_s^2}\right)\frac{\mu}{1-v^2},
+   \frac{\mathrm{d}w}{\mathrm{d}v} = w\left(1 + \frac{1}{c_\mathrm{s}^2}\right)\frac{\mu}{1-v^2},
 
 which the code integrates outward from the wall. The first changes sign where
-:math:`\mu^2 = c_s^2`, and that is the sound shell at which the profile ends.
+:math:`\mu^2 = c_\mathrm{s}^2`, and that is the sound shell at which the profile ends.
 
 Closing the problem
 ~~~~~~~~~~~~~~~~~~~
 
-The junction conditions alone do not fix the wall velocity: they hold for any :math:`v_w` and
-determine only how the fluid responds to it. What fixes it, in local thermal equilibrium, is
-that entropy is conserved across the wall. The solver turns that into a shooting problem in
-:math:`v_w`:
+The junction conditions alone do not fix the wall velocity: they hold for any
+:math:`v_\mathrm{w}` and determine only how the fluid responds to it. In local thermal
+equilibrium the condition that fixes it is the conservation of entropy across the wall. The
+solver turns that into a shooting problem in
+:math:`v_\mathrm{w}`:
 
-1. For a trial :math:`v_w`, solve for the strength at the wall consistent with the strength at
+1. For a trial :math:`v_\mathrm{w}`, solve for the strength at the wall consistent with the strength at
    nucleation.
-2. Take :math:`v_- = \min(c_b, v_w)` and obtain :math:`v_+` from the junction condition above.
+2. Take :math:`v_- = \min(c_\mathrm{b}, v_\mathrm{w})` and obtain :math:`v_+` from the junction condition above.
 3. Integrate the fluid equations outward from the wall to the shock front.
 4. At the front the fluid must satisfy the junction condition of a shock in a medium that does
    not change phase. The residual
 
    .. math::
-      \frac{v_+^{\rm sh}}{v_-^{\rm sh}}
-      - \frac{(\mu-1)\,w_-^{\rm sh} + 1}{(\mu-1) + w_-^{\rm sh}},
-      \qquad \mu = 1 + \frac{1}{c_s^2},
+      \frac{v_+^\mathrm{sh}}{v_-^\mathrm{sh}}
+      - \frac{(\mu-1)\,w_-^\mathrm{sh} + 1}{(\mu-1) + w_-^\mathrm{sh}},
+      \qquad \mu = 1 + \frac{1}{c_\mathrm{s}^2},
 
    is what the shooting drives to zero.
 
@@ -145,7 +146,7 @@ Runaway, and no solution
 
 The residual has no root when the strength at nucleation exceeds the largest value admitting a
 subsonic solution. The plasma then cannot hold the wall back and it runs away, and the code
-returns :math:`v_w = 1`. That is the expected outcome on a strongly supercooled transition,
+returns :math:`v_\mathrm{w} = 1`. That is the expected outcome on a strongly supercooled transition,
 where there is little plasma to push against, and it is not flagged as a failure.
 
 A strength below the threshold at which any solution exists is a different statement and
