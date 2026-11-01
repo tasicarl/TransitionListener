@@ -120,7 +120,6 @@ A root of that residual is the wall velocity. The implementation follows [vandeV
 
 .. figure:: ../_static/algorithm_fluid_profiles.png
    :width: 100%
-   :align: center
 
    The flow the equations above produce, integrated with the module's own ``dfdv`` and its
    own shock condition. A wall slower than the sound speed drives the plasma ahead of it and

@@ -55,6 +55,16 @@ gravitational wave studies:
    interface to compare several dark-sector model classes and quantify how much
    tuning is required to explain the PTA signal.
 
+   <p align="center">
+     <a href="_static/example_output/fig14_alpha_betaH.png">
+       <img src="_static/example_output/fig14_alpha_betaH.png" alt="Posterior distributions in the alpha-betaH plane" width="640">
+     </a>
+   </p>
+
+   The left panel shows generic model predictions from TransitionListener random scans and the
+   right panel the regions the PTA data favours, obtained with the UltraNest backend. The
+   figure appears as figure 14 of the TransitionListener v2 paper.
+
 5. [Gravitational Waves from Dimension-6 Assisted Peccei-Quinn Phase Transitions](https://inspirehep.net/arxiv/2608.13692)  
    arXiv: [2608.13692](https://arxiv.org/abs/2608.13692).  
    The first study from outside the project to use TransitionListener. A
@@ -70,22 +80,6 @@ gravitational wave studies:
    against what the high-luminosity LHC can exclude in the same parameter
    points, so that each experiment's reach is measured on the region the other
    cannot cover.
-
-The following figure is the $\alpha$--$(\beta/H)_{RH}$ comparison
-plot discussed in the TransitionListener v2 paper and attributed there to the
-PTA model-comparison study above:
-
-<p align="center">
-  <a href="_static/example_output/fig14_alpha_betaH.png">
-    <img src="_static/example_output/fig14_alpha_betaH.png" alt="Posterior distributions in the alpha-betaH plane" width="760">
-  </a>
-</p>
-
-It compares three dark-sector model classes in the
-$\alpha$--$(\beta/H)_{RH}$ plane. The left panel shows generic
-model predictions from TransitionListener random scans, while the right panel
-shows the regions favored by PTA-informed nested sampling with the UltraNest
-backend.
 
 ## Reproducing the shipped grid scan
 

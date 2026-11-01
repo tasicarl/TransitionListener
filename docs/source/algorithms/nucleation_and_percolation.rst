@@ -128,7 +128,6 @@ where the profile needs it.
 
 .. figure:: ../_static/algorithm_rate_and_support.png
    :width: 100%
-   :align: center
 
    The rate in Hubble units is appreciable over a short interval and negligible elsewhere. A
    grid spread evenly over the temperature range steps across the rise and sees the converted
@@ -246,7 +245,7 @@ The expansion history
 ---------------------
 
 The scale factor is needed in two places: in the growth of a bubble, and in the dilution of the
-energy density. It follows from entropy conservation, :math:`a^3 s = \text{constant}`, where
+energy density. It follows from entropy conservation, :math:`a^3 s = \mathrm{constant}`, where
 :math:`s` is the entropy density of the phase being traced.
 
 .. versionchanged:: 2.2

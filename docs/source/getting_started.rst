@@ -137,8 +137,8 @@ its ``plot?`` flag and carries the configuration values needed for that plot.
 Just try setting some of the ``plot?`` flags to ``True`` and re-run
 TransitionListener to see the corresponding plots being created in the output
 folder! If you want to learn more about the individual plots and their
-configuration options, please refer to the :doc:`plots` section of the
-documentation.
+configuration options, each one is shown with the settings that produce it in
+:doc:`algorithms/the_plots`.
 
 That's it! You are now ready to explore TransitionListener and its features. Have fun
 studying cosmological phase transitions and their gravitational wave signals!
@@ -147,6 +147,7 @@ For detailed installation instructions and usage examples please refer to the fo
 
 - Installation: :doc:`installation`
 - Usage: :doc:`usage`
+- What the package computes, stage by stage: :doc:`algorithms/index`
 
 For more information, visit the documentation at
 https://tasillo.de/TransitionListener or check out the code

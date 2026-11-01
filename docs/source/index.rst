@@ -58,7 +58,7 @@ Usage
 -----
 
 * `Get started! <https://www.tasillo.de/TransitionListener/getting_started>`_
-* Read the `full documentation <https://www.tasillo.de/TransitionListener/documentation>`_
+* Read the `implementation notes <https://www.tasillo.de/TransitionListener/algorithms/index>`_
 * Have a look at the `GitHub repository <https://github.com/tasicarl/TransitionListener>`_
 
 
@@ -90,15 +90,10 @@ Contributors
    installation
    usage
    features
-   method
    algorithms/index
-   error_reference
-   notes/index
+   example_output
    changelog
    contributing
-   documentation
-   plots
-   example_output
    faq
 
 .. toctree::

@@ -60,7 +60,6 @@ bisecting on the starting value finds it.
 
 .. figure:: ../_static/algorithm_shooting.png
    :width: 100%
-   :align: center
 
    One bisection step. A start too far from the true vacuum leaves the field without the energy
    to reach the false one, and friction turns it back. A start too near it arrives with energy

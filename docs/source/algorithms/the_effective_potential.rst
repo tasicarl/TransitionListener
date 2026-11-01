@@ -29,9 +29,9 @@ The one-loop correction at zero temperature [ColemanWeinberg1973]_, in the modif
 subtraction scheme, is
 
 .. math::
-   V_1 = \frac{1}{64\pi^2}\left[ \sum_{i\in\text{bosons}} n_i\, m_i^4
+   V_1 = \frac{1}{64\pi^2}\left[ \sum_{i\in\mathrm{bosons}} n_i\, m_i^4
          \left( \ln\frac{|m_i^2|}{\mu^2} - c_i \right)
-         - \sum_{f\in\text{fermions}} n_f\, m_f^4
+         - \sum_{f\in\mathrm{fermions}} n_f\, m_f^4
          \left( \ln\frac{|m_f^2|}{\mu^2} - \frac{3}{2} \right) \right],
 
 with :math:`n` the number of degrees of freedom of each species, :math:`m^2(\phi)` its
@@ -56,7 +56,6 @@ them. They are fixed by requiring that the first and second derivatives of
 
 .. figure:: ../_static/algorithm_potential_vs_temperature.png
    :width: 100%
-   :align: center
 
    The shape the thermal corrections produce. Well above the critical temperature the only
    minimum is the symmetric one. A second minimum appears, the two are degenerate at

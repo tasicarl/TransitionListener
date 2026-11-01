@@ -51,7 +51,6 @@ step and carries no physical meaning.
 
 .. figure:: ../_static/algorithm_images.png
    :width: 100%
-   :align: center
 
    A potential even in the field has two images of every broken minimum, and which one a trace
    lands on is settled by the sign of a numerical step. A bounce computed from the symmetric

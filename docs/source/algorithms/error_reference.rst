@@ -3,9 +3,8 @@
 Error reference
 ===============
 
-Every code a run can report, and for four of them why the failure is classified the way it
-is and what was measured to decide it. That detail used to sit in the exception docstrings in
-``src/transitionlistener/errors.py``; the docstrings now carry the summary and point here.
+This page lists every code a run can report, and for four of them says why the failure is
+classified the way it is and what was measured to decide it.
 
 A point that fails writes one integer in the ``error`` column of the output. It is the
 ``errorcode`` of the exception that ended the point, and an exception that carries none is

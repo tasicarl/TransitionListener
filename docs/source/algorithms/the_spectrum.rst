@@ -166,7 +166,7 @@ and the transfer function carries the finite lifetime of the source,
 .. math::
    T(f) = \begin{cases}
      \ln^2\!\left(1 + N H\tau_e\right), & f \le \dfrac{H_{*,0}}{2\pi N H\tau_e},\\[2ex]
-     \ln^2\!\left(1 + \dfrac{H_{*,0}}{2\pi f}\right), & \text{otherwise},
+     \ln^2\!\left(1 + \dfrac{H_{*,0}}{2\pi f}\right), & \mathrm{otherwise},
    \end{cases}
 
 where :math:`N H\tau_e = N R_*/(2\pi v_A)` is the duration in Hubble times of :math:`N = 2`
@@ -174,7 +174,6 @@ eddy turnovers and :math:`v_A = \sqrt{3\Omega_s/4}` is the Alfvén velocity.
 
 .. figure:: ../_static/algorithm_spectrum_sources.png
    :width: 100%
-   :align: center
 
    The three templates and their sum, built with the package's own ``FOPTspectrum`` at
    :math:`\alpha = 0.2`, :math:`R_* = 0.05`, :math:`v_w = 0.65` and
