@@ -401,7 +401,7 @@ def figure_plasma_dof() -> None:
         half.append((label, float(np.mean(roots))))
 
     use_house_style()
-    fig, (a1, a2) = plt.subplots(2, 1, figsize=(WIDTH, 1.08 * WIDTH), sharex=True)
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(WIDTH, 1.00 * WIDTH), sharex=True)
 
     a1.plot(T, g_rho, color=DESYcyan, lw=1.6, label=r"$g_{\rm eff}$, energy density")
     a1.plot(T, g_s, color=DESYorange, lw=1.6, ls=(0, (4, 2)),
@@ -445,10 +445,10 @@ def figure_plasma_dof() -> None:
     a2.set_ylabel("degrees of freedom")
     a2.set_xlim(T[0], T[-1])
     a2.set_ylim(0.0, 168.0)
-    a2.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.20), ncol=2)
+    a2.legend(frameon=False, loc="lower right")
     a2.set_title("the whole plasma of the 2HDM, in each of its two phases", fontsize=8, pad=4)
 
-    fig.subplots_adjust(left=0.095, right=0.972, bottom=0.175, top=0.950, hspace=0.36)
+    fig.subplots_adjust(left=0.095, right=0.972, bottom=0.085, top=0.950, hspace=0.34)
     _check(fig, "algorithm_plasma_dof")
     fig.savefig(OUT / "algorithm_plasma_dof.png", dpi=200)
     plt.close(fig)
@@ -656,7 +656,7 @@ def figure_spectrum_sources() -> None:
              ("Wall collisions", "bubble collisions", DESYaubergine, (0, (1, 1.6)))]
 
     use_house_style()
-    fig, ax = plt.subplots(figsize=(WIDTH, 0.74 * WIDTH))
+    fig, ax = plt.subplots(figsize=(WIDTH, 0.92 * WIDTH))
 
     # The shipped LISA power-law-integrated sensitivity, at the threshold and observation time
     # the package stores with it. A spectrum above this curve is detectable.
@@ -665,8 +665,10 @@ def figure_spectrum_sources() -> None:
     lisa = GW_Sensitivity_Data().det["LISA"]
     f_pli = np.asarray(lisa["f_PLI"], dtype=float)
     pli = np.asarray(lisa["PLI"], dtype=float)
-    # Cut at the top of the panel, so the curve leaves the frame instead of stopping in it.
-    band = (f_pli >= f[0]) & (f_pli <= f[-1]) & (pli <= 1.2e-8)
+    # Over the whole frequency range the curve is tabulated on. The panel clips it at the
+    # top, so it leaves the frame rather than ending at a frequency the sensitivity has
+    # nothing to do with.
+    band = (f_pli >= f[0]) & (f_pli <= f[-1]) & np.isfinite(pli)
     # A shallow shadow under the curve rather than the whole region below it, which would
     # cover most of the panel and put the two weaker sources inside grey. What rises above the
     # curve is detectable, and the sound-wave peak here does.
@@ -674,7 +676,7 @@ def figure_spectrum_sources() -> None:
     # Named in the legend rather than beside the band: the band fills the one part of the
     # panel a label could sit in without touching a curve.
     ax.plot(f_pli[band], pli[band], color="0.50", lw=1.1, zorder=1,
-            label="LISA, power-law integrated")
+            label="LISA")
 
 
 
@@ -687,14 +689,14 @@ def figure_spectrum_sources() -> None:
     ax.set_xlabel(r"frequency $f$ (Hz)")
     ax.set_ylabel(r"$h^2\Omega_{\rm GW}$")
     ax.set_xlim(0.75 * f[0], 1.35 * f[-1])
-    ax.set_ylim(3e-19, 1.2e-8)
+    ax.set_ylim(3e-19, 1.0e-5)
     # A legend rather than labels beside the curves: with the LISA band in the panel there is
     # one block of empty space left, at low frequency and high amplitude, and it is too far
     # from any of the three curves to label them there.
-    # Below the panel: with four curves and a shaded band there is no block inside it that
-    # a legend fits into without covering something.
-    ax.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.155),
-              ncol=2, fontsize=7)
+    # Two columns, in the strip of headroom above every curve. A single column does not fit
+    # anywhere inside this panel without covering something, which a scan of the rendered
+    # panel says directly.
+    ax.legend(frameon=False, loc="upper left", fontsize=7, handlelength=1.6)
     ax.set_title(
         r"$\alpha = 0.2$,  $R_* = 0.05$,  $T_\mathrm{reh} = 100$ GeV,  "
         r"$v_\mathrm{w} = 0.65$,  $c_\mathrm{s} = 1/\sqrt{3}$" "\n"
@@ -702,7 +704,7 @@ def figure_spectrum_sources() -> None:
         r"$\kappa_\mathrm{turb} = %.3f$,  $\kappa_\phi = 0.02$ set by hand"
         % (k_sw, 0.1 * k_sw),
         fontsize=7, pad=5, loc="left")
-    fig.subplots_adjust(left=0.105, right=0.985, bottom=0.255, top=0.890)
+    fig.subplots_adjust(left=0.105, right=0.985, bottom=0.105, top=0.885)
     _check(fig, "algorithm_spectrum_sources")
     fig.savefig(OUT / "algorithm_spectrum_sources.png", dpi=200)
     plt.close(fig)

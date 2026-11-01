@@ -184,9 +184,11 @@ eddy turnovers and :math:`v_A = \sqrt{3\Omega_s/4}` is the Alfvén velocity.
    The sound-wave spectrum rises as :math:`f^3`, turns over to :math:`f` between its two
    breaks and falls as :math:`f^{-3}`; with the breaks a factor twenty-two apart the middle
    segment is short, and what the eye reads is the change of curvature rather than a straight
-   piece. The grey curve is LISA's power-law-integrated sensitivity as the package ships it,
-   at the threshold and observation time stored with it. A spectrum that rises above that
-   curve is detectable, and this one does.
+   piece. The grey curve marked LISA is the power-law-integrated sensitivity as the package
+   ships it, at the threshold and observation time stored with it, with a shallow shadow
+   beneath it so that it reads as a band. A spectrum that rises above it is detectable, and
+   this one does. The curve leaves the top of the panel at both ends, where the sensitivity is
+   poor; it does not stop there.
 
 Observability
 -------------

@@ -312,6 +312,11 @@ def check_curves_span(ax, name: str = "panel", skip: tuple = ()) -> list[str]:
         if xs.size < 3:
             continue
         for x, y, which in ((xs[0], ys[0], "starts"), (xs[-1], ys[-1], "ends")):
+            # An end outside the limits is an end the panel clips, so the curve leaves the
+            # frame and the rule is satisfied. Only an end that stops inside it is a defect.
+            if not (min(xlo, xhi) <= x <= max(xlo, xhi)
+                    and min(ylo, yhi) <= y <= max(ylo, yhi)):
+                continue
             fx = abs(x - xlo) / abs(xhi - xlo), abs(x - xhi) / abs(xhi - xlo)
             fy = abs(y - ylo) / abs(yhi - ylo), abs(y - yhi) / abs(yhi - ylo)
             if min(fx + fy) > EDGE_TOLERANCE:
