@@ -202,11 +202,11 @@ def _check(fig, name: str) -> None:
     import sys
 
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-    from check_figure_style import check_figure
+    from check_figure_style import check_curves_span, check_figure
 
     problems = check_figure(fig, name)
-    for ax in fig.get_axes():
-        pass
+    for i, ax in enumerate(fig.get_axes()):
+        problems += check_curves_span(ax, "%s panel %d" % (name, i))
     if problems:
         if name in TOLERATED:
             print("   %s: %d tolerated (%s)" % (name, len(problems), TOLERATED[name]))
@@ -431,7 +431,7 @@ def figure_plasma_dof() -> None:
     a2.set_xscale("log")
     a2.set_xlabel(r"temperature $T$ (GeV)")
     a2.set_ylabel("degrees of freedom")
-    a2.set_xlim(0.7 * T[0], 1.4 * T[-1])
+    a2.set_xlim(T[0], T[-1])
     a2.set_ylim(0.0, 162.0)
     a2.legend(frameon=False, loc="lower right")
     a2.set_title("the whole plasma of the 2HDM, in each of its two phases", fontsize=8, pad=4)
@@ -452,7 +452,7 @@ def figure_potential_vs_temperature() -> None:
     # corrections produce: at high temperature the only minimum is the symmetric one, a second
     # minimum appears, the two become degenerate, and below that the broken one is the deeper.
     # lam = 2E puts the degenerate minimum at phi = 1, which fixes the scale of the picture.
-    phi = np.linspace(-0.30, 1.35, 800)
+    phi = np.linspace(-0.34, 1.39, 800)
     D, E, lam = 0.50, 0.30, 0.60
     T2c = E ** 2 / (D * lam)
     shades = [1.12, 1.00, 0.92, 0.86]
@@ -468,7 +468,7 @@ def figure_potential_vs_temperature() -> None:
     ax.axhline(0.0, color="0.75", lw=0.6, zorder=0)
     ax.set_xlabel(r"field $\phi$")
     ax.set_ylabel(r"$V(\phi, T) - V(0, T)$")
-    ax.set_xlim(phi[0] - 0.04, phi[-1] + 0.04)
+    ax.set_xlim(phi[0], phi[-1])
     ax.set_ylim(-0.066, 0.052)
     ax.legend(frameon=False, loc="upper left", ncol=2)
     fig.subplots_adjust(left=0.125, right=0.985, bottom=0.155, top=0.975)
@@ -701,6 +701,56 @@ def figure_spectrum_sources() -> None:
     print("wrote", OUT / "algorithm_spectrum_sources.png")
 
 
+def figure_potential_2d() -> None:
+    """The 2HDM potential in its two field directions, where the origin is a saddle."""
+    from matplotlib import colors as mcolors
+
+    pot = _two_higgs_doublet_model()
+    # At this benchmark the curvature at the origin has one negative eigenvalue between about
+    # 17 and 37 GeV, so the symmetric point is a saddle there rather than a minimum: the field
+    # can roll away from it in one direction and not in the other. 25 GeV is the middle of
+    # that window, where the negative eigenvalue is largest.
+    T = 25.0
+    hess = np.atleast_2d(np.squeeze(pot.d2V(np.zeros(pot.Ndim), T)))
+    eig = np.linalg.eigvalsh(hess)
+    assert eig.min() < 0.0 < eig.max(), eig
+
+    x = np.linspace(-40.0, 60.0, 220)
+    y = np.linspace(-120.0, 320.0, 220)
+    X, Y = np.meshgrid(x, y)
+    pts = np.column_stack([X.ravel(), Y.ravel()])
+    V = np.array([float(np.squeeze(pot.Vtot(p, T))) for p in pts]).reshape(X.shape)
+    V = V - float(np.squeeze(pot.Vtot(np.zeros(pot.Ndim), T)))
+
+    use_house_style()
+    fig, ax = plt.subplots(figsize=(WIDTH, 0.62 * WIDTH))
+    scale = np.nanmax(np.abs(V))
+    mesh = ax.pcolormesh(X, Y, V, cmap="RdBu_r", shading="auto",
+                         norm=mcolors.SymLogNorm(linthresh=1e-3 * scale, vmin=-scale,
+                                                 vmax=scale))
+    ax.contour(X, Y, V, levels=14, colors="0.35", linewidths=0.4)
+    cb = fig.colorbar(mesh, ax=ax, pad=0.02)
+    cb.set_label(r"$V(\phi_1,\phi_2,T) - V(0,0,T)$   (GeV$^4$)", fontsize=8)
+    cb.ax.tick_params(labelsize=7)
+
+    ax.plot([0.0], [0.0], "o", color="black", ms=5, mfc="white", mew=1.4, zorder=5)
+    ax.text(2.0, -24.0, "the origin, a saddle at this temperature", color="black",
+            fontsize=7, ha="left", va="center",
+            bbox=dict(boxstyle="square,pad=0.14", facecolor="white", edgecolor="none"))
+
+    ax.set_xlabel(r"field $\phi_1$ (GeV)")
+    ax.set_ylabel(r"field $\phi_2$ (GeV)")
+    ax.set_title(r"the 2HDM at $T = %.0f$ GeV" % T, fontsize=8, pad=4, loc="left")
+    ax.set_xlim(x[0], x[-1])
+    ax.set_ylim(y[0], y[-1])
+    fig.subplots_adjust(left=0.105, right=0.985, bottom=0.145, top=0.935)
+    _check(fig, "algorithm_potential_2d")
+    fig.savefig(OUT / "algorithm_potential_2d.png", dpi=200)
+    plt.close(fig)
+    print("wrote", OUT / "algorithm_potential_2d.png")
+    print("   eigenvalues of the curvature at the origin: %s" % np.round(eig, 1))
+
+
 def main() -> int:
     figure_shooting()
     figure_rate_and_support()
@@ -709,6 +759,7 @@ def main() -> int:
     figure_plasma_dof()
     figure_fluid_profiles()
     figure_spectrum_sources()
+    figure_potential_2d()
     return 0
 
 
