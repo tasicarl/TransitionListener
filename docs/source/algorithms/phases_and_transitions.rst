@@ -58,15 +58,6 @@ ordinary.
 The remedy is to put each traced phase on a canonical image as a whole, rather than point by
 point, so that the pairing handed to the bounce solver is the physical one.
 
-.. admonition:: Results from 2.1 are affected
-   :class: caution
-
-   Two phases of the same transition could be traced onto different images, and the bounce was
-   then computed along a path running between images. On a two-Higgs-doublet benchmark this
-   gave an action more than twice the one along the path the field actually takes, which in the
-   exponent of a nucleation rate is an enormous factor, and the transition was reported as far
-   slower than it is.
-
 .. versionchanged:: 2.2
    A whole traced phase is put on its canonical image, chosen from the potential rather than
    from the order in which points were traced. Phases that are their own mirror image are

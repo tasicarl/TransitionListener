@@ -58,15 +58,13 @@ energy: friction stops it before it reaches the false vacuum, and it falls back.
 and it arrives with energy to spare and shoots past. The solution lies between the two, and
 bisecting on the starting value finds it.
 
-.. figure:: ../_static/algorithm_bounce_profile.png
-   :width: 90%
+.. figure:: ../_static/algorithm_shooting.png
+   :width: 100%
    :align: center
 
-   A solved bounce for a thick-walled bubble. The field starts near the true vacuum at the
-   centre and relaxes to the false vacuum at large radius. The shooting unknown is the value at
-   the centre; the distance inside which a trial is accepted as having reached the false vacuum
-   is a fraction of the excursion the bounce covers, which at the default tolerance is far too
-   narrow to draw.
+   One bisection step. A start too far from the true vacuum leaves the field without the energy
+   to reach the false one, and friction turns it back. A start too near it arrives with energy
+   to spare and passes through. The solution lies between the two.
 
 Three details make this work in practice.
 
@@ -97,16 +95,6 @@ within a small distance of the false vacuum at rest, and the trial has converged
    against the distance between the two minima. The distance between the minima is a property
    of the potential; the width of the barrier is set by the temperature, and on a strongly
    supercooled transition the two differ by orders of magnitude.
-
-.. admonition:: Results from 2.1 are affected
-   :class: caution
-
-   The distance inside which a trial counted as having arrived was a fixed fraction of the gap
-   between the minima. As a transition supercools the bounce shrinks while the gap does not, so
-   that distance grew relative to the thing it was judging. A trial could be accepted as having
-   reached the false vacuum while still a sizeable fraction of the whole bounce away from it,
-   and the action then came back as zero, which reads downstream as no tunnelling at all rather
-   than as a failure to resolve it.
 
 In several field directions
 ---------------------------

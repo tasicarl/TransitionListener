@@ -75,15 +75,6 @@ continues to supply the light species at the temperature in question.
    were skipped, and the ghosts were kept. All modes are now counted and one ghost per gauge
    boson is subtracted, which is the gauge counting the energy density had always used.
 
-.. admonition:: Results from 2.1 are affected
-   :class: caution
-
-   The energy density counted the photon twice, once in the potential and once in the table,
-   while the entropy counted almost none of the Standard Model fields of the potential: the
-   frozen tables still held what remained of the tau and the bottom at the freezing
-   temperature, and nothing of the W, the Z, the top or the Higgs. The expansion history and
-   the reheating temperature were computed from those counts.
-
 In the code
 -----------
 

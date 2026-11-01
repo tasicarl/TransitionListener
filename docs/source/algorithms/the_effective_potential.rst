@@ -108,16 +108,6 @@ with respect to temperature, taken by finite differences.
    The step is now chosen from the size of the temperature-independent part of the potential
    rather than as a fixed fraction of the temperature.
 
-.. admonition:: Results from 2.1 are affected
-   :class: caution
-
-   In the broken phase of a strongly supercooled transition the potential is dominated by a
-   large, temperature-independent vacuum term. A finite difference then subtracts two nearly
-   equal numbers, and with a step chosen as a fraction of the temperature the result was
-   round-off rather than a derivative. The sound speed, which divides by a second temperature
-   derivative, is where that first became visible: it came out dependent on the step, sometimes
-   above the speed of light, and at low enough temperature it came out as not-a-number.
-
 Settings
 --------
 
