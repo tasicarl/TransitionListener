@@ -81,9 +81,14 @@ continues to supply the light species at the temperature in question.
 
    The Standard Model bath as the package tabulates it. The step near 0.2 GeV is the
    quark-gluon plasma turning into hadrons and the one near 100 GeV is the electroweak scale.
-   The two counts separate below the quark-hadron step, where the neutrinos no longer share the
-   photons' temperature. The two fits meet at 0.12 GeV, and the small discontinuity there
-   belongs to the fits and not to the physics.
+   The plateau at high temperature sits at 104.1 rather than the free-field 106.75, because
+   the fit carries the interaction correction to the quark-gluon free energy. The two counts
+   differ wherever a species is neither relativistic nor gone, which is at and above the
+   quark-hadron step, by at most 6.7 per cent at 0.2 GeV. Below about 0.5 MeV they part
+   permanently, since the neutrinos no longer share the photons' temperature after electrons
+   and positrons annihilate; the inset shows that, since 3.38 against 3.93 is half a per cent
+   of the main panel. The two fits meet at 0.12 GeV, and the small discontinuity there belongs
+   to the fits and not to the physics.
 
 In the code
 -----------

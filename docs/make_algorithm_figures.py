@@ -168,32 +168,46 @@ def figure_images() -> None:
     use_house_style()
     fig, ax = plt.subplots(figsize=(WIDTH, 0.52 * WIDTH))
 
-    # A potential even in the field has two images of every broken minimum. The tracer follows
-    # whichever one the numerical step lands on, which can differ between the two phases.
-    T = np.linspace(0.0, 1.0, 400)
-    broken = 1.6 * np.sqrt(np.clip(1.0 - T ** 2, 0.0, None))
+    # The broken minimum of the same potential as the figure of V against temperature, traced
+    # in temperature. It is a FIRST-order branch: the field value at the critical temperature
+    # is nonzero, the two phases coexist above it, and the branch ends at the spinodal
+    # temperature where the barrier disappears, rather than going continuously to zero. A
+    # branch that vanished at T_c would be a second-order transition, where there is no bounce
+    # to compute and so nothing for this figure to be about.
+    D, E, lam = 0.50, 0.30, 0.60
+    T2c = E ** 2 / (D * lam)
+    T_sp = np.sqrt(9.0 * E ** 2 / (8.0 * lam * D) / T2c)
+
+    T = np.linspace(0.0, T_sp, 500)
+    disc = np.clip(9.0 * E ** 2 - 8.0 * lam * D * T ** 2 * T2c, 0.0, None)
+    broken = (3.0 * E + np.sqrt(disc)) / (2.0 * lam)
 
     ax.plot(T, broken, color=DESYcyan, lw=1.8)
     ax.plot(T, -broken, color=DESYcyan, lw=1.8, ls=(0, (4, 3)))
+    ax.plot([T_sp], [broken[-1]], "o", color=DESYcyan, ms=4)
+    ax.plot([T_sp], [-broken[-1]], "o", color=DESYcyan, ms=4, mfc="none")
     ax.axhline(0.0, color=DESYdunkelblau, lw=1.4)
+    ax.axvline(1.0, color="0.75", lw=0.6, ls=":", zorder=0)
 
-    ax.annotate("", xy=(0.45, 1.43), xytext=(0.45, 0.0),
+    ax.annotate("", xy=(0.55, 1.12), xytext=(0.55, 0.0),
                 arrowprops=dict(arrowstyle="->", color=DESYorange, lw=1.6))
-    ax.annotate("", xy=(0.45, -1.43), xytext=(0.45, 0.0),
+    ax.annotate("", xy=(0.55, -1.12), xytext=(0.55, 0.0),
                 arrowprops=dict(arrowstyle="->", color=DESYaubergine, lw=1.6,
                                 linestyle=(0, (3, 2))))
 
-    ax.text(0.03, 1.15, "broken phase", color=DESYcyan, fontsize=7, va="center")
-    ax.text(0.03, -1.15, "its mirror image", color=DESYcyan, fontsize=7, va="center")
-    ax.text(0.03, 0.14, "symmetric phase", color=DESYdunkelblau, fontsize=7, va="center")
-    ax.text(0.50, 0.80, "the channel", color=DESYorange, fontsize=7, va="center")
-    ax.text(0.50, -0.80, "not a channel", color=DESYaubergine, fontsize=7, va="center")
+    ax.text(0.04, 1.40, "broken phase", color=DESYcyan, fontsize=7, va="center")
+    ax.text(0.04, -1.40, "its mirror image", color=DESYcyan, fontsize=7, va="center")
+    ax.text(0.04, 0.16, "symmetric phase", color=DESYdunkelblau, fontsize=7, va="center")
+    ax.text(0.62, 0.70, "the channel", color=DESYorange, fontsize=7, va="center")
+    ax.text(0.62, -0.70, "not a channel", color=DESYaubergine, fontsize=7, va="center")
+    ax.text(0.985, 1.60, r"$T_{\rm c}$", color="0.45", fontsize=7, ha="right", va="top")
 
     ax.set_xlabel(r"temperature $T/T_{\rm c}$")
     ax.set_ylabel(r"field $\phi$")
-    ax.set_xlim(0.0, 1.0)
+    ax.set_xlim(0.0, 1.18)
     ax.set_ylim(-1.75, 1.75)
     fig.subplots_adjust(left=0.105, right=0.985, bottom=0.165, top=0.975)
+    _check(fig, "algorithm_images")
     fig.savefig(OUT / "algorithm_images.png", dpi=200)
     plt.close(fig)
     print("wrote", OUT / "algorithm_images.png")
@@ -205,7 +219,7 @@ def figure_plasma_dof() -> None:
 
     # The dispatchers, not the two fits directly: each fit is valid on one side of the seam
     # at 0.12 GeV only, and below it the high-temperature one returns nonsense.
-    T = np.logspace(-4.0, 4.0, 1600)
+    T = np.logspace(-6.0, 4.0, 2000)
     g_rho = td.e_geffSM_fit(T, 1.0)
     g_s = td.s_geffSM_fit(T, 1.0)
 
@@ -220,6 +234,18 @@ def figure_plasma_dof() -> None:
     ax.axvline(0.12, color="0.75", lw=0.6, ls=":", zorder=0)
     ax.text(0.105, 96.0, "seam between the two fits", color="0.45", fontsize=7,
             ha="right", va="center")
+    # The two counts differ by 0.48 at the coldest temperatures, which is 0.4 % of this
+    # panel's range, so the inset is the only place it can be seen.
+    inset = ax.inset_axes([0.085, 0.40, 0.26, 0.34])
+    low = T < 3.0e-3
+    inset.plot(T[low], g_rho[low], color=DESYcyan, lw=1.2)
+    inset.plot(T[low], g_s[low], color=DESYorange, lw=1.2, ls=(0, (3, 1.6)))
+    inset.set_xscale("log")
+    inset.set_xlim(1e-6, 3e-3)
+    inset.set_ylim(2.8, 11.5)
+    inset.tick_params(labelsize=6, direction="in", top=True, right=True)
+    inset.set_xticks([1e-6, 1e-4])
+    inset.minorticks_off()
     ax.set_xlim(0.6 * T[0], 1.6 * T[-1])
     ax.set_ylim(0.0, 125.0)
     ax.legend(frameon=False, loc="lower right")
@@ -242,10 +268,10 @@ def figure_potential_vs_temperature() -> None:
     phi = np.linspace(-0.30, 1.35, 800)
     D, E, lam = 0.50, 0.30, 0.60
     T2c = E ** 2 / (D * lam)
-    shades = [1.12, 1.00, 0.92, 0.80]
+    shades = [1.12, 1.00, 0.92, 0.86]
     colors = [DESYorange, DESYaubergine, DESYcyan, DESYdunkelblau]
-    labels = [r"$T > T_{\rm c}$", r"$T = T_{\rm c}$", r"$T < T_{\rm c}$",
-              r"$T \ll T_{\rm c}$"]
+    labels = [r"$T = 1.12\,T_{\rm c}$", r"$T = T_{\rm c}$", r"$T = 0.92\,T_{\rm c}$",
+              r"$T = 0.86\,T_{\rm c}$"]
     for frac, color, label in zip(shades, colors, labels):
         T2 = frac ** 2 * T2c
         V = D * T2 * phi ** 2 - E * phi ** 3 + 0.25 * lam * phi ** 4
@@ -255,7 +281,7 @@ def figure_potential_vs_temperature() -> None:
     ax.set_xlabel(r"field $\phi$")
     ax.set_ylabel(r"$V(\phi, T) - V(0, T)$")
     ax.set_xlim(phi[0], phi[-1])
-    ax.set_ylim(-0.040, 0.030)
+    ax.set_ylim(-0.058, 0.030)
     ax.legend(frameon=False, loc="upper left", ncol=2)
     fig.subplots_adjust(left=0.125, right=0.985, bottom=0.155, top=0.975)
     _check(fig, "algorithm_potential_vs_temperature")
@@ -298,7 +324,7 @@ def figure_fluid_profiles() -> None:
 
     # A deflagration: the fluid inside the bubble is at rest, the wall pushes the plasma ahead
     # of it, and the disturbance ends at a shock front where the velocity drops to zero.
-    vw_d, v0_d = 0.45, 0.10
+    vw_d, v0_d = 0.45, 0.32
     xi_d, v_d = flow(vw_d, v0_d)
     ax.plot([0.0, vw_d], [0.0, 0.0], color=DESYcyan, lw=1.6)
     ax.plot([vw_d, vw_d], [0.0, v0_d], color=DESYcyan, lw=1.6)
@@ -317,18 +343,18 @@ def figure_fluid_profiles() -> None:
     ax.plot([vw_t, 1.0], [0.0, 0.0], color=DESYorange, lw=1.6, ls=(0, (4, 2)))
 
     ax.axvline(cs, color=DESYdunkelblau, lw=0.8, ls=":")
-    ax.text(cs - 0.015, 0.268, r"$c_s$", color=DESYdunkelblau, fontsize=7,
+    ax.text(cs - 0.015, 0.370, r"$c_s$", color=DESYdunkelblau, fontsize=7,
             ha="right", va="center")
-    ax.annotate("shock front", xy=(xi_d[-1] + 0.004, 0.014), xytext=(0.695, 0.195),
+    ax.annotate("shock front", xy=(xi_d[-1] - 0.004, 0.045), xytext=(0.300, 0.070),
                 color=DESYcyan, fontsize=7, ha="center", va="center",
                 arrowprops=dict(arrowstyle="->", color=DESYcyan, lw=0.8))
-    ax.text(vw_d - 0.012, 0.100, "wall", color=DESYcyan, fontsize=7, ha="right", va="bottom")
+    ax.text(vw_d - 0.012, 0.325, "wall", color=DESYcyan, fontsize=7, ha="right", va="bottom")
     ax.text(vw_t - 0.012, 0.224, "wall", color=DESYorange, fontsize=7, ha="right",
             va="bottom")
     ax.set_xlabel(r"self-similar coordinate $\xi = r/t$")
     ax.set_ylabel(r"fluid velocity $v(\xi)$")
     ax.set_xlim(-0.015, 1.0)
-    ax.set_ylim(-0.010, 0.29)
+    ax.set_ylim(-0.014, 0.40)
     ax.legend(frameon=False, loc="upper left")
     fig.subplots_adjust(left=0.105, right=0.985, bottom=0.165, top=0.975)
     _check(fig, "algorithm_fluid_profiles")
@@ -341,9 +367,19 @@ def figure_spectrum_sources() -> None:
     """The three sources and their sum, from the code's own templates."""
     from transitionlistener.gwfopt import FOPTspectrum
 
-    params = dict(alpha=0.2, RH=0.05, Treh_SM_GeV=100.0, g_eff_tot_reh=100.0,
-                  h_eff_tot_reh=100.0, kappa_phi=0.02, kappa_sw=0.35, kappa_turb=0.035,
-                  v_wall=0.65, c_s=1.0 / np.sqrt(3.0))
+    from transitionlistener.hydrodynamics import kappa_sw
+
+    # The sound-wave efficiency is the package's own fit at this strength and wall velocity,
+    # not a number chosen for the picture: passing 0.35 where the fit gives 0.549 draws the
+    # amplitude a factor two low. The turbulent fraction is the usual tenth of it. The
+    # collision efficiency is set by hand, because for a wall the plasma holds back it is
+    # zero and the template would have nothing to draw.
+    alpha, v_wall = 0.2, 0.65
+    cs = 1.0 / np.sqrt(3.0)
+    k_sw = kappa_sw(alpha, v_wall, cs)
+    params = dict(alpha=alpha, RH=0.05, Treh_SM_GeV=100.0, g_eff_tot_reh=100.0,
+                  h_eff_tot_reh=100.0, kappa_phi=0.02, kappa_sw=k_sw,
+                  kappa_turb=0.1 * k_sw, v_wall=v_wall, c_s=cs)
     spec = FOPTspectrum(params)
 
     f = np.logspace(-5.0, 0.0, 600)

@@ -122,12 +122,16 @@ A root of that residual is the wall velocity. The implementation follows [vandeV
    :width: 100%
    :align: center
 
-   The flow the equations above produce, integrated with the module's own ``dfdv``. A wall
-   slower than the sound speed drives the plasma ahead of it and the disturbance ends at a
-   shock front, while the fluid inside the bubble stays at rest. A wall faster than the Jouguet
+   The flow the equations above produce, integrated with the module's own ``dfdv`` and its
+   own shock condition. A wall slower than the sound speed drives the plasma ahead of it and
+   the disturbance ends at a shock front, which is supersonic and so sits outside the sound
+   speed, while the fluid inside the bubble stays at rest. A wall faster than the Jouguet
    velocity outruns any signal, so the plasma ahead is undisturbed and a rarefaction behind the
-   wall carries the velocity back to zero at the speed of sound. The shooting above drives the
-   residual at the shock front to zero.
+   wall carries the velocity back to zero exactly at the speed of sound. The shooting above
+   drives the residual at the shock front to zero. The two curves are two different
+   transitions, as they have to be: the junction condition puts the deflagration at
+   :math:`\alpha = 0.18` and the detonation at :math:`\alpha = 0.087`, each with a root on its
+   own branch and none on the other, and :math:`v_{\rm J} = 0.77` at the second of those.
 
 Runaway, and no solution
 ~~~~~~~~~~~~~~~~~~~~~~~~
