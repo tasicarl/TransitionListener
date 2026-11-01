@@ -118,6 +118,17 @@ that entropy is conserved across the wall. The solver turns that into a shooting
 
 A root of that residual is the wall velocity. The implementation follows [vandeVis2023]_.
 
+.. figure:: ../_static/algorithm_fluid_profiles.png
+   :width: 100%
+   :align: center
+
+   The flow the equations above produce, integrated with the module's own ``dfdv``. A wall
+   slower than the sound speed drives the plasma ahead of it and the disturbance ends at a
+   shock front, while the fluid inside the bubble stays at rest. A wall faster than the Jouguet
+   velocity outruns any signal, so the plasma ahead is undisturbed and a rarefaction behind the
+   wall carries the velocity back to zero at the speed of sound. The shooting above drives the
+   residual at the shock front to zero.
+
 Runaway, and no solution
 ~~~~~~~~~~~~~~~~~~~~~~~~
 

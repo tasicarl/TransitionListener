@@ -54,6 +54,16 @@ them. They are fixed by requiring that the first and second derivatives of
    phase tracer, so tightening an unrelated accuracy setting changed the potential itself. They
    now take their own step, whose default is the value that was in effect in the default setup.
 
+.. figure:: ../_static/algorithm_potential_vs_temperature.png
+   :width: 100%
+   :align: center
+
+   The shape the thermal corrections produce. Well above the critical temperature the only
+   minimum is the symmetric one. A second minimum appears, the two are degenerate at
+   :math:`T_{\rm c}`, and below that the broken minimum is the deeper of the two with a
+   barrier still between them. The barrier is what makes the transition first order, and it is
+   what the bounce of :doc:`the_bounce_action` tunnels through.
+
 Resummation of the infrared modes
 ---------------------------------
 

@@ -199,10 +199,188 @@ def figure_images() -> None:
     print("wrote", OUT / "algorithm_images.png")
 
 
+def figure_plasma_dof() -> None:
+    """The counted degrees of freedom of the Standard Model bath against temperature."""
+    from transitionlistener import thermodynamics as td
+
+    # The dispatchers, not the two fits directly: each fit is valid on one side of the seam
+    # at 0.12 GeV only, and below it the high-temperature one returns nonsense.
+    T = np.logspace(-4.0, 4.0, 1600)
+    g_rho = td.e_geffSM_fit(T, 1.0)
+    g_s = td.s_geffSM_fit(T, 1.0)
+
+    use_house_style()
+    fig, ax = plt.subplots(figsize=(WIDTH, 0.52 * WIDTH))
+    ax.plot(T, g_rho, color=DESYcyan, lw=1.6, label=r"$g_{\rm eff}$, energy density")
+    ax.plot(T, g_s, color=DESYorange, lw=1.6, ls=(0, (4, 2)),
+            label=r"$h_{\rm eff}$, entropy density")
+    ax.set_xscale("log")
+    ax.set_xlabel(r"temperature $T$ (GeV)")
+    ax.set_ylabel("degrees of freedom")
+    ax.axvline(0.12, color="0.75", lw=0.6, ls=":", zorder=0)
+    ax.text(0.105, 96.0, "seam between the two fits", color="0.45", fontsize=7,
+            ha="right", va="center")
+    ax.set_xlim(0.6 * T[0], 1.6 * T[-1])
+    ax.set_ylim(0.0, 125.0)
+    ax.legend(frameon=False, loc="lower right")
+    fig.subplots_adjust(left=0.095, right=0.985, bottom=0.165, top=0.975)
+    _check(fig, "algorithm_plasma_dof")
+    fig.savefig(OUT / "algorithm_plasma_dof.png", dpi=200)
+    plt.close(fig)
+    print("wrote", OUT / "algorithm_plasma_dof.png")
+
+
+def figure_potential_vs_temperature() -> None:
+    """How a barrier appears in the potential as the universe cools."""
+    use_house_style()
+    fig, ax = plt.subplots(figsize=(WIDTH, 0.55 * WIDTH))
+
+    # A quartic with a cubic term and a thermal mass, which is the shape the one-loop thermal
+    # corrections produce: at high temperature the only minimum is the symmetric one, a second
+    # minimum appears, the two become degenerate, and below that the broken one is the deeper.
+    # lam = 2E puts the degenerate minimum at phi = 1, which fixes the scale of the picture.
+    phi = np.linspace(-0.30, 1.35, 800)
+    D, E, lam = 0.50, 0.30, 0.60
+    T2c = E ** 2 / (D * lam)
+    shades = [1.12, 1.00, 0.92, 0.80]
+    colors = [DESYorange, DESYaubergine, DESYcyan, DESYdunkelblau]
+    labels = [r"$T > T_{\rm c}$", r"$T = T_{\rm c}$", r"$T < T_{\rm c}$",
+              r"$T \ll T_{\rm c}$"]
+    for frac, color, label in zip(shades, colors, labels):
+        T2 = frac ** 2 * T2c
+        V = D * T2 * phi ** 2 - E * phi ** 3 + 0.25 * lam * phi ** 4
+        ax.plot(phi, V - V[np.argmin(abs(phi))], color=color, lw=1.5, label=label)
+
+    ax.axhline(0.0, color="0.75", lw=0.6, zorder=0)
+    ax.set_xlabel(r"field $\phi$")
+    ax.set_ylabel(r"$V(\phi, T) - V(0, T)$")
+    ax.set_xlim(phi[0], phi[-1])
+    ax.set_ylim(-0.040, 0.030)
+    ax.legend(frameon=False, loc="upper left", ncol=2)
+    fig.subplots_adjust(left=0.125, right=0.985, bottom=0.155, top=0.975)
+    _check(fig, "algorithm_potential_vs_temperature")
+    fig.savefig(OUT / "algorithm_potential_vs_temperature.png", dpi=200)
+    plt.close(fig)
+    print("wrote", OUT / "algorithm_potential_vs_temperature.png")
+
+
+def figure_fluid_profiles() -> None:
+    """The fluid velocity around the wall, from the module's own flow equations."""
+    from scipy.integrate import solve_ivp
+
+    from transitionlistener.hydrodynamics import Hydrodynamics
+
+    cs2 = 1.0 / 3.0
+    cs = np.sqrt(cs2)
+
+    def flow(v_wall: float, v_at_wall: float):
+        """Integrate `Hydrodynamics.dfdv` outward from the wall until the profile ends.
+
+        The integration runs in the fluid velocity, from its value at the wall down to zero,
+        and returns the self-similar coordinate it reaches. It ends at the shock front for a
+        deflagration and where the velocity vanishes, at the sound speed, for a detonation.
+        """
+        def deriv(v, X, c):
+            return Hydrodynamics.dfdv(None, v, X, c)
+
+        def at_shock(v, X, c):
+            xi, _ = X
+            return xi * (xi - v) / (1.0 - xi * v) - c
+
+        at_shock.terminal = True
+        sol = solve_ivp(deriv, (v_at_wall, 1e-20), [v_wall, 1.0], events=at_shock,
+                        args=(cs2,), rtol=1e-10, atol=1e-10, dense_output=True)
+        v = np.linspace(sol.t[0], sol.t[-1], 400)
+        return sol.sol(v)[0], v
+
+    use_house_style()
+    fig, ax = plt.subplots(figsize=(WIDTH, 0.52 * WIDTH))
+
+    # A deflagration: the fluid inside the bubble is at rest, the wall pushes the plasma ahead
+    # of it, and the disturbance ends at a shock front where the velocity drops to zero.
+    vw_d, v0_d = 0.45, 0.10
+    xi_d, v_d = flow(vw_d, v0_d)
+    ax.plot([0.0, vw_d], [0.0, 0.0], color=DESYcyan, lw=1.6)
+    ax.plot([vw_d, vw_d], [0.0, v0_d], color=DESYcyan, lw=1.6)
+    ax.plot(xi_d, v_d, color=DESYcyan, lw=1.6, label=r"deflagration, $v_w = 0.45$")
+    ax.plot([xi_d[-1], xi_d[-1]], [v_d[-1], 0.0], color=DESYcyan, lw=1.6)
+    ax.plot([xi_d[-1], 1.0], [0.0, 0.0], color=DESYcyan, lw=1.6)
+
+    # A detonation: the wall outruns any signal, so the plasma ahead of it is undisturbed, and
+    # behind it a rarefaction carries the velocity back to zero at the speed of sound.
+    vw_t, v0_t = 0.80, 0.22
+    xi_t, v_t = flow(vw_t, v0_t)
+    ax.plot([0.0, xi_t[-1]], [0.0, 0.0], color=DESYorange, lw=1.6, ls=(0, (4, 2)))
+    ax.plot(xi_t, v_t, color=DESYorange, lw=1.6, ls=(0, (4, 2)),
+            label=r"detonation, $v_w = 0.80$")
+    ax.plot([vw_t, vw_t], [v0_t, 0.0], color=DESYorange, lw=1.6, ls=(0, (4, 2)))
+    ax.plot([vw_t, 1.0], [0.0, 0.0], color=DESYorange, lw=1.6, ls=(0, (4, 2)))
+
+    ax.axvline(cs, color=DESYdunkelblau, lw=0.8, ls=":")
+    ax.text(cs - 0.015, 0.268, r"$c_s$", color=DESYdunkelblau, fontsize=7,
+            ha="right", va="center")
+    ax.annotate("shock front", xy=(xi_d[-1] + 0.004, 0.014), xytext=(0.695, 0.195),
+                color=DESYcyan, fontsize=7, ha="center", va="center",
+                arrowprops=dict(arrowstyle="->", color=DESYcyan, lw=0.8))
+    ax.text(vw_d - 0.012, 0.100, "wall", color=DESYcyan, fontsize=7, ha="right", va="bottom")
+    ax.text(vw_t - 0.012, 0.224, "wall", color=DESYorange, fontsize=7, ha="right",
+            va="bottom")
+    ax.set_xlabel(r"self-similar coordinate $\xi = r/t$")
+    ax.set_ylabel(r"fluid velocity $v(\xi)$")
+    ax.set_xlim(-0.015, 1.0)
+    ax.set_ylim(-0.010, 0.29)
+    ax.legend(frameon=False, loc="upper left")
+    fig.subplots_adjust(left=0.105, right=0.985, bottom=0.165, top=0.975)
+    _check(fig, "algorithm_fluid_profiles")
+    fig.savefig(OUT / "algorithm_fluid_profiles.png", dpi=200)
+    plt.close(fig)
+    print("wrote", OUT / "algorithm_fluid_profiles.png")
+
+
+def figure_spectrum_sources() -> None:
+    """The three sources and their sum, from the code's own templates."""
+    from transitionlistener.gwfopt import FOPTspectrum
+
+    params = dict(alpha=0.2, RH=0.05, Treh_SM_GeV=100.0, g_eff_tot_reh=100.0,
+                  h_eff_tot_reh=100.0, kappa_phi=0.02, kappa_sw=0.35, kappa_turb=0.035,
+                  v_wall=0.65, c_s=1.0 / np.sqrt(3.0))
+    spec = FOPTspectrum(params)
+
+    f = np.logspace(-5.0, 0.0, 600)
+    parts = [("Sound waves", "sound waves", DESYcyan, "-"),
+             ("Turbulence", "turbulence", DESYorange, (0, (4, 2))),
+             ("Wall collisions", "bubble collisions", DESYaubergine, (0, (1, 1.6)))]
+
+    use_house_style()
+    fig, ax = plt.subplots(figsize=(WIDTH, 0.55 * WIDTH))
+    total = np.array([spec.h2Omega_0_sum(x, "all") for x in f])
+    ax.plot(f, total, color=DESYdunkelblau, lw=2.0, label="sum")
+    for key, label, color, ls in parts:
+        y = np.array([spec.h2Omega_0_sum(x, key) for x in f])
+        ax.plot(f, y, color=color, lw=1.4, ls=ls, label=label)
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel(r"frequency $f$ (Hz)")
+    ax.set_ylabel(r"$h^2\Omega_{\rm GW}$")
+    ax.set_xlim(0.6 * f[0], 1.8 * f[-1])
+    ax.set_ylim(3e-19, 3e-9)
+    ax.legend(frameon=False, loc="upper left", ncol=1)
+    fig.subplots_adjust(left=0.115, right=0.985, bottom=0.155, top=0.975)
+    _check(fig, "algorithm_spectrum_sources")
+    fig.savefig(OUT / "algorithm_spectrum_sources.png", dpi=200)
+    plt.close(fig)
+    print("wrote", OUT / "algorithm_spectrum_sources.png")
+
+
 def main() -> int:
     figure_shooting()
     figure_rate_and_support()
     figure_images()
+    figure_potential_vs_temperature()
+    figure_plasma_dof()
+    figure_fluid_profiles()
+    figure_spectrum_sources()
     return 0
 
 

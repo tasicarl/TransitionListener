@@ -172,6 +172,16 @@ and the transfer function carries the finite lifetime of the source,
 where :math:`N H\tau_e = N R_*/(2\pi v_A)` is the duration in Hubble times of :math:`N = 2`
 eddy turnovers and :math:`v_A = \sqrt{3\Omega_s/4}` is the Alfvén velocity.
 
+.. figure:: ../_static/algorithm_spectrum_sources.png
+   :width: 100%
+   :align: center
+
+   The three templates and their sum, built with the package's own ``FOPTspectrum`` at
+   :math:`\alpha = 0.2`, :math:`R_* = 0.05`, :math:`v_w = 0.65` and
+   :math:`T_{\rm reh} = 100` GeV. The sound waves dominate, which is the usual case, so the sum
+   lies on top of them. Their spectrum has the two breaks of the double broken power law with
+   the shallower slope between them; the other two sources have one break each.
+
 Observability
 -------------
 

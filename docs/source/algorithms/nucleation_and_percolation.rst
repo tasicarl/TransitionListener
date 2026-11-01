@@ -27,6 +27,22 @@ distance a bubble nucleated at :math:`T'` has grown by the time the universe has
 .. math::
    P(T) = 1 - e^{-I(T)} .
 
+Written as it stands, the inner integral has to be redone for every value of the outer one, so
+one evaluation of :math:`I` costs the square of the number of support points and a sweep over
+the grid costs the cube. The same quantity is the end of a chain of four first-order equations,
+
+.. math::
+   \frac{dJ_0}{dT} = -\frac{\Gamma}{T^4 H}, \qquad
+   \frac{dJ_1}{dT} = -\frac{J_0}{H}, \qquad
+   \frac{dJ_2}{dT} = -\frac{2 J_1}{H}, \qquad
+   \frac{dJ_3}{dT} = -\frac{3 J_2}{H},
+
+each starting at zero at the hot end, with :math:`I = (4\pi/3)\,v_w^3\,J_3`. One sweep from the
+hot end to the cold one gives :math:`I` at every support point, at a cost linear in their
+number, which is what makes a support of several hundred temperatures affordable. Where the
+sound speed is not that of radiation the same chain carries :math:`a(T)` and
+:math:`3 c_{\rm s}^2` explicitly; in the radiation limit they cancel.
+
 The percolation temperature is where :math:`P` reaches a fixed fraction, conventionally about
 a third, at which the bubbles form a connected network [GuthWeinberg1981]_. The nucleation temperature, the more
 familiar quantity, is where roughly one bubble exists per Hubble volume [Enqvist1992]_
@@ -269,6 +285,58 @@ The temperatures reported
 ``Treh``
    The temperature after the released energy has been shared out.
 
+Completion
+----------
+
+Percolating is not the same as finishing. The false vacuum occupies a physical volume
+:math:`\mathcal{V} \propto a^3 e^{-I}`, which has two competing factors: the expansion inflates
+it and the growth of the bubbles eats it. The transition finishes only where the second wins,
+
+.. math::
+   \frac{1}{\mathcal{V}}\frac{d\mathcal{V}}{dt}
+   = 3H\left(1 + c_{\rm s}^2\, T\,\frac{dI}{dT}\right) < 0 ,
+
+which is the criterion of [Turner1992]_ in the form of [EllisLewickiNo2018]_, written for the
+time-temperature relation :math:`dT/dt = -3 c_{\rm s}^2 H T` rather than the radiation one. A
+transition that percolates but never satisfies this is reported as stalled, not as complete.
+
+The mean separation between bubbles
+-----------------------------------
+
+The number density of bubbles that have nucleated by temperature :math:`T`, each diluted by the
+expansion since it appeared, is
+
+.. math::
+   n_b(T) = \int_T^{T_{\rm start}} \frac{dT'}{T'}\,\frac{\Gamma(T')}{H(T')}\,
+            e^{-I(T')} \left[\frac{a(T')}{a(T)}\right]^3 ,
+
+and the mean separation is :math:`R_* = n_b^{-1/3}`. The factor :math:`e^{-I}` is there because
+a bubble can only nucleate in space that is still in the false vacuum. :math:`R_*` is what sets
+the frequency at which the spectrum peaks, and it is the quantity the second of the two inverse
+durations below is read from.
+
+The reheating temperature
+-------------------------
+
+The phase the bubbles grow into is heated by the energy the transition releases, so it is not at
+the temperature of the phase they nucleate in. Its temperature follows from an entropy-conserving
+step plus an energy correction for the fraction converted during that step, which is a
+discretisation of
+
+.. math::
+   \frac{dT_b}{dT} = \frac{3\,S(T_b)}{T\,S'(T_b)}
+   + \frac{P'(T)}{P(T)}\,\frac{e_{\rm s}(T) - E(T_b)}{E'(T_b)} ,
+
+with :math:`S` and :math:`E` the entropy and energy density of the broken phase and
+:math:`e_{\rm s}` the energy density of the symmetric one. The first term is the cooling the
+expansion alone would give; the second is the heating.
+
+.. versionchanged:: 2.2
+   The equation is integrated with an error-controlled integrator rather than read off the
+   tabulated trajectory. Read off the table, the reheating temperature depends on where the
+   support points happen to sit, which shows up as point-to-point scatter along scans that are
+   otherwise smooth.
+
 The inverse duration
 --------------------
 
@@ -326,3 +394,7 @@ References
 
 .. [Turner1992] M. S. Turner, E. J. Weinberg and L. M. Widrow, *Bubble nucleation in first
    order inflation and other cosmological phase transitions*, Phys. Rev. D **46** (1992) 2384.
+
+.. [EllisLewickiNo2018] J. Ellis, M. Lewicki and J. M. No, *On the maximal strength of a
+   first-order electroweak phase transition and its gravitational wave signal*, JCAP **04**
+   (2019) 003, `arXiv:1809.08242 <https://arxiv.org/abs/1809.08242>`_.

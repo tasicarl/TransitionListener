@@ -75,6 +75,16 @@ continues to supply the light species at the temperature in question.
    were skipped, and the ghosts were kept. All modes are now counted and one ghost per gauge
    boson is subtracted, which is the gauge counting the energy density had always used.
 
+.. figure:: ../_static/algorithm_plasma_dof.png
+   :width: 100%
+   :align: center
+
+   The Standard Model bath as the package tabulates it. The step near 0.2 GeV is the
+   quark-gluon plasma turning into hadrons and the one near 100 GeV is the electroweak scale.
+   The two counts separate below the quark-hadron step, where the neutrinos no longer share the
+   photons' temperature. The two fits meet at 0.12 GeV, and the small discontinuity there
+   belongs to the fits and not to the physics.
+
 In the code
 -----------
 
