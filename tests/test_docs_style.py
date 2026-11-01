@@ -83,6 +83,27 @@ class TestShippedImages(unittest.TestCase):
         self.assertEqual(problems, [], "\n" + "\n".join(problems))
 
 
+class TestDocumentationPaths(unittest.TestCase):
+    def test_every_documentation_path_a_test_names_exists(self):
+        """A test that points at a page has to point at where the page is.
+
+        Moving a page is cheap and breaks these silently: the suite then fails on five tests
+        that have nothing to do with what was changed. This says so in one line instead.
+        """
+        import re
+
+        problems = []
+        for test in sorted((ROOT / "tests").glob("*.py")):
+            text = test.read_text(encoding="utf-8")
+            for m in re.finditer(r'"(docs)"((?:\s*/\s*"[^"]+")+)', text):
+                parts = re.findall(r'"([^"]+)"', m.group(0))
+                target = ROOT.joinpath(*parts)
+                if not target.exists():
+                    problems.append("%s names %s, which is not there"
+                                    % (test.name, "/".join(parts)))
+        self.assertEqual(problems, [], "\n" + "\n".join(problems))
+
+
 class TestFigureStyle(unittest.TestCase):
     """The figure rules, each given a figure that breaks it.
 

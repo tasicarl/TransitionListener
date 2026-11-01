@@ -6,7 +6,7 @@ hold any of twenty codes. A user reading a scan has the integer and nothing else
 reference omits is a point whose failure cannot be looked up.
 
 What this asserts is the direction that rots: a code added to ``errors.py`` without a row in
-``docs/source/error_reference.rst``. The reverse, a row for a code that no longer exists, is
+``docs/source/algorithms/error_reference.rst``. The reverse, a row for a code that no longer exists, is
 asserted too, because a reference that names a code the package cannot raise sends the reader
 looking for a cause that is not there.
 
@@ -24,7 +24,7 @@ from pathlib import Path
 
 from transitionlistener import errors
 
-REFERENCE = Path(__file__).resolve().parents[1] / "docs" / "source" / "error_reference.rst"
+REFERENCE = Path(__file__).resolve().parents[1] / "docs" / "source" / "algorithms" / "error_reference.rst"
 
 
 def _codes_in_the_package():
@@ -103,7 +103,7 @@ class TheErrorReferenceIsCompleteTests(unittest.TestCase):
         missing = sorted(set(_codes_in_the_package()) - _rows_in_the_reference())
         self.assertEqual(
             missing, [],
-            "error codes with no row in docs/source/error_reference.rst: "
+            "error codes with no row in docs/source/algorithms/error_reference.rst: "
             + ", ".join(f"{c} ({'/'.join(sorted(_codes_in_the_package()[c]))})" for c in missing))
 
     def test_the_reference_names_no_code_the_package_cannot_raise(self):
