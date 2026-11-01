@@ -211,6 +211,20 @@ def check_figure(fig, name: str = "figure") -> list[str]:
             problems.append("%s: text %r is clipped by the figure edge"
                             % (name, t.get_text()[:30]))
 
+    # --- a label placed in data coordinates belongs inside its panel ----------------------
+    # Clipping against the figure is not enough: a label whose anchor is outside the axis
+    # limits floats in the margin between panels, which looks deliberate and is not.
+    for ax in fig.get_axes():
+        axbb = ax.get_window_extent(renderer=renderer)
+        for t in ax.texts:
+            if not t.get_text().strip() or t.get_transform() is not ax.transData:
+                continue
+            bb = _text_only_extent(t, renderer)
+            if (bb.x1 < axbb.x0 or bb.x0 > axbb.x1
+                    or bb.y1 < axbb.y0 or bb.y0 > axbb.y1):
+                problems.append("%s: the label %r is outside its panel"
+                                % (name, t.get_text().splitlines()[0][:30]))
+
     # --- a leader crosses a curve steeply or not at all ----------------------------------
     for ax in fig.get_axes():
         for ann in ax.texts:

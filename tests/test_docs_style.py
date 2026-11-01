@@ -177,6 +177,29 @@ class TestFigureStyle(unittest.TestCase):
         self.assertEqual(found, [], found)
         plt.close(fig)
 
+    def test_a_label_outside_its_panel_is_caught(self):
+        """A label anchored beyond the axis limits floats in the margin between panels."""
+        cfs = self._checker()
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots()
+        ax.plot([0.0, 1.0], [0.0, 1.0])
+        ax.set_ylim(0.0, 1.0)
+        ax.text(0.5, 1.6, "above the panel", ha="center", va="center")
+        self.assertTrue([m for m in cfs.check_figure(fig, "t") if "outside its panel" in m])
+        plt.close(fig)
+
+    def test_a_legend_outside_its_panel_is_caught(self):
+        cfs = self._checker()
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots()
+        ax.plot([0.0, 1.0], [0.0, 1.0], label="a curve")
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15))
+        self.assertTrue([m for m in cfs.check_figure(fig, "t")
+                         if "legend is not inside" in m])
+        plt.close(fig)
+
     def test_a_curve_that_stops_inside_the_panel_is_caught(self):
         cfs = self._checker()
         import matplotlib.pyplot as plt

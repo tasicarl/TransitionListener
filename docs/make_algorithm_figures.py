@@ -421,7 +421,7 @@ def figure_plasma_dof() -> None:
     a2.plot([sym_end[0]], [sym_end[1]], "o", color=DESYmagenta, ms=4.5, mfc="white",
             mew=1.4, zorder=5)
     a2.annotate("below here the origin\nis not a minimum", xy=(sym_end[0], sym_end[1] + 3.0),
-                xytext=(6.0e0, 148.0), color=DESYmagenta, fontsize=6.5,
+                xytext=(1.2e0, 112.0), color=DESYmagenta, fontsize=6.5,
                 ha="center", va="center",
                 arrowprops=dict(arrowstyle="->", color=DESYmagenta, lw=0.8))
     # Staggered in height, so that five labels fit into the decade the masses occupy.
