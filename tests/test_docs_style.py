@@ -57,6 +57,51 @@ class TestDocumentationStyle(unittest.TestCase):
                 self.assertTrue(found, "the checker missed %s: %r" % (name, line))
 
 
+class TestThePlotsPageIsReproducible(unittest.TestCase):
+    def test_every_setting_the_page_quotes_is_the_setting_that_drew_the_figure(self):
+        """The plots page says each figure was drawn by the block beside it. It has to be.
+
+        The figures and the page drifted apart twice: a potential drawn at one temperature
+        and a block quoting another, and a temperature range widened for one figure and left
+        behind on the page. The configuration that drew them is checked in beside the page,
+        and this compares the two.
+        """
+        import re
+
+        import yaml
+
+        page = (DOCS / "source" / "algorithms" / "the_plots.rst").read_text(encoding="utf-8")
+        config = yaml.safe_load((DOCS / "docs_gallery.yaml").read_text(encoding="utf-8"))
+        plots = config["additional_plots"]
+
+        quoted = {}
+        for block in re.findall(r"\.\. code-block:: yaml\n\n((?:(?: {3,}.*)?\n)+)", page):
+            lines = [l for l in block.splitlines() if l.strip()]
+            if not lines:
+                continue
+            indent = min(len(l) - len(l.lstrip()) for l in lines)
+            text = "\n".join(l[indent:] for l in lines)
+            try:
+                parsed = yaml.safe_load(text)
+            except yaml.YAMLError:
+                continue
+            if isinstance(parsed, dict):
+                # The first block on the page carries the ``additional_plots`` key itself.
+                quoted.update(parsed.get("additional_plots", parsed))
+
+        self.assertTrue(quoted, "the page quotes no settings at all")
+        for key, settings in quoted.items():
+            self.assertIn(key, plots, "the page quotes a %r block the configuration has not"
+                          % key)
+            if not isinstance(settings, dict):
+                continue
+            for name, value in settings.items():
+                self.assertEqual(
+                    plots[key].get(name), value,
+                    "the page says %s.%s is %r, the configuration that drew the figure says "
+                    "%r" % (key, name, value, plots[key].get(name)))
+
+
 class TestDocumentationMaths(unittest.TestCase):
     def test_every_equation_renders(self):
         """Every equation on every page compiles under LaTeX.

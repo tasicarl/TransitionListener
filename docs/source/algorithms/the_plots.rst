@@ -107,8 +107,8 @@ The degrees of freedom
 
      dofs:
        plot?: True
-       Tmin_GeV: 0.01
-       Tmax_GeV: 0.05
+       Tmin_GeV: 0.002
+       Tmax_GeV: 0.03
 
 The effective degrees of freedom of the plasma against temperature, in the sense of
 :doc:`the_plasma`, which fix the expansion rate and the redshift of the signal.

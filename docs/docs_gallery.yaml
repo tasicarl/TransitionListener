@@ -1,0 +1,79 @@
+# The configuration that produced every figure of docs/source/algorithms/the_plots.rst.
+# Run it from the repository root with
+#     tl -c docs/docs_gallery.yaml
+# tests/test_docs_style.py checks that the settings quoted on that page are these.
+# Single-point scan for the conformal U(1) model
+# Run with: tl -c examples/example_point.yaml -v
+
+# ==================================================
+# Scan settings
+# ================================================== 
+Modelfile:
+  models/TL_conformal_dark_u1.py
+
+Potential:
+  specific_potential
+
+Scan:
+  SinglePoint
+
+Parameters:
+  g: 0.7
+  v_GeV: 0.1
+  y: 0.01
+
+# ==================================================
+# output stuff
+# ==================================================
+timeout: -1  # Timeout in seconds for the individual TL run, -1 for no timeout
+format: txt  # either "txt" or "hdf5"
+output_path: scans/docs_plots_gallery
+description: example point, conformal U(1) model
+plot_description: Conformal $U(1)$ benchmark
+
+additional_plots:
+  action:
+    plot?: True
+    Tmin_GeV: 0
+    Tmax_GeV: 0.022
+    phase_indices: [0, 1]
+    n: 100
+
+  potential:
+    plot?: True
+    T_GeV: 0.02
+    phi_ranges_GeV: [0, 0.15]
+    n: 400
+
+  phases:
+    plot?: True
+    include_transitions?: False
+
+  profileV:
+    plot?: True
+    field_index_1: 0
+    field_index_2: 1
+
+  energy_density:
+    plot?: True
+    Tmin_GeV: 0.002
+    Tmax_GeV: 0.026
+  
+  dofs:
+    Tmin_GeV: 0.002
+    Tmax_GeV: 0.03
+    plot?: True
+
+  sensitivities:
+    plot?: True
+
+  profile:
+    plot?: True
+
+  percolation:
+    plot?: True
+    Tmin_GeV: 0.00235
+    Tmax_GeV: 0.00285
+
+  gw_spectrum:
+    plot?: True
