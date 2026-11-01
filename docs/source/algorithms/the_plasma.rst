@@ -74,7 +74,7 @@ continues to supply the light species at the temperature in question.
    were skipped, and the ghosts were kept. All modes are now counted and one ghost per gauge
    boson is subtracted, which is the gauge counting the energy density had always used.
 
-.. admonition:: What this got wrong before 2.2
+.. admonition:: Results from 2.1 are affected
    :class: caution
 
    The energy density counted the photon twice, once in the potential and once in the table,
@@ -83,8 +83,8 @@ continues to supply the light species at the temperature in question.
    temperature, and nothing of the W, the Z, the top or the Higgs. The expansion history and
    the reheating temperature were computed from those counts.
 
-Where it is in the code
------------------------
+In the code
+-----------
 
 ``thermodynamics.potential_fields_geff`` counts the fields of a potential in the gauge counting
 above, for the energy density, the pressure or the entropy. ``sm_fields_in_potential_geff``

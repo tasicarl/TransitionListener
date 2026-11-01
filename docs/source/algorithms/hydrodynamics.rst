@@ -100,8 +100,8 @@ remains in the scalar field and radiates when bubbles collide, and one for the t
 These are fits over a range of strength and wall velocity, and outside that range they are
 extrapolations rather than results.
 
-Where it is in the code
------------------------
+In the code
+-----------
 
 ``hydrodynamics.Hydrodynamics`` holds the matching: ``calc_cs`` for the sound speed,
 ``sound_speed_is_step_dependent`` for the diagnostic that says whether a value depends on the

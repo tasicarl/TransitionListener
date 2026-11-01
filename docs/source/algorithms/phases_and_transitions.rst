@@ -42,8 +42,8 @@ asked for is exhausted.
    The traced points are also interpolated in a way that cannot leave the range of the trace
    itself, so that a phase is not reported at field values it was never traced through.
 
-Symmetries, and which image a phase sits on
--------------------------------------------
+Symmetries and images
+---------------------
 
 Where the potential is invariant under a group, a minimum is not one point but a set of images
 of the same physical state. Which image a trace ends up on is decided by the sign of a numerical
@@ -58,7 +58,7 @@ ordinary.
 The remedy is to put each traced phase on a canonical image as a whole, rather than point by
 point, so that the pairing handed to the bounce solver is the physical one.
 
-.. admonition:: What this got wrong before 2.2
+.. admonition:: Results from 2.1 are affected
    :class: caution
 
    Two phases of the same transition could be traced onto different images, and the bounce was
@@ -77,8 +77,8 @@ point, so that the pairing handed to the bounce solver is the physical one.
    images the pairing is already right, and the extra bounces cost time without changing the
    answer.
 
-From phases to candidate transitions
-------------------------------------
+Candidate transitions
+---------------------
 
 With the phases traced, the code walks down in temperature and builds the chain of phases the
 universe occupies. At each step it asks which phases coexist, whether the one being occupied is
@@ -87,8 +87,8 @@ temperature, with the destination deeper than the origin and a barrier between t
 candidate for a first-order transition. Where the two minima merge continuously instead, the
 step is second order and no bounce is computed.
 
-What it refuses
----------------
+Refusals
+--------
 
 - No phases at all, or only one, so there is no pair to tunnel between.
 - No viable pair below the phase the walk has reached, so nothing about a rate was computed at
@@ -102,8 +102,8 @@ What it refuses
    not succeed were reported the same way, so a scan could not tell a numerical failure from a
    transition that genuinely does not proceed.
 
-Where it is in the code
------------------------
+In the code
+-----------
 
 ``phases.traceMinimum`` follows one minimum, ``traceMultiMin`` finds and follows all of them,
 and ``Phases`` is the class that holds the result. ``canonicalImageElement`` chooses the image

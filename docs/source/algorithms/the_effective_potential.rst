@@ -9,8 +9,8 @@ them, the bounce is a solution of its equations of motion, and the energy releas
 difference of its values. A model file supplies the tree-level potential and the mass spectrum;
 this page describes what is built on top of them.
 
-What is computed
-----------------
+The quantity
+------------
 
 The effective potential is assembled as
 
@@ -107,7 +107,7 @@ with respect to temperature, taken by finite differences.
    The step is now chosen from the size of the temperature-independent part of the potential
    rather than as a fixed fraction of the temperature.
 
-.. admonition:: What this got wrong before 2.2
+.. admonition:: Results from 2.1 are affected
    :class: caution
 
    In the broken phase of a strongly supercooled transition the potential is dominated by a
@@ -141,8 +141,8 @@ Settings
      - Which entropy the expansion history and the sound speed are built from; the two must
        agree.
 
-Where it is in the code
------------------------
+In the code
+-----------
 
 ``generic_potential.Vtot`` assembles the pieces above. ``V1`` and ``V1T`` are the zero- and
 finite-temperature loop corrections, ``Vct`` the counterterms, ``Vdaisy`` the resummation, and

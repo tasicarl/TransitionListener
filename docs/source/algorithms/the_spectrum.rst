@@ -4,79 +4,224 @@ The gravitational wave spectrum
 ===============================
 
 The transition leaves a stochastic background of gravitational waves. Its amplitude and the
-frequency at which it peaks follow from four numbers computed earlier: the strength of the
-transition, its inverse duration, the temperature at which it finishes, and the speed of the
-bubble walls.
+frequency at which it peaks follow from four numbers computed earlier: the strength
+:math:`\alpha`, the mean bubble separation :math:`R_*`, the temperature :math:`T_{\rm reh}`
+after the released energy has been shared out, and the wall velocity :math:`v_w`.
+
+This page gives the spectrum as the code builds it. The templates follow the report of the
+LISA Cosmology Working Group [LISACosWG2024]_, and the equation numbers quoted below are that
+report's.
 
 The three sources
 -----------------
 
-Three processes radiate, and the code adds their spectra:
+Three processes radiate, and their spectra are added:
 
-**Sound waves.** The bulk motion left in the plasma after the walls have passed. On most
-transitions this dominates.
+.. math::
+   h^2\Omega_{\rm GW}(f) = h^2\Omega_{\phi}(f) + h^2\Omega_{\rm sw}(f)
+                           + h^2\Omega_{\rm turb}(f).
 
-**Bubble collisions.** The energy that remains in the scalar field itself, which radiates when
-walls meet. This matters when the wall runs away, so that a large part of the energy never
-reaches the plasma.
+**Bubble collisions**, :math:`\Omega_\phi`, from the energy that stays in the scalar field and
+radiates when walls meet. This matters when the wall runs away, so that much of the energy
+never reaches the plasma.
 
-**Turbulence.** The fraction of the bulk motion that becomes vortical.
+**Sound waves**, :math:`\Omega_{\rm sw}`, from the bulk motion left in the plasma after the
+walls have passed. On most transitions this dominates.
 
-Each is written as a peak amplitude times a shape in frequency, with both taken from fits to
-simulations. The shape is a broken power law whose break is at the peak, and the peak is set by
-the length scale of the source, which is the mean separation between bubbles.
+**Turbulence**, :math:`\Omega_{\rm turb}`, from the fraction of that motion which becomes
+vortical.
 
-From the source to today
+Kinetic energy fractions
 ------------------------
 
-A spectrum produced at temperature :math:`T` is redshifted by the expansion since then. The
-amplitude scales with the fourth power of the scale factor and the frequency with its inverse,
-so both depend on the degrees of freedom at the time of production through entropy
-conservation. The redshift is applied from the reheating temperature, after the energy released
-by the transition has been shared out, and not from the percolation temperature.
+Each source carries a fraction of the energy released. Writing
+
+.. math::
+   K_i = \,\varepsilon_i \,\kappa_i \,\frac{\alpha}{1+\alpha},
+
+the factor :math:`\alpha/(1+\alpha)` is the released energy as a fraction of the total, and
+:math:`\kappa_i` is the efficiency with which it reaches that source, computed in
+:doc:`hydrodynamics`. For the sound waves and the turbulence
+:math:`\varepsilon = 0.6`, which accounts for the efficiency of producing bulk motion relative
+to the single-bubble case as found in the Higgsless simulations of [Jinno2022]_; for the scalar
+field :math:`\varepsilon = 1`.
+
+Redshift to today
+-----------------
+
+A spectrum produced at :math:`T_{\rm reh}` is diluted by the expansion since then. The
+amplitude carries
+
+.. math::
+   R = \frac{\Omega_{\gamma,0} h^2}{D^{4/3}}
+       \left(\frac{h_{\rm eff,0}}{h_{\rm eff,reh}}\right)^{4/3}
+       \frac{g_{\rm eff,reh}}{g_{\rm eff,0}},
+
+with :math:`g_{\rm eff}` and :math:`h_{\rm eff}` the degrees of freedom in the energy density
+and in the entropy from :doc:`the_plasma`, and :math:`D` the dilution factor where the
+transitioning sector is not in equilibrium with the bath that carries the entropy. The Hubble
+rate at the transition, redshifted to today, is
+
+.. math::
+   H_{*,0} = 1.65\times 10^{-5}\,\mathrm{Hz}\; D^{-1/3}\,
+             \frac{T_{\rm reh}}{100\,\mathrm{GeV}}
+             \left(\frac{g_{\rm eff,reh}}{100}\right)^{1/2}
+             \left(\frac{100}{h_{\rm eff,reh}}\right)^{1/3},
+
+and every frequency below is quoted in units of it.
 
 .. versionchanged:: 2.2
-   The spectrum is redshifted from the temperature of the bath that carries the entropy, rather
-   than from the temperature of the sector that underwent the transition. The two differ when
-   the sectors are not in equilibrium with one another.
+   The redshift is applied from the temperature of the bath that carries the entropy rather
+   than from the sector that underwent the transition. The two differ when the sectors are not
+   in equilibrium.
 
-.. admonition:: The fits have a range
-   :class: important
+Spectral shapes
+---------------
 
-   The sound-wave template rests on simulations of transitions whose strength is at most of
-   order a tenth. A scan that reaches far stronger transitions is extrapolating, and the
-   amplitude it reports there is a statement about the template as much as about the model.
-   Where the strength is large, a template built for strongly supercooled transitions is the
-   appropriate one.
+Two shapes are used. A broken power law, their equation (2.4),
+
+.. math::
+   S(f) = \left(\frac{f}{f_b}\right)^{n_1}
+          \left[\frac{1}{2} + \frac{1}{2}\left(\frac{f}{f_b}\right)^{a_1}
+          \right]^{(n_2-n_1)/a_1},
+
+which rises as :math:`f^{n_1}` below the break and falls as :math:`f^{n_2}` above it, with
+:math:`a_1` setting how sharply it turns. And a double broken power law, their equation (2.8),
+
+.. math::
+   S(f) = \left(\frac{f}{f_1}\right)^{n_1}
+          \left[1+\left(\frac{f}{f_1}\right)^{a_1}\right]^{(n_2-n_1)/a_1}
+          \left[1+\left(\frac{f}{f_2}\right)^{a_2}\right]^{(n_3-n_2)/a_2},
+
+which has three slopes and two breaks, and is what the sound waves need.
+
+Bubble collisions
+-----------------
+
+A single break, with
+
+.. math::
+   h^2\Omega_\phi^{\rm peak} = R\, A_\phi\, \frac{K_\phi^2}{(\beta/H)^2},
+   \qquad
+   f_b = 0.11\,\frac{\beta}{H}\, H_{*,0},
+
+their equation (2.7), and the shape parameters
+:math:`A_\phi = 0.05`, :math:`n_1 = 2.4`, :math:`n_2 = -2.4`, :math:`a_1 = 1.2`. The inverse
+duration here is the one read off the bubble separation,
+:math:`\beta/H = (8\pi/f_{\rm perc})^{1/3}\max(v_w,c_s)/R_*`.
+
+Sound waves
+-----------
+
+Two breaks. The lower one is set by the bubble separation and the upper one by the thickness
+of the sound shell:
+
+.. math::
+   f_1 = \frac{0.2}{R_*}H_{*,0},
+   \qquad
+   f_2 = \frac{0.5}{R_*\,\Delta_w}H_{*,0},
+   \qquad
+   \Delta_w = \frac{|v_w - c_s|}{\max(v_w, c_s)} .
+
+:math:`\Delta_w` is the shell thickness as a fraction of the bubble radius. A wall moving close
+to the speed of sound leaves a thin shell, which pushes :math:`f_2` far above :math:`f_1` and
+widens the flat part of the spectrum between them. This estimate assumes a detonation or a
+deflagration; a general solution would need the full hydrodynamic profile.
+
+The integrated amplitude is their equation (2.10),
+
+.. math::
+   h^2\Omega_{\rm sw}^{\rm int} = R\, A_{\rm sw}\, K_{\rm sw}^2\, (H\tau_{\rm sw})\, R_* ,
+
+with :math:`A_{\rm sw} = 0.11` and the slopes :math:`n_1 = 3`, :math:`n_2 = 1`,
+:math:`n_3 = -3`, :math:`a_1 = 2`, :math:`a_2 = 4`. The source does not last forever: the
+sound waves decay once the shells have crossed, after a time
+
+.. math::
+   H\tau_{\rm sh} = \frac{R_*}{\sqrt{\tfrac{3}{4}\,\varepsilon\,\kappa_{\rm sw}\,
+                    \alpha_{\rm hyd}/(1+\alpha_{\rm hyd})}},
+
+and the lifetime entering the amplitude is :math:`H\tau_{\rm sw} = \min(1, H\tau_{\rm sh})`,
+capped at one Hubble time. The rising part of the spectrum is :math:`f^3`, which is the causal
+slope any uncorrelated source must have.
+
+Turbulence
+----------
+
+Their equation (2.15), the full form rather than the approximation of their equation (2.25):
+
+.. math::
+   h^2\Omega_{\rm turb}(f) = 3 A_{\rm turb}\, \Omega_s^2\, R\, R_*^3
+       \left(\frac{f}{H_{*,0}}\right)^3 p(f)\, T(f),
+
+with :math:`\Omega_s = K_{\rm turb}` and :math:`A_{\rm turb} = 0.085`. The anisotropic
+spectrum is
+
+.. math::
+   p(f) = \left[1+\left(\frac{f}{f_2}\right)^{a_2}\right]^{-11/(3a_2)},
+   \qquad f_2 = \frac{2.2}{R_*}H_{*,0}, \qquad a_2 = 2.15,
+
+and the transfer function carries the finite lifetime of the source,
+
+.. math::
+   T(f) = \begin{cases}
+     \ln^2\!\left(1 + N H\tau_e\right), & f \le \dfrac{H_{*,0}}{2\pi N H\tau_e},\\[2ex]
+     \ln^2\!\left(1 + \dfrac{H_{*,0}}{2\pi f}\right), & \text{otherwise},
+   \end{cases}
+
+where :math:`N H\tau_e = N R_*/(2\pi v_A)` is the duration in Hubble times of :math:`N = 2`
+eddy turnovers and :math:`v_A = \sqrt{3\Omega_s/4}` is the Alfvén velocity.
 
 Observability
 -------------
 
-The spectrum is compared with the sensitivity of a detector by the signal-to-noise ratio,
+For an interferometer the spectrum is compared with a noise curve by the signal-to-noise ratio
 
 .. math::
    \mathrm{SNR} = \sqrt{\mathcal{T} \int df
-                  \left[\frac{h^2\Omega_{\rm GW}(f)}{h^2\Omega_{\rm noise}(f)}\right]^2 } ,
+                  \left[\frac{h^2\Omega_{\rm GW}(f)}{h^2\Omega_{\rm noise}(f)}\right]^2},
 
-with :math:`\mathcal{T}` the observation time. Sensitivity curves for the interferometers and
-the pulsar timing arrays are shipped with the package.
+with :math:`\mathcal{T}` the observation time. Curves for the interferometers and the pulsar
+timing arrays ship with the package.
 
-For pulsar timing arrays the comparison is made differently, against the measured free spectrum
-rather than against a noise curve. The data is a posterior for the amplitude in each frequency
-bin, and the likelihood of a model is the product of those posteriors evaluated at the
-amplitudes it predicts. What the code reports is the distance from the best fit any such model
-achieves on that data, expressed in standard deviations.
+For a pulsar timing array the comparison is made against the measured free spectrum rather
+than a noise curve. The data is a posterior for the amplitude in each frequency bin, obtained
+from a kernel density estimate, and the likelihood of a model is the product of those
+posteriors evaluated at the amplitudes it predicts. What the code reports is the distance from
+the best fit achievable on that data, as
+
+.. math::
+   \sigma = \sqrt{2\,\big(\ln L_{\rm best} - \ln L\big)} .
 
 .. versionchanged:: 2.2
-   The free spectra ship with the package and are selected by name, where they were previously
-   downloaded while the run was in progress. Eight are available, and which one a run used is
-   recorded. The reference against which the distance is measured belongs to the data set, so
-   there is one per data set; a data set with no reference reports no distance rather than a
-   distance from a reference obtained on different data.
+   Eight free spectra ship with the package and are selected by name, where one was previously
+   downloaded while the run was in progress. The reference :math:`\ln L_{\rm best}` belongs to
+   the data set, so there is one per data set; a data set with no reference reports no distance
+   rather than a distance from a reference obtained on different data.
 
-Where it is in the code
------------------------
+.. admonition:: The templates have a range of validity
+   :class: important
 
-``gwfopt.FOPTspectrum`` assembles the spectrum from the four numbers and the efficiency
-factors. ``observability.Observability`` computes signal-to-noise ratios and the pulsar timing
-likelihoods. ``pta_free_spectra`` holds the shipped free spectra and the reference likelihoods.
+   The sound-wave template rests on simulations of transitions with :math:`\alpha` up to about
+   0.1. A scan reaching far stronger transitions is extrapolating, and the amplitude reported
+   there is a statement about the template as much as about the model. For strongly supercooled
+   transitions a template built for them is the appropriate one.
+
+In the code
+-----------
+
+``gwfopt.FOPTspectrum`` assembles the spectrum; ``h2Omega_0_sum`` is the sum above, ``BPL`` and
+``DBPL`` the two shapes. ``observability.Observability`` computes the signal-to-noise ratios and
+the pulsar timing likelihoods, and ``pta_free_spectra`` holds the shipped free spectra with
+their reference likelihoods.
+
+References
+----------
+
+.. [LISACosWG2024] C. Caprini et al. (LISA Cosmology Working Group), *Gravitational waves from
+   first-order phase transitions in LISA: reconstruction pipeline and physics interpretation*,
+   JCAP **10** (2024) 020, `arXiv:2403.03723 <https://arxiv.org/abs/2403.03723>`_.
+
+.. [Jinno2022] R. Jinno, T. Konstandin, H. Rubira and I. Stomberg, *Higgsless simulations of
+   cosmological phase transitions and gravitational waves*, JCAP **02** (2023) 011,
+   `arXiv:2209.04369 <https://arxiv.org/abs/2209.04369>`_.

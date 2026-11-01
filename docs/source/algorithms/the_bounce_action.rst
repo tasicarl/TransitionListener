@@ -10,8 +10,8 @@ most expensive thing TransitionListener does. Everything downstream, the nucleat
 temperature, the percolation temperature, the inverse duration of the transition and the
 spectrum, rests on it.
 
-What is computed
-----------------
+The quantity
+------------
 
 At a temperature :math:`T` the relevant configuration is the three-dimensional bounce, a
 static solution that is symmetric under rotations in space. It satisfies
@@ -45,8 +45,8 @@ shades it.
    :math:`S_4` can be the smaller exponent and the one that governs the rate. Transitions that
    supercool far enough for that to matter are outside what this version computes.
 
-How the bounce is found
------------------------
+Finding the bounce
+------------------
 
 Along one direction in field space, by shooting, which is the method of
 [Coleman1977]_ as implemented numerically by [Wainwright2011]_.
@@ -88,7 +88,7 @@ within a small distance of the false vacuum at rest, and the trial has converged
    of the potential; the width of the barrier is set by the temperature, and on a strongly
    supercooled transition the two differ by orders of magnitude.
 
-.. admonition:: What this got wrong before 2.2
+.. admonition:: Results from 2.1 are affected
    :class: caution
 
    The distance inside which a trial counted as having arrived was a fixed fraction of the gap
@@ -136,8 +136,8 @@ solution of the full equations to that accuracy, and the action along it is the 
    describing the path is refined and the deformation continues, rather than the path being
    accepted as it stands.
 
-What it refuses
----------------
+Refusals
+--------
 
 A bounce action that comes back as a number is a claim about the physics, so the solver refuses
 rather than returns one in each of these cases:
@@ -197,8 +197,8 @@ Settings
 The precision modes ``robust``, ``xtrace``, ``tunneltight`` and ``benchmark`` set several of
 these together; see :doc:`../usage`.
 
-Where it is in the code
------------------------
+In the code
+-----------
 
 ``tunneling1D.SingleFieldInstanton`` solves the one-dimensional problem: ``findProfile`` shoots
 and bisects, ``integrateProfile`` carries one trial outward and classifies it, ``findAction``
