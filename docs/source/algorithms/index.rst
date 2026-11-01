@@ -18,4 +18,6 @@ number that was wrong without saying so.
 .. toctree::
    :maxdepth: 1
 
+   the_effective_potential
+   the_plasma
    the_bounce_action
