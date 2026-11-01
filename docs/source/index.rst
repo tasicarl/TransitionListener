@@ -91,6 +91,7 @@ Contributors
    usage
    features
    method
+   algorithms/index
    error_reference
    notes/index
    changelog
