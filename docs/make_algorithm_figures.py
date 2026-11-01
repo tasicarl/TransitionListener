@@ -424,20 +424,23 @@ def figure_plasma_dof() -> None:
                 ha="center", va="center",
                 arrowprops=dict(arrowstyle="->", color=DESYmagenta, lw=0.8))
     # Staggered in height, so that five labels fit into the decade the masses occupy.
-    # The arrows come up from below on to the broken-phase curve, which is the curve they are
-    # about, and the note that names them sits below with them. The open circle on the
-    # symmetric phase is marked from above, so that the two sets of marks do not meet.
-    for label, t_half in half:
+    # Each arrow comes up from below and touches the broken-phase curve, which is the curve it
+    # is about. The five temperatures lie inside half a decade, so their labels cannot stand
+    # side by side; each tail is at its own height instead, and the label sits at that tail.
+    # Read top to bottom, the labels are in the order the modes leave.
+    for i, (label, t_half) in enumerate(half):
         y_curve = float(np.interp(t_half, T2, tot_bro))
-        a2.annotate("", xy=(t_half, y_curve - 1.5), xytext=(t_half, 44.0),
+        y_row = 17.0 + 10.5 * i
+        # An elbow: out of the label along its own row, then straight up on to the curve. The
+        # rows keep the five labels apart where the five temperatures cannot, and each label
+        # owns its leader, so it is read with it.
+        a2.annotate("$%s$" % label, xy=(t_half, y_curve), xytext=(7.0, y_row),
+                    color="0.40", fontsize=6.5, ha="right", va="center",
                     arrowprops=dict(arrowstyle="->", color="0.60", lw=0.7,
-                                    shrinkA=0, shrinkB=0))
-    a2.annotate(", ".join("$%s$" % label for label, _ in half)
-                + "\nleave the plasma here",
-                xy=(float(np.mean([t for _, t in half])), 41.0),
-                xytext=(1.5e-2, 30.0), color="0.40", fontsize=6.5,
-                ha="center", va="center",
-                arrowprops=dict(arrowstyle="->", color="0.60", lw=0.7))
+                                    shrinkA=3, shrinkB=0,
+                                    connectionstyle="angle,angleA=0,angleB=90,rad=0"))
+    a2.text(2.5e-1, 136.0, "each mode leaves the plasma\nwhere its arrow meets the curve",
+            color="0.40", fontsize=6.5, ha="center", va="center")
 
     a2.set_xscale("log")
     a2.yaxis.set_major_locator(mpl.ticker.MaxNLocator(nbins=6, prune="lower"))

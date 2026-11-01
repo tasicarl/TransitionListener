@@ -214,9 +214,19 @@ def check_figure(fig, name: str = "figure") -> list[str]:
                         ann.get_window_extent(renderer=renderer).p0)), dtype=float)
             except Exception:
                 continue
-            d = tip - tail
-            if not np.hypot(*d) > 1.0:
+            # The leader's own path, so that an elbow is tested as the two straight pieces it
+            # is drawn as and not as the diagonal between its ends, which crosses things the
+            # leader never goes near.
+            try:
+                verts = arrow.get_path().vertices
+                leader = arrow.get_patch_transform().transform(verts)
+                if leader.shape[0] < 2 or not np.isfinite(leader).all():
+                    raise ValueError
+            except Exception:
+                leader = np.vstack([tail, tip])
+            if np.hypot(*(tip - tail)) <= 1.0:
                 continue
+            flagged = False
             for line in ax.get_lines():
                 xs = np.asarray(line.get_xdata(), dtype=float)
                 ys = np.asarray(line.get_ydata(), dtype=float)
@@ -224,15 +234,22 @@ def check_figure(fig, name: str = "figure") -> list[str]:
                     continue
                 pts = ax.transData.transform(np.column_stack([xs, ys]))
                 seg = np.diff(pts, axis=0)
-                hit = _segments_cross(tail, tip, pts[:-1], seg)
-                if hit is None:
-                    continue
-                ang = _angle_between(d, seg[hit])
-                if ang < MIN_CROSSING_ANGLE_DEG:
-                    problems.append(
-                        "%s: the leader of %r crosses %r at %.0f degrees, below %.0f"
-                        % (name, ann.get_text()[:24], line.get_label()[:20], ang,
-                           MIN_CROSSING_ANGLE_DEG))
+                for k in range(leader.shape[0] - 1):
+                    a, b = leader[k], leader[k + 1]
+                    if np.hypot(*(b - a)) < 2.0:
+                        continue
+                    hit = _segments_cross(a, b, pts[:-1], seg)
+                    if hit is None:
+                        continue
+                    ang = _angle_between(b - a, seg[hit])
+                    if ang < MIN_CROSSING_ANGLE_DEG:
+                        problems.append(
+                            "%s: the leader of %r crosses %r at %.0f degrees, below %.0f"
+                            % (name, ann.get_text()[:24], line.get_label()[:20], ang,
+                               MIN_CROSSING_ANGLE_DEG))
+                        flagged = True
+                        break
+                if flagged:
                     break
     return problems
 
@@ -288,12 +305,25 @@ def check_with_paper_style(fig, name: str = "figure") -> list[str]:
     # what this module missed before.
     # Matched on the first line of the label, because that checker prints the text through
     # ``repr``, where a newline comes out as two characters and a plain membership test fails.
-    leadered = {t.get_text().splitlines()[0].strip()
-                for ax in fig.get_axes() for t in ax.texts
-                if getattr(t, "arrow_patch", None) is not None and t.get_text().strip()}
+    # Both the label as written and the label with its maths delimiters removed, because that
+    # checker prints a label through ``repr`` after stripping the dollars.
+    leadered = set()
+    for ax in fig.get_axes():
+        for t in ax.texts:
+            if getattr(t, "arrow_patch", None) is None or not t.get_text().strip():
+                continue
+            first = t.get_text().splitlines()[0].strip()
+            leadered.add(first)
+            leadered.add(first.strip("$"))
     out = []
     for m in (found or []):
-        if "busy background" in m and any(t and t in m for t in leadered):
+        hits = [t for t in leadered if t and t in m]
+        # Both of that checker's rules measure an annotation through
+        # ``get_window_extent``, which covers the arrow as well as the words, so a leader
+        # reaching across the panel makes the label look both large and busy. The rules in
+        # this module measure the words alone and the leader separately, so a report about a
+        # label that has a leader is left to them.
+        if hits and ("busy background" in m or "text over text" in m):
             continue
         out.append("%s: paper_style says %s" % (name, m))
     return out

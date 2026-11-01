@@ -126,6 +126,29 @@ class TestFigureStyle(unittest.TestCase):
         self.assertTrue([m for m in cfs.check_figure(fig, "t") if "degrees" in m])
         plt.close(fig)
 
+    def test_an_elbow_leader_is_followed_along_its_own_path(self):
+        """A leader drawn as an elbow is tested as the two pieces it is drawn as.
+
+        Tested as the diagonal between its ends instead, it appears to cross curves it never
+        goes near, and the figure is rejected for a crossing that is not on the page.
+        """
+        cfs = self._checker()
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        fig, ax = plt.subplots()
+        ax.plot([0.0, 1.0], [0.8, 0.8], lw=2, label="a curve")
+        ax.set_xlim(0.0, 1.0)
+        ax.set_ylim(0.0, 1.0)
+        # Out along a low row, then straight up on to the curve: neither piece runs along it.
+        ax.annotate("label", xy=(0.8, 0.8), xytext=(0.1, 0.2),
+                    ha="right", va="center",
+                    arrowprops=dict(arrowstyle="->",
+                                    connectionstyle="angle,angleA=0,angleB=90,rad=0"))
+        found = [m for m in cfs.check_figure(fig, "t") if "degrees" in m]
+        self.assertEqual(found, [], found)
+        plt.close(fig)
+
     def test_a_curve_that_stops_inside_the_panel_is_caught(self):
         cfs = self._checker()
         import matplotlib.pyplot as plt
