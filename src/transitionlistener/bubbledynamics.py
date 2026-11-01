@@ -693,6 +693,18 @@ _ENTROPY_REL_STEP = 1.0e-4
 def entropy_density(pot, phase, T: float, definition: str = "dof_table") -> float:
     """Entropy density of the plasma of the traced phase, in the chosen scheme.
 
+    Only ratios and logarithmic derivatives of this quantity are used, so the constant
+    ``2 pi^2/45`` is dropped from the counted form and the two schemes share no absolute
+    normalisation.
+
+    Both describe the same plasma, the fields of the potential and the coupled radiation bath,
+    and they differ in how they treat the fields. ``"dof_table"`` counts them as free particles
+    at their zero-temperature masses and adds the tabulated entropy degrees of freedom of the
+    bath. ``"eff_potential"`` takes ``-dV/dT``, which gives the fields their thermal masses and
+    the daisy term, and carries the bath with its perturbative corrections, but not those
+    corrections for the fields themselves. Neither route contains the other, which is why the
+    two are compared and the difference reported rather than one of them corrected.
+
     """
     t = float(T)
     if definition == "eff_potential":
@@ -999,6 +1011,14 @@ def _clamp_between(values, first, second):
 def _double_integral_subgrid(T, H, S, cooling, scale):
     """Subdivide the support intervals of the double integral where the source varies.
 
+    The source ``Gamma a^3 / (3 c_s^2 H T)`` is resolved to a change of at most
+    ``_SUBGRID_MAX_LOG_STEP`` in its logarithm per sub-step, wherever it is within
+    ``exp(_SUBGRID_NEGLIGIBLE)`` of its peak. Between the support points ``S/T``, ``ln H``,
+    ``3 c_s^2`` and ``ln a`` are interpolated in ``u = ln T`` by a not-a-knot cubic spline,
+    which reproduces a Gaussian turnover to 0.1 % across gaps of 0.7 e-folds where PCHIP is
+    off by a few per cent. Intervals with a non-finite end, and grids that are fine already,
+    are returned unchanged.
+
     Parameters
     ----------
     T : np.ndarray
@@ -1094,6 +1114,11 @@ def _double_integral_subgrid(T, H, S, cooling, scale):
 # ---------------------------------------------------------------------------
 #
 
+# Floor on the logarithm of the source and the transport term of the percolation integral.
+# `exp(-700)` is about 1e-304, which is above the denormal threshold, so a floored sample
+# contributes nothing to the integral without underflowing to a value the integrator cannot
+# divide by. A `nan` sample is floored here rather than dropped, so that the growth of bubbles
+# already nucleated is still carried across the region where no new ones appear.
 _LOG_GAMMA_SOURCE_FLOOR = -700.0  # exp(-700) ~ 1e-304, safely above denormal threshold
 
 
@@ -1156,6 +1181,23 @@ def percIntegralODE(
     i_target: float | None = None,
 ) -> np.ndarray | tuple[np.ndarray, float | None]:
     r"""Compute I(T_i) at every grid point via the J_n ODE chain.
+
+    The nested double integral costs O(N^2) per evaluation; written as a chain of four
+    first-order equations in ``J_0..J_3`` it is one sweep from the hot to the cold end,
+
+    ::
+
+       A    = Gamma / (T^4 H)      J_0' = -A        J_1' = -J_0 / H
+       J_2' = -2 J_1 / H           J_3' = -3 J_2 / H
+
+    with every ``J_n`` zero at the hot end and ``I = (4 pi/3) v_w^3 J_3``, where ``'`` is
+    ``d/dT`` and ``T`` decreases along the sweep.
+
+    With ``i_target`` the crossing temperature is taken from the integrator rather than read
+    back off an interpolation of the sampled ``I``. With ``sound_speed_sq`` and
+    ``scale_factor`` the generalised equation of state is used, ``gamma = Gamma a^3/(H T
+    3 c_s^2)`` and ``nu = 1/(H T 3 c_s^2 a)``; without them it falls back to the bag limit,
+    where ``c_s^2 = 1/3`` and ``a(T)`` cancels.
 
     Parameters
     ----------
@@ -1593,6 +1635,14 @@ _APPROX_PERCOLATION_MAX_BLIND_STEPS = 20
 def _bracket_sign(value) -> float:
     """The sign of a criterion value for bracketing: +1, -1, or 0 for no information.
 
+    The two infinities are not symmetric. ``-inf`` is a definite answer: the criterion
+    returns it above the top of the range and where an action is exactly zero, in both cases
+    meaning "above the root", so discarding it skips the sign test exactly where the criterion
+    is most emphatic. ``+inf`` carries no information, since it is returned at the bottom of
+    the range by construction and wherever an action is not computable, and bracketing against
+    it manufactures a root at the cold end of whatever interval it is handed. A stretch with no
+    computable action is bounded by ``_APPROX_PERCOLATION_MAX_BLIND_STEPS`` instead.
+
     Returns
     -------
     float
@@ -1736,6 +1786,20 @@ def calcApproxPercolation(
     # fails to bracket a root, fail fast and let the caller choose a controlled fallback
     # instead of spending many hidden action evaluations.
     #
+    # Find the *hottest* temperature at which the criterion is met, by walking down from
+    # `Tmax` until it changes sign and only then handing that sub-bracket to `brentq`.
+    #
+    # Handing `brentq` the whole interval does not work, because the interval carries more
+    # than one root and `brentq` assumes one: the criterion is positive below the percolation
+    # point and negative above it, but as `T` falls the rate vanishes, so it turns negative
+    # again at the cold end. Percolation is the first temperature the universe meets on the way
+    # down, so the hottest root is the one wanted and the others are artefacts of the bracket.
+    #
+    # The walk is geometric at `_APPROX_PERCOLATION_SCAN_RATIO` per step, two action
+    # evaluations each, and reaches the root in a handful of steps because the root sits within
+    # a factor of a few of `Tmax`. It stops where no bubble can nucleate at any Hubble rate,
+    # and separately after `_APPROX_PERCOLATION_MAX_BLIND_STEPS` consecutive steps whose action
+    # could not be computed, which the first stop cannot see because it has no `S_3/T` to read.
     args = (outdict, pot, phase_sym, phase_bro, Tmax, Tmin, vw, verbose)
     entered_live = False
     blind_steps = 0
@@ -1951,6 +2015,25 @@ def integrate_broken_temperature(
     atol: float = 0.0,
 ):
     r"""Integrate the broken-phase temperature down to ``T_target``.
+
+    Stepping from one support point to the next, an entropy-conserving update followed by an
+    energy correction for the volume fraction converted during the step, is a first-order
+    discretisation of
+
+    .. math::
+        \frac{dT_b}{dT} = \frac{3\,S(T_b)}{T\,S'(T_b)}
+        + \frac{P'(T)}{P(T)}\,\frac{e_s(T) - E(T_b)}{E'(T_b)} ,
+
+    with :math:`S(x) = [h_{\rm ds}(x) + h_{\rm SM}(x)]\,x^3` proportional to the entropy
+    density of the broken phase and :math:`E` its energy density. Reading the reheating
+    temperature off the tabulated trajectory instead makes it depend on where the support
+    points happen to sit, which shows up as point-to-point scatter along smooth scans.
+
+    The true-vacuum fraction enters through the source term, and its derivative is taken on a
+    spline of :math:`\ln I`, with :math:`I = -\ln(1-P)`, which is smooth and monotone, rather
+    than of :math:`P`, which sweeps from 0 to 1 and whose derivative depends strongly on the
+    node placement. The integration starts where the fraction first reaches ``p_seed``, with
+    the instantaneous-reheating condition as initial value.
 
     Returns
     -------
@@ -2421,6 +2504,17 @@ class PercolationDiagnostics:
 # unstable bounce solve, and one quadratic in ln T cannot describe a range of hundreds of
 # decades at all.
 #
+# Both ends of the window are constrained, and by different things. Open it much wider and
+# the gate goes back to rejecting the dead tail it was written to ignore, since every false
+# rejection seen came from samples forty decades or more below the peak. Close it much further
+# and the window starves the fit, which needs five active samples for its quadratic. 30 sits
+# between the two, with 1.35x margin to the shallowest observed false positive.
+#
+# This does not claim that a sample below the floor cannot matter: intervals worth more than a
+# millionth of the percolation integral have been recorded hundreds of decades below a
+# profile's own peak. It says that below the floor the gate cannot tell a bad solve from its
+# own inability to fit, so it reports the exclusion in `n_dead_rate_excluded` rather than a
+# verdict.
 _JITTER_DEAD_RATE_DECADES = 30.0
 
 
@@ -2695,6 +2789,25 @@ def _try_action_jitter_tunneltight_rescue(
         # keeping it injects a rate feature that is orders of magnitude wrong into P(T).
         # Discard it and let the profile stand on the samples that are trustworthy.
         #
+        # What the discard does and does not do. The non-finite action is dropped by the
+        # action interpolants built from the returned `Sr`, so the rate feature it carried no
+        # longer reaches `R_*`, `betaH_RH`, `betaH_S3`, the spline nucleation-temperature
+        # estimate or the jitter diagnostic. What it does not do is re-derive the profile: the
+        # percolation integral has already run with the sample in it, so `Pr`, `Tb`, `Tperc`
+        # and the support bank still describe the profile that included it, and the returned
+        # `Sr` and `Pr` therefore describe slightly different supports.
+        #
+        # That is tolerated rather than hidden, because both alternatives measured worse.
+        # Re-deriving the profile from the reduced support and re-running the gates leaves the
+        # coupling's inverse duration far from the trend its neighbours set, and refusing the
+        # point instead costs every coupling that discards at all.
+        #
+        # The couplings that reached the discard were sick for a reason outside this file: the
+        # traced symmetric phase was interpolated with an overshooting cubic, so the bounce
+        # tunnelled from a displaced point and returned too small an action, and that is what
+        # tripped the gate. `PhaseInfo._build_interpolator` now uses a shape-preserving
+        # interpolator, which removes the cause. The discard stays, because nothing stops
+        # another model from tripping the gate for a reason of its own.
         still_worst = diagnostic.get("temperature")
         residual_now = diagnostic.get("max_residual_oom")
         if (
@@ -2899,6 +3012,15 @@ def _tight_tunneling_params(pot):
 def _recompute_actions_tight(pot, temperatures, phase_sym, phase_bro, outdict, progress):
     """Recompute the actions at ``temperatures`` with the path deformation tightened.
 
+    ``progress`` is the caller's record: the cache entries removed under ``dropped``, so that
+    the cache can be put back as it was, and the temperatures actually recomputed under
+    ``done``. Both matter where this raises part of the way through.
+
+    ``calcAction`` hands back whatever is already in ``outdict`` for a temperature, and the
+    percolation temperature is always in there, so an action computed at the loose deformation
+    would be returned unchanged and the recomputation would be silent about it. Every entry the
+    stencil lands on is therefore dropped first and kept for the record.
+
     """
     original = pot.config.tracingConf.tunneling_params
     try:
@@ -2941,6 +3063,19 @@ def _restore_dropped_actions(outdict, dropped) -> None:
 def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phase_sym, phase_bro, verbose=False,
                   diagnostics: dict | None = None) -> float:
     """Calculate the phase transition speed from the action derivative.
+
+    The derivative is estimated by a local least-squares quadratic through the action samples
+    of the percolation support, not from the slope of an interpolating spline. The adaptive
+    support places samples as close as 1e-6 T apart, and an interpolant forced exactly through
+    them turns an irregular 1e-2 error in ``S3/T``, which is what the path deformation leaves,
+    into errors of hundreds in beta/H; a fit over the nearest samples averages it out.
+
+    ``percolationConf`` controls the sample selection: how many of the nearest samples are
+    used, how many of them must lie on each side of ``T`` and how far they may reach, and what
+    to do when those conditions are not met, which is to compute five new actions around ``T``
+    and fit those. The fit is repeated on a smaller set and a disagreement is reported through
+    ``diagnostics["fit_unstable"]`` rather than corrected. See the caution in
+    ``PercolationConf``: the defaults were validated on the 2HDM benchmark only.
 
     Parameters
     ----------
@@ -3343,6 +3478,23 @@ def calc_betaH_S3_approx(T, outdict, pot, phase_sym, phase_bro, tmin, tmax, verb
 def falseVacuumVolumeGrowthRate(TSYM, P, T, cs_sq: float = 1.0 / 3.0) -> float:
     r"""Growth rate of the physical false-vacuum volume, in units of ``3H``.
 
+    The false vacuum occupies a physical volume :math:`\mathcal{V} \propto a^3 e^{-I}`, which
+    has to shrink for the transition to complete rather than inflate forever. The requirement
+    goes back to Turner, Weinberg and Widrow, Phys. Rev. D 46 (1992) 2384; the temperature form
+    is eq. (2.26) of Ellis, Lewicki and No, arXiv:1809.08242,
+
+    .. math::
+        \frac{1}{\mathcal{V}}\frac{{\rm d}\mathcal{V}}{{\rm d}t}
+        = H\left(3 + T\frac{{\rm d}I}{{\rm d}T}\right) < 0 \,,
+
+    which assumes :math:`{\rm d}T/{\rm d}t = -HT`. The percolation history here is integrated
+    with :math:`{\rm d}T/{\rm d}t = -3 c_{\rm s}^2 H T`, for which the rate is
+    :math:`3H(1 + c_{\rm s}^2 T\,{\rm d}I/{\rm d}T)`, and the returned quantity is the
+    bracket. At :math:`c_{\rm s}^2 = 1/3` it is the published criterion divided by three, so
+    the sign is unchanged. The derivative is taken on a monotonic spline of :math:`\ln I`
+    rather than of :math:`P`, because :math:`I` spans decades over the sampled range while
+    :math:`P` saturates.
+
     Parameters
     ----------
     TSYM : array_like
@@ -3559,6 +3711,14 @@ def record_entropy_scheme_diagnostics(
 ) -> None:
     """Write the entropy-scheme diagnostics and flag into ``derived``.
 
+    All three keys are set on every path. Where the comparison does not apply, the flag is
+    ``False`` and both numbers are ``nan``: the keys are registered for every run, so leaving
+    them unset would have the writer report them as unimplemented and fill all three with
+    ``nan``, the boolean included.
+
+    A timeout reaches the caller. Any other failure of the comparison leaves the ``nan`` and
+    must not invalidate the point, which was computed before the comparison was asked for.
+
     """
     derived.setdefault("WARNING:entropy_scheme_sensitive", False)
     derived.setdefault("DIAG:entropy_scheme_cs2_spread", float("nan"))
@@ -3627,6 +3787,24 @@ def entropy_scheme_sensitivity(
     configured_history=None,
 ):
     """How much the choice of entropy scheme matters on this percolation support.
+
+    The two schemes of ``ENTROPY_DEFINITIONS`` are two approximations to one entropy density
+    and neither contains the other, so the difference between them is an uncertainty of the
+    expansion history rather than a numerical error. It is reported and not corrected, because
+    nothing in the literature chooses between them.
+
+    Two numbers, both on the support that fixed the percolation temperature. ``cs_sq_spread``
+    is the median relative difference between the two schemes' ``3 c_s^2``, which over 91
+    points of four scan lines estimated the shift in the mean bubble separation to within a
+    factor of two at 93 % of points. ``scale_factor_shift`` is the gap between the schemes in
+    ``|delta ln a|`` across the support; since ``d ln a/d ln T = -1/(3 c_s^2)`` and
+    ``ln a = -(1/3) ln s`` up to a constant, it is the difference of the two logarithmic
+    entropy ratios over three, and the first-order estimate of the same shift.
+
+    Pass ``configured_history`` as the ``(logEntropyInt, coolingInt)`` pair already built for
+    the configured scheme and only the other scheme is evaluated: one further history rather
+    than two, the comparison made against the history the observables came from, and half the
+    cost, since one history is three ``entropy_density`` evaluations per support point.
 
     Returns
     -------
