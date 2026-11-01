@@ -32,8 +32,10 @@ unreliable.
 .. figure:: ../_static/plots/potential.png
    :width: 100%
 
-   The potential at 0.02 GeV, just below the critical temperature of 0.0207 GeV. The barrier
-   at 0.04 GeV separates the symmetric minimum at the origin from the broken one at 0.096 GeV.
+   The potential at 0.020 GeV, just below the critical temperature of 0.0218 GeV. The
+   barrier at :math:`\phi = 0.042` GeV separates the symmetric minimum at the origin from the
+   broken one at :math:`\phi = 0.0965` GeV, and is 81 per cent as high as the broken minimum
+   is deep.
 
 The phases
 ----------
