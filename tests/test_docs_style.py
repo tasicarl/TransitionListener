@@ -177,6 +177,9 @@ class TestShippedImages(unittest.TestCase):
             for m in re.finditer(r"\.\.\s+(figure|image)::\s+(\S+)"
                                  r"((?:\n\s+:\w[^\n]*)*)", text):
                 ref = m.group(2)
+                # A badge is served from a URL and has no file to measure.
+                if ref.startswith(("http://", "https://")):
+                    continue
                 if m.group(1) == "image":
                     width = re.search(r":width:\s*(\d+)\s*%", m.group(3))
                     if width is None or int(width.group(1)) < 50:
