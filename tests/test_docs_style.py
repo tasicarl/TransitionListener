@@ -43,6 +43,7 @@ class TestDocumentationStyle(unittest.TestCase):
             "two semicolons": "One thing; another thing; a third thing.",
             "em dash": "The step is small — smaller than the tolerance.",
             "filler": "Crucially, the step has to be small.",
+            "bold label": "**A trial ends in one of three ways.** The field turns around.",
         }
         import tempfile
 
@@ -53,6 +54,58 @@ class TestDocumentationStyle(unittest.TestCase):
                 page.write_text("Title\n=====\n\n%s\n" % line, encoding="utf-8")
                 found = checker.check([page])
                 self.assertTrue(found, "the checker missed %s: %r" % (name, line))
+
+
+class TestDocumentationMaths(unittest.TestCase):
+    def test_every_equation_renders(self):
+        """Every equation on every page compiles under LaTeX.
+
+        MathJax drops an equation it cannot parse without saying so, and the reader sees a
+        gap. LaTeX accepts more than MathJax does, so an equation LaTeX refuses is one the
+        page will certainly not show.
+        """
+        sys.path.insert(0, str(DOCS))
+        import check_docs_math as checker
+
+        if not checker.pages():
+            self.skipTest("no documentation pages were found")
+        problems = checker.violations()
+        self.assertEqual(problems, [], "\n" + "\n".join(problems))
+
+    def test_an_equation_that_cannot_render_is_caught(self):
+        """A rule that cannot fail is not a rule."""
+        import shutil
+        import tempfile
+
+        sys.path.insert(0, str(DOCS))
+        import check_docs_math as checker
+
+        if shutil.which("pdflatex") is None:
+            self.skipTest("pdflatex is not installed")
+        with tempfile.TemporaryDirectory() as tmp:
+            work = pathlib.Path(tmp)
+            self.assertTrue(checker._compile([r"\frac{1}{2}"], work))
+            for broken in (r"\frac{1}{2", r"\notacommand{x}", r"S_3 = \left( x"):
+                self.assertFalse(checker._compile([broken], work),
+                                 "LaTeX accepted %r, so the rule cannot fail" % broken)
+
+    def test_the_equations_of_a_page_are_found(self):
+        """The reader of the pages sees the same equations the checker does."""
+        sys.path.insert(0, str(DOCS))
+        import check_docs_math as checker
+
+        page = """Some prose with :math:`a_1` in it.
+
+.. math::
+   x = y + z
+
+.. math::
+   \\alpha = 1
+
+   \\beta = 2
+"""
+        found = [body for _, body in checker.equations(page)]
+        self.assertEqual(found, ["a_1", "x = y + z", r"\alpha = 1", r"\beta = 2"])
 
 
 class TestShippedImages(unittest.TestCase):
@@ -72,8 +125,16 @@ class TestShippedImages(unittest.TestCase):
         problems = []
         for page in sorted(source.rglob("*.rst")):
             text = page.read_text(encoding="utf-8")
-            for m in re.finditer(r"\.\.\s+figure::\s+(\S+)", text):
-                ref = m.group(1)
+            # Both directives, because a plot shown at full width is as coarse under
+            # ``image`` as under ``figure``. A thumbnail in a gallery is exempt: it is drawn
+            # at a third of the column and links to the full-size file behind it.
+            for m in re.finditer(r"\.\.\s+(figure|image)::\s+(\S+)"
+                                 r"((?:\n\s+:\w[^\n]*)*)", text):
+                ref = m.group(2)
+                if m.group(1) == "image":
+                    width = re.search(r":width:\s*(\d+)\s*%", m.group(3))
+                    if width is None or int(width.group(1)) < 50:
+                        continue
                 target = (page.parent / ref).resolve()
                 if not target.exists():
                     problems.append("%s refers to %s, which is not there"
@@ -120,6 +181,27 @@ class TestFigureStyle(unittest.TestCase):
         import check_figure_style as cfs
 
         return cfs
+
+    def test_a_banned_phrasing_in_a_panel_is_caught(self):
+        """The prose rules reach the words inside a figure, not only the page around it.
+
+        A phrasing struck out of the pages survived a review round inside a panel, because
+        nothing read the panels.
+        """
+        import matplotlib.pyplot as plt
+
+        sys.path.insert(0, str(DOCS))
+        import check_figure_style as cfs
+
+        fig, ax = plt.subplots()
+        ax.text(0.5, 0.5, "the verdict\nis settled here")
+        self.assertTrue(cfs.check_figure_wording(fig, "probe"))
+        plt.close(fig)
+
+        fig, ax = plt.subplots()
+        ax.text(0.5, 0.5, "the field turns back here")
+        self.assertEqual(cfs.check_figure_wording(fig, "probe"), [])
+        plt.close(fig)
 
     def test_a_curve_through_a_label_is_caught(self):
         cfs = self._checker()

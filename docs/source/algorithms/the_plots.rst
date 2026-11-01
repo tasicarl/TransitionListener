@@ -21,8 +21,8 @@ The potential
      potential:
        plot?: True
        T_GeV: 0.02
-       phi_ranges_GeV: [0, 1]
-       n: 100
+       phi_ranges_GeV: [0, 0.15]
+       n: 400
 
 The effective potential along the field directions at one temperature. This is the plot that
 shows whether there is a barrier at all, and how deep the broken minimum has become. A
@@ -32,7 +32,8 @@ unreliable.
 .. figure:: ../_static/plots/potential.png
    :width: 100%
 
-   The potential at 0.02 GeV.
+   The potential at 0.02 GeV, just below the critical temperature of 0.0207 GeV. The barrier
+   at 0.04 GeV separates the symmetric minimum at the origin from the broken one at 0.096 GeV.
 
 The phases
 ----------
@@ -114,10 +115,14 @@ The percolation history
 
      percolation:
        plot?: True
+       Tmin_GeV: 0.00235
+       Tmax_GeV: 0.00285
 
-The converted fraction and the nucleation rate across the support the solver built, which is
-the subject of :doc:`nucleation_and_percolation`. The support points are drawn, so this plot
-answers directly whether the solver put its samples where the fraction was rising.
+The true-vacuum fraction :math:`P_\mathrm{t}(T)` against temperature, with the nucleation and
+percolation temperatures marked, which is the subject of :doc:`nucleation_and_percolation`.
+The fraction is recomputed for the plot rather than read back from the run, so
+``Tmin_GeV`` and ``Tmax_GeV`` are worth setting to a window around the transition: over the
+whole range of the scan the rise is one vertical line.
 
 The bubble profile
 ------------------

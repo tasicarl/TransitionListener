@@ -72,7 +72,8 @@ away.
 
 Three details make this work in practice.
 
-**The integration cannot start at the centre.** The friction term diverges at :math:`r = 0`.
+**The integration cannot start at the centre**, because the friction term diverges at
+:math:`r = 0`.
 Near the centre the field barely moves, so the potential there is well approximated by a
 quadratic, and for a quadratic the equation has a closed-form solution in terms of Bessel
 functions. That solution carries the field from the origin out to a small radius, and the
@@ -80,7 +81,7 @@ numerical integration takes over from there. The same closed form is used afterw
 the interior back in, so the profile that the action is computed from does start at
 :math:`r = 0`.
 
-**The starting value is parametrised logarithmically.** Writing the field at the centre as
+**The starting value is parametrised logarithmically**, writing the field at the centre as
 
 .. math::
    \phi(0) = \phi_\mathrm{true} + \mathrm{e}^{-x}\,(\phi_\mathrm{false} - \phi_\mathrm{true}),
@@ -92,7 +93,7 @@ the solver bisects on :math:`x` rather than on the field directly. A thin-walled
 appears when the two minima are nearly degenerate, starts exponentially close to the true
 vacuum, and :math:`x` resolves that as easily as it resolves a thick-walled one.
 
-**A trial ends in one of three ways.** The field turns around before reaching the false vacuum,
+**A trial ends in one of three ways**: the field turns around before reaching the false vacuum,
 which is an undershoot and means the starting value was too close to the true vacuum. It passes
 the false vacuum, which is an overshoot. Or it arrives: the field and its derivative both land
 within a small distance of the false vacuum at rest, and the trial has converged.

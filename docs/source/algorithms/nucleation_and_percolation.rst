@@ -157,30 +157,31 @@ Refinement
 Several strategies exist because there are several ways for a profile to be unresolved, and
 each has its own signature:
 
-**A jump in the converted fraction.** Two neighbouring support points differing by more than
-:math:`\Delta P = 0.1` means the rise between them is unresolved, and intermediate
-temperatures are added. This is the commonest case and the most direct statement that the grid
-has stepped over the transition.
+A jump in the converted fraction is the commonest signature. Two neighbouring support points
+differing by more than :math:`\Delta P = 0.1` mean the rise between them is unresolved, and
+intermediate temperatures are added. Nothing else says as directly that the grid has stepped
+over the transition.
 
-**The rise of the rate.** Points are added across the interval where
-:math:`\log(\Gamma/H^4)` climbs, located from the sampled rate rather than from the converted
-fraction, so that the rise is resolved before it has had any visible effect on :math:`P`.
+The rise of the rate gets points across the interval where :math:`\log(\Gamma/H^4)` climbs,
+located from the sampled rate rather than from the converted fraction, so that the rise is
+resolved before it has had any visible effect on :math:`P`.
 
-**The peak of the rate**, refined where the sampled maximum is a single point rather than a
+The peak of the rate is refined where the sampled maximum is a single point rather than a
 resolved shape.
 
-**The hot shoulder**, where the converted fraction is still near zero but the rate is already
-appreciable, so the integral is accumulating in a region the grid treats as empty.
+The hot shoulder is the region where the converted fraction is still near zero but the rate is
+already appreciable, so the integral is accumulating where the grid treats the transition as
+not yet started.
 
-**The hot head**, the hottest retained support point, which has to sit where nothing has
-happened yet. If the profile still rises there, the window did not start early enough.
+The hot head is the hottest retained support point, which has to sit where nothing has happened
+yet. If the profile still rises there, the window did not start early enough.
 
-**Remeshing from anchors**, placing a fresh batch at fixed values of :math:`P` rather than
-adding to the existing grid, which distributes effort by how much of the transition each
-interval carries.
+Remeshing from anchors places a fresh batch at fixed values of :math:`P` rather than adding to
+the existing grid, which distributes effort by how much of the transition each interval
+carries.
 
-**Extending the range** in small batches, with the cold boundary chosen from how much the last
-extension gained.
+Extending the range adds small batches beyond the cold end, with the new boundary chosen from
+how much the last extension gained.
 
 Acceptance
 ~~~~~~~~~~

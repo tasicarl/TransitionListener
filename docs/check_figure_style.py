@@ -423,3 +423,35 @@ def check_curves_span(ax, name: str = "panel", skip: tuple = ()) -> list[str]:
                 problems.append("%s: the curve %r %s inside the panel, at (%.4g, %.4g)"
                                 % (name, label[:24], which, x, y))
     return problems
+
+
+def check_figure_wording(fig, name: str) -> list[str]:
+    """The words inside a figure are held to the same rules as the words around it.
+
+    A phrasing struck out of the prose stayed in a panel for a whole review round, because the
+    prose checker reads the pages and nothing read the figures. This reads every text artist
+    of the figure with the same patterns.
+    """
+    import pathlib
+    import re
+    import sys
+    import matplotlib.text as mtext
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import check_docs_style as prose
+
+    problems = []
+    for text in fig.findobj(mtext.Text):
+        body = text.get_text()
+        if not body.strip():
+            continue
+        flat = " ".join(body.split())
+        for pattern, what, instead in prose.RULES:
+            if not what:
+                continue
+            # The maths rules read LaTeX source; a panel's label is mathtext and uses the
+            # same commands, so both kinds apply.
+            if re.search(pattern, flat):
+                problems.append("%s: the label %r breaks a prose rule, %s -> write %s"
+                                % (name, flat[:48], what, instead))
+    return problems

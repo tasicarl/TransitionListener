@@ -420,6 +420,25 @@ def _symbols(maths: str) -> set:
     return found
 
 
+def _label_violations(text: str) -> list[tuple[int, str, str]]:
+    """A paragraph may not open with a bold label.
+
+    Carlo reads a bold phrase ending in a full stop as a heading the page did not need:
+    ``**A trial ends in one of three ways.** The field turns around ...``. The same sentence
+    with the bold carried into it reads as prose. Bold that is part of the sentence, as in
+    ``**The first pass** locates the range``, is left alone.
+    """
+    out = []
+    previous_blank = True
+    for i, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if previous_blank and re.match(r"^\*\*[^*]*[.:]\*\*", stripped):
+            out.append((i, "a paragraph opens with a bold label",
+                        "the label as the first words of the sentence, without the full stop"))
+        previous_blank = not stripped
+    return out
+
+
 def check(paths: list[pathlib.Path]) -> list[str]:
     problems: list[str] = []
     for path in paths:
@@ -443,7 +462,7 @@ def check(paths: list[pathlib.Path]) -> list[str]:
                 if re.search(pattern, line):
                     problems.append("%s:%d: %s -> write %s" % (rel, i, what, instead))
         for finder in (_differential_violations, _subscript_violations, _title_violations,
-                       _render_violations, _group_violations,
+                       _render_violations, _group_violations, _label_violations,
                        _undefined_symbol_violations):
             for i, what, instead in finder(text):
                 if questions_allowed and "question" in what:

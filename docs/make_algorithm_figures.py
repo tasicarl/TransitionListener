@@ -97,7 +97,7 @@ def figure_shooting() -> None:
 
     # phi(0) = phi_true + exp(-x) (phi_false - phi_true), so a larger x starts nearer the
     # true vacuum, with more energy, and overshoots.
-    r_o, p_o, rv_o, pv_o, c_o = trial(x_solved * 1.30, 14.2)
+    r_o, p_o, rv_o, pv_o, c_o = trial(x_solved * 1.30, 14.6)
     r_u, p_u, rv_u, pv_u, c_u = trial(x_solved * 0.78, float(solved.R[-1]))
     assert c_u == "undershoot" and c_o == "overshoot", (c_u, c_o)
 
@@ -116,7 +116,7 @@ def figure_shooting() -> None:
     ax.set_xlabel(r"radius $r$")
     ax.set_ylabel(r"field $\phi$")
     ax.set_xlim(0, float(solved.R[-1]))
-    ax.set_ylim(-0.30, 0.98)
+    ax.set_ylim(-0.40, 0.98)
     ax.text(0.985, 0.028, "false vacuum", transform=ax.get_yaxis_transform(),
             color=DESYdunkelblau, fontsize=7, ha="right", va="bottom")
     # The label of a guide line sits on the line it names, on a white patch, in the one window
@@ -130,11 +130,11 @@ def figure_shooting() -> None:
     # Two short lines: a label wide enough to reach the plunging overshoot cannot be put
     # anywhere in this band without touching it, so the rest of the sentence is in the
     # caption rather than in the panel.
-    ax.annotate("the verdict\nis settled here",
-                xy=(rv_o, pv_o - 0.016), xytext=(3.6, -0.175), color="0.35", fontsize=7,
+    ax.annotate("decision for over- and\nundershoot is decided here",
+                xy=(rv_o, pv_o - 0.016), xytext=(6.4, -0.285), color="0.35", fontsize=7,
                 ha="center", va="center",
                 arrowprops=dict(arrowstyle="->", color="0.45", lw=0.8))
-    ax.annotate("", xy=(rv_u, pv_u - 0.016), xytext=(3.6, -0.135),
+    ax.annotate("", xy=(rv_u, pv_u - 0.016), xytext=(6.4, -0.235),
                 arrowprops=dict(arrowstyle="->", color="0.45", lw=0.8))
     ax.legend(frameon=False, loc="upper right")
     fig.subplots_adjust(left=0.100, right=0.985, bottom=0.135, top=0.975)
@@ -205,12 +205,13 @@ def _check(fig, name: str) -> None:
     import sys
 
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-    from check_figure_style import (check_curves_span, check_figure, check_shape,
-                                    check_with_paper_style)
+    from check_figure_style import (check_curves_span, check_figure, check_figure_wording,
+                                    check_shape, check_with_paper_style)
 
     problems = check_figure(fig, name)
     problems += check_shape(fig, name)
     problems += check_with_paper_style(fig, name)
+    problems += check_figure_wording(fig, name)
     for i, ax in enumerate(fig.get_axes()):
         problems += check_curves_span(ax, "%s panel %d" % (name, i))
     if problems:
@@ -313,6 +314,9 @@ def _two_higgs_doublet_model():
     return mod.R2HDM(params, verbose=False)
 
 
+DOF_TICKS = [25.0, 50.0, 75.0, 100.0, 125.0]
+
+
 def figure_plasma_dof() -> None:
     """The tabulated bath, and the whole plasma of a model in each of its two phases."""
     from scipy.optimize import brentq
@@ -412,6 +416,11 @@ def figure_plasma_dof() -> None:
             ha="right", va="center")
     a1.set_ylabel("degrees of freedom")
     a1.set_ylim(0.0, 125.0)
+    # The same limits and the same ticks as the panel below, so that a height in one panel is
+    # the same number of degrees of freedom as the same height in the other. The lowest tick
+    # is dropped because in the lower panel it would sit on the leftmost tick of the
+    # temperature axis.
+    a1.set_yticks(DOF_TICKS)
     a1.legend(frameon=False, loc="lower right")
     a1.set_title("the tabulated Standard Model bath on its own", fontsize=8, pad=4)
 
@@ -442,7 +451,7 @@ def figure_plasma_dof() -> None:
                                     connectionstyle="angle,angleA=0,angleB=90,rad=0"))
 
     a2.set_xscale("log")
-    a2.yaxis.set_major_locator(mpl.ticker.MaxNLocator(nbins=6, prune="lower"))
+    a2.set_yticks(DOF_TICKS)
     a2.set_xlabel(r"temperature $T$ (GeV)")
     a2.set_ylabel("degrees of freedom")
     a2.set_xlim(T[0], T[-1])

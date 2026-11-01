@@ -722,7 +722,9 @@ class TLPlots():
             self._plot_profile_axis(ax, tr, radius, phi, transition_index, ylabel)
 
         axes[-1].set_xlabel(r"Bubble radius / $\mathrm{GeV}^{-1}$")
-        add_TL_logo(loc="lower right", magnification=2, ax=axes[-1])
+        # Lower left, because a bounce profile starts at the true vacuum and falls to the
+        # false one: the small-radius, small-field corner is the one the curve never enters.
+        add_TL_logo(loc="lower left", magnification=2, ax=axes[-1])
         fig.tight_layout()
         save_figure(fig, self.output_folder_name + "profile.pdf")
 
