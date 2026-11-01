@@ -228,7 +228,6 @@ Numerical integration
 ~~~~~~~~~~~~~~~~~~~~~
 """
 
-
 class IntegrationError(Exception):
     """
     Used to indicate an integration error, primarily in :func:`rkqs`.
@@ -241,9 +240,6 @@ _rkqs_rval = namedtuple("rkqs_rval", "Delta_y Delta_t dtnxt")
 
 def _step_error_estimate(yerr, y, epsabs, epsfrac):
     """How far a Runge-Kutta step's error estimate is beyond the tolerances it is held to.
-
-    See :ref:`note-helper-functions-step-error-estimate` for the reasoning and the measurements
-    behind this.
 
     Parameters
     ----------
@@ -413,7 +409,6 @@ In contrast, :class:`gradientFunction` and :class:hessianFunction` accept
 functions as input and return callable class instances (essentially functions)
 as output. The returned functions can then be used to find derivatives.
 """
-
 
 def deriv14(y,x):
     R"""
@@ -754,7 +749,6 @@ Two-point interpolation
 ~~~~~~~~~~~~~~~~~~~~~~~
 """
 
-
 def makeInterpFuncs(y0, dy0, d2y0, y1, dy1, d2y1):
     """
     Create interpolating functions between two points with a quintic polynomial.
@@ -800,7 +794,6 @@ class cubicInterpFunction(object):
 Spline interpolation
 ~~~~~~~~~~~~~~~~~~~~
 """
-
 
 def Nbspl(t, x, k=3):
     """
@@ -888,9 +881,6 @@ def temperatureDerivativeStep(pot, T: float, X=None,
                               two_point: bool = False) -> float:
     r"""Finite-difference step for temperature derivatives of the potential.
 
-    See :ref:`note-helper-functions-temperature-derivative-step` for the reasoning and the
-    measurements behind this.
-
     Parameters
     ----------
     pot : generic_potential
@@ -943,9 +933,6 @@ def temperatureDerivativeStep(pot, T: float, X=None,
 
 def thermalDerivativeStep(pot, T: float, X=None) -> float:
     r"""Finite-difference step for temperature derivatives of the *thermal* potential.
-
-    See :ref:`note-helper-functions-thermal-derivative-step` for the reasoning and the
-    measurements behind this.
 
     Parameters
     ----------

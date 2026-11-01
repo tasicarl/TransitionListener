@@ -1,5 +1,8 @@
 """Nucleation-temperature search and tunneling-action bookkeeping.
 
+What this module computes is described in the documentation under
+Nucleation, percolation and the expansion history: :doc:`/algorithms/nucleation_and_percolation`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 

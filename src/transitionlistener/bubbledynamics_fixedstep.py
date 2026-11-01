@@ -4,6 +4,9 @@ It contains functions to calculate the energy density, effective degrees of free
 the Hubble parameter, the bubble nucleation rate, and from this the nucleation
 and percolation temperature.
 
+What this module computes is described in the documentation under
+Nucleation, percolation and the expansion history: :doc:`/algorithms/nucleation_and_percolation`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 

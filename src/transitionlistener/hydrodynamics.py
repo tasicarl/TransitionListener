@@ -3,6 +3,9 @@ of the expanding bubbles.
 
 Based on the code snippet provided in `arxiv:2303.10171`.
 
+What this module computes is described in the documentation under
+Hydrodynamics of the bubble wall: :doc:`/algorithms/hydrodynamics`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -78,12 +81,9 @@ SOUND_SPEED_STEP_RATIO = 10.0
 SOUND_SPEED_JUMP_TOLERANCE = cn.SOUND_SPEED_JUMP_TOLERANCE
 """Relative change of ``c_s`` under that step change above which the value is called noisy."""
 
-
 def resolve_configured_sound_speed(setting) -> float:
     """Turn a non-``"compute"`` ``GWconfig.sound_speed`` setting into a speed.
 
-    See :ref:`note-hydrodynamics-resolve-configured-sound-speed` for the reasoning and the
-    measurements behind this.
     """
     if isinstance(setting, str) and setting.strip() == "1/3":
         return 1.0 / np.sqrt(3.0)
@@ -185,9 +185,6 @@ class Hydrodynamics():
 
     def sound_speed_is_step_dependent(self, T: float, sym: bool) -> tuple[bool, float]:
         """Whether the sound speed at ``T`` changes when the derivative step is changed.
-
-        See :ref:`note-hydrodynamics-hydrodynamics-sound-speed-is-step-dependent` for the
-        reasoning and the measurements behind this.
 
         Returns
         -------

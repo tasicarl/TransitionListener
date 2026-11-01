@@ -1,5 +1,8 @@
 """Compute thermodynamic and gravitational-wave observables for transitions.
 
+What this module computes is described in the documentation under
+Nucleation, percolation and the expansion history: :doc:`/algorithms/nucleation_and_percolation`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -218,8 +221,6 @@ class _BoundedPchipInterpolator:
 def build_action_spline(TSYM, S):
     """The percolation action spline, bounded so the rate vanishes above the computed range.
 
-    See :ref:`note-transition-observables-build-action-spline` for the reasoning and the
-    measurements behind this.
     """
     S = np.asarray(S, dtype=float)
     finite_s = S[np.isfinite(S)]
@@ -369,9 +370,6 @@ _T0_MINIMUM_FIELD_RTOL = 1.0e-3
 
 def theChainEndedElsewhere(pot, last_vev) -> bool:
     """Whether the chain's last minimum is a different minimum from `pot.X0`.
-
-    See :ref:`note-transition-observables-the-chain-ended-elsewhere` for the reasoning and the
-    measurements behind this.
 
     Parameters
     ----------

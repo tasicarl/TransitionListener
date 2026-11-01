@@ -25,3 +25,4 @@ number that was wrong without saying so.
    nucleation_and_percolation
    hydrodynamics
    the_spectrum
+   upgrading_from_2_1

@@ -1,6 +1,9 @@
 """
 Particle and mass spectrum utilities with concrete particle species.
 
+What this module computes is described in the documentation under
+The plasma and its degrees of freedom: :doc:`/algorithms/the_plasma`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 

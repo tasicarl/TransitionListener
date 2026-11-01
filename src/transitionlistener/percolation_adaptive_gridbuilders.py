@@ -7,6 +7,9 @@ arrays and settings in and produces candidate temperature grids; the
 top-level scan controllers (and their :class:`PercolationState`
 bookkeeping) stay in the parent module.
 
+What this module computes is described in the documentation under
+Nucleation, percolation and the expansion history: :doc:`/algorithms/nucleation_and_percolation`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -374,8 +377,6 @@ def _dead_rate_floor(log10_rate: np.ndarray) -> float:
 def _nucleation_is_dead(temperature: float, action: float) -> bool:
     """True when ``S_3/T`` is too large for a bubble to nucleate at any Hubble rate.
 
-    See :ref:`note-percolation-adaptive-gridbuilders-nucleation-is-dead` for the reasoning and
-    the measurements behind this.
     """
     try:
         T = float(temperature)
@@ -393,8 +394,6 @@ _COLD_WALK_MAX_FAILED_ACTIONS = 3
 def _cold_walk_has_left_the_bounce_region(actions, computed=None) -> bool:
     """True when the coldest support points no longer have a computable bounce.
 
-    See :ref:`note-percolation-adaptive-gridbuilders-cold-walk-has-left-the-bounce-region` for
-    the reasoning and the measurements behind this.
     """
     values = np.asarray(actions, dtype=float)
     if values.size == 0:
@@ -1202,8 +1201,6 @@ def _acceptance_jump_is_exempted_inert(
 ) -> bool:
     """Is the fatal jump interval one that only the inert exemption makes refinable?
 
-    See :ref:`note-percolation-adaptive-gridbuilders-acceptance-jump-is-exempted-inert` for the
-    reasoning and the measurements behind this.
     """
 
     jump_interval, _, threshold_mode = _preferred_probability_jump_interval(

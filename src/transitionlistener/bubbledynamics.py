@@ -4,6 +4,9 @@ It contains functions to calculate the energy density, effective degrees of free
 the Hubble parameter, the bubble nucleation rate, and from this the nucleation
 and percolation temperature.
 
+What this module computes is described in the documentation under
+Nucleation, percolation and the expansion history: :doc:`/algorithms/nucleation_and_percolation`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -690,8 +693,6 @@ _ENTROPY_REL_STEP = 1.0e-4
 def entropy_density(pot, phase, T: float, definition: str = "dof_table") -> float:
     """Entropy density of the plasma of the traced phase, in the chosen scheme.
 
-    See :ref:`note-bubbledynamics-entropy-density` for the reasoning and the measurements behind
-    this.
     """
     t = float(T)
     if definition == "eff_potential":
@@ -998,9 +999,6 @@ def _clamp_between(values, first, second):
 def _double_integral_subgrid(T, H, S, cooling, scale):
     """Subdivide the support intervals of the double integral where the source varies.
 
-    See :ref:`note-bubbledynamics-double-integral-subgrid` for the reasoning and the
-    measurements behind this.
-
     Parameters
     ----------
     T : np.ndarray
@@ -1095,8 +1093,6 @@ def _double_integral_subgrid(T, H, S, cooling, scale):
 # ODE-based percolation integral
 # ---------------------------------------------------------------------------
 #
-# The reasoning and the measurements are in the implementation notes for bubbledynamics.py,
-# under `_LOG_GAMMA_SOURCE_FLOOR`.
 
 _LOG_GAMMA_SOURCE_FLOOR = -700.0  # exp(-700) ~ 1e-304, safely above denormal threshold
 
@@ -1160,9 +1156,6 @@ def percIntegralODE(
     i_target: float | None = None,
 ) -> np.ndarray | tuple[np.ndarray, float | None]:
     r"""Compute I(T_i) at every grid point via the J_n ODE chain.
-
-    See :ref:`note-bubbledynamics-perc-integral-ode` for the reasoning and the measurements
-    behind this.
 
     Parameters
     ----------
@@ -1600,9 +1593,6 @@ _APPROX_PERCOLATION_MAX_BLIND_STEPS = 20
 def _bracket_sign(value) -> float:
     """The sign of a criterion value for bracketing: +1, -1, or 0 for no information.
 
-    See :ref:`note-bubbledynamics-bracket-sign` for the reasoning and the measurements behind
-    this.
-
     Returns
     -------
     float
@@ -1746,8 +1736,6 @@ def calcApproxPercolation(
     # fails to bracket a root, fail fast and let the caller choose a controlled fallback
     # instead of spending many hidden action evaluations.
     #
-    # The reasoning and the measurements are in the implementation notes for bubbledynamics.py,
-    # under `calcApproxPercolation`.
     args = (outdict, pot, phase_sym, phase_bro, Tmax, Tmin, vw, verbose)
     entered_live = False
     blind_steps = 0
@@ -1963,9 +1951,6 @@ def integrate_broken_temperature(
     atol: float = 0.0,
 ):
     r"""Integrate the broken-phase temperature down to ``T_target``.
-
-    See :ref:`note-bubbledynamics-integrate-broken-temperature` for the reasoning and the
-    measurements behind this.
 
     Returns
     -------
@@ -2436,8 +2421,6 @@ class PercolationDiagnostics:
 # unstable bounce solve, and one quadratic in ln T cannot describe a range of hundreds of
 # decades at all.
 #
-# The reasoning and the measurements are in the implementation notes for bubbledynamics.py,
-# under `_JITTER_DEAD_RATE_DECADES`.
 _JITTER_DEAD_RATE_DECADES = 30.0
 
 
@@ -2712,8 +2695,6 @@ def _try_action_jitter_tunneltight_rescue(
         # keeping it injects a rate feature that is orders of magnitude wrong into P(T).
         # Discard it and let the profile stand on the samples that are trustworthy.
         #
-        # The reasoning and the measurements are in the implementation notes for
-        # bubbledynamics.py, under `_try_action_jitter_tunneltight_rescue`.
         still_worst = diagnostic.get("temperature")
         residual_now = diagnostic.get("max_residual_oom")
         if (
@@ -2918,8 +2899,6 @@ def _tight_tunneling_params(pot):
 def _recompute_actions_tight(pot, temperatures, phase_sym, phase_bro, outdict, progress):
     """Recompute the actions at ``temperatures`` with the path deformation tightened.
 
-    See :ref:`note-bubbledynamics-recompute-actions-tight` for the reasoning and the
-    measurements behind this.
     """
     original = pot.config.tracingConf.tunneling_params
     try:
@@ -2962,9 +2941,6 @@ def _restore_dropped_actions(outdict, dropped) -> None:
 def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phase_sym, phase_bro, verbose=False,
                   diagnostics: dict | None = None) -> float:
     """Calculate the phase transition speed from the action derivative.
-
-    See :ref:`note-bubbledynamics-calc-beta-h-s3` for the reasoning and the measurements behind
-    this.
 
     Parameters
     ----------
@@ -3367,9 +3343,6 @@ def calc_betaH_S3_approx(T, outdict, pot, phase_sym, phase_bro, tmin, tmax, verb
 def falseVacuumVolumeGrowthRate(TSYM, P, T, cs_sq: float = 1.0 / 3.0) -> float:
     r"""Growth rate of the physical false-vacuum volume, in units of ``3H``.
 
-    See :ref:`note-bubbledynamics-false-vacuum-volume-growth-rate` for the reasoning and the
-    measurements behind this.
-
     Parameters
     ----------
     TSYM : array_like
@@ -3522,7 +3495,6 @@ def expansion_interpolants(pot, phase_symmetric, T, *, time_temperature_mode: st
 ENTROPY_SCHEME_DEFAULT_THRESHOLD = 0.04
 """Default for ``percolation_entropy_scheme_warn_threshold``; see ``config.PercolationConf``."""
 
-
 def validate_entropy_definition(entropy_definition) -> str:
     """Return the entropy definition to use, refusing anything unknown.
 
@@ -3587,8 +3559,6 @@ def record_entropy_scheme_diagnostics(
 ) -> None:
     """Write the entropy-scheme diagnostics and flag into ``derived``.
 
-    See :ref:`note-bubbledynamics-record-entropy-scheme-diagnostics` for the reasoning and the
-    measurements behind this.
     """
     derived.setdefault("WARNING:entropy_scheme_sensitive", False)
     derived.setdefault("DIAG:entropy_scheme_cs2_spread", float("nan"))
@@ -3657,9 +3627,6 @@ def entropy_scheme_sensitivity(
     configured_history=None,
 ):
     """How much the choice of entropy scheme matters on this percolation support.
-
-    See :ref:`note-bubbledynamics-entropy-scheme-sensitivity` for the reasoning and the
-    measurements behind this.
 
     Returns
     -------

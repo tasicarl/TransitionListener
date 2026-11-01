@@ -1,6 +1,9 @@
 """
 Module to calculate the GW energy spectrum from the phase transition parameters.
 
+What this module computes is described in the documentation under
+The gravitational wave spectrum: :doc:`/algorithms/the_spectrum`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 

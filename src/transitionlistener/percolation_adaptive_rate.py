@@ -1,5 +1,8 @@
 """Rate-peak and hot-onset helpers for adaptive_step_size percolation.
 
+What this module computes is described in the documentation under
+Nucleation, percolation and the expansion history: :doc:`/algorithms/nucleation_and_percolation`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -55,8 +58,6 @@ def _temperatures_match(
 ) -> np.ndarray:
     """Elementwise ``|v - candidate| <= relative * max(|v|, |candidate|)``.
 
-    See :ref:`note-percolation-adaptive-rate-temperatures-match` for the reasoning and the
-    measurements behind this.
     """
     values_arr = np.asarray([] if values is None else values, dtype=float)
     if values_arr.size == 0:
@@ -1006,8 +1007,6 @@ def _rate_interval_is_post_peak_inert(
     # them to ``high_index >= low_index``, which returned "not inert" for an interval whose
     # rate it never looked at.
     #
-    # The reasoning and the measurements are in the implementation notes for
-    # percolation_adaptive_rate.py, under `_rate_interval_is_post_peak_inert`.
     high_matches = np.flatnonzero(_temperatures_match(temps, high, relative=2.0e-6))
     low_matches = np.flatnonzero(_temperatures_match(temps, low, relative=2.0e-6))
     if high_matches.size == 0 or low_matches.size == 0:

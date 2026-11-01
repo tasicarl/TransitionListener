@@ -28,6 +28,9 @@ For more explicit details, see the original paper
 
 .. _`arXiv:1109.4189`: http://arxiv.org/abs/1109.4189
 
+What this module computes is described in the documentation under
+The bounce action: :doc:`/algorithms/the_bounce_action`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -392,8 +395,6 @@ class Deformation_Points(object):
     Deform a path in the presence of a potential such that the normal forces along the path are
     zero.
 
-    See :ref:`note-path-deformation-deformation-points` for the reasoning and the measurements
-    behind this.
 
     Parameters
     ----------
@@ -687,8 +688,6 @@ _MAX_EXTENSION_KNOTS = 20000
 def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> float:
     """Distance to the first local minimum of ``V`` walking outward from ``p0`` along ``dp0``.
 
-    See :ref:`note-path-deformation-extension-minimum` for the reasoning and the measurements
-    behind this.
     """
 
     def value(x: float) -> float:
@@ -708,8 +707,6 @@ def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> f
     def clears_the_floor(x: float) -> bool:
         """Is the potential at `x` still above the other end of the path?
 
-        See :ref:`note-path-deformation-extension-minimum-clears-the-floor` for the reasoning
-        and the measurements behind this.
         """
         if floor is None:
             return True
@@ -805,8 +802,6 @@ def _uniform_V_samples(L: float, n_samples: int) -> np.ndarray:
 def _barrier_is_resolved(x: np.ndarray, y: np.ndarray, L: float) -> bool:
     """Do enough of the sampled values fall inside the barrier to represent it?
 
-    See :ref:`note-path-deformation-barrier-is-resolved` for the reasoning and the measurements
-    behind this.
     """
     inside = (x >= 0.0) & (x <= L)
     n_inside = int(np.count_nonzero(inside))
@@ -824,8 +819,6 @@ def _barrier_is_resolved(x: np.ndarray, y: np.ndarray, L: float) -> bool:
 def _clustered_V_samples(L: float, n_samples: int) -> np.ndarray:
     """Samples for a barrier too narrow for the uniform grid to carry.
 
-    See :ref:`note-path-deformation-clustered-v-samples` for the reasoning and the measurements
-    behind this.
     """
     n_uniform = max(2, n_samples // 2)
     # The two end grids meet at L/2, so `np.unique` drops one of that pair and the grid comes
@@ -847,9 +840,6 @@ def _clustered_V_samples(L: float, n_samples: int) -> np.ndarray:
 
 class SplinePath(object):
     """Fit a spline to a path in field space, and find the potential on that path.
-
-    See :ref:`note-path-deformation-spline-path` for the reasoning and the measurements behind
-    this.
 
     Parameters
     ----------
@@ -1557,8 +1547,6 @@ def _execute_full_tunneling(
 #: path the bounce traverses, before they are treated as two pairings and each given its own
 #: bounce.
 #:
-#: The reasoning and the measurements are in the implementation notes for pathDeformation.py,
-#: under `_IMAGE_SEPARATION_RTOL`.
 _IMAGE_SEPARATION_RTOL = 1.0e-4
 
 
@@ -1605,22 +1593,10 @@ def _isAnOrdinaryBounce(entry: dict) -> bool:
 
 
 def _isACheaperPairing(action: float, best: float) -> bool:
-    """Whether `action` is the smaller of two pairings' actions.
+    """Whether this pairing's action should replace the best one found so far.
 
-    See :ref:`note-path-deformation-is-acheaper-pairing` for the reasoning and the measurements
-    behind this.
-
-    Parameters
-    ----------
-    action : float
-        The candidate pairing's action.
-    best : float
-        The action of the pairing kept so far.
-
-    Returns
-    -------
-    bool
-        True where the candidate's action is the one to keep.
+    A bounce action is finite and non-negative. Anything else is not an action: it never wins,
+    and the first real value displaces it.
     """
     if not (np.isfinite(action) and action >= 0.0):
         return False
@@ -1632,9 +1608,6 @@ def _isACheaperPairing(action: float, best: float) -> bool:
 def imagesOfTheFalseVacuum(x_false: np.ndarray, x_true: np.ndarray,
                            invGroupElements) -> list:
     r"""Every image of the false vacuum, the one nearest the true vacuum first.
-
-    See :ref:`note-path-deformation-images-of-the-false-vacuum` for the reasoning and the
-    measurements behind this.
 
     Parameters
     ----------
@@ -1695,8 +1668,6 @@ def imagesOfTheFalseVacuum(x_false: np.ndarray, x_true: np.ndarray,
 def imagesToPairOver(pot) -> list:
     """The symmetry elements the bounce should be computed over, for this potential.
 
-    See :ref:`note-path-deformation-images-to-pair-over` for the reasoning and the measurements
-    behind this.
     """
     group = list(getattr(pot, "invGroupElements", []) or [])
     if not group:
@@ -1719,9 +1690,6 @@ def bounceActionOverImages(
     **fullTunneling_params,
 ) -> dict:
     """Compute the bounce for every image of the false vacuum and keep the smallest action.
-
-    See :ref:`note-path-deformation-bounce-action-over-images` for the reasoning and the
-    measurements behind this.
 
     Parameters
     ----------

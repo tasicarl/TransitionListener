@@ -1,6 +1,9 @@
 """This module contains routines to compute the possible transitions
 between phases.
 
+What this module computes is described in the documentation under
+Phases and transitions: :doc:`/algorithms/phases_and_transitions`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -72,7 +75,6 @@ class TransitionInfo():
     """
     derived_params = {}
     """Computed observables."""
-
 
 def _transition_sort_temperature(transition: TransitionInfo) -> tuple[float, float]:
     """Sort transitions by descending nucleation temperature, falling back to ``Tcrit``.
@@ -634,8 +636,6 @@ class Transitions():
             # then follow the cycle instead of stopping. Testing only "every candidate was
             # rejected" catches the measured case and not that one.
             #
-            # The reasoning and the measurements are in the implementation notes for
-            # transitions.py, under `Transitions.findTransitionPathFromTnuc`.
             if startPhase.key == self.phases.T0Phase and transitions:
                 if verbose:
                     print(f"Chain complete at the zero-temperature phase {startPhase.key} "

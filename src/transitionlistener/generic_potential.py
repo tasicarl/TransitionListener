@@ -20,6 +20,9 @@ rest of the code:
 6. X0 (zero temperature global minimum)
 7. Mass spectrum of the theory.
 
+What this module computes is described in the documentation under
+The effective potential: :doc:`/algorithms/the_effective_potential`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -76,8 +79,6 @@ def _debye_agrees(measured, reference, magnitude):
 def _daisy_mass_cubed_difference(m20, m2T, Pi=None):
     r"""Return ``(m_T^2)^{3/2} - (m_0^2)^{3/2}`` without losing significant digits.
 
-    See :ref:`note-generic-potential-daisy-mass-cubed-difference` for the reasoning and the
-    measurements behind this.
     """
     m20 = np.asarray(m20)
     m2T = np.asarray(m2T)
@@ -118,8 +119,6 @@ class generic_potential():
     """
     An abstract class from which one can easily create finite-temperature effective potentials.
 
-    See :ref:`note-generic-potential-generic-potential` for the reasoning and the measurements
-    behind this.
 
     Attributes
     ----------
@@ -887,9 +886,6 @@ class generic_potential():
     def daisy_outside_validity(self, X: np.ndarray, T: float) -> tuple[bool, float]:
         """Whether the daisy resummation is being used where it does not apply.
 
-        See :ref:`note-generic-potential-generic-potential-daisy-outside-validity` for the
-        reasoning and the measurements behind this.
-
         Returns
         -------
         tuple[bool, float]
@@ -951,9 +947,6 @@ class generic_potential():
     def debye_massSq(self, X: np.ndarray, T: float | np.ndarray):
         """The thermal part of the boson masses squared, if the model can give it directly.
 
-        See :ref:`note-generic-potential-generic-potential-debye-mass-sq` for the reasoning and
-        the measurements behind this.
-
         Returns
         -------
         numpy.ndarray or None
@@ -979,8 +972,6 @@ class generic_potential():
     def _debye_coefficient(self, X: np.ndarray):
         """``c`` with ``Pi = c T^2``, measured and verified, or ``None``.
 
-        See :ref:`note-generic-potential-generic-potential-debye-coefficient` for the reasoning
-        and the measurements behind this.
         """
         state = self._debye_state
         # The array test comes first: comparing a cached coefficient array against a string

@@ -5,6 +5,9 @@ adaptive cold-boundary picker, jump-underresolution guards) live in
 :mod:`transitionlistener.percolation_adaptive_gridbuilders`. This module keeps the
 top-level scan controllers and their :class:`PercolationState` bookkeeping.
 
+What this module computes is described in the documentation under
+Nucleation, percolation and the expansion history: :doc:`/algorithms/nucleation_and_percolation`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -441,9 +444,6 @@ def _dynamiczoomwindow_accuracy_verdict(
     settings,
 ) -> bool | None:
     """Return True, False or None for the accuracy targets of an accepted profile.
-
-    See :ref:`note-percolation-adaptivestepsize-dynamiczoomwindow-accuracy-verdict` for the
-    reasoning and the measurements behind this.
 
     Returns
     -------
@@ -1401,8 +1401,6 @@ def _compute_step3_profile(
         else:
             # Carry the last computed action forward rather than writing `nan`.
             #
-            # The reasoning and the measurements are in the implementation notes for
-            # percolation_adaptivestepsize.py, under `_compute_step3_profile`.
             last_action = np.nan
             if i > 0:
                 previous = state.Sr[:i]

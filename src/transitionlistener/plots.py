@@ -265,8 +265,6 @@ class TLPlots():
     def _bounce_false_vacuum_at_temperature(self, tr, temperature):
         """The false vacuum the bounce was computed from, evaluated at ``temperature``.
 
-        See :ref:`note-plots-tlplots-bounce-false-vacuum-at-temperature` for the reasoning and
-        the measurements behind this.
         """
         traced = getattr(tr, "high_vev_as_traced", None)
         # The fallback has to be in the same frame as the element applied below. `valAt` fails

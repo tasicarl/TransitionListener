@@ -9,6 +9,9 @@ friction (:class:`WallWithConstFriction`) instead of radius-dependent friction,
 or to calculate the instanton in the presence of gravity (*not yet
 implemented*).
 
+What this module computes is described in the documentation under
+The bounce action: :doc:`/algorithms/the_bounce_action`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -66,8 +69,6 @@ _ACTION_BRACKET_TOL = 5.0e-2
 def _bracketSpread(undershoot: float, overshoot: float) -> float:
     """How far apart the two bracketing branches are, relative to the larger of them.
 
-    See :ref:`note-tunneling1-d-bracket-spread` for the reasoning and the measurements behind
-    this.
     """
     if not (np.isfinite(undershoot) and np.isfinite(overshoot)):
         return float("inf")
@@ -833,8 +834,6 @@ class SingleFieldInstanton:
             # `phitol |delta_phi|` is 1.6e-07 of the integrated feature at T_int = 0.1 and
             # 2.4e-02 of it at 1e-6.
             #
-            # The reasoning and the measurements are in the implementation notes for
-            # tunneling1D.py, under `SingleFieldInstanton.findProfile`.
             excursion = abs(delta_phi0 - delta_phi)
             # The floor keeps `epsabs` strictly positive, which `rkqs` needs: handed a zero
             # absolute tolerance it shrinks the step by the largest factor it is allowed on
@@ -889,8 +888,6 @@ class SingleFieldInstanton:
             # the slope, and the others are not small: `dV` can come back with the wrong
             # sign, or as `nan`.
             #
-            # The reasoning and the measurements are in the implementation notes for
-            # tunneling1D.py, under `SingleFieldInstanton.findProfile` (2).
             phi0 = self.phi_absMin + delta_phi0
             dV = self.dV_from_absMin(delta_phi0)
             slope_away_from_absMin = dV * np.sign(delta_phi0)
@@ -961,8 +958,6 @@ class SingleFieldInstanton:
             # loop stops as well when the bracket can no longer be subdivided on the
             # floating-point grid.
             #
-            # The reasoning and the measurements are in the implementation notes for
-            # tunneling1D.py, under `SingleFieldInstanton.findProfile` (4).
             if x == xmin or x == xmax:
                 break
             if (xmax-xmin) < xtol * min(max(abs(x), abs(xmin)), 1.0):
@@ -982,8 +977,6 @@ class SingleFieldInstanton:
         # refused a temperature whose final branches agree to 7.0e-04. The caller applies
         # the test to the profile it keeps.
         #
-        # The reasoning and the measurements are in the implementation notes for tunneling1D.py,
-        # under `SingleFieldInstanton.findProfile` (3).
         self.bracket_action_spread = 0.0 if ctype == "converged" else float("inf")
         self.bracket_branch_actions = {}
         if ctype != "converged" and len(bracket_trials) == 2:

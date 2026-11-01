@@ -3,6 +3,9 @@ an interface to the phase tracing routines, stores
 the phase information of the potential and provides
 interpolated functions.
 
+What this module computes is described in the documentation under
+Phases and transitions: :doc:`/algorithms/phases_and_transitions`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -135,8 +138,6 @@ class PhaseInfo:
     def _build_interpolator(T: np.ndarray, X: np.ndarray) -> interpolate.PchipInterpolator:
         """Interpolate the traced minima against temperature without overshooting them.
 
-        See :ref:`note-phases-phase-info-build-interpolator` for the reasoning and the
-        measurements behind this.
         """
         T = np.asarray(T, dtype=float)
         X = np.asarray(X, dtype=float)
@@ -268,9 +269,6 @@ def descendFromSaddle(
     max_displacement: float,
 ) -> np.ndarray:
     r"""Return a minimum near `x`, having stepped off it where it is a saddle.
-
-    See :ref:`note-phases-descend-from-saddle` for the reasoning and the measurements behind
-    this.
 
     Returns
     -------
@@ -485,8 +483,6 @@ def traceMinimum(
             # The saddle flag is deliberately not applied here, and the slope is read at
             # `xnext` only so that what is stored describes the node that is kept.
             #
-            # The reasoning and the measurements are in the implementation notes for phases.py,
-            # under `traceMinimum.check`.
             if dxdt_next is None:
                 # No usable slope at the endpoint; the trace ends at the last node that had
                 # one rather than reaching `tstop`.
@@ -549,9 +545,6 @@ _IMAGE_SIGN_RTOL = 1.0e-4
 def canonicalImageElement(X: np.ndarray, applySymmetries: Callable | None,
                           invGroupElements) -> np.ndarray | None:
     r"""The one symmetry transformation that puts a whole traced phase on its canonical image.
-
-    See :ref:`note-phases-canonical-image-element` for the reasoning and the measurements behind
-    this.
 
     Parameters
     ----------
@@ -1031,9 +1024,6 @@ def symmetrizeInvariantPhases(phases: dict[int | str, PhaseInfo],
                               invGroupElements: list[np.ndarray], tol: float) -> list:
     """Put every phase that is its own mirror image onto the fixed subspace of that symmetry.
 
-    See :ref:`note-phases-symmetrize-invariant-phases` for the reasoning and the measurements
-    behind this.
-
     Parameters
     ----------
     phases : dict
@@ -1324,8 +1314,6 @@ def mergePhasesMeetingAtAPoint(
 ) -> None:
     """Join phases the tracer stopped and restarted at a second-order merge.
 
-    See :ref:`note-phases-merge-phases-meeting-at-apoint` for the reasoning and the measurements
-    behind this.
     """
     while True:
         for key1, key2 in itertools.permutations(list(phases.keys()), 2):

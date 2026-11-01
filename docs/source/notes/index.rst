@@ -3,24 +3,12 @@
 Implementation notes
 ====================
 
-Why the implementation is shaped the way it is, and what was measured to decide it.
-These passages were in the docstrings and inline comments of the modules; each now
-carries the summary and a pointer to the section here.
+These pages held passages lifted from the docstrings and comments of the modules. They have
+been replaced by :doc:`/algorithms/index`, which describes what each stage computes, which
+choice the implementation makes where more than one is defensible, and what changed in version
+2.2, rather than reproducing comments outside the code they comment on.
 
-.. toctree::
-   :maxdepth: 1
+.. seealso::
 
-   bubbledynamics
-   generic_potential
-   helper_functions
-   hydrodynamics
-   pathDeformation
-   percolation_adaptive_gridbuilders
-   percolation_adaptive_rate
-   percolation_adaptivestepsize
-   phases
-   plots
-   thermodynamics
-   transitionObservables
-   transitions
-   tunneling1D
+   :doc:`/algorithms/index`
+      What TransitionListener computes, stage by stage.

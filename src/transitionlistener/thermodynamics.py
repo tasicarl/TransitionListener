@@ -1,6 +1,9 @@
 """Module containing routines to calculate thermodynamic quantities
 like the numberdensity, energy density, pressure and entropy density.
 
+What this module computes is described in the documentation under
+The plasma and its degrees of freedom: :doc:`/algorithms/the_plasma`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -768,9 +771,6 @@ def sm_bath(pot) -> str:
 
 def reheating_geff(pot, X_broken, T_DS: float, T_dec: float) -> tuple[float, float, float]:
     """Energy and entropy degrees of freedom right after reheating, referred to the SM bath.
-
-    See :ref:`note-thermodynamics-reheating-geff` for the reasoning and the measurements behind
-    this.
 
     Returns
     -------
