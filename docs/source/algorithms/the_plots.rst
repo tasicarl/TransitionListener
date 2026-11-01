@@ -129,6 +129,13 @@ The fraction is recomputed for the plot rather than read back from the run, so
 ``Tmin_GeV`` and ``Tmax_GeV`` are worth setting to a window around the transition: over the
 whole range of the scan the rise is one vertical line.
 
+.. figure:: ../_static/plots/percolation_0.png
+   :width: 100%
+
+   The true-vacuum fraction of this benchmark point. Temperature falls to the left, so the
+   fraction rises from zero to one from right to left. The percolation temperature is where
+   the false vacuum has fallen to 0.71 of the volume, which is the dashed line.
+
 The bubble profile
 ------------------
 
@@ -145,6 +152,13 @@ The bubble profile
 The field through the wall of the critical bubble at the nucleation temperature, and the path
 it takes through field space over the potential. The second is the one that shows whether the
 path deformation found a sensible path or cut a corner.
+
+.. figure:: ../_static/plots/profile.png
+   :width: 100%
+
+   The bounce of this benchmark point. The field sits at the true vacuum inside the bubble,
+   falls through the wall at a radius of about 1000 inverse GeV, and reaches the false vacuum
+   outside. A profile that stops before it reaches the false vacuum is an unresolved bounce.
 
 The spectrum and the detectors
 ------------------------------
