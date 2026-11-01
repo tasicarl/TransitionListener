@@ -187,6 +187,17 @@ def check_figure(fig, name: str = "figure") -> list[str]:
                                 % (name, line.get_label()[:30]))
                 break
 
+    # --- a legend belongs inside its panel ------------------------------------------------
+    for ax in fig.get_axes():
+        leg = ax.get_legend()
+        if leg is None:
+            continue
+        lb = leg.get_window_extent(renderer=renderer)
+        ab = ax.get_window_extent(renderer=renderer)
+        if (lb.x0 < ab.x0 - 1 or lb.x1 > ab.x1 + 1
+                or lb.y0 < ab.y0 - 1 or lb.y1 > ab.y1 + 1):
+            problems.append("%s: the legend is not inside its panel" % name)
+
     # --- nothing the author placed may be clipped by the figure --------------------------
     # Tick labels are placed by matplotlib and the outermost of them legitimately reach the
     # edge; what this rule is about is a label put somewhere it does not fit.
@@ -327,6 +338,50 @@ def check_with_paper_style(fig, name: str = "figure") -> list[str]:
             continue
         out.append("%s: paper_style says %s" % (name, m))
     return out
+
+
+#: How tall a figure may be, as a multiple of its width, for one row of panels. A single
+#: panel near square reads as a mistake on a page of running text. Each further row adds the
+#: same allowance again.
+MAX_ASPECT_PER_ROW = 0.80
+
+#: The shortest side a figure in the documentation may have, in pixels, so that it stands up
+#: to the reader zooming in.
+MIN_PIXELS = 900
+
+
+def check_shape(fig, name: str = "figure") -> list[str]:
+    """The figure's proportions, and that it will be sharp on the page."""
+    w, h = fig.get_size_inches()
+    out = []
+    # One row of panels, two rows, three: the allowance grows with them, so a stack of panels
+    # is not forced into the shape of a single one.
+    rows = 1
+    for ax in fig.get_axes():
+        spec = ax.get_subplotspec()
+        if spec is not None:
+            rows = max(rows, spec.get_gridspec().nrows)
+    limit = MAX_ASPECT_PER_ROW * rows
+    if h / w > limit:
+        out.append("%s: %.2f times as tall as it is wide, above %.2f for %d row%s"
+                   % (name, h / w, limit, rows, "" if rows == 1 else "s"))
+    if min(w, h) * fig.dpi < 1:
+        out.append("%s: has no size" % name)
+    return out
+
+
+def check_image_resolution(path, name: str = "image") -> list[str]:
+    """A shipped image has to be large enough to read when it is zoomed into."""
+    try:
+        import matplotlib.image as mpimg
+
+        img = mpimg.imread(str(path))
+    except Exception as exc:
+        return ["%s: could not be read (%s)" % (name, exc)]
+    h, w = img.shape[0], img.shape[1]
+    if min(h, w) < MIN_PIXELS:
+        return ["%s: %dx%d pixels, shorter side below %d" % (name, w, h, MIN_PIXELS)]
+    return []
 
 
 def check_curves_span(ax, name: str = "panel", skip: tuple = ()) -> list[str]:

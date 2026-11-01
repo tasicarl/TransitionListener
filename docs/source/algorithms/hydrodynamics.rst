@@ -18,8 +18,9 @@ The energy released, measured against the energy already present, is
    \qquad \theta = \frac{e - 3p}{4},
 
 where :math:`\theta` is the trace anomaly, :math:`e` and :math:`p` are the energy density and
-the pressure, :math:`w = e + p` is the enthalpy, and :math:`\Delta` is the difference between
-the symmetric and the broken phase. Several strengths appear in a run: one evaluated at
+the pressure, :math:`w = e + p` is the enthalpy, :math:`w_\mathrm{sym}` its value in the
+symmetric phase, and :math:`\Delta` is the difference between the symmetric and the broken
+phase. Several strengths appear in a run: one evaluated at
 nucleation, one at the wall, and the asymptotic ones that fix how much pressure the wall feels.
 
 .. admonition:: They must share a normalisation

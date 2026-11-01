@@ -27,10 +27,10 @@ DOCS = pathlib.Path(__file__).resolve().parent / "source"
 #: alone. Adding a symbol here is how a new one gets checked.
 UPRIGHT_SUBSCRIPTS = [
     "c_s", "c_b", "v_w", "v_J", "T_c", "T_f", "T_n", "T_reh", "T_perc", "T_nuc", "T_crit",
-    "T_b", "f_b", "f_perc", "f_final", "f_start", "R_H", "S_3", "g_eff", "h_eff",
+    "T_b", "f_b", "f_perc", "f_final", "f_start", "R_H", "g_eff", "h_eff",
     "V_rad", "V_daisy", "V_tree", "V_ct", "V_T", "V_CW", "e_s", "w_sym", "w_bro",
     "kappa_sw", "kappa_turb", "Omega_sw", "Omega_turb", "Omega_GW", "H_tau_sw",
-    "alpha_hyd", "Delta_w", "n_b", "x_eps", "p_f", "rho_rad", "m_i", "Pi_H",
+    "alpha_hyd", "Delta_w", "n_b", "x_eps", "p_f", "rho_rad", "Pi_H",
 ]
 
 #: (pattern, what is wrong, what to write instead). Applied to every line of every page.
@@ -70,6 +70,14 @@ RULES: list[tuple[str, str, str]] = [
     (r"\bCrucially\b|\bNotably\b|\bIt is worth noting\b|\bImportantly\b",
      "an LLM filler word",
      "cut it"),
+    (r"\bthe verdict is settled\b|\bthe verdict\b",
+     "a word for the thing rather than the thing",
+     "name what is decided"),
+    # A model is a model; a figure shows a quantity computed from one of its benchmark
+    # points. "the 2HDM at T = 25 GeV" names the wrong object.
+    (r"\bthe (2HDM|conformal dark U\(1\)|dark U\(1\)|abelian dark Higgs)\s+at\b",
+     "a model named where a quantity computed from one of its points is meant",
+     "the <quantity> of a <model> benchmark point at ..."),
     (r"(?<![-\w])—|–",
      "an em or en dash",
      "a comma or a full stop"),
@@ -80,7 +88,7 @@ RULES: list[tuple[str, str, str]] = [
 FRAGMENT_TITLE = re.compile(r"^[A-Z][^.!?]*,\s+(and\s+)?\w+[^.!?]*$")
 
 #: A caption longer than this many words stops being a caption.
-MAX_CAPTION_WORDS = 130
+MAX_CAPTION_WORDS = 90
 
 
 def _differential_violations(text: str) -> list[tuple[int, str, str]]:
@@ -159,6 +167,9 @@ def _title_violations(text: str) -> list[tuple[int, str, str]]:
             continue
         if title.endswith("?"):
             out.append((i + 1, "a section title that is a question", "a noun phrase"))
+        elif re.match(r"^(What|How|Why|When|Where|Which|Who)\b", title):
+            out.append((i + 1, "a section title that is a clause",
+                        "a noun phrase naming the thing"))
         elif FRAGMENT_TITLE.match(title) and " and " not in title.lower():
             out.append((i + 1, "a section title that is a fragment built on a comma",
                         "a noun phrase without the comma"))
@@ -223,13 +234,190 @@ def _blank_inline_literals(text: str) -> str:
     the file spells it; the same symbol written as maths is `f_\\mathrm{perc}`. Without this
     the maths rules report every mention of a setting.
     """
-    text = re.sub(r"``[^`]*``", lambda m: "`" * len(m.group(0)), text)
+    # Blanked with spaces, not with backticks: a run of backticks left behind is itself read
+    # as a literal span by the next pass, which then swallows the maths between two of them.
+    # That silently hid most of the maths on every page that mentions a setting.
+    # Confined to one line: a negated character class matches newlines too, so an unpaired
+    # backtick would otherwise swallow every line up to the next one, equations included.
+    text = re.sub(r"``[^`\n]*``", lambda m: " " * len(m.group(0)), text)
     # A single-backtick span preceded by a role is not a literal. ``:math:`x`` is maths and
     # has to stay, or every rule about notation is silently switched off.
     text = re.sub(r"(?<!`)(?<!:math:)(?<!:py:mod:)(?<!:doc:)(?<!:ref:)(?<!:func:)"
-                  r"(?<!:class:)(?<!:meth:)`[^`]*`(?!`)",
-                  lambda m: "`" * len(m.group(0)), text)
+                  r"(?<!:class:)(?<!:meth:)`[^`\n]*`(?!`)",
+                  lambda m: " " * len(m.group(0)), text)
     return text
+
+
+def _maths_spans(text: str):
+    """Every piece of maths on the page, with the line it starts on."""
+    out = []
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines):
+        if lines[i].lstrip().startswith(".. math::"):
+            start, i = i + 1, i + 1
+            body = []
+            while i < len(lines) and (not lines[i].strip() or lines[i].startswith(("   ", "\t"))):
+                body.append(lines[i].strip())
+                i += 1
+            out.append((start + 1, " ".join(b for b in body if b)))
+            continue
+        for m in re.finditer(r":math:`([^`]*)`", lines[i]):
+            out.append((i + 1, m.group(1)))
+        i += 1
+    return out
+
+
+#: Commands that take brace groups, with how many each takes.
+BRACE_COMMANDS = {"frac": 2, "dfrac": 2, "tfrac": 2, "sqrt": 1, "mathrm": 1, "mathcal": 1,
+                  "text": 1, "underbrace": 1, "overline": 1, "hat": 1, "tilde": 1,
+                  "operatorname": 1, "boldsymbol": 1, "mathbf": 1}
+
+
+def _group_violations(text: str) -> list[tuple[int, str, str]]:
+    """A command whose brace group is not closed.
+
+    Counting braces over a whole equation is not enough: a brace lost from one group is often
+    made up by another, and the total balances while the equation does not render. This walks
+    each command that takes groups and checks that its groups are there and closed. The rule
+    exists because an automatic rewrite of subscripts once ate the closing brace of a
+    ``\\frac`` and the equation silently stopped rendering.
+    """
+    out = []
+    for lineno, maths in _maths_spans(text):
+        for m in re.finditer(r"\\([A-Za-z]+)", maths):
+            name = m.group(1)
+            if name not in BRACE_COMMANDS:
+                continue
+            pos = m.end()
+            for _ in range(BRACE_COMMANDS[name]):
+                while pos < len(maths) and maths[pos] == " ":
+                    pos += 1
+                if pos >= len(maths) or maths[pos] != "{":
+                    out.append((lineno, "\\%s without its brace group" % name,
+                                "the group it takes"))
+                    break
+                depth, pos = 0, pos
+                while pos < len(maths):
+                    if maths[pos] == "{":
+                        depth += 1
+                    elif maths[pos] == "}":
+                        depth -= 1
+                        if depth == 0:
+                            pos += 1
+                            break
+                    pos += 1
+                else:
+                    out.append((lineno, "\\%s with a group that is never closed" % name,
+                                "the closing brace"))
+                    break
+        # A ``\\left`` and its ``\\right`` have to close at the same brace depth. Where they do
+        # not, a brace group has been opened or closed between them, which is what a lost
+        # closing brace looks like: the group swallows the rest of the expression and the
+        # totals still balance, so counting braces sees nothing.
+        depth, stack = 0, []
+        for m in re.finditer(r"\{|\}|\\left|\\right", maths):
+            tok = m.group(0)
+            if tok == "{":
+                depth += 1
+            elif tok == "}":
+                depth -= 1
+            elif tok == "\\left":
+                stack.append(depth)
+            else:
+                if stack and stack.pop() != depth:
+                    out.append((lineno,
+                                "a \\left and its \\right close at different brace depths, "
+                                "so a brace group is unbalanced between them",
+                                "the brace that was lost"))
+                    break
+        if maths.count("\\left") != maths.count("\\right"):
+            out.append((lineno, "maths with %d unmatched \\left or \\right"
+                        % abs(maths.count("\\left") - maths.count("\\right")),
+                        "the missing one"))
+    return out
+
+
+def _render_violations(text: str) -> list[tuple[int, str, str]]:
+    """Maths that will not render.
+
+    Checked by handing each piece to matplotlib's own parser, which is the one that draws the
+    equations in the built pages, so a piece that trips it is a piece a reader sees broken.
+    Unbalanced braces and brackets are checked first, because the parser accepts some of those
+    and simply drops what follows.
+    """
+    out = []
+    for lineno, maths in _maths_spans(text):
+        if not maths.strip():
+            continue
+        body = re.sub(r"\\(left|right|big|Big|bigg|Bigg)\b", " ", maths)
+        for opener, closer, what in (("{", "}", "brace"), ("[", "]", "bracket"),
+                                     ("(", ")", "parenthesis")):
+            n = body.count(opener) - body.count(closer)
+            if n:
+                out.append((lineno, "maths with %d unmatched %s%s"
+                            % (abs(n), what, "" if abs(n) == 1 else "s"),
+                            "the missing %s" % what))
+    return out
+
+
+#: Symbols that every page may use without defining, because they are the subject of the set.
+COMMON_SYMBOLS = {"T", "V", "f", "t", "r", "x", "n", "g", "h", "i", "j", "k", "s", "p", "e",
+                  "w", "v", "a", "H", "S", "P", "I", "R", "A", "J", "D", "K", "N", "M"}
+
+
+def _undefined_symbol_violations(text: str) -> list[tuple[int, str, str]]:
+    """A symbol that appears only inside a displayed equation.
+
+    A symbol the prose never picks up has not been introduced to the reader: it was written
+    into an equation and left there. The test is whether the symbol is ever used in running
+    text, as inline maths, anywhere on the page. That is how ``T_start`` was found, which
+    stood in the limits of one integral and nowhere else.
+    """
+    inline, display = set(), {}
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines):
+        if lines[i].lstrip().startswith(".. math::"):
+            start, i = i + 1, i + 1
+            while i < len(lines) and (not lines[i].strip()
+                                      or lines[i].startswith(("   ", "\t"))):
+                for sym in _symbols(lines[i]):
+                    display.setdefault(sym, start + 1)
+                i += 1
+            continue
+        for m in re.finditer(r":math:`([^`\n]*)`", lines[i]):
+            inline.update(_symbols(m.group(1)))
+        i += 1
+    out = []
+    for sym, lineno in sorted(display.items(), key=lambda kv: kv[1]):
+        if sym not in inline:
+            out.append((lineno, "the symbol %r appears only inside a displayed equation" % sym,
+                        "a sentence in the text that uses it"))
+    return out
+
+
+#: Not symbols: an operator carries limits, not a subscript.
+NOT_SYMBOLS = {"\\int", "\\sum", "\\prod", "\\lim", "\\max", "\\min", "\\log", "\\ln"}
+
+
+def _symbols(maths: str) -> set:
+    """The symbols in a piece of maths whose subscript is an abbreviation.
+
+    A running index and a digit are not abbreviations: ``n_i`` and ``J_0`` take their meaning
+    from the equation they sit in, and a page that spelled each of them out would be unreadable.
+    An abbreviation such as ``T_start`` does not, so it has to be said somewhere.
+    """
+    found = set()
+    for m in re.finditer(r"([A-Za-z]|\\[A-Za-z]+)_(?:\{)?(?:\\mathrm\{)?"
+                         r"([A-Za-z0-9*,]+)\}?\}?", maths):
+        base, sub = m.group(1), m.group(2).split(",")[0]
+        if base in NOT_SYMBOLS or not sub.isalpha() or len(sub) < 2:
+            continue
+        # Only up to the first comma: ``g_eff,reh`` and ``g_eff,0`` are the same symbol
+        # evaluated at two times, and the prose introduces it once.
+        found.add("%s_%s" % (base, sub))
+    return found
 
 
 def check(paths: list[pathlib.Path]) -> list[str]:
@@ -254,7 +442,9 @@ def check(paths: list[pathlib.Path]) -> list[str]:
             for i, line in enumerate(source.splitlines(), 1):
                 if re.search(pattern, line):
                     problems.append("%s:%d: %s -> write %s" % (rel, i, what, instead))
-        for finder in (_differential_violations, _subscript_violations, _title_violations):
+        for finder in (_differential_violations, _subscript_violations, _title_violations,
+                       _render_violations, _group_violations,
+                       _undefined_symbol_violations):
             for i, what, instead in finder(text):
                 if questions_allowed and "question" in what:
                     continue

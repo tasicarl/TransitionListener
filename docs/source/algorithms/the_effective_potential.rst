@@ -29,8 +29,8 @@ The one-loop correction at zero temperature [ColemanWeinberg1973]_, in the modif
 subtraction scheme, is
 
 .. math::
-   V_1 = \frac{1}{64\pi^2}\left[ \sum_\mathrm{i}\in \mathrm{bosons}} n_i\, m_\mathrm{i}^4
-         \left( \ln\frac{|m_\mathrm{i}^2|}{\mu^2} - c_i \right)
+   V_1 = \frac{1}{64\pi^2}\left[ \sum_{i \in \mathrm{bosons}} n_i\, m_i^4
+         \left( \ln\frac{|m_i^2|}{\mu^2} - c_i \right)
          - \sum_{f \in \mathrm{fermions}} n_f\, m_f^4
          \left( \ln\frac{|m_f^2|}{\mu^2} - \frac{3}{2} \right) \right],
 

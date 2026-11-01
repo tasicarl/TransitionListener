@@ -114,8 +114,8 @@ The tracing and tunnelling precision presets are configurable through
   computation of over one hour, in the case of multi-dimensional scalar potentials.
 
 
-Which radiation is in the transition
-------------------------------------
+The radiation that takes part in the transition
+-----------------------------------------------
 
 A model declares which radiation is in thermal contact with the fields of its potential and
 which is not, because the two are reheated differently and enter the expansion rate

@@ -55,10 +55,11 @@ step and carries no physical meaning.
 
    A potential even in the field has two images of every broken minimum, and which one a trace
    lands on is settled by the sign of a numerical step. A bounce computed from the symmetric
-   phase to the image the field does not occupy is not a tunnelling channel. The broken branch
-   is drawn for a first-order transition, so it reaches the critical temperature at a field
-   value well away from zero, survives above it while the symmetric phase is still the deeper
-   one, and ends where the barrier between the two disappears.
+   phase to the image the field does not occupy is not a tunnelling channel.
+
+The broken branch is drawn for a first-order transition, so it reaches the critical temperature
+at a field value well away from zero, survives above it while the symmetric phase is still the
+deeper one, and ends where the barrier between the two disappears.
 
 This matters because a bounce is computed between two phases. If the two sit on different
 images, the path between them crosses field space from one copy of the vacuum to another copy

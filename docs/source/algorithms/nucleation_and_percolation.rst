@@ -20,7 +20,10 @@ The probability that a given point is still in the false vacuum at temperature :
           \frac{4\pi}{3}\, v_\mathrm{w}^3 \left[\int_{T}^{T'} \frac{\mathrm{d}T''}{H(T'')\,T''}\right]^3 ,
 
 with :math:`\Gamma` the nucleation rate from :doc:`the_bounce_action`, :math:`H` the expansion
-rate and :math:`v_\mathrm{w}` the speed at which a bubble wall advances. The inner integral is the
+rate and :math:`v_\mathrm{w}` the speed at which a bubble wall advances. The upper limit
+:math:`T_\mathrm{start}` is the hottest temperature at which the transition could have begun,
+taken as the temperature at which the two phases become degenerate, above which no bubble can
+nucleate. The inner integral is the
 distance a bubble nucleated at :math:`T'` has grown by the time the universe has cooled to
 :math:`T`, and the cube of it is its volume. The converted fraction is
 
@@ -343,7 +346,7 @@ How fast the transition proceeds is quoted as :math:`\beta/H`, and there are two
 which answer different questions.
 
 The first is local: the logarithmic derivative of the rate at the percolation temperature,
-:math:`\beta/H = T\,d(S_\mathrm{3}/T)/\mathrm{d}T`. The second is integral: it is read off the mean separation
+:math:`\beta/H = T\,d(S_3/T)/\mathrm{d}T`. The second is integral: it is read off the mean separation
 between bubbles, :math:`R_*`, which follows from the whole nucleation history rather than from
 one temperature.
 

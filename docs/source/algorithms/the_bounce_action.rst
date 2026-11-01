@@ -25,15 +25,15 @@ effective potential at that temperature. The second term is a friction term whos
 is the number of spatial dimensions minus one. Its action is
 
 .. math::
-   S_\mathrm{3} = \int_0^\infty \left[ \frac{1}{2}\left(\frac{\mathrm{d}\phi}{\mathrm{d}r}\right)^2
+   S_3 = \int_0^\infty \left[ \frac{1}{2}\left(\frac{\mathrm{d}\phi}{\mathrm{d}r}\right)^2
          + V(\phi) - V(\phi_\mathrm{false}) \right] 4\pi r^2 \, \mathrm{d}r ,
 
 and the rate per unit volume follows as
 
 .. math::
-   \Gamma(T) = T^4 \left(\frac{S_\mathrm{3}}{2\pi T}\right)^{3/2} \mathrm{e}^{-S_\mathrm{3}/T}.
+   \Gamma(T) = T^4 \left(\frac{S_3}{2\pi T}\right)^{3/2} \mathrm{e}^{-S_3/T}.
 
-The exponent :math:`S_\mathrm{3}/T` is what matters: it runs over tens of orders of magnitude across
+The exponent :math:`S_3/T` is what matters: it runs over tens of orders of magnitude across
 the temperatures of a transition, so the rate is set by the action and the prefactor only
 shades it.
 
@@ -63,10 +63,12 @@ bisecting on the starting value finds it.
 
    One bisection step. A start too far from the true vacuum leaves the field without the energy
    to reach the false one, and friction turns it back. A start too near it arrives with energy
-   to spare and passes through. The solution lies between the two. The two markers are where
-   each trial's verdict is settled and the shooting stops. Carried past that point, which is
-   what the figure does, the undershoot oscillates about the top of the barrier, damped by the
-   friction term, and the overshoot crosses the false vacuum and runs away.
+   to spare and passes through. The solution lies between the two.
+
+The two markers are where over- and undershoot is decided and the shooting stops. Carried past
+that point, which is what the figure does, the undershoot oscillates about the top of the
+barrier, damped by the friction term, and the overshoot crosses the false vacuum and runs
+away.
 
 Three details make this work in practice.
 
@@ -82,6 +84,9 @@ the interior back in, so the profile that the action is computed from does start
 
 .. math::
    \phi(0) = \phi_\mathrm{true} + \mathrm{e}^{-x}\,(\phi_\mathrm{false} - \phi_\mathrm{true}),
+
+where :math:`\phi_\mathrm{true}` and :math:`\phi_\mathrm{false}` are the field values of the
+two minima at this temperature,
 
 the solver bisects on :math:`x` rather than on the field directly. A thin-walled bubble, which
 appears when the two minima are nearly degenerate, starts exponentially close to the true

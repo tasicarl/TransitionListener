@@ -118,8 +118,8 @@ of the two known mechanisms produced it. Neither is a property of the physics.
 A large ``step_change`` means the finite differences have lost their significant digits and
 the number is round-off.
 
-``daisy_ratio`` is a size and ``daisy_outside`` is the verdict; the size alone does not imply
-the verdict. Where the Arnold-Espinosa resummation is used outside its range of validity, ``m
+``daisy_ratio`` is a size and ``daisy_outside`` says whether the resummation is being used
+outside its range. A large size on its own does not put it outside. Where the Arnold-Espinosa resummation is used outside its range of validity, ``m
 << T``, the resummed term falls as a power of the temperature where the mode it stands for
 should be Boltzmann suppressed, it comes to dominate the thermal potential, and ``c_s^2``
 drifts towards the ``1/2`` of a ``T^3`` potential rather than the ``1/3`` of radiation. But a

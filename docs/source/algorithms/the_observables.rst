@@ -85,7 +85,8 @@ by that name. They answer different questions and they are not interchangeable.
 **The local one** is the logarithmic derivative of the rate at the percolation temperature,
 
 .. math::
-   \left(\frac{\beta}{H}\right)_{S_\mathrm{3} = T\,\frac{d}{\mathrm{d}T}\left(\frac{S_\mathrm{3}}{T}\right)
+   \left(\frac{\beta}{H}\right)_{S_3}
+   = T\,\frac{\mathrm{d}}{\mathrm{d}T}\left(\frac{S_3}{T}\right)
    \;\Bigg|_{T_\mathrm{perc}} ,
 
 read off the action at one temperature. It is what the exponential approximation to the rate
@@ -122,7 +123,7 @@ the universe converts, and a negative value there is the correct answer rather t
    fit to the action samples rather than from a two-point difference. The adaptive support can
    place samples :math:`10^{-6}` of a temperature apart, and a difference across two of those
    turns the irregular :math:`10^{-2}` error that the path deformation leaves in
-   :math:`S_\mathrm{3}/T` into errors of hundreds.
+   :math:`S_3/T` into errors of hundreds.
 
 Completion
 ----------
@@ -133,8 +134,8 @@ the second wins; the criterion is in :doc:`nucleation_and_percolation`. A transi
 percolates and then stalls is reported as such, and is a different outcome from one that never
 percolated.
 
-What the code reports when a number cannot be trusted
------------------------------------------------------
+Warnings and diagnostic outputs
+-------------------------------
 
 Every run writes a row of warnings and diagnostics beside the observables. A warning is a
 statement that something about this point needs a human; a diagnostic is a measured number

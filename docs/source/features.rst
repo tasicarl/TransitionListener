@@ -92,8 +92,8 @@ Detectors                         ground, space and pulsar timing
 Scans                             point, grid, line, random, nested sampling
 ================================  ============================================================
 
-Where to go next
-----------------
+Further reading
+---------------
 
 :doc:`getting_started` runs your first point. :doc:`usage` is the configuration file.
 :doc:`algorithms/index` is what the package actually computes, stage by stage.

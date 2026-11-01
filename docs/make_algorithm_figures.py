@@ -205,10 +205,11 @@ def _check(fig, name: str) -> None:
     import sys
 
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-    from check_figure_style import (check_curves_span, check_figure,
+    from check_figure_style import (check_curves_span, check_figure, check_shape,
                                     check_with_paper_style)
 
     problems = check_figure(fig, name)
+    problems += check_shape(fig, name)
     problems += check_with_paper_style(fig, name)
     for i, ax in enumerate(fig.get_axes()):
         problems += check_curves_span(ax, "%s panel %d" % (name, i))
@@ -281,9 +282,9 @@ def figure_images() -> None:
     # The leader comes down almost vertically on to the end of the branch. A leader that
     # approaches a curve at a shallow angle runs alongside it for a long way and reads as part
     # of the figure; near perpendicular, it touches the curve once.
-    ax.annotate("the barrier\nis gone here", xy=(T_sp + 0.012, broken[-1] + 0.06),
-                xytext=(1.075, 1.52), color=DESYcyan, fontsize=7, ha="left", va="bottom",
-                arrowprops=dict(arrowstyle="->", color=DESYcyan, lw=0.8))
+    ax.annotate("the potential barrier\nappears here", xy=(T_sp, broken[-1] + 0.10),
+                xytext=(0.935, 1.78), color=DESYcyan, fontsize=7, ha="right",
+                va="bottom", arrowprops=dict(arrowstyle="->", color=DESYcyan, lw=0.8))
 
     ax.set_xlabel(r"temperature $T/T_{\rm c}$")
     ax.set_ylabel(r"field $\phi$")
@@ -439,17 +440,16 @@ def figure_plasma_dof() -> None:
                     arrowprops=dict(arrowstyle="->", color="0.60", lw=0.7,
                                     shrinkA=3, shrinkB=0,
                                     connectionstyle="angle,angleA=0,angleB=90,rad=0"))
-    a2.text(2.5e-1, 136.0, "each mode leaves the plasma\nwhere its arrow meets the curve",
-            color="0.40", fontsize=6.5, ha="center", va="center")
 
     a2.set_xscale("log")
     a2.yaxis.set_major_locator(mpl.ticker.MaxNLocator(nbins=6, prune="lower"))
     a2.set_xlabel(r"temperature $T$ (GeV)")
     a2.set_ylabel("degrees of freedom")
     a2.set_xlim(T[0], T[-1])
-    a2.set_ylim(0.0, 168.0)
+    a2.set_ylim(0.0, 125.0)
     a2.legend(frameon=False, loc="lower right")
-    a2.set_title("the whole plasma of the 2HDM, in each of its two phases", fontsize=8, pad=4)
+    a2.set_title("the whole plasma of a 2HDM benchmark point, in each of its two phases",
+                 fontsize=8, pad=4)
 
     fig.subplots_adjust(left=0.095, right=0.972, bottom=0.085, top=0.950, hspace=0.34)
     _check(fig, "algorithm_plasma_dof")
@@ -659,7 +659,7 @@ def figure_spectrum_sources() -> None:
              ("Wall collisions", "bubble collisions", DESYaubergine, (0, (1, 1.6)))]
 
     use_house_style()
-    fig, ax = plt.subplots(figsize=(WIDTH, 0.92 * WIDTH))
+    fig, ax = plt.subplots(figsize=(WIDTH, 0.78 * WIDTH))
 
     # The shipped LISA power-law-integrated sensitivity, at the threshold and observation time
     # the package stores with it. A spectrum above this curve is detectable.
@@ -679,7 +679,7 @@ def figure_spectrum_sources() -> None:
     # Named in the legend rather than beside the band: the band fills the one part of the
     # panel a label could sit in without touching a curve.
     ax.plot(f_pli[band], pli[band], color="0.50", lw=1.1, zorder=1,
-            label="LISA")
+            label="LISA sensitivity")
 
 
 
@@ -692,7 +692,10 @@ def figure_spectrum_sources() -> None:
     ax.set_xlabel(r"frequency $f$ (Hz)")
     ax.set_ylabel(r"$h^2\Omega_{\rm GW}$")
     ax.set_xlim(0.75 * f[0], 1.35 * f[-1])
-    ax.set_ylim(3e-19, 1.0e-5)
+    ax.set_ylim(1e-18, 1.0e-5)
+    # Drop the lowest y tick, which otherwise meets the leftmost x tick at the corner.
+    ax.yaxis.set_major_locator(mpl.ticker.LogLocator(base=10.0, numticks=8))
+    ax.set_yticks([t for t in ax.get_yticks() if 1e-17 <= t <= 1e-5])
     # A legend rather than labels beside the curves: with the LISA band in the panel there is
     # one block of empty space left, at low frequency and high amplitude, and it is too far
     # from any of the three curves to label them there.
@@ -752,7 +755,8 @@ def figure_potential_2d() -> None:
 
     ax.set_xlabel(r"field $\phi_1$ (GeV)")
     ax.set_ylabel(r"field $\phi_2$ (GeV)")
-    ax.set_title(r"the 2HDM at $T = %.0f$ GeV" % T, fontsize=8, pad=4, loc="left")
+    ax.set_title(r"the potential of a 2HDM benchmark point at $T = %.0f$ GeV" % T,
+                 fontsize=8, pad=4, loc="left")
     ax.set_xlim(x[0], x[-1])
     ax.set_ylim(y[0], y[-1])
     fig.subplots_adjust(left=0.105, right=0.985, bottom=0.145, top=0.935)

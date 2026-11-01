@@ -21,6 +21,8 @@ Three processes radiate, and their spectra are added:
    h^2\Omega_\mathrm{GW}(f) = h^2\Omega_{\phi}(f) + h^2\Omega_\mathrm{sw}(f)
                            + h^2\Omega_\mathrm{turb}(f).
 
+The sum, :math:`\Omega_\mathrm{GW}`, is what a detector would see. Its three terms are these.
+
 **Bubble collisions**, :math:`\Omega_\phi`, from the energy that stays in the scalar field and
 radiates when walls meet. This matters when the wall runs away, so that much of the energy
 never reaches the plasma.
@@ -81,8 +83,8 @@ Spectral shapes
 Two shapes are used. A broken power law, their equation (2.4),
 
 .. math::
-   S(f) = \left(\frac{f}{f_\mathrm{b}\right)^{n_1}
-          \left[\frac{1}{2} + \frac{1}{2}\left(\frac{f}{f_\mathrm{b}\right)^{a_1}
+   S(f) = \left(\frac{f}{f_\mathrm{b}}\right)^{n_1}
+          \left[\frac{1}{2} + \frac{1}{2}\left(\frac{f}{f_\mathrm{b}}\right)^{a_1}
           \right]^{(n_2-n_1)/a_1},
 
 which rises as :math:`f^{n_1}` below the break and falls as :math:`f^{n_2}` above it, with
@@ -133,6 +135,7 @@ The integrated amplitude is their equation (2.10),
 .. math::
    h^2\Omega_\mathrm{sw}^\mathrm{int} = R\, A_\mathrm{sw}\, K_\mathrm{sw}^2\, (H\tau_\mathrm{sw})\, R_* ,
 
+where :math:`K_\mathrm{sw}` is the kinetic energy fraction of the sound waves defined above,
 with :math:`A_\mathrm{sw} = 0.11` and the slopes :math:`n_1 = 3`, :math:`n_2 = 1`,
 :math:`n_3 = -3`, :math:`a_1 = 2`, :math:`a_2 = 4`. The source does not last forever: the
 sound waves decay once the shells have crossed, after a time
@@ -141,7 +144,9 @@ sound waves decay once the shells have crossed, after a time
    H\tau_\mathrm{sh} = \frac{R_*}{\sqrt{\tfrac{3}{4}\,\varepsilon\,\kappa_\mathrm{sw}\,
                     \alpha_\mathrm{hyd}/(1+\alpha_\mathrm{hyd})}},
 
-and the lifetime entering the amplitude is :math:`H\tau_\mathrm{sw} = \min(1, H\tau_\mathrm{sh})`,
+where :math:`\kappa_\mathrm{sw}` is the sound-wave efficiency of :doc:`hydrodynamics` and
+:math:`\alpha_\mathrm{hyd}` the transition strength at the wall, which the same page computes.
+The lifetime entering the amplitude is :math:`H\tau_\mathrm{sw} = \min(1, H\tau_\mathrm{sh})`,
 capped at one Hubble time. The rising part of the spectrum is :math:`f^3`, which is the causal
 slope any uncorrelated source must have.
 
@@ -199,7 +204,9 @@ For an interferometer the spectrum is compared with a noise curve by the signal-
    \mathrm{SNR} = \sqrt{\mathcal{T} \int \mathrm{d}f
                   \left[\frac{h^2\Omega_\mathrm{GW}(f)}{h^2\Omega_\mathrm{noise}(f)}\right]^2},
 
-with :math:`\mathcal{T}` the observation time. Curves for the interferometers and the pulsar
+with :math:`\mathcal{T}` the observation time and :math:`h^2\Omega_\mathrm{noise}` the
+detector's noise written as an energy density, so that the ratio under the integral is a
+signal-to-noise density. Curves for the interferometers and the pulsar
 timing arrays ship with the package.
 
 For a pulsar timing array the comparison is made against the measured free spectrum rather

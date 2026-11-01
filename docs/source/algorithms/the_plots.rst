@@ -65,7 +65,7 @@ The action
        phase_indices: [0, 1]
        n: 100
 
-The bounce action :math:`S_\mathrm{3}/T` against temperature for one pair of phases, which is what
+The bounce action :math:`S_3/T` against temperature for one pair of phases, which is what
 :doc:`the_bounce_action` produces and what the nucleation rate is built from. The rate depends
 on it exponentially, so a wobble of one per cent here is a factor of several in the rate: this
 is the plot on which an unresolved bounce shows up.
