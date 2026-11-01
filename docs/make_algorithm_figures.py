@@ -578,13 +578,15 @@ def figure_fluid_profiles() -> None:
     frame(a0, 0.125)
     a0.set_title(r"deflagration:  $v_\mathrm{w} = %.2f < c_\mathrm{s}$" % vw_d,
                  fontsize=8, pad=3, loc="left")
-    a0.text(0.035, 0.085, "the plasma inside the bubble is at rest;\n"
-                          "the wall pushes the plasma ahead of it", color="0.40",
+    a0.text(0.035, 0.100, "the plasma inside the bubble is at rest; the wall\n"
+                          "pushes the plasma ahead of it", color="0.40",
             fontsize=6.5, ha="left", va="center")
     a0.text(vw_d - 0.018, 0.5 * v_d, "wall", color=DESYcyan, fontsize=6.5, ha="right",
             va="center")
-    a0.text(0.72, 0.038, "shock front, just outside $c_\\mathrm{s}$", color=DESYcyan,
-            fontsize=6.5, ha="left", va="center")
+    a0.annotate("shock front",
+                xy=(xi_d[-1] + 0.004, 0.006), xytext=(0.78, 0.060),
+                color=DESYcyan, fontsize=6.5, ha="center", va="center",
+                arrowprops=dict(arrowstyle="->", color=DESYcyan, lw=0.7))
 
     # hybrid
     a1 = axes[1]
@@ -602,8 +604,10 @@ def figure_fluid_profiles() -> None:
             fontsize=6.5, ha="left", va="center")
     a1.text(vw_h - 0.055, 0.56 * v_ha, "wall", color=DESYorange, fontsize=6.5,
             ha="right", va="center")
-    a1.text(0.76, 0.12, "shock front", color=DESYorange, fontsize=6.5, ha="left",
-            va="center")
+    a1.annotate("shock front", xy=(xi_ha[-1] + 0.004, 0.10),
+                xytext=(0.84, 0.19), color=DESYorange, fontsize=6.5,
+                ha="center", va="center",
+                arrowprops=dict(arrowstyle="->", color=DESYorange, lw=0.7))
 
     # detonation
     a2 = axes[2]
