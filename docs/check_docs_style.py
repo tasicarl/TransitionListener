@@ -223,6 +223,29 @@ def _module_literal_violations(text: str) -> list[tuple[int, str, str]]:
     return out
 
 
+def _underline_violations(text: str) -> list[tuple[int, str, str]]:
+    """A section underline that is shorter than its title.
+
+    Sphinx prints a warning and renders the line as a title anyway, so the page looks right
+    and the warning is lost in the build log. A renamed section leaves its old underline
+    behind, which is how this one appeared.
+    """
+    out = []
+    lines = text.splitlines()
+    for i in range(len(lines) - 1):
+        title, under = lines[i].rstrip(), lines[i + 1].rstrip()
+        if not title.strip() or len(under) < 3:
+            continue
+        if not re.fullmatch(r"[-=~^\"'#*+_]{3,}", under.strip()):
+            # Backticks are left out of the set: a run of them is a code fence in the
+            # Markdown pages, not an underline, and the line above it is not a title.
+            continue
+        if len(under) < len(title):
+            out.append((i + 2, "a section underline shorter than its title",
+                        "an underline at least as long as the title"))
+    return out
+
+
 def _capital_title_violations(text: str) -> list[tuple[int, str, str]]:
     """A section title starts with a capital letter.
 
@@ -593,7 +616,8 @@ def check(paths: list[pathlib.Path]) -> list[str]:
                     problems.append("%s:%d: %s -> write %s" % (rel, i, what, instead))
         for finder in (_differential_violations, _subscript_violations, _title_violations,
                        _render_violations, _group_violations, _label_violations,
-                       _capital_title_violations, _undefined_symbol_violations):
+                       _capital_title_violations, _underline_violations,
+                       _undefined_symbol_violations):
             for i, what, instead in finder(text):
                 if questions_allowed and "question" in what:
                     continue

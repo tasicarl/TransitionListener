@@ -55,6 +55,8 @@ class TestDocumentationStyle(unittest.TestCase):
             "a bold label of several words": "**The first pass** locates the range.",
             "a word written twice": "The file is in the the output folder.",
         }
+        cases["a short section underline"] = (
+            "A long section title\n-------\n\nText.")
         import tempfile
 
         with tempfile.TemporaryDirectory() as d:

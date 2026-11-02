@@ -218,7 +218,7 @@ A scan over a grid of model parameters draws one map per output. The gallery bel
 Each panel is a thumbnail, and the full-size file is behind it.
 
 Transition strength and the characteristic temperatures
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The panels below show the strength :math:`\alpha`, the inverse duration
 :math:`(\beta/H)_\mathrm{RH}` and the critical, nucleation, percolation, completion and
