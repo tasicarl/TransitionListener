@@ -27,11 +27,19 @@ Five temperatures come out of a run, and they answer different questions.
      - Where the two minima are degenerate. A property of the potential alone, computed before
        any bounce, and the only one of the five that does not depend on the expansion history.
    * - :math:`T_\mathrm{nuc}`
-     - Where roughly one bubble has nucleated per Hubble volume, the condition
-       :math:`\Gamma/H^4 = 1`. The familiar quantity, and the weakest of the five: on a
-       strongly supercooled transition it can sit far from where the universe actually
-       converts, and on a very slow one the condition is never met at all, which is reported
-       rather than patched.
+     - Where roughly one bubble has nucleated per Hubble volume. Two conditions say that, and
+       a run uses whichever it can. The search that runs before percolation solves the
+       instantaneous :math:`\Gamma/H^4 = 1`. Where that search finds no root on the range it
+       explores, which is what a strongly supercooled transition does to it, the percolation
+       stage solves the integrated form :math:`N(T) = \frac{4\pi}{3} v_\mathrm{w}^3
+       \int_T^{T_\mathrm{i}} \frac{\Gamma}{H^4} (1 - P_\mathrm{t})
+       \frac{\mathrm{d}T}{T} = 1`, which counts the bubbles that have actually been
+       nucleated in the space still in the symmetric phase. The two differ wherever the rate rises steeply: on the conformal
+       benchmark of :doc:`the_plots`, :math:`\Gamma/H^4` reaches one at 2.75 MeV and
+       :math:`N` reaches one at 2.57 MeV. This is the familiar quantity and the weakest of the
+       five: on a strongly supercooled transition it sits far from where the universe actually
+       converts, and where neither condition is met the run reports that rather than patching
+       it.
    * - :math:`T_\mathrm{perc}`
      - Where the true-vacuum fraction reaches :math:`f_\mathrm{perc} = 0.28957`, at which the
        bubbles form a connected network. This is the temperature the strength and the duration
@@ -47,7 +55,9 @@ Five temperatures come out of a run, and they answer different questions.
 .. versionchanged:: 2.2
    The nucleation temperature is read from a spline of the rate rather than from a bracketing
    search, and where the condition is not met on the range explored the run says so instead of
-   returning the edge of that range.
+   returning the edge of that range. The spline solves the integrated condition above, so a
+   run that falls back to it reports a different temperature from the one the instantaneous
+   condition returns.
 
 The reheating temperature
 -------------------------

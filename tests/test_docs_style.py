@@ -582,6 +582,32 @@ class TestPagesAgainstTheCode(unittest.TestCase):
         self.assertIn("percolation temperature otherwise", page)
         self.assertIn("title of", page)
 
+    def test_the_page_names_both_nucleation_conditions(self):
+        """Two conditions carry the name, and they do not agree on a supercooled point.
+
+        The search before percolation solves the instantaneous one through
+        `generic_potential.nucleationCriterion`, and where it finds no root the percolation
+        stage solves the integrated bubble count instead. The page said only the first, which
+        is the wrong observable for every run that falls back.
+        """
+        potential = (ROOT / "src" / "transitionlistener"
+                     / "generic_potential.py").read_text(encoding="utf-8")
+        self.assertIn("return approxNucleationCriterion(T, S, self, high_phase, low_phase)",
+                      potential)
+
+        solver = (ROOT / "src" / "transitionlistener"
+                  / "bubbledynamics.py").read_text(encoding="utf-8")
+        estimate = solver.split("def estimate_spline_tnuc_from_rate_history", 1)[1]
+        estimate = estimate.split("\ndef ", 1)[0]
+        self.assertIn("Gamma/H^4 * (1-P) dT/T = 1", estimate)
+        self.assertIn("4.0 * np.pi / 3.0 * float(vw) ** 3", estimate)
+
+        page = (DOCS / "source" / "algorithms"
+                / "the_observables.rst").read_text(encoding="utf-8")
+        self.assertIn("instantaneous :math:`\\Gamma/H^4 = 1`", page)
+        self.assertIn("integrated form", page)
+        self.assertIn("1 - P_\\mathrm{t}", page)
+
     def test_the_gallery_asks_for_no_panel_the_benchmark_cannot_draw(self):
         """``profileV`` needs more than one field, and the conformal model has one.
 
