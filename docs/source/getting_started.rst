@@ -13,8 +13,8 @@ run
    $ tl -c examples/example_point.yaml -v
 
 once you have installed TransitionListener. For the example above,
-TransitionListener will create the following plot in the the folder
-`scans/example_point/GW_spectrum.pdf`:
+TransitionListener will create the following plot in the folder
+``scans/example_point/GW_spectrum.pdf``:
 
 .. image:: _static/example_point_GW_spectrum.png
    :alt: Example gravitational wave spectrum produced by TransitionListener
@@ -26,7 +26,7 @@ transition in a simple extension of the Standard Model with an additional
 :math:`U(1)` gauge symmetry with conformal invariance, as described in 
 `arXiv:2502.19478 <https://arxiv.org/abs/2502.19478>`_.
 
-Have a look into the configuration file `examples/example_point.yaml`. 
+Have a look into the configuration file ``examples/example_point.yaml``. 
 It starts as follows:
 
 .. code-block:: yaml
@@ -51,9 +51,10 @@ It starts as follows:
    v_GeV: 0.1
    y: 0.01
 
-Change the model input parameters to see how the gravitational wave signal is affected! 
-You can also leave out the `-v` flag to suppress verbose output in the
-console.
+The three parameters of this model are the dark gauge coupling :math:`g`, the vacuum
+expectation value ``v_GeV`` in GeV, and the Yukawa coupling :math:`y` of the dark fermion.
+Changing them changes the temperature of the transition and with it the frequency of the
+signal. The ``-v`` flag can be left out to silence the progress output.
 
 More plots and diagnostics
 --------------------------
@@ -137,8 +138,8 @@ its ``plot?`` flag and carries the configuration values needed for that plot.
 Just try setting some of the ``plot?`` flags to ``True`` and re-run
 TransitionListener to see the corresponding plots being created in the output
 folder! If you want to learn more about the individual plots and their
-configuration options, please refer to the :doc:`plots` section of the
-documentation.
+configuration options, each one is shown with the settings that produce it in
+:doc:`algorithms/the_plots`.
 
 That's it! You are now ready to explore TransitionListener and its features. Have fun
 studying cosmological phase transitions and their gravitational wave signals!
@@ -147,6 +148,7 @@ For detailed installation instructions and usage examples please refer to the fo
 
 - Installation: :doc:`installation`
 - Usage: :doc:`usage`
+- What the package computes, stage by stage: :doc:`algorithms/index`
 
 For more information, visit the documentation at
 https://tasillo.de/TransitionListener or check out the code

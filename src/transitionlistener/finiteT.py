@@ -16,6 +16,9 @@ Here, approx can either be 'exact', 'spline', 'high', or 'low'.
 and ``low`` calculate the high and low x expansions of J to order n.
 Specify the derivative with the ``deriv`` parameter.
 
+What this module computes is described in the documentation under
+The effective potential: :doc:`/algorithms/the_effective_potential`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 

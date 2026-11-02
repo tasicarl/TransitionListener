@@ -5,6 +5,9 @@ adaptive cold-boundary picker, jump-underresolution guards) live in
 :mod:`transitionlistener.percolation_adaptive_gridbuilders`. This module keeps the
 top-level scan controllers and their :class:`PercolationState` bookkeeping.
 
+What this module computes is described in the documentation under
+Nucleation, percolation and the expansion history: :doc:`/algorithms/nucleation_and_percolation`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -442,8 +445,25 @@ def _dynamiczoomwindow_accuracy_verdict(
 ) -> bool | None:
     """Return True, False or None for the accuracy targets of an accepted profile.
 
-    See :ref:`note-percolation-adaptivestepsize-dynamiczoomwindow-accuracy-verdict` for the
-    reasoning and the measurements behind this.
+    ``None`` means undecided, which is not the same claim as missed. The percolation and
+    completion temperatures can always be judged: with no previous estimate to difference
+    against, each falls back to its own bracket width, so a single profile still measures them.
+
+    The mean bubble separation has no bracket measure, but it has a self-contained one: the same
+    samples re-integrated on every second support point give a second value, and the relative
+    difference between the two is an uncertainty a single profile can report. So it is normally
+    judged like the other two. Its uncertainty is still infinite where that halved estimate
+    cannot be built, from a support too short to halve or one whose samples are unusable, and an
+    infinite one still means nobody measured it. A profile that meets every target it could
+    measure and could not measure the separation is returned as ``None`` rather than ``False``.
+    A separation that could not be determined at all is a different matter and counts as
+    missed, because the value is absent rather than its reference.
+
+    ``_dynamiczoomwindow_accuracy_reached`` reads the same three settings a few lines above.
+    That one answers whether the controller may stop refining, so it has to be the strict
+    conjunction; this one only reports. They agree wherever the separation was measured, and
+    differ only in the ``None``. Keep the two thresholds in step;
+    ``test_accuracy_verdict_producer.py`` pins the agreement.
 
     Returns
     -------
@@ -1401,8 +1421,26 @@ def _compute_step3_profile(
         else:
             # Carry the last computed action forward rather than writing `nan`.
             #
-            # The reasoning and the measurements are in the implementation notes for
-            # percolation_adaptivestepsize.py, under `_compute_step3_profile`.
+            # The truncation above is right that nothing new nucleates below the saturation
+            # point: `S_3/T` is already 133 there on the 2HDM benchmark and only grows as the
+            # temperature falls, reaching 412 a decade below, so the rate is `exp(-133)` or
+            # smaller and no choice of action in this region can contribute to the integral.
+            # What the truncation missed is that this region is where the bubbles *already*
+            # nucleated keep growing, and `percIntegralODE` needs valid samples across it to
+            # carry that growth. A `nan` fails its validity test, which floors both the source
+            # and the transport term, and the integral stops accumulating: on that benchmark
+            # `I` collapsed from 50 to 9.7e-38 and `P` rounded to exactly 0 at all 174 support
+            # points, so a transition whose percolation temperature step 2 had already found
+            # was reported as one that never percolates. Dropping the points instead does not
+            # work either: it removes the growth along with the nucleation and leaves `I` at
+            # 10.4. The last computed action is the cheapest choice and costs nothing, since
+            # the rate there is negligible whatever the action is.
+            #
+            # It has to be the last USABLE action, not merely the last finite one.
+            # `percIntegralODE`'s validity mask also requires a positive action, so carrying a
+            # zero or negative one forward would leave the sample invalid and the integral
+            # floored exactly as a `nan` does. A non-positive action is not physical for a
+            # bounce and means that solve did not succeed.
             last_action = np.nan
             if i > 0:
                 previous = state.Sr[:i]

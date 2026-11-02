@@ -210,6 +210,7 @@ class PlotExecutor:
                 np.array(spec.get("T_GeV", 0), dtype=float),
                 np.array(spec.get("phi_ranges_GeV", [0, 1]), dtype=float),
                 np.array(spec.get("n", 100), dtype=int),
+                cfrac=float(spec.get("cfrac", 0.8)),
             )
         elif key == "phases":
             include_transitions = bool(spec.get("include_transitions?", True))
@@ -223,6 +224,7 @@ class PlotExecutor:
             plotter.plotProfileV(
                 np.array(spec.get("field_index_1", 0), dtype=int),
                 np.array(spec.get("field_index_2", 1), dtype=int),
+                cfrac=float(spec.get("cfrac", 0.8)),
             )
         elif key == "energy_density":
             plotter.plotEnergyDensity(

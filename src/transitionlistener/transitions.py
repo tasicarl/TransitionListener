@@ -1,6 +1,9 @@
 """This module contains routines to compute the possible transitions
 between phases.
 
+What this module computes is described in the documentation under
+Phases and transitions: :doc:`/algorithms/phases_and_transitions`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -72,7 +75,6 @@ class TransitionInfo():
     """
     derived_params = {}
     """Computed observables."""
-
 
 def _transition_sort_temperature(transition: TransitionInfo) -> tuple[float, float]:
     """Sort transitions by descending nucleation temperature, falling back to ``Tcrit``.
@@ -634,8 +636,21 @@ class Transitions():
             # then follow the cycle instead of stopping. Testing only "every candidate was
             # rejected" catches the measured case and not that one.
             #
-            # The reasoning and the measurements are in the implementation notes for
-            # transitions.py, under `Transitions.findTransitionPathFromTnuc`.
+            # Without this test, the walk asks the zero-temperature phase for one more
+            # transition, is refused the cycle's closing link, and raises, discarding the
+            # transitions it had already found and reporting the run as too supercooled to
+            # nucleate. It is tested on the phase this iteration begins at, because
+            # `startPhase` is reassigned in two places below, once by the second-order branch
+            # inside the child loop and once at the end of the iteration; reading it after
+            # either of those compares a phase against itself and reports a valid second-order
+            # step as a cycle.
+            #
+            # Completion is tested before the cycle guard. A chain can reach the
+            # zero-temperature phase before it has found any transition, advance from it by a
+            # second-order step, and come back to it with transitions in hand. That chain is
+            # complete and must stop here; testing the guard first would report it as a cycle,
+            # throw away a complete set of transitions, and report the run as too supercooled
+            # to nucleate.
             if startPhase.key == self.phases.T0Phase and transitions:
                 if verbose:
                     print(f"Chain complete at the zero-temperature phase {startPhase.key} "

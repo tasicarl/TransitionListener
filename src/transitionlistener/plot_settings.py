@@ -44,6 +44,12 @@ def save_figure(fig, path) -> None:
 
 plot_settings = {
     "text.usetex": False,
+    # No padding to the left and right of the data. Matplotlib pads an axis by five per cent
+    # of the data range on each side, which leaves every curve ending inside the frame with
+    # empty space beyond it, and a reader cannot tell that empty space from a curve that
+    # stopped early. The y axis keeps its padding, where the same space separates a curve
+    # from the frame rather than suggesting the curve ended.
+    "axes.xmargin": 0.0,
     "font.family": "sans-serif",
     "font.sans-serif": ["DejaVu Sans", "Arial", "Liberation Sans"],
     "mathtext.fontset": "dejavusans",

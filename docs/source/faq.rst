@@ -18,13 +18,13 @@ To suppress output, just call TransitionListener without the verbose flag
 
 .. code-block:: console
   
-  $ tl -c config/example_point.yaml
+  $ tl -c examples/example_point.yaml
 
 instead of 
 
 .. code-block:: console
   
-  $ tl -c config/example_point.yaml -v 
+  $ tl -c examples/example_point.yaml -v 
 
 How should I cite TransitionListener?
 -------------------------------------

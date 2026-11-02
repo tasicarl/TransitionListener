@@ -28,6 +28,9 @@ For more explicit details, see the original paper
 
 .. _`arXiv:1109.4189`: http://arxiv.org/abs/1109.4189
 
+What this module computes is described in the documentation under
+The bounce action: :doc:`/algorithms/the_bounce_action`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 
@@ -392,8 +395,15 @@ class Deformation_Points(object):
     Deform a path in the presence of a potential such that the normal forces along the path are
     zero.
 
-    See :ref:`note-path-deformation-deformation-points` for the reasoning and the measurements
-    behind this.
+    Unlike :class:`Deformation_Spline`, this class changes the points themselves rather than
+    fitting a spline to them. It is the more straightforward implementation, and with
+    comparable inputs, meaning about as many basis splines as there are points here, it tends
+    to be the faster of the two, because the step sizes here change with the total number of
+    points while in the spline implementation they mostly depend on the number of basis
+    functions. As long as the path is fairly smooth, though, that class needs fewer splines
+    than this one needs points, so in practice this one tends to be somewhat slower. The two
+    converge on the same answer as the number of points and basis functions grows.
+
 
     Parameters
     ----------
@@ -687,8 +697,35 @@ _MAX_EXTENSION_KNOTS = 20000
 def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> float:
     """Distance to the first local minimum of ``V`` walking outward from ``p0`` along ``dp0``.
 
-    See :ref:`note-path-deformation-extension-minimum` for the reasoning and the measurements
-    behind this.
+    The path is extended past each end until it reaches a minimum. ``scipy.optimize.fmin``
+    was used for that, and it starts from ``x0 = 0`` with an initial simplex step of 2.5e-4
+    whatever the problem looks like. That step is in units of the knot index, so in field units
+    it is 2.5e-4 times the spacing between the first two knots, and for a path whose ends are
+    far apart it is large. On the conformal U(1) at g = 0.54 with the minima 1000 field units
+    apart, the two-knot initial path has a knot spacing of the whole path and the extension
+    settled a full knot out, at field -1000. That potential is even in the field, so the
+    extended path ran from 1000 to -1000 and connected two degenerate minima; the solver
+    compared its ends, found them equal, reported "stable, not metastable", and the action came
+    back infinite.
+
+    So the search walks outward instead of starting with a step of its own choosing, and two
+    things bound it. ``floor`` is the potential at the opposite end of the path, passed when
+    extending the metastable end: tunnelling needs that end to stay the higher of the two, so
+    an extension that would take it to or below the other end destroys the problem being
+    solved, and the walk stops there. That is what separates the mirror minimum above, exactly
+    degenerate with the broken minimum and refused, from a real minimum a little way past the
+    end, which is kept: on the 2HDM benchmark at T = 36.56 the potential at the end is
+    -2.4347e+07, there is a genuine minimum 11.01 knots out at -2.4348e+07, and the broken
+    minimum is far below at -6.79e+07, so the extension is allowed and the action stays at the
+    converged 143.69.
+
+    The other bound is the rounding of ``V`` itself. Near a path end the potential can be flat
+    to machine precision over many decades of ``x``: at that same 2HDM end consecutive probes
+    differ by rounding alone, about 5e-9, for ``x`` below 1e-4 knots. Taking the first such rise
+    for a minimum stopped the search at x = 4e-10 and lost the real one at 11.01, which moved
+    the action to 119.21 against the converged 143.69. A rise only counts when it clears that
+    noise.
+
     """
 
     def value(x: float) -> float:
@@ -708,8 +745,24 @@ def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> f
     def clears_the_floor(x: float) -> bool:
         """Is the potential at `x` still above the other end of the path?
 
-        See :ref:`note-path-deformation-extension-minimum-clears-the-floor` for the reasoning
-        and the measurements behind this.
+        A degenerate mirror minimum only touches the other end's value, it does not go
+        below it, so this is a margin rather than a comparison: the two are the same number to
+        every digit in that case, while a minimum that is genuinely allowed sits far above.
+
+        The margin is the rounding of the two values and nothing more, the same rule the walk
+        uses for a rise. A margin of a fixed relative size instead, 1e-9 of the floor as this
+        was, is not a property of the potential at all: the bounce depends only on differences
+        of ``V``, so adding a constant must not change which paths are extended, and a margin
+        proportional to ``|floor|`` changes with that constant. It also refuses minima that are
+        genuinely metastable, an end 500 above a floor of -1e12 having had to clear 1000.
+
+        What this cannot do is recover a gap the two values no longer carry. At a floor of
+        -1e12 the spacing of doubles is 1.2e-4, so a gap of 1e-3 is eight of them and the
+        margin, fifteen, refuses it, while the same gap at a floor of zero is accepted. That is
+        the offset having thrown the information away before the comparison sees it, not the
+        rule changing its mind. The answer when the gap is inside the rounding is to leave the
+        end where it is, which is what this returns.
+
         """
         if floor is None:
             return True
@@ -805,8 +858,20 @@ def _uniform_V_samples(L: float, n_samples: int) -> np.ndarray:
 def _barrier_is_resolved(x: np.ndarray, y: np.ndarray, L: float) -> bool:
     """Do enough of the sampled values fall inside the barrier to represent it?
 
-    See :ref:`note-path-deformation-barrier-is-resolved` for the reasoning and the measurements
-    behind this.
+    The barrier is the region between the two minima where the potential rises above the
+    higher of them. Counting the samples in it is a direct measure of whether the grid can
+    carry it, and it needs no second evaluation of the potential, since the values are already
+    in hand.
+
+    The counts the threshold is set from: on the conformal U(1) at g = 0.54 with 10000 samples,
+    1 sample inside the barrier at an internal temperature of 0.1 and none at 0.01 or below; on
+    the 2HDM benchmark, whose barrier spans a generic part of the path, 400 to 760 at every
+    temperature; and with ``fullTunneling``'s own default of 100 samples on that conformal path,
+    2. The threshold sits below that last one deliberately. A grid of 100 knots cannot carry
+    the re-placed spacing, so the sample count is checked as well, and the two together mean a
+    path is only re-sampled when its grid is blind to the barrier and has the knots to do
+    better.
+
     """
     inside = (x >= 0.0) & (x <= L)
     n_inside = int(np.count_nonzero(inside))
@@ -824,8 +889,27 @@ def _barrier_is_resolved(x: np.ndarray, y: np.ndarray, L: float) -> bool:
 def _clustered_V_samples(L: float, n_samples: int) -> np.ndarray:
     """Samples for a barrier too narrow for the uniform grid to carry.
 
-    See :ref:`note-path-deformation-clustered-v-samples` for the reasoning and the measurements
-    behind this.
+    Both the spacing of the uniform samples and how far they reach past the ends are fixed
+    fractions of the path length, while the barrier is a feature whose width is set by the
+    temperature. In a strongly supercooled model it is a vanishing fraction of the path, so the
+    uniform grid misses it and the action is wrong: on the conformal U(1) at g = 0.54, too high
+    by 1.1e-2 relative where the spacing is 0.86 barrier widths, 6.6e-2 at 1.67 and 65 % at
+    4.3.
+
+    So the samples approach the ends geometrically, which is where the barrier goes as the
+    temperature falls: the barrier top moves towards the metastable minimum, and so does the
+    escape point. The overhang has to shrink with them. Leaving it at 0.2 L is what dominates
+    the error once the grid is clustered, because one cubic spline through the whole range is
+    bent, just inside the end, towards a value some 24 orders of magnitude above the barrier it
+    has to resolve. With the overhang counted in samples at the local spacing instead, the
+    action at an internal temperature of 1e-4 goes from 98.40 to 79.97724 against a true
+    79.97725, and at 1e-5 from 583.8 to 69.468 against 69.465.
+
+    This grid is used only where the uniform one cannot see the barrier at all. It is not a
+    better grid in general: its spacing ratios reach 1e-9, which an interpolating cubic spline
+    does not take well on a potential with the 2HDM's curvature, where it returns an infinite
+    action at temperatures the uniform grid resolves.
+
     """
     n_uniform = max(2, n_samples // 2)
     # The two end grids meet at L/2, so `np.unique` drops one of that pair and the grid comes
@@ -848,8 +932,16 @@ def _clustered_V_samples(L: float, n_samples: int) -> np.ndarray:
 class SplinePath(object):
     """Fit a spline to a path in field space, and find the potential on that path.
 
-    See :ref:`note-path-deformation-spline-path` for the reasoning and the measurements behind
-    this.
+    The fit happens in several steps. The derivatives of the input points give the path
+    length and direction at each point. With ``extend_to_minima`` the path is extended at each
+    end until the ends lie on local minima. The points are then fit to a spline whose knots are
+    the path distances from the first point, and with ``reeval_distances`` those distances are
+    re-evaluated on the spline and a second spline fit with the more accurate knots.
+
+    The potential along the path can be defined either way. With ``V_spline_samples`` as
+    ``None`` the potential at distance ``x`` is ``V[pts(x)]``, so the input potential is
+    evaluated for every ``x`` passed to :meth:`V`. Otherwise it is evaluated
+    ``V_spline_samples`` times during initialisation and a second spline is fit to the output.
 
     Parameters
     ----------
@@ -1557,8 +1649,23 @@ def _execute_full_tunneling(
 #: path the bounce traverses, before they are treated as two pairings and each given its own
 #: bounce.
 #:
-#: The reasoning and the measurements are in the implementation notes for pathDeformation.py,
-#: under `_IMAGE_SEPARATION_RTOL`.
+#: The criterion is the resolution of the phase tracing that produced the false vacuum. A
+#: separation does not bound the difference of two bounce actions for a general potential, so
+#: this is not a tolerance on the action; it is the statement that two points closer together
+#: than the tracer can place a minimum are one point. The tracer locates each node by finite
+#: differences of step ``deltaX_target * 1e-2``, and ``phases._IMAGE_SIGN_RTOL`` applies the
+#: same reasoning, with this same constant, to the sign of a field component.
+#:
+#: An equality test at machine precision was tried and withdrawn. A symmetric phase is a false
+#: vacuum at a fixed point of the group, and the tracer leaves it a few times 1e-10 from that
+#: point rather than on it, so an exact test saw two images at every temperature of such a
+#: transition and the solver computed one path twice, which on the 2HDM at `lambda3 = 5.6518`
+#: cost 49 per cent of all the time spent on bounces while the two actions agreed to 3.0e-05.
+#: What a merge at this threshold can hide is bounded by what the solver can tell apart: two
+#: paths closer than this differ by less than 1e-4 of their length, and the action on one path
+#: recomputed repeats only to a few times 1e-5. The tracer's own step would put the threshold
+#: at 4e-06 of the path length instead, which merges the same pairs and splits the same pairs;
+#: the looser constant is used so that one number serves both this test and the sign test.
 _IMAGE_SEPARATION_RTOL = 1.0e-4
 
 
@@ -1605,22 +1712,10 @@ def _isAnOrdinaryBounce(entry: dict) -> bool:
 
 
 def _isACheaperPairing(action: float, best: float) -> bool:
-    """Whether `action` is the smaller of two pairings' actions.
+    """Whether this pairing's action should replace the best one found so far.
 
-    See :ref:`note-path-deformation-is-acheaper-pairing` for the reasoning and the measurements
-    behind this.
-
-    Parameters
-    ----------
-    action : float
-        The candidate pairing's action.
-    best : float
-        The action of the pairing kept so far.
-
-    Returns
-    -------
-    bool
-        True where the candidate's action is the one to keep.
+    A bounce action is finite and non-negative. Anything else is not an action: it never wins,
+    and the first real value displaces it.
     """
     if not (np.isfinite(action) and action >= 0.0):
         return False
@@ -1633,8 +1728,27 @@ def imagesOfTheFalseVacuum(x_false: np.ndarray, x_true: np.ndarray,
                            invGroupElements) -> list:
     r"""Every image of the false vacuum, the one nearest the true vacuum first.
 
-    See :ref:`note-path-deformation-images-of-the-false-vacuum` for the reasoning and the
-    measurements behind this.
+    Where the potential is invariant under a group, each minimum stands for a set of images,
+    all of them the same physics. Which image a phase was traced onto is settled by the sign of
+    a numerical step and not by the potential, so the two phases of a transition can be stored
+    on different images, and the bounce is then computed along a path between images rather
+    than the path the field takes. The field separation and the action of that path are those
+    of no physical channel, and the action can come out a factor of two wrong without anything
+    downstream being able to tell: on the 2HDM at ``lambda3 = 5.868`` the path between images
+    gave ``S_3/T = 336.84`` at T = 30.0 GeV where the path the field takes gives 152.97.
+
+    The bubble nucleates along whichever pairing carries the smallest action, so all of the
+    images are candidates and :func:`bounceActionOverImages` computes the bounce for each. The
+    transformation is applied to the false vacuum, leaving the true vacuum where the phase
+    tracing put it, so that every candidate ends at the same point.
+
+    The images are returned with the one nearest the true vacuum first, and the point as it was
+    traced wins a tie, which makes the order independent of the order the group is given in.
+    The order decides nothing, since every candidate is computed and the smallest action kept;
+    it is this order because a shorter path usually carries the smaller action, so the pairing
+    solved first is usually the one kept. An image equal to the traced point is dropped, so the
+    identity costs nothing, and a false vacuum sitting at a fixed point of the group, the origin
+    in particular, yields one candidate and costs one bounce however large the group is.
 
     Parameters
     ----------
@@ -1695,8 +1809,24 @@ def imagesOfTheFalseVacuum(x_false: np.ndarray, x_true: np.ndarray,
 def imagesToPairOver(pot) -> list:
     """The symmetry elements the bounce should be computed over, for this potential.
 
-    See :ref:`note-path-deformation-images-to-pair-over` for the reasoning and the measurements
-    behind this.
+    Empty unless ``pair_transition_over_images`` is on, which leaves one bounce per
+    temperature. A model with no symmetry group gives the same thing either way.
+
+    Off by default because the defect it guards against is now fixed where it arises. The
+    bounce used to be computed between two images because the phase tracing could put the two
+    phases on different ones, and ``phases.canonicalImageElement`` now puts a whole phase on
+    its canonical image, so the pairing recomputes a bounce whose answer is rejected. Measured
+    on the 2HDM at ``lambda3 = 5.868``, the coupling the pairing was added for: of 76
+    temperatures, 66 have two images genuinely apart, and at none of the 66 did the image the
+    tracing did not produce carry the smaller action. Its action was larger by a median factor
+    2.1, and the second bounce took 66 per cent of all the time spent on bounces, raising the
+    whole point from 427 s to 1076 s. At ``lambda3 = 5.6518``, where the false vacuum is the
+    symmetric phase, the two images are the same point to the tracer's resolution and the
+    switch costs 5 per cent.
+
+    Turning it on is the way to check that on a new model or a new group, which is why the
+    switch is here rather than the code removed.
+
     """
     group = list(getattr(pot, "invGroupElements", []) or [])
     if not group:
@@ -1720,8 +1850,29 @@ def bounceActionOverImages(
 ) -> dict:
     """Compute the bounce for every image of the false vacuum and keep the smallest action.
 
-    See :ref:`note-path-deformation-bounce-action-over-images` for the reasoning and the
-    measurements behind this.
+    Where the potential is invariant under a group, the false vacuum stands for a set of
+    images, all of them the same physical state, and which of them the phase tracing landed on
+    is settled by the sign of a numerical step rather than by the potential. The paths from
+    those images to the true vacuum are different paths and carry different actions, and the
+    bubble nucleates along the one with the smallest action, so that is the action the rate is
+    built from.
+
+    Each image is offered to :func:`bounceAction` in turn, nearest to the true vacuum first,
+    and the entry with the smallest action is stored. A pairing whose bounce the solver could
+    not resolve comes back as ``trantype`` 0 with an infinite action, which loses every
+    comparison, so it does not cost the temperature when another pairing resolved; where no
+    pairing resolved, the first one's entry is kept and the caller sees the infinite action it
+    would have seen before any of the images were tried. A pairing whose two points coincide
+    comes back as ``trantype`` 2 with action 0, and only the nearest image can do that, since
+    an image equal to the true vacuum is at distance zero and so is ordered first.
+
+    Nothing here catches an exception. Every ``transitionlistener`` error the bounce code
+    raises about a path is already absorbed by :func:`bounceAction` into one of those two
+    ``trantype`` values, except the one that reports a fault in the code, and the two modules'
+    ``raise`` statements are pinned against that census in the tests. What would still reach a
+    handler here is the run deadline, a fault in the code, or a failure from outside the
+    package such as a ``ValueError`` out of scipy. None of those may be read as a pairing that
+    happened not to resolve.
 
     Parameters
     ----------

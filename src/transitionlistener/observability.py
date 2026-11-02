@@ -1,5 +1,8 @@
 """Sensitivity curves and observability metrics for gravitational wave experiments.
 
+What this module computes is described in the documentation under
+The gravitational wave spectrum: :doc:`/algorithms/the_spectrum`.
+
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
 

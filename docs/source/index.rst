@@ -30,14 +30,6 @@ first-order phase transitions and gravitational wave signals.
    :target: https://arxiv.org/abs/2109.06208
    :alt: arXiv
 
-.. image:: https://img.shields.io/badge/arXiv-2502.19478-b31b1b.svg
-   :target: https://arxiv.org/abs/2502.19478
-   :alt: arXiv
-
-.. image:: https://img.shields.io/badge/arXiv-2602.09092-b31b1b.svg
-   :target: https://arxiv.org/abs/2602.09092
-   :alt: arXiv
-
 .. image:: https://img.shields.io/badge/arXiv-2605.15259-b31b1b.svg
    :target: https://arxiv.org/abs/2605.15259
    :alt: arXiv
@@ -58,7 +50,7 @@ Usage
 -----
 
 * `Get started! <https://www.tasillo.de/TransitionListener/getting_started>`_
-* Read the `full documentation <https://www.tasillo.de/TransitionListener/documentation>`_
+* Read the `implementation notes <https://www.tasillo.de/TransitionListener/algorithms/index>`_
 * Have a look at the `GitHub repository <https://github.com/tasicarl/TransitionListener>`_
 
 
@@ -68,7 +60,7 @@ If you use TransitionListener in your research, please cite the following papers
 
 - J. Matuszak, C. Tasillo, "TransitionListener v2.0 - Robust gravitational wave predictions for cosmological phase transitions", arXiv:2605.15259 [hep-ph].
 - F. Ertas, F. Kahlhoefer, C. Tasillo, "Turn up the volume: listening
-  to phase transitions in hot dark sectors", JCAP 02 (2022) 02, 014, arXiv:2109.06208 [astro-ph.CO].
+  to phase transitions in hot dark sectors", JCAP 02 (2022) 014, arXiv:2109.06208 [astro-ph.CO].
 
 GPLv3 (see LICENCE file). If you require another license, please contact us.
 
@@ -90,14 +82,10 @@ Contributors
    installation
    usage
    features
-   method
-   error_reference
-   notes/index
+   algorithms/index
+   example_output
    changelog
    contributing
-   documentation
-   plots
-   example_output
    faq
 
 .. toctree::

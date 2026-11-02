@@ -4,10 +4,10 @@ Installation Guide
 TransitionListener can be installed in three ways, listed in order of
 convenience:
 
-1. :ref:`install-conda` — a fully resolved scientific stack from
+1. :ref:`install-conda`, a fully resolved scientific stack from
    ``conda-forge``,
-2. :ref:`install-pip` — a ``pip`` install from PyPI,
-3. :ref:`install-clone` — an editable install from a GitHub clone, for
+2. :ref:`install-pip`, a ``pip`` install from PyPI,
+3. :ref:`install-clone`, an editable install from a GitHub clone, for
    developers and contributors.
 
 Each route works out of the box for the *core* gravitational wave
@@ -19,11 +19,11 @@ If you do not have a conda flavour installed yet, any of
 `conda <https://docs.conda.io/projects/conda/en/stable/>`_,
 `mamba <https://mamba.readthedocs.io/en/latest/>`_, or
 `micromamba <https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html>`_
-work; the commands below assume ``conda`` but ``mamba`` /
+work. The commands below assume ``conda``. Both ``mamba`` and
 ``micromamba`` accept the exact same syntax.
 
 .. note::
-    **Apple Silicon (M-series Macs) — read this first.**
+    **Apple Silicon (M-series Macs): read this first.**
     The PTA likelihood layer depends on ``ceffyl``, which ships only
     as an ``osx-64`` build on ``conda-forge``. As a consequence, any
     environment that includes ``ptarcade`` has to be created with the
@@ -37,7 +37,7 @@ Option 1: conda from conda-forge (recommended)
 ----------------------------------------------
 
 The ``conda-forge`` package ``transitionlistener`` ships a fully
-resolved scientific stack — no compiler step, no source build of
+resolved scientific stack, no compiler step, no source build of
 ``mpi4py``:
 
 .. code-block:: bash
@@ -78,7 +78,7 @@ The package is published on PyPI as ``transitionlistener``:
 
 On Apple Silicon, the second command triggers a source build of
 ``enterprise-pulsar`` and its dependencies, which is brittle in
-practice — for the PTA workflow on M-series Macs, prefer
+practice. For the PTA workflow on M-series Macs, prefer
 :ref:`install-conda`.
 
 If you install ``ptarcade``, see :ref:`install-pta-caveat`.
@@ -128,14 +128,14 @@ PTA-enabled environment:
 
     pip install "setuptools<72"
 
-After this step, rerun the same ``tl -c ...`` command — the PTA
+After this step, rerun the same ``tl -c ...`` command. The PTA
 likelihood table should now populate alongside the SNR table.
 
 The root fix has already landed in ``enterprise``
 (`nanograv/enterprise@a6d504d <https://github.com/nanograv/enterprise/commit/a6d504d69254c45b530471efe0c7cc7a3c772c3f>`_)
 and a corresponding PTArcade release is expected soon, after which
 this workaround will no longer be needed. Pip may report
-version-conflict warnings during this step — they are harmless and
+version-conflict warnings during this step. They are harmless and
 can be ignored.
 
 .. note::
@@ -162,7 +162,7 @@ physical bands.
 
 .. note::
     The first ``tl --check`` after a fresh install typically takes
-    2–3 minutes while NumPy / SciPy / matplotlib warm their library
+    two to three minutes while NumPy / SciPy / matplotlib warm their library
     and font caches and the phase tracer allocates its internal
     buffers. Subsequent runs finish in well under a minute.
 

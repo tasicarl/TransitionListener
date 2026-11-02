@@ -191,6 +191,24 @@ class TLPlots():
             return outdicts.get(transition_index)
         return None
 
+    def _reported_nucleation_temperature(self, transition_index: int, tr) -> float | None:
+        """The nucleation temperature of the run, in internal units, or None.
+
+        Not every run that has one carries it on the transition object. The search that runs
+        before percolation gives up on a strongly supercooled point and leaves ``tr.Tnuc`` as
+        None, while the percolation stage afterwards still solves the criterion of one bubble
+        per Hubble volume and writes ``Tnuc_SM_GeV`` into the observables. Reading only
+        ``tr.Tnuc`` therefore left the nucleation line off panels whose run had a nucleation
+        temperature, and said so in their captions.
+        """
+        if tr.Tnuc is not None and np.isfinite(tr.Tnuc):
+            return float(tr.Tnuc)
+        derived = self._transition_derived_params(transition_index, tr)
+        tnuc_gev = derived.get("Tnuc_SM_GeV", np.nan)
+        if np.isfinite(tnuc_gev):
+            return float(tnuc_gev) / self.pot.conversionFactor
+        return None
+
     def _profile_temperature_candidates(self, transition_index: int, tr) -> list[float]:
         """Return preferred temperatures at which to look up cached instantons."""
         candidates: list[float] = []
@@ -266,8 +284,20 @@ class TLPlots():
     def _bounce_false_vacuum_at_temperature(self, tr, temperature):
         """The false vacuum the bounce was computed from, evaluated at ``temperature``.
 
-        See :ref:`note-plots-tlplots-bounce-false-vacuum-at-temperature` for the reasoning and
-        the measurements behind this.
+        The profile drawn beside this marker starts at the image
+        :func:`pathDeformation.bounceActionOverImages` chose, which is the traced point unless
+        ``pair_transition_over_images`` is on and a transformed image carried the smaller
+        action. Evaluating the traced phase alone would then put the marker a reflection away
+        from the curve it labels, and on a model whose fields are hundreds of GeV that is the
+        whole width of the plot.
+
+        The phase is evaluated at ``temperature``, because the plot is not always at the
+        nucleation temperature and ``tr.high_vev`` is, and the group element that took the
+        traced point to the one used is then applied to it. Where no element of the potential's
+        group reproduces that map, the phase point is returned unmapped: a marker in the traced
+        place is wrong in the same way as before, and inventing a transformation the potential
+        does not have would be worse.
+
         """
         traced = getattr(tr, "high_vev_as_traced", None)
         # The fallback has to be in the same frame as the element applied below. `valAt` fails
@@ -479,7 +509,8 @@ class TLPlots():
                        header="T_GeV S3_over_T Gamma_over_H4", fmt="%.6e")
 
     def plotPotential(self, plot_T_GeV : float, phi_ranges_GeV : list, n : int = 100,
-                      show : bool = False, save : bool = True, log : bool = False):
+                      show : bool = False, save : bool = True, log : bool = False,
+                      cfrac : float = 0.8):
         """Plot the potential energy landscape at a fixed temperature.
         
         Parameters
@@ -496,6 +527,11 @@ class TLPlots():
             Whether to save the plot.
         log : bool, optional
             Whether to use a logarithmic color scale (only for 2D plots).
+        cfrac : float, optional
+            The fraction of the potential's range the contours cover, from its minimum
+            upwards, for a model with more than one field. The default leaves the top of the
+            range without contours, which resolves the minima; setting it to 1 covers the
+            whole range.
         """
         if plot_T_GeV == 0.0:
             T_str = r"$T = {:g}$".format(plot_T_GeV)
@@ -528,7 +564,7 @@ class TLPlots():
                 yaxis=1,
                 n=n,
                 clevs=200,
-                cfrac=.8,
+                cfrac=cfrac,
                 log=log,
             )
         ax.set_title(self.plot_description + f": Potential at {T_str}" + r"$\,\mathrm{GeV}$")
@@ -621,13 +657,12 @@ class TLPlots():
                     # percolation data exists.
                     Tmin_data_GeV = float(TSYM_GeV[-1])
 
-                    # Strongly supercooled transitions have no nucleation temperature; the
-                    # upper end of the percolation profile then sets the plotting range, and
-                    # nothing is drawn where the nucleation temperature would go.
-                    # A transition can reach this point without a nucleation temperature, as
-                    # None or as NaN; both mean the same thing for the plot.
-                    has_Tnuc = Tnuc is not None and np.isfinite(Tnuc)
-                    Tnuc_GeV = (Tnuc * self.pot.conversionFactor if has_Tnuc
+                    # Where neither the transition object nor the observables carry a
+                    # nucleation temperature, the upper end of the percolation profile sets
+                    # the plotting range and no line is drawn.
+                    Tnuc_plot = self._reported_nucleation_temperature(i, tr)
+                    has_Tnuc = Tnuc_plot is not None
+                    Tnuc_GeV = (Tnuc_plot * self.pot.conversionFactor if has_Tnuc
                                 else float(TSYM_GeV[0]))
                     Tperc_GeV = Tperc * self.pot.conversionFactor
                     if np.isfinite(Tmin_GeV):
@@ -671,13 +706,31 @@ class TLPlots():
                     ax.set_title(self.plot_description)
                     ax.set_ylabel("True vacuum fraction")
                     ax.axvline(Tperc_GeV, ls="--", color="black", label="$T_\\mathrm{perc}$")
-                    if has_Tnuc:
-                        ax.axvline(Tnuc_GeV, ls="-.", color="grey", label="$T_\\mathrm{nuc}$")
                     x_right_GeV = Tmax_plot_GeV
                     if not np.isfinite(Tmax_GeV):
                         xpad_GeV = max(0.02 * max(Tnuc_GeV - Tmin_plot_GeV, 0.0), 5.0e-5)
                         x_right_GeV = Tnuc_GeV + xpad_GeV
-                    ax.set_xlim(Tmin_plot_GeV, x_right_GeV)
+                    # The axis ends where the curve ends. The fraction is only known at the
+                    # temperatures the run put support points at, so a requested window wider
+                    # than that leaves the curve stopping inside the frame, which looks like a
+                    # history that was never computed to the end. The percolation temperature
+                    # lies inside that range by construction and is kept in the limits; the
+                    # nucleation temperature can lie above the hottest support point, and
+                    # widening the axis to it strands the curve short of the frame.
+                    if T_dense_GeV.size:
+                        x_left_GeV = max(Tmin_plot_GeV, float(np.min(T_dense_GeV)))
+                        x_right_GeV = min(x_right_GeV, float(np.max(T_dense_GeV)))
+                        if np.isfinite(Tperc_GeV):
+                            x_left_GeV = min(x_left_GeV, float(Tperc_GeV))
+                            x_right_GeV = max(x_right_GeV, float(Tperc_GeV))
+                    else:
+                        x_left_GeV = Tmin_plot_GeV
+                    # Drawn only where it falls inside the panel, so that the legend never
+                    # names a line the reader cannot find.
+                    if has_Tnuc and x_left_GeV <= Tnuc_GeV <= x_right_GeV:
+                        ax.axvline(Tnuc_GeV, ls="-.", color="grey",
+                                   label="$T_\\mathrm{nuc}$")
+                    ax.set_xlim(x_left_GeV, x_right_GeV)
                     ax.set_xlabel(r"$T$ / $\mathrm{GeV}$")
                     ax.legend(loc="upper right")
                     add_TL_logo(loc="lower left", magnification=1.5, ax=ax)
@@ -711,20 +764,28 @@ class TLPlots():
             self._plot_profile_axis(ax, tr, radius, phi, transition_index, ylabel)
 
         axes[-1].set_xlabel(r"Bubble radius / $\mathrm{GeV}^{-1}$")
-        add_TL_logo(loc="lower right", magnification=2, ax=axes[-1])
+        # Lower left, because a bounce profile starts at the true vacuum and falls to the
+        # false one: the small-radius, small-field corner is the one the curve never enters.
+        add_TL_logo(loc="lower left", magnification=2, ax=axes[-1])
         fig.tight_layout()
         save_figure(fig, self.output_folder_name + "profile.pdf")
 
-    def plotProfileV(self, phi1 : int, phi2 : int):
+    def plotProfileV(self, phi1 : int, phi2 : int, cfrac : float = 0.8):
         """Show the potential along the tunnelling path between two field values.
-    
+
         Parameters
         ----------
         phi1 : int
             Index of the first field dimension to plot.
         phi2 : int
             Index of the second field dimension to plot.
-        
+        cfrac : float, optional
+            The fraction of the potential's range the contours cover, from its minimum
+            upwards. The default resolves the minima at the price of leaving the top of the
+            range without contours, which on a point with a deep broken minimum is the
+            region around the origin the path starts from. Setting it to 1 covers the whole
+            range.
+
         """
         if self.pot.Ndim == 1:
             raise ValueError("plotProfileV only works for Ndim > 1.")
@@ -803,7 +864,7 @@ class TLPlots():
                 yaxis=yaxis,
                 n=100,
                 clevs=200,
-                cfrac=.8,
+                cfrac=cfrac,
             )
             axes[idx].plot(
                 start[xaxis] * self.pot.conversionFactor,
@@ -977,7 +1038,10 @@ class TLPlots():
 
         add_TL_logo(loc="lower right", magnification=2, ax=axes[-1])
         axes[0].set_title(self.plot_description)
-        axes[0].legend(loc="upper right")
+        # Centre right, not upper right: a broken phase sits at its largest field value at
+        # the cold end and ends at the hot one, so the upper right corner is where its curve
+        # stops, and a legend there is read through the end of the curve.
+        axes[0].legend(loc="center right")
         axes[0].set_ylabel(r"$\phi_i$ / $\mathrm{GeV}$")
         if self.pot.Ndim > 1 and plot_squaresum:
             axes[1].set_ylabel(r"$\sqrt{\sum_i \phi_i^2}$ / $\mathrm{GeV}$")
@@ -1136,10 +1200,32 @@ class TLPlots():
 
         add_TL_logo(loc="lower right", ax=axes[1], magnification=2)
         axes[0].set_title(self.plot_description)
+        # Headroom for the legend. The counts rise with temperature, so without it the
+        # legend box and the curve for the total share the upper right corner and the
+        # entries are read through the curve. The factor leaves the data in the lower half
+        # of the panel, which clears a legend of five entries at this font size. On a
+        # logarithmic temperature axis 1.45 was measured to be too little, the total still
+        # passing under the box.
+        lo, hi = axes[0].get_ylim()
+        axes[0].set_ylim(lo, lo + 1.6 * (hi - lo))
         axes[0].legend(loc="upper right")
         axes[0].set_ylabel(R"$g_{\mathrm{eff}}(T)$")
         axes[1].set_ylabel(R"$\rho(T) / \mathrm{GeV}^4$")
         axes[1].set_yscale("log")
+        # Logarithmic in temperature, like the energy density below it. The counts of a
+        # supercooled model change over orders of magnitude in temperature, and on a linear
+        # axis all of that sits against the left spine. A range of about one decade carries
+        # only one labelled decade tick, so the ticks at two and five times a decade are
+        # labelled as well.
+        from matplotlib import ticker as _ticker
+
+        axes[1].set_xscale("log")
+        axes[1].xaxis.set_major_locator(
+            _ticker.LogLocator(base=10.0, subs=(1.0, 2.0, 5.0), numticks=12))
+        # Plain numbers rather than powers of ten: the range covers about a decade, where
+        # 0.002 and 0.02 read more easily than 2 times 10 to the minus three. The scientific
+        # formatter also labels only the decades, which leaves the axis with one label.
+        axes[1].xaxis.set_major_formatter(_ticker.FuncFormatter(lambda v, _: "%g" % v))
         axes[0].set_xlim(Tmin * CF, Tmax * CF)
         axes[1].set_xlim(Tmin * CF, Tmax * CF)
         axes[1].set_xlabel(R"$T$ / $\mathrm{GeV}$")
@@ -1185,10 +1271,20 @@ class TLPlots():
 
         add_TL_logo(loc="lower right", ax=ax)
         ax.set_title(self.plot_description)
-        ax.legend(loc="upper right")
+        # Upper left: the energy density rises with temperature, so on these axes the
+        # upper right corner is the one the curves always run through.
+        ax.legend(loc="upper left")
         ax.set_ylabel(R"$\rho$ / $\mathrm{GeV}^4$")
         ax.set_yscale("log")
         ax.set_xscale("log")
+        # A supercooled benchmark covers about one decade in temperature, where the decade
+        # ticks alone leave the axis with a single label. Label two and five times a decade
+        # as well, as the dof plot does.
+        from matplotlib import ticker as _ticker
+
+        ax.xaxis.set_major_locator(
+            _ticker.LogLocator(base=10.0, subs=(1.0, 2.0, 5.0), numticks=12))
+        ax.xaxis.set_major_formatter(_ticker.FuncFormatter(lambda v, _: "%g" % v))
         #ax.set_ylim(1e-2, 1e11)
         ax.set_xlim(Trange[0] * self.pot.conversionFactor, Trange[-1] * self.pot.conversionFactor)
         ax.set_xlabel(R"$T$ / $\mathrm{GeV}$")
@@ -1321,9 +1417,11 @@ def plotSensitivities(gw, showplot : bool =False, call_from_spectrum=False, nfre
     ax.set_ylim(-17.5, -6)
 
     #ax.grid()
+    # The logo sits above the legend rather than across it: at the previous size the two
+    # occupied the same strip to the right of the panel and the legend read through it.
     add_TL_logo(loc="outside", ax=ax, small_logo=False,
-                magnification=1.4)
-    ax.legend(bbox_to_anchor=(1, 0.7), ncol=1)
+                magnification=1.0)
+    ax.legend(bbox_to_anchor=(1, 0.70), loc="upper left", ncol=1)
     if not call_from_spectrum:
         plt.tight_layout()
         if showplot:
