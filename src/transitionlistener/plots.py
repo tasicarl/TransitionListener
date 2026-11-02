@@ -1003,7 +1003,10 @@ class TLPlots():
 
         add_TL_logo(loc="lower right", magnification=2, ax=axes[-1])
         axes[0].set_title(self.plot_description)
-        axes[0].legend(loc="upper right")
+        # Centre right, not upper right: a broken phase sits at its largest field value at
+        # the cold end and ends at the hot one, so the upper right corner is where its curve
+        # stops, and a legend there is read through the end of the curve.
+        axes[0].legend(loc="center right")
         axes[0].set_ylabel(r"$\phi_i$ / $\mathrm{GeV}$")
         if self.pot.Ndim > 1 and plot_squaresum:
             axes[1].set_ylabel(r"$\sqrt{\sum_i \phi_i^2}$ / $\mathrm{GeV}$")
@@ -1165,18 +1168,29 @@ class TLPlots():
         # Headroom for the legend. The counts rise with temperature, so without it the
         # legend box and the curve for the total share the upper right corner and the
         # entries are read through the curve. The factor leaves the data in the lower half
-        # of the panel, which clears a legend of five entries at this font size; 1.45 was
-        # measured to be too little, the total still passing under the box.
+        # of the panel, which clears a legend of five entries at this font size. On a
+        # logarithmic temperature axis 1.45 was measured to be too little, the total still
+        # passing under the box.
         lo, hi = axes[0].get_ylim()
-        axes[0].set_ylim(lo, lo + 1.9 * (hi - lo))
+        axes[0].set_ylim(lo, lo + 1.6 * (hi - lo))
         axes[0].legend(loc="upper right")
         axes[0].set_ylabel(R"$g_{\mathrm{eff}}(T)$")
         axes[1].set_ylabel(R"$\rho(T) / \mathrm{GeV}^4$")
         axes[1].set_yscale("log")
         # Logarithmic in temperature, like the energy density below it. The counts of a
         # supercooled model change over orders of magnitude in temperature, and on a linear
-        # axis all of that sits against the left spine.
+        # axis all of that sits against the left spine. A range of about one decade carries
+        # only one labelled decade tick, so the ticks at two and five times a decade are
+        # labelled as well.
+        from matplotlib import ticker as _ticker
+
         axes[1].set_xscale("log")
+        axes[1].xaxis.set_major_locator(
+            _ticker.LogLocator(base=10.0, subs=(1.0, 2.0, 5.0), numticks=12))
+        # Plain numbers rather than powers of ten: the range covers about a decade, where
+        # 0.002 and 0.02 read more easily than 2 times 10 to the minus three. The scientific
+        # formatter also labels only the decades, which leaves the axis with one label.
+        axes[1].xaxis.set_major_formatter(_ticker.FuncFormatter(lambda v, _: "%g" % v))
         axes[0].set_xlim(Tmin * CF, Tmax * CF)
         axes[1].set_xlim(Tmin * CF, Tmax * CF)
         axes[1].set_xlabel(R"$T$ / $\mathrm{GeV}$")
@@ -1228,6 +1242,14 @@ class TLPlots():
         ax.set_ylabel(R"$\rho$ / $\mathrm{GeV}^4$")
         ax.set_yscale("log")
         ax.set_xscale("log")
+        # A supercooled benchmark covers about one decade in temperature, where the decade
+        # ticks alone leave the axis with a single label. Label two and five times a decade
+        # as well, as the dof plot does.
+        from matplotlib import ticker as _ticker
+
+        ax.xaxis.set_major_locator(
+            _ticker.LogLocator(base=10.0, subs=(1.0, 2.0, 5.0), numticks=12))
+        ax.xaxis.set_major_formatter(_ticker.FuncFormatter(lambda v, _: "%g" % v))
         #ax.set_ylim(1e-2, 1e11)
         ax.set_xlim(Trange[0] * self.pot.conversionFactor, Trange[-1] * self.pot.conversionFactor)
         ax.set_xlabel(R"$T$ / $\mathrm{GeV}$")
