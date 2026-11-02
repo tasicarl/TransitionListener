@@ -121,6 +121,30 @@ class TheProductsShipTests(unittest.TestCase):
         self.assertEqual("ipta2_cp_v1",
                          pfs.free_spectrum_for_label("IPTA2_13bins", "ng15_cp_v1"))
 
+    def test_the_violin_legend_names_the_array_it_drew(self):
+        """Read off the drawn collection, not off the source.
+
+        The label was the literal "NG15 (violins)" whatever was drawn, so a figure of the
+        IPTA DR2 free spectrum carried NANOGrav's name.
+        """
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        from transitionlistener import plots
+
+        for product, expected in (("ng12p5_cp_v1", "NG12.5 (violins)"),
+                                  ("ipta2_cp_v1", "IPTA DR2 (violins)"),
+                                  (None, "NG15 (violins)")):
+            with self.subTest(product=product):
+                fig, ax = plt.subplots()
+                try:
+                    plots.add_violins(ax, nfreq=1, product=product)
+                    labels = [c.get_label() for c in ax.collections]
+                finally:
+                    plt.close(fig)
+                self.assertIn(expected, labels)
+
     def test_each_label_finds_the_reference_of_the_product_it_is_scored_on(self):
         """The pairing the references are filed under is the pairing that is used."""
         for label in PTA_LIKELIHOOD_SETTINGS:
