@@ -688,7 +688,20 @@ class TLPlots():
                     if not np.isfinite(Tmax_GeV):
                         xpad_GeV = max(0.02 * max(Tnuc_GeV - Tmin_plot_GeV, 0.0), 5.0e-5)
                         x_right_GeV = Tnuc_GeV + xpad_GeV
-                    ax.set_xlim(Tmin_plot_GeV, x_right_GeV)
+                    # The axis ends where the curve ends. The fraction is only known at the
+                    # temperatures the run put support points at, so a requested window wider
+                    # than that leaves the curve stopping inside the frame, which looks like a
+                    # history that was never computed to the end.
+                    if T_dense_GeV.size:
+                        x_left_GeV = max(Tmin_plot_GeV, float(np.min(T_dense_GeV)))
+                        x_right_GeV = min(x_right_GeV, float(np.max(T_dense_GeV)))
+                        for T_mark_GeV in (Tperc_GeV, Tnuc_GeV if has_Tnuc else np.nan):
+                            if np.isfinite(T_mark_GeV):
+                                x_left_GeV = min(x_left_GeV, float(T_mark_GeV))
+                                x_right_GeV = max(x_right_GeV, float(T_mark_GeV))
+                    else:
+                        x_left_GeV = Tmin_plot_GeV
+                    ax.set_xlim(x_left_GeV, x_right_GeV)
                     ax.set_xlabel(r"$T$ / $\mathrm{GeV}$")
                     ax.legend(loc="upper right")
                     add_TL_logo(loc="lower left", magnification=1.5, ax=ax)
@@ -1160,6 +1173,10 @@ class TLPlots():
         axes[0].set_ylabel(R"$g_{\mathrm{eff}}(T)$")
         axes[1].set_ylabel(R"$\rho(T) / \mathrm{GeV}^4$")
         axes[1].set_yscale("log")
+        # Logarithmic in temperature, like the energy density below it. The counts of a
+        # supercooled model change over orders of magnitude in temperature, and on a linear
+        # axis all of that sits against the left spine.
+        axes[1].set_xscale("log")
         axes[0].set_xlim(Tmin * CF, Tmax * CF)
         axes[1].set_xlim(Tmin * CF, Tmax * CF)
         axes[1].set_xlabel(R"$T$ / $\mathrm{GeV}$")
