@@ -161,9 +161,10 @@ what the panel shows.
 
    The true-vacuum fraction of this benchmark point, with temperature falling to the left.
    The dashed line is the percolation temperature 0.002212 GeV, where the fraction reaches
-   :math:`f_\mathrm{perc} = 0.28957`. The transition object this panel reads carries no
-   nucleation temperature, so no second line is drawn, while the derived parameters of the
-   same run do carry one and the bounce panel below is labelled with it.
+   :math:`f_\mathrm{perc} = 0.28957`, and the dash-dotted line the nucleation temperature
+   0.002569 GeV, where one bubble has been nucleated per Hubble volume. The nucleation line
+   is drawn only where it falls inside the window the fraction was computed over, which is
+   not always the case for a transition whose rate rises late.
 
 The bubble profile
 ------------------
@@ -175,10 +176,7 @@ The bubble profile
 
 The field through the wall of the critical bubble. The temperature is the nucleation
 temperature where the run has one and the percolation temperature otherwise, and the title of
-the panel says which. A second panel, ``profileV``, draws the path the field takes through
-field space over the potential and shows whether the path deformation found a sensible path
-or cut a corner. It needs a model with more than one field, so this one-field benchmark has
-none.
+the panel says which.
 
 .. figure:: ../_static/plots/profile.png
    :width: 100%
@@ -186,6 +184,35 @@ none.
    The bounce of this benchmark point. The field sits at the true vacuum inside the bubble,
    falls through the wall at a radius of about 1000 inverse GeV, and reaches the false vacuum
    outside. A profile that stops before it reaches the false vacuum is an unresolved bounce.
+
+The path through field space
+----------------------------
+
+.. code-block:: yaml
+
+     profileV:
+       plot?: True
+       field_index_1: 0
+       field_index_2: 1
+       cfrac: 1.0
+
+The path the field takes from one minimum to the other, drawn over the potential at the same
+temperature as the bounce above. It shows whether the path deformation found a sensible path
+or cut a corner. Two field directions are needed, so this panel comes from the 2HDM benchmark
+of ``docs/docs_gallery_2hdm.yaml`` rather than from the one-field model the rest of this
+gallery uses. ``cfrac`` is the fraction of the potential's range the contours cover, counted
+from its minimum: at the default of 0.8 the top fifth carries no contour, which on a point
+with a deep broken minimum is the region around the origin the path starts from.
+
+.. figure:: ../_static/plots/profileV.png
+   :width: 100%
+
+   The bounce of the 2HDM benchmark at 41.4173 GeV in the plane of the two neutral field
+   directions. Colour is the potential and the white arrows its gradient. The path leaves the
+   symmetric minimum at the origin along :math:`\phi_1`, turns where the valley turns at
+   about :math:`\phi_1 = 25` GeV, and ends at the broken minimum at
+   :math:`(\phi_1, \phi_2) = (11.5, 247)` GeV. A path that cuts across the contours instead
+   of following the valley is one the deformation did not finish.
 
 The spectrum and the detectors
 ------------------------------

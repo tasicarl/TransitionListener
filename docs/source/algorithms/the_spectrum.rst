@@ -261,15 +261,46 @@ Evaluating them needs ``ptarcade``, ``enterprise`` and ``tempo2``. Without them 
 computes the signal-to-noise ratios and says that the likelihood columns are unavailable,
 rather than failing.
 
+The shipped free spectra
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+A free spectrum is not the raw data. It is the posterior for the amplitude in each frequency
+bin, and inferring it takes a model of everything in the timing residuals that is not the
+signal. Eight such products ship with the package and ``gw_pta_free_spectrum`` picks one.
+They differ in two modelling choices, which their names record.
+
+The first is the correlation assumed between pulsars:
+
+* ``cp``, a common uncorrelated red process. Every pulsar carries red noise of the same
+  spectrum and nothing correlates one pulsar with another, so the amplitude is attributed to
+  a common source without asking whether its correlations are those of a gravitational-wave
+  background. This is what PTArcade downloads.
+* ``hd``, the Hellings-Downs curve. Pulsar pairs are correlated by the quadrupolar function
+  an isotropic gravitational-wave background produces, and the amplitude is the one that
+  correlation carries.
+* ``hdall``, the Hellings-Downs curve together with a monopole, a dipole and a common
+  uncorrelated process. Room is left for a clock error, which is monopolar, and for an error
+  in the solar-system ephemeris, which is dipolar, so less of the signal is attributed to the
+  background than under ``hd``.
+
+The second is the dispersion measure, the column of free electrons along the line of sight,
+which changes as the solar wind and the interstellar medium move across it. ``dmgp`` infers
+it as a Gaussian process in time. The products without that mark use DMX instead, one free
+dispersion measure per observing epoch, which is what the NANOGrav data sets carry by
+default.
+
+A trailing ``v1`` or ``v2`` separates the 2023 chains from the 2026 re-runs, made after a
+correction to the sampler's parallel-tempering swaps. The default is ``ng15_hd_v2``, the 2026
+Hellings-Downs re-run.
+
+Each product carries its own best fit :math:`\ln L_\mathrm{best}`, because a distance in
+log-likelihood only means something against a best fit obtained on the same data. Where a
+product has no best fit for a label, the run leaves that label's distance and its three-sigma
+verdict empty rather than filling them from another product's best fit.
+
 .. versionchanged:: 2.2
-   Eight free spectra ship with the package and are selected by name, where one was previously
-   downloaded while the run was in progress. They are six NANOGrav 15 yr products, which differ
-   in the correlation the free spectrum was inferred with and in whether they predate the 2026
-   correction to the sampler, together with the NANOGrav 12.5 yr and IPTA DR2 products. The
-   reference :math:`\ln L_\mathrm{best}` belongs to the free spectrum the likelihood is
-   evaluated on, so there is one per product rather than one per data set, and the six
-   NANOGrav 15 yr products each carry their own. A product with no reference for a label
-   reports no distance rather than a distance from a reference obtained on different data.
+   The free spectra ship with the package and are chosen with ``gw_pta_free_spectrum``, where
+   one product was downloaded while the run was in progress and every PTA column rested on it.
 
 .. admonition:: The templates have a range of validity
    :class: important

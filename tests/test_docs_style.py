@@ -184,8 +184,14 @@ class TestThePlotsPageIsReproducible(unittest.TestCase):
         import yaml
 
         page = (DOCS / "source" / "algorithms" / "the_plots.rst").read_text(encoding="utf-8")
-        config = yaml.safe_load((DOCS / "docs_gallery.yaml").read_text(encoding="utf-8"))
-        plots = config["additional_plots"]
+        # Two configurations draw the gallery: the conformal benchmark for every panel that
+        # one field can produce, and the 2HDM benchmark for the path through field space,
+        # which needs two. A block quoted on the page has to match whichever defines it.
+        plots = {}
+        for name in ("docs_gallery.yaml", "docs_gallery_2hdm.yaml"):
+            config = yaml.safe_load((DOCS / name).read_text(encoding="utf-8"))
+            for key, settings in config["additional_plots"].items():
+                plots.setdefault(key, settings)
 
         quoted = {}
         for block in re.findall(r"\.\. code-block:: yaml\n\n((?:(?: {3,}.*)?\n)+)", page):
@@ -577,13 +583,27 @@ class TestPagesAgainstTheCode(unittest.TestCase):
         self.assertIn("title of", page)
 
     def test_the_gallery_asks_for_no_panel_the_benchmark_cannot_draw(self):
-        """``profileV`` needs more than one field, and the gallery model has one."""
+        """``profileV`` needs more than one field, and the conformal model has one.
+
+        `TLPlots.plotProfileV` raises for a one-field model, and the dispatcher catches and
+        skips the request, so asking for the panel in the conformal gallery would produce
+        nothing and say nothing. The panel comes from the 2HDM gallery instead.
+        """
+        import yaml
+
         model = (ROOT / "models" / "TL_conformal_dark_u1.py").read_text(encoding="utf-8")
         self.assertIn("self.Ndim = 1", model)
-        gallery = (DOCS / "docs_gallery.yaml").read_text(encoding="utf-8")
-        self.assertNotIn("profileV", gallery)
+        conformal = yaml.safe_load((DOCS / "docs_gallery.yaml").read_text(encoding="utf-8"))
+        self.assertNotIn("profileV", conformal["additional_plots"])
+
+        two_field = yaml.safe_load(
+            (DOCS / "docs_gallery_2hdm.yaml").read_text(encoding="utf-8"))
+        self.assertIn("profileV", two_field["additional_plots"])
+        self.assertNotIn("TL_conformal_dark_u1", two_field["Modelfile"])
+
         page = (DOCS / "source" / "algorithms" / "the_plots.rst").read_text(encoding="utf-8")
-        self.assertIn("needs a model with more than one field", page)
+        self.assertIn("docs/docs_gallery_2hdm.yaml", page)
+        self.assertIn("../_static/plots/profileV.png", page)
 
 
 if __name__ == "__main__":

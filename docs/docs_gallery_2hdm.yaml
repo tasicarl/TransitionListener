@@ -1,0 +1,53 @@
+# The configuration that produced the path figure of docs/source/algorithms/the_plots.rst.
+# The conformal benchmark of docs_gallery.yaml has one field, and the path of the bounce
+# through field space needs two, so that one panel comes from the 2HDM benchmark the
+# two-dimensional potential figure of docs/source/algorithms/the_effective_potential.rst
+# uses.
+# Run it from the repository root with
+#     tl -c docs/docs_gallery_2hdm.yaml
+# tests/test_docs_style.py checks that the settings quoted on that page are these.
+
+# ==================================================
+# Scan settings
+# ==================================================
+Modelfile:
+  models/TL_2HDM.py
+
+Potential:
+  R2HDM
+
+Scan:
+  SinglePoint
+
+Parameters:
+  lambda1: 0.28894
+  lambda2: 0.26237
+  lambda3: 5.80958300958301
+  lambda4: -2.17494
+  lambda5: -2.24170
+  m12_sq_GeV2: 1573.171
+  tan_beta: 21.3949
+  yukawa_type: 1
+  v_GeV: 246.22
+
+# ==================================================
+# output stuff
+# ==================================================
+timeout: -1  # Timeout in seconds for the individual TL run, -1 for no timeout
+format: txt  # either "txt" or "hdf5"
+output_path: scans/docs_plots_gallery_2hdm
+description: example point, 2HDM
+plot_description: 2HDM benchmark
+
+additional_plots:
+  profile:
+    plot?: True
+
+  profileV:
+    plot?: True
+    field_index_1: 0
+    field_index_2: 1
+    # The whole range of the potential carries contours. At the default of 0.8 the top
+    # fifth of the range has none, which on this benchmark is the region around the origin
+    # the path starts from.
+    cfrac: 1.0

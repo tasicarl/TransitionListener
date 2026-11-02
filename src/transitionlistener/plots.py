@@ -705,8 +705,6 @@ class TLPlots():
                     ax.set_title(self.plot_description)
                     ax.set_ylabel("True vacuum fraction")
                     ax.axvline(Tperc_GeV, ls="--", color="black", label="$T_\\mathrm{perc}$")
-                    if has_Tnuc:
-                        ax.axvline(Tnuc_GeV, ls="-.", color="grey", label="$T_\\mathrm{nuc}$")
                     x_right_GeV = Tmax_plot_GeV
                     if not np.isfinite(Tmax_GeV):
                         xpad_GeV = max(0.02 * max(Tnuc_GeV - Tmin_plot_GeV, 0.0), 5.0e-5)
@@ -714,16 +712,23 @@ class TLPlots():
                     # The axis ends where the curve ends. The fraction is only known at the
                     # temperatures the run put support points at, so a requested window wider
                     # than that leaves the curve stopping inside the frame, which looks like a
-                    # history that was never computed to the end.
+                    # history that was never computed to the end. The percolation temperature
+                    # lies inside that range by construction and is kept in the limits; the
+                    # nucleation temperature can lie above the hottest support point, and
+                    # widening the axis to it strands the curve short of the frame.
                     if T_dense_GeV.size:
                         x_left_GeV = max(Tmin_plot_GeV, float(np.min(T_dense_GeV)))
                         x_right_GeV = min(x_right_GeV, float(np.max(T_dense_GeV)))
-                        for T_mark_GeV in (Tperc_GeV, Tnuc_GeV if has_Tnuc else np.nan):
-                            if np.isfinite(T_mark_GeV):
-                                x_left_GeV = min(x_left_GeV, float(T_mark_GeV))
-                                x_right_GeV = max(x_right_GeV, float(T_mark_GeV))
+                        if np.isfinite(Tperc_GeV):
+                            x_left_GeV = min(x_left_GeV, float(Tperc_GeV))
+                            x_right_GeV = max(x_right_GeV, float(Tperc_GeV))
                     else:
                         x_left_GeV = Tmin_plot_GeV
+                    # Drawn only where it falls inside the panel, so that the legend never
+                    # names a line the reader cannot find.
+                    if has_Tnuc and x_left_GeV <= Tnuc_GeV <= x_right_GeV:
+                        ax.axvline(Tnuc_GeV, ls="-.", color="grey",
+                                   label="$T_\\mathrm{nuc}$")
                     ax.set_xlim(x_left_GeV, x_right_GeV)
                     ax.set_xlabel(r"$T$ / $\mathrm{GeV}$")
                     ax.legend(loc="upper right")
