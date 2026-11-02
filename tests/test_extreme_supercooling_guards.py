@@ -479,7 +479,12 @@ class EnthalpyNormalisationTests(unittest.TestCase):
                 self.assertTrue(np.isfinite(float(np.squeeze(values[index]))))
 
     def test_both_solvers_normalise_through_the_helper(self):
-        """The decomposition only helps where the solver actually uses it."""
+        """The decomposition only helps where the solver's own number comes from it.
+
+        Each helper is replaced by one that returns twice its value, which has to halve the
+        strength. A solver that builds its enthalpy inline calls the helper and ignores it,
+        and that is what this catches.
+        """
         from pathlib import Path
 
         from transitionlistener.helper_functions import load_potential
@@ -496,13 +501,19 @@ class EnthalpyNormalisationTests(unittest.TestCase):
             def valAt(self, T):
                 return self.x
 
-        for module in (bd, bdf):
+        # The adaptive solver normalises by a temperature derivative of the hot energy, the
+        # fixed-step one by the enthalpy built from it. Doubling either halves the strength.
+        for module, name, index in ((bd, "hotEnergyDensity", 2),
+                                    (bdf, "symmetricPhaseEnthalpy", 1)):
             with self.subTest(solver=module.__name__):
-                with mock.patch.object(module, "hotEnergyDensity",
-                                       wraps=module.hotEnergyDensity) as helper:
-                    module.calcAlphas(3.4e2, pot, Phase(0.0), Phase(0.5), verbose=False)
-                self.assertTrue(helper.called,
-                                "%s builds its enthalpy without the helper" % module.__name__)
+                real = getattr(module, name)
+                args = (3.4e2, pot, Phase(0.0), Phase(0.5))
+                before = float(np.squeeze(module.calcAlphas(*args, verbose=False)[index]))
+                with mock.patch.object(module, name,
+                                       lambda *a, **k: 2.0 * real(*a, **k)):
+                    after = float(np.squeeze(module.calcAlphas(*args, verbose=False)[index]))
+                self.assertTrue(np.isfinite(before) and before != 0.0)
+                self.assertAlmostEqual(0.5 * before, after, delta=abs(before) * 1e-9)
 
     def test_the_refusal_names_its_code_and_its_terms(self):
         """The guard that remains for a phase with no plasma at all."""
