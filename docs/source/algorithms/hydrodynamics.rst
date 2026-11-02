@@ -47,6 +47,17 @@ In the code the denominator is evaluated as
 Several strengths appear in a run: one evaluated at nucleation, one at the wall, and the
 asymptotic ones that fix how much pressure the wall feels.
 
+.. versionchanged:: 2.2
+   Every one of those enthalpies is built from the part of the energy density that depends on
+   the temperature, and not from the whole of it. The energy density is that part plus the
+   vacuum energy, which is constant in temperature and cancels analytically in a difference
+   and in :math:`e + p`. It does not cancel numerically. On the conformal :math:`U(1)`
+   benchmark at a gauge coupling of 0.5 the vacuum energy is :math:`10^{15}` times the thermal
+   part, so the difference of the whole energy density came back as exactly zero and the
+   strength as infinity, and at the next coupling of that scan it kept one significant digit.
+   Away from supercooling the two forms agree to every digit, so no number that was
+   trustworthy moved.
+
 .. admonition:: They must share a normalisation
    :class: important
 
