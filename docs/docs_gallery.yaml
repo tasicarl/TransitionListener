@@ -57,11 +57,11 @@ additional_plots:
   energy_density:
     plot?: True
     Tmin_GeV: 0.002
-    Tmax_GeV: 0.026
+    Tmax_GeV: 0.025
   
   dofs:
     Tmin_GeV: 0.002
-    Tmax_GeV: 0.03
+    Tmax_GeV: 0.025
     plot?: True
 
   sensitivities:

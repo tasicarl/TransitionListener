@@ -126,15 +126,16 @@ def figure_shooting() -> None:
             ha="center", va="center")
 
     # The label sits to the left of both markers, in the wedge below the bounce and left of
-    # where the overshoot falls, and each leader runs up to its own marker from underneath.
-    # Two short lines: a label wide enough to reach the plunging overshoot cannot be put
-    # anywhere in this band without touching it, so the rest of the sentence is in the
-    # caption rather than in the panel.
-    ax.annotate("decision for over- and\nundershoot is decided here",
-                xy=(rv_o, pv_o - 0.016), xytext=(6.4, -0.285), color="0.35", fontsize=7,
-                ha="center", va="center",
-                arrowprops=dict(arrowstyle="->", color="0.45", lw=0.8))
-    ax.annotate("", xy=(rv_u, pv_u - 0.016), xytext=(6.4, -0.235),
+    # where the overshoot falls. Two short lines: a label wide enough to reach the plunging
+    # overshoot cannot be put anywhere in this band without touching it, so the rest of the
+    # sentence is in the caption rather than in the panel.
+    ax.text(6.4, -0.300, "decision for over- and\nundershoot is decided here",
+            color="0.35", fontsize=7, ha="center", va="center")
+    # One leader, into the gap between the two markers. The markers are a tenth of the field
+    # range apart, and two leaders drawn from one label to two points that close either cross
+    # or pass through each other's heads, whatever their tails are offset by.
+    ax.annotate("", xy=(0.5 * (rv_u + rv_o), 0.5 * (pv_u + pv_o) - 0.055),
+                xytext=(7.4, -0.232),
                 arrowprops=dict(arrowstyle="->", color="0.45", lw=0.8))
     ax.legend(frameon=False, loc="upper right")
     fig.subplots_adjust(left=0.100, right=0.985, bottom=0.135, top=0.975)
@@ -349,12 +350,13 @@ def figure_plasma_dof() -> None:
     symmetric = _FixedPhase(origin)
     T2 = np.logspace(-3.0, 4.0, 220)
     X = np.asarray(pot.X0, dtype=float)
-    tot_sym, tot_bro, stable = [], [], []
+    tot_sym, tot_bro, stable, phi_bro = [], [], [], []
     for t in T2:
         t = float(t)
         bath = float(td.e_geffSM_fit(t, 1.0))
         overlap = float(np.squeeze(td.sm_fields_in_potential_geff(pot, t, "e")))
         X = np.asarray(pot.findMinimum(X, t), dtype=float)
+        phi_bro.append(float(np.linalg.norm(X)))
         tot_bro.append(bath - overlap + g_eff_DS(t, pot, _FixedPhase(X)))
         # Whether the origin is a minimum, and whether that verdict means anything. `d2V` is a
         # finite difference of the full potential, which at high temperature is dominated by
@@ -369,6 +371,18 @@ def figure_plasma_dof() -> None:
         tot_sym.append(bath - overlap + g_eff_DS(t, pot, symmetric))
     tot_sym = np.array(tot_sym)
     tot_bro = np.array(tot_bro)
+    phi_bro = np.array(phi_bro)
+
+    # Where the broken minimum stops existing, the minimiser falls into the origin and the
+    # count jumps by three degrees of freedom. The jump is the end of the broken phase, not a
+    # feature of its plasma: on a grid ten times finer the jump is the same size, 3.04 against
+    # 3.22, and sits between 121.5 and 122.0 GeV against 120.8 and 130.1 GeV here. The curve
+    # therefore ends at the last temperature at which the broken minimum exists, which is
+    # marked.
+    collapsed = np.flatnonzero(phi_bro < 0.5 * np.max(phi_bro))
+    bro_end_index = int(collapsed[0]) - 1
+    tot_bro[bro_end_index + 1:] = np.nan
+    bro_end = (float(T2[bro_end_index]), float(tot_bro[bro_end_index]))
 
     # The symmetric phase is drawn on the one contiguous stretch that carries the transition,
     # near 100 GeV. At this benchmark the origin also stops being a minimum in a band near
@@ -422,13 +436,19 @@ def figure_plasma_dof() -> None:
     # temperature axis.
     a1.set_yticks(DOF_TICKS)
     a1.legend(frameon=False, loc="lower right")
-    a1.set_title("the tabulated Standard Model bath on its own", fontsize=8, pad=4)
+    a1.set_title("The tabulated Standard Model bath on its own", fontsize=8, pad=4)
 
     a2.plot(T2, tot_bro, color=DESYdunkelblau, lw=1.6, label="broken phase")
     a2.plot(T2, tot_sym, color=DESYmagenta, lw=1.6, ls=(0, (4, 2)),
             label="symmetric phase")
     a2.plot([sym_end[0]], [sym_end[1]], "o", color=DESYmagenta, ms=4.5, mfc="white",
             mew=1.4, zorder=5)
+    a2.plot([bro_end[0]], [bro_end[1]], "o", color=DESYdunkelblau, ms=4.5, mfc="white",
+            mew=1.4, zorder=5)
+    a2.annotate("above here the broken\nminimum is gone",
+                xy=(bro_end[0] * 1.15, bro_end[1] - 1.0), xytext=(1.1e3, 92.0),
+                color=DESYdunkelblau, fontsize=6.5, ha="center", va="center",
+                arrowprops=dict(arrowstyle="->", color=DESYdunkelblau, lw=0.8))
     a2.annotate("below here the origin\nis not a minimum", xy=(sym_end[0], sym_end[1] + 3.0),
                 xytext=(1.2e0, 112.0), color=DESYmagenta, fontsize=6.5,
                 ha="center", va="center",
@@ -438,6 +458,11 @@ def figure_plasma_dof() -> None:
     # is about. The five temperatures lie inside half a decade, so their labels cannot stand
     # side by side; each tail is at its own height instead, and the label sits at that tail.
     # Read top to bottom, the labels are in the order the modes leave.
+    # Only the modes that leave while the broken phase still exists. The heavy scalars of
+    # this benchmark reach half of their relativistic contribution at 154 GeV, above the
+    # 122 GeV at which the broken minimum is gone, so there is no curve for their arrow to
+    # touch and the text says where they would be instead.
+    half = [(label, t) for label, t in half if t < bro_end[0]]
     for i, (label, t_half) in enumerate(half):
         y_curve = float(np.interp(t_half, T2, tot_bro))
         y_row = 17.0 + 10.5 * i
@@ -457,7 +482,7 @@ def figure_plasma_dof() -> None:
     a2.set_xlim(T[0], T[-1])
     a2.set_ylim(0.0, 125.0)
     a2.legend(frameon=False, loc="lower right")
-    a2.set_title("the whole plasma of a 2HDM benchmark point, in each of its two phases",
+    a2.set_title("The whole plasma of a 2HDM benchmark point, in each of its two phases",
                  fontsize=8, pad=4)
 
     fig.subplots_adjust(left=0.095, right=0.972, bottom=0.085, top=0.950, hspace=0.34)
@@ -585,9 +610,9 @@ def figure_fluid_profiles() -> None:
     a0.plot([xi_d[-1], xi_d[-1]], [vv_d[-1], 0.0], color=DESYcyan, lw=1.6)
     a0.plot([xi_d[-1], 1.0], [0.0, 0.0], color=DESYcyan, lw=1.6)
     frame(a0, 0.125)
-    a0.set_title(r"deflagration:  $v_\mathrm{w} = %.2f < c_\mathrm{s}$" % vw_d,
+    a0.set_title(r"Deflagration:  $v_\mathrm{w} = %.2f < c_\mathrm{s}$" % vw_d,
                  fontsize=8, pad=3, loc="left")
-    a0.text(0.035, 0.100, "the plasma inside the bubble is at rest; the wall\n"
+    a0.text(0.035, 0.100, "the plasma inside the bubble is at rest and the wall\n"
                           "pushes the plasma ahead of it", color="0.40",
             fontsize=6.5, ha="left", va="center")
     a0.text(vw_d - 0.018, 0.5 * v_d, "wall", color=DESYcyan, fontsize=6.5, ha="right",
@@ -606,7 +631,7 @@ def figure_fluid_profiles() -> None:
     a1.plot([xi_ha[-1], xi_ha[-1]], [vv_ha[-1], 0.0], color=DESYorange, lw=1.6)
     a1.plot([xi_ha[-1], 1.0], [0.0, 0.0], color=DESYorange, lw=1.6)
     frame(a1, 0.40)
-    a1.set_title(r"hybrid:  $c_\mathrm{s} < v_\mathrm{w} = %.2f < v_\mathrm{J}$" % vw_h,
+    a1.set_title(r"Hybrid:  $c_\mathrm{s} < v_\mathrm{w} = %.2f < v_\mathrm{J}$" % vw_h,
                  fontsize=8, pad=3, loc="left")
     a1.text(0.035, 0.27, "a rarefaction behind the wall and a shock ahead:\n"
                          "the wall outruns sound but not the shock", color="0.40",
@@ -625,7 +650,7 @@ def figure_fluid_profiles() -> None:
     a2.plot([vw_t, vw_t], [v_t, 0.0], color=DESYmagenta, lw=1.6)
     a2.plot([vw_t, 1.0], [0.0, 0.0], color=DESYmagenta, lw=1.6)
     frame(a2, 0.095)
-    a2.set_title(r"detonation:  $v_\mathrm{w} = %.2f > v_\mathrm{J}$" % vw_t,
+    a2.set_title(r"Detonation:  $v_\mathrm{w} = %.2f > v_\mathrm{J}$" % vw_t,
                  fontsize=8, pad=3, loc="left")
     a2.text(0.035, 0.065, "the wall outruns every signal, so the plasma ahead\n"
                           "is undisturbed and the rarefaction is all behind it",
@@ -705,10 +730,14 @@ def figure_spectrum_sources() -> None:
     ax.set_xlabel(r"frequency $f$ (Hz)")
     ax.set_ylabel(r"$h^2\Omega_{\rm GW}$")
     ax.set_xlim(0.75 * f[0], 1.35 * f[-1])
-    ax.set_ylim(1e-18, 1.0e-5)
+    # The top of the range is set just above the steepest thing the panel has to show, the
+    # sound-wave peak and the floor of the sensitivity curve. Carried to the amplitude the
+    # arms of that curve reach at the edges of the frequency range, the three source spectra
+    # are pressed into the lower third of the panel.
+    ax.set_ylim(1e-18, 1.0e-8)
     # Drop the lowest y tick, which otherwise meets the leftmost x tick at the corner.
     ax.yaxis.set_major_locator(mpl.ticker.LogLocator(base=10.0, numticks=8))
-    ax.set_yticks([t for t in ax.get_yticks() if 1e-17 <= t <= 1e-5])
+    ax.set_yticks([t for t in ax.get_yticks() if 1e-17 <= t <= 1e-8])
     # A legend rather than labels beside the curves: with the LISA band in the panel there is
     # one block of empty space left, at low frequency and high amplitude, and it is too far
     # from any of the three curves to label them there.
@@ -716,14 +745,25 @@ def figure_spectrum_sources() -> None:
     # anywhere inside this panel without covering something, which a scan of the rendered
     # panel says directly.
     ax.legend(frameon=False, loc="upper left", fontsize=7, handlelength=1.6)
-    ax.set_title(
-        r"$\alpha = 0.2$,  $R_* = 0.05$,  $T_\mathrm{reh} = 100$ GeV,  "
-        r"$v_\mathrm{w} = 0.65$,  $c_\mathrm{s} = 1/\sqrt{3}$" "\n"
-        r"$\kappa_\mathrm{sw} = %.3f$ from the fit" "\n"
-        r"$\kappa_\mathrm{turb} = %.3f$,  $\kappa_\phi = 0.02$ set by hand"
-        % (k_sw, 0.1 * k_sw),
-        fontsize=7, pad=5, loc="left")
-    fig.subplots_adjust(left=0.105, right=0.985, bottom=0.105, top=0.885)
+    # The parameters are inside the panel, in a box of their own: they are what the three
+    # curves were computed from, so they are read with them. The box is against the right
+    # spine, two thirds of the way up, which is where a scan of the rendered panel for an
+    # empty rectangle of its size puts it. The corner above it is not free: at an upper
+    # limit of 1e-8 the high-frequency arm of the sensitivity curve and its band cross the
+    # top edge at 0.5 Hz.
+    ax.text(0.99, 0.68,
+            "\n".join([
+                r"$\alpha = 0.2$,  $R_* = 0.05$",
+                r"$T_\mathrm{reh} = 100$ GeV",
+                r"$v_\mathrm{w} = 0.65$,  $c_\mathrm{s} = 1/\sqrt{3}$",
+                r"$\kappa_\mathrm{sw} = %.3f$,  $\kappa_\mathrm{turb} = %.3f$"
+                % (k_sw, 0.1 * k_sw),
+                r"$\kappa_\phi = 0.02$"]),
+            transform=ax.transAxes, fontsize=6.5, ha="right", va="bottom",
+            multialignment="left",
+            bbox=dict(boxstyle="square,pad=0.35", facecolor="white", edgecolor="0.8",
+                      linewidth=0.6))
+    fig.subplots_adjust(left=0.105, right=0.985, bottom=0.105, top=0.975)
     _check(fig, "algorithm_spectrum_sources")
     fig.savefig(OUT / "algorithm_spectrum_sources.png", dpi=200)
     plt.close(fig)
@@ -768,7 +808,7 @@ def figure_potential_2d() -> None:
 
     ax.set_xlabel(r"field $\phi_1$ (GeV)")
     ax.set_ylabel(r"field $\phi_2$ (GeV)")
-    ax.set_title(r"the potential of a 2HDM benchmark point at $T = %.0f$ GeV" % T,
+    ax.set_title(r"The potential of a 2HDM benchmark point at $T = %.0f$ GeV" % T,
                  fontsize=8, pad=4, loc="left")
     ax.set_xlim(x[0], x[-1])
     ax.set_ylim(y[0], y[-1])
