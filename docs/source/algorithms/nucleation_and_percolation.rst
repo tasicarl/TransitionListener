@@ -79,9 +79,10 @@ Two backends
 ------------
 
 The history above can be computed by either of two solvers, chosen with
-``percolation_algorithm_mode``. They differ in one thing: how the temperatures at which an
-action is evaluated are chosen. That choice is the whole cost of a run and most of its
-accuracy.
+``percolation_algorithm_mode``. Their main difference is how the temperatures at which an
+action is evaluated are chosen, which is the whole cost of a run and most of its accuracy.
+They are separate implementations rather than one solver with two samplers, and the
+paragraph after the table says where that shows.
 
 .. list-table::
    :header-rows: 1
