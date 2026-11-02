@@ -190,6 +190,24 @@ class TLPlots():
             return outdicts.get(transition_index)
         return None
 
+    def _reported_nucleation_temperature(self, transition_index: int, tr) -> float | None:
+        """The nucleation temperature of the run, in internal units, or None.
+
+        Not every run that has one carries it on the transition object. The search that runs
+        before percolation gives up on a strongly supercooled point and leaves ``tr.Tnuc`` as
+        None, while the percolation stage afterwards still solves the criterion of one bubble
+        per Hubble volume and writes ``Tnuc_SM_GeV`` into the observables. Reading only
+        ``tr.Tnuc`` therefore left the nucleation line off panels whose run had a nucleation
+        temperature, and said so in their captions.
+        """
+        if tr.Tnuc is not None and np.isfinite(tr.Tnuc):
+            return float(tr.Tnuc)
+        derived = self._transition_derived_params(transition_index, tr)
+        tnuc_gev = derived.get("Tnuc_SM_GeV", np.nan)
+        if np.isfinite(tnuc_gev):
+            return float(tnuc_gev) / self.pot.conversionFactor
+        return None
+
     def _profile_temperature_candidates(self, transition_index: int, tr) -> list[float]:
         """Return preferred temperatures at which to look up cached instantons."""
         candidates: list[float] = []
@@ -632,13 +650,12 @@ class TLPlots():
                     # percolation data exists.
                     Tmin_data_GeV = float(TSYM_GeV[-1])
 
-                    # Strongly supercooled transitions have no nucleation temperature; the
-                    # upper end of the percolation profile then sets the plotting range, and
-                    # nothing is drawn where the nucleation temperature would go.
-                    # A transition can reach this point without a nucleation temperature, as
-                    # None or as NaN; both mean the same thing for the plot.
-                    has_Tnuc = Tnuc is not None and np.isfinite(Tnuc)
-                    Tnuc_GeV = (Tnuc * self.pot.conversionFactor if has_Tnuc
+                    # Where neither the transition object nor the observables carry a
+                    # nucleation temperature, the upper end of the percolation profile sets
+                    # the plotting range and no line is drawn.
+                    Tnuc_plot = self._reported_nucleation_temperature(i, tr)
+                    has_Tnuc = Tnuc_plot is not None
+                    Tnuc_GeV = (Tnuc_plot * self.pot.conversionFactor if has_Tnuc
                                 else float(TSYM_GeV[0]))
                     Tperc_GeV = Tperc * self.pot.conversionFactor
                     if np.isfinite(Tmin_GeV):
