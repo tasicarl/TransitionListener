@@ -468,7 +468,7 @@ class EnthalpyUnderflowError(Exception):
     reader would trust.
     """
 
-    def __init__(self, T, terms, message=None):
+    def __init__(self, T=None, terms=None, message=None):
         """Attach the CLI error code and the terms the enthalpy was built from.
 
         `terms` is a mapping of name to value, because the two solvers build the enthalpy
@@ -477,7 +477,9 @@ class EnthalpyUnderflowError(Exception):
         cancel against the vacuum energy, and the message names whichever terms cancelled.
         """
         self.T = T
-        self.terms = dict(terms)
+        # Every class here has to be constructible with no arguments: the interface collects
+        # the error codes by instantiating each one.
+        self.terms = dict(terms or {})
         if message is None:
             shown = ", ".join("%s = %r" % item for item in self.terms.items())
             message = (

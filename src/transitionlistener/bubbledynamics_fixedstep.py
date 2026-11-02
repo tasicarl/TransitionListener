@@ -1954,6 +1954,18 @@ def hotEnergyDensity(pot, X, T) -> float:
                             + pot.radiationEnergyDensity(X, T, True)))
 
 
+def symmetricPhaseEnthalpy(pot, X, T) -> float:
+    """The enthalpy ``w = e + p`` of the phase at ``X``, without the vacuum energy.
+
+    The vacuum energy enters ``e`` as ``+rho_vac`` and ``p`` as ``-rho_vac``, so it cancels
+    analytically. Numerically the two are equal to every digit a double holds once the
+    transition is supercooled far enough, so the sum is formed from the temperature-dependent
+    parts alone: the thermal energy density minus the thermal part of the potential.
+    """
+    return float(np.squeeze(hotEnergyDensity(pot, X, T)
+                            - pot.V_thermal(X, T, include_decoupled=True)))
+
+
 def calcSoundSpeedSq(pot, X, T) -> float:
     """Compute the sound speed squared.
 
@@ -2066,15 +2078,14 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
         # enough. Written this way the sum is the thermal energy density minus the thermal
         # part of the potential, and it agrees bit for bit with the old form wherever that
         # form still had digits.
-        hot_energy = hotEnergyDensity(pot, high_phi, T)
-        V_thermal_sym = pot.V_thermal(high_phi, T, include_decoupled=True)
-        enthalpy_sym = float(np.squeeze(hot_energy - V_thermal_sym))
+        enthalpy_sym = symmetricPhaseEnthalpy(pot, high_phi, T)
         # Zero now means a phase with no plasma in it rather than a precision loss, and the
         # strength would be infinite either way, so the point is refused.
         if enthalpy_sym == 0.0:
             raise errors.EnthalpyUnderflowError(
-                T, {"hot e": float(hot_energy),
-                    "V_thermal": float(np.squeeze(V_thermal_sym))})
+                T, {"hot e": hotEnergyDensity(pot, high_phi, T),
+                    "V_thermal": float(np.squeeze(
+                        pot.V_thermal(high_phi, T, include_decoupled=True)))})
         alpha_theta = (theta_sym - theta_bro)/(3 * enthalpy_sym)
     
 
