@@ -515,6 +515,44 @@ class EnthalpyNormalisationTests(unittest.TestCase):
                 self.assertTrue(np.isfinite(before) and before != 0.0)
                 self.assertAlmostEqual(0.5 * before, after, delta=abs(before) * 1e-9)
 
+    def test_the_wall_strengths_are_normalised_through_the_helper_too(self):
+        """Not only the pseudo-trace: the hydrodynamic strengths share the same enthalpy.
+
+        `alpha_hyd`, `alpha_inf` and `alpha_eq` are all divided by the enthalpy of the
+        symmetric phase, which was written as `-Veff + e`, the same cancelling form. Doubling
+        the helper has to halve all three; a solver that builds its own leaves them alone.
+        """
+        from pathlib import Path
+
+        from transitionlistener.helper_functions import load_potential
+
+        repo = Path(__file__).resolve().parents[1]
+        pot = load_potential(
+            str(repo / "models/TL_dark_U1_g_parameterization.py"), "specific_potential"
+        )({"g": 1.0, "v_GeV": 0.1, "lambda": 0.03}, verbose=False)
+
+        class Phase:
+            def __init__(self, x):
+                self.x = np.array([x])
+
+            def valAt(self, T):
+                return self.x
+
+        args = (3.4e2, pot, Phase(0.0), Phase(0.5))
+        # (alpha_hyd, alpha_inf, alpha_eq) in each solver's return tuple.
+        for module, indices in ((bd, (4, 5, 6)), (bdf, (3, 4, 5))):
+            real = module.symmetricPhaseEnthalpy
+            before = module.calcAlphas(*args, verbose=False)
+            with mock.patch.object(module, "symmetricPhaseEnthalpy",
+                                   lambda *a, **k: 2.0 * real(*a, **k)):
+                after = module.calcAlphas(*args, verbose=False)
+            for index in indices:
+                with self.subTest(solver=module.__name__, index=index):
+                    was = float(np.squeeze(before[index]))
+                    now = float(np.squeeze(after[index]))
+                    self.assertTrue(np.isfinite(was) and was != 0.0)
+                    self.assertAlmostEqual(0.5 * was, now, delta=abs(was) * 1e-9)
+
     def test_an_enthalpy_that_cannot_normalise_refuses_the_point(self):
         """Driven through `calcAlphas`, not by constructing the error.
 
