@@ -29,13 +29,15 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 #: Distributions whose import name differs from the name pip installs.
 IMPORT_NAME = {"pillow": "pil", "pyyaml": "yaml"}
 
-#: Imported behind a guard that degrades gracefully, so not required to be declared.
-#: `observability` catches the import error and reports the PTA columns as unavailable.
-#: A name here exempts every import of it from the two tests above, so the test below
-#: requires each one to be imported somewhere in `src/` and to sit inside a `try`. An entry
-#: for something nothing imports, `ceffyl` was one, would exempt a future unguarded import
-#: of it without anyone noticing.
-OPTIONAL = {"ptarcade", "enterprise"}
+#: What an optional dependency has to look like to be one: every import of it is inside a
+#: `try`, so a missing install degrades instead of raising. `observability` imports the PTA
+#: stack that way and reports the PTA columns as unavailable.
+#:
+#: The exemption is read off the source rather than written out here. A list has to be
+#: maintained, and a stale entry, `ceffyl` was one, exempts a module nothing imports and so
+#: would wave through a future unguarded import of it. The names are named below only as a
+#: floor: the PTA stack has to stay guarded, whatever else is.
+GUARDED_FLOOR = {"ptarcade", "enterprise"}
 
 
 def _declared():
@@ -76,21 +78,26 @@ def _third_party_imports(paths):
     return found
 
 
-def _unguarded_imports(name, paths):
-    """Files under `paths` that import `name` outside a `try` block."""
-    out = []
+def _imports_by_guard(paths):
+    """Third-party modules under `paths`, split by whether every import of one is guarded.
+
+    Returns `(guarded, unguarded)`, two sets of top-level module names. A module lands in
+    `guarded` only if no import of it anywhere under `paths` sits outside a `try`, so one
+    guarded import somewhere does not excuse an unguarded one elsewhere.
+    """
+    guarded, unguarded = set(), set()
     for root in paths:
         for p in root.rglob("*.py"):
             try:
                 tree = ast.parse(p.read_text(encoding="utf-8"))
             except (SyntaxError, UnicodeDecodeError):
                 continue
-            guarded = set()
+            inside_try = set()
             for node in ast.walk(tree):
                 if isinstance(node, ast.Try):
                     for child in ast.walk(node):
                         if isinstance(child, (ast.Import, ast.ImportFrom)):
-                            guarded.add(id(child))
+                            inside_try.add(id(child))
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     mods = [a.name for a in node.names]
@@ -98,10 +105,12 @@ def _unguarded_imports(name, paths):
                     mods = [node.module]
                 else:
                     continue
-                if any(m.split(".")[0].lower() == name for m in mods):
-                    if id(node) not in guarded:
-                        out.append(str(p.relative_to(ROOT)))
-    return sorted(set(out))
+                for m in mods:
+                    top = m.split(".")[0]
+                    if top in sys.stdlib_module_names or top == "transitionlistener":
+                        continue
+                    (guarded if id(node) in inside_try else unguarded).add(top.lower())
+    return guarded - unguarded, unguarded
 
 
 class ACleanInstallHasWhatTheCodeImportsTests(unittest.TestCase):
@@ -109,8 +118,9 @@ class ACleanInstallHasWhatTheCodeImportsTests(unittest.TestCase):
     def test_the_package_declares_everything_it_imports(self):
         declared = _declared()
         found = _third_party_imports([ROOT / "src"])
+        guarded, _ = _imports_by_guard([ROOT / "src"])
         missing = {m: f for m, f in found.items()
-                   if m not in declared and m not in OPTIONAL}
+                   if m not in declared and m not in guarded}
         self.assertEqual(
             {}, missing,
             "imported by src/ but not declared in pyproject.toml: "
@@ -120,8 +130,9 @@ class ACleanInstallHasWhatTheCodeImportsTests(unittest.TestCase):
         """A model is shipped, so what it reaches has to be installed too."""
         declared = _declared()
         found = _third_party_imports([ROOT / "models"])
+        guarded, _ = _imports_by_guard([ROOT / "src", ROOT / "models"])
         missing = {m: f for m, f in found.items()
-                   if m not in declared and m not in OPTIONAL}
+                   if m not in declared and m not in guarded}
         self.assertEqual(
             {}, missing,
             "imported by models/ but not declared: "
@@ -131,23 +142,24 @@ class ACleanInstallHasWhatTheCodeImportsTests(unittest.TestCase):
         """Named on its own, because this is the one that was missing."""
         self.assertIn("sympy", _declared())
 
-    def test_the_optional_imports_are_actually_guarded(self):
-        """An optional dependency is only optional if every import of it is caught.
+    def test_the_pta_stack_is_imported_behind_a_guard(self):
+        """The one optional dependency the package has stays optional.
 
-        Read off `OPTIONAL` rather than off a list written out here, so that a name added to
-        the exemption is held to the same two conditions as the ones already in it.
+        The two tests above exempt whatever is imported inside a `try`. That exemption is
+        only honest while the guard is there, so the PTA stack is named here: if an import of
+        it moves out of the `try`, a clean install without tempo2 stops being able to run,
+        and the exemption would have hidden it.
         """
-        found = _third_party_imports([ROOT / "src"])
-        for name in sorted(OPTIONAL):
+        guarded, unguarded = _imports_by_guard([ROOT / "src"])
+        for name in sorted(GUARDED_FLOOR):
             with self.subTest(module=name):
-                self.assertIn(
-                    name, found,
-                    "%s is exempt from the declaration tests but nothing imports it" % name)
-                unguarded = _unguarded_imports(name, [ROOT / "src"])
-                self.assertEqual(
-                    [], unguarded,
-                    "%s is imported outside a try/except in %s"
-                    % (name, ", ".join(unguarded)))
+                self.assertIn(name, guarded,
+                              "%s is not imported behind a guard anywhere in src/" % name)
+                self.assertNotIn(name, unguarded)
+        src = (ROOT / "src" / "transitionlistener" / "observability.py").read_text(
+            encoding="utf-8")
+        self.assertRegex(src, r"except Exception as exc:",
+                         "observability imports the PTA stack without catching the failure")
 
     def test_the_2hdm_reaches_sympy_through_the_solver_module(self):
         """The module the dependency comment names is the one the model loads.
