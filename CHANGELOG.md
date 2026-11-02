@@ -83,8 +83,9 @@ account of every one is in its pull request.
   version could not produce a PTA column without a network, and the record it fetched was the
   2023 common-uncorrelated free spectrum whatever the configuration said, so every column
   rested on that one product and nothing in the output recorded which. Eight products now ship
-  under `tab_data/pta_free_spectra`, selected with `pta_free_spectrum`, and nothing is
-  fetched. They are the six versions of the NANOGrav 15 yr free spectrum compared in
+  under `tab_data/pta_free_spectra`, chosen with the `gw_pta_free_spectrum` key of a
+  configuration file or with the `pta_free_spectrum` argument of `Observability`, and nothing
+  is fetched. A name that is not one of the eight stops the run before it starts. They are the six versions of the NANOGrav 15 yr free spectrum compared in
   arXiv:2608.23679's appendix, plus the NANOGrav 12.5 yr and IPTA DR2 sets, the latter two
   byte-identical to what PTArcade downloaded. The default is `ng15_hd_v2`, the 2026 re-run of
   the Hellings-Downs spectrum, in place of the 2023 uncorrelated one.
