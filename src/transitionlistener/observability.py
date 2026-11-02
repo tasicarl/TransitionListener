@@ -875,6 +875,11 @@ class Observability(GW_Sensitivity_Data):
         distance to report. Infinity means the likelihood itself could not be evaluated, which
         is a point that fits the data infinitely badly. Mapping the first onto the second
         reported a scan point with no reference as one that was ruled out.
+
+        A negative distance is reported as zero rather than refused. A reference is the best
+        fit a sampler reached, which is a lower bound on the true maximum, so a point can
+        score above it; such a point is no distance from the best fit rather than a negative
+        one, and the ``within_3sigma`` verdict counts it as inside.
         """
         if np.isnan(delta_lnL):
             return np.nan

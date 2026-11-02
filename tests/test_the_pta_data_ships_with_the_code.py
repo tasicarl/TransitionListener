@@ -346,6 +346,20 @@ class ALabelWithNoReferenceReportsNothingTests(unittest.TestCase):
         self.assertTrue(np.isnan(Observability._delta_to_sigma(delta)))
         self.assertIsNone(Observability._within_three_sigma(delta))
 
+    def test_a_point_above_the_reference_is_no_distance_rather_than_a_negative_one(self):
+        """A reference is a sampler's lower bound on the maximum, so a point can beat it.
+
+        The IPTA DR2 reference is 0.215 below the value released with v2.1 and the gap is
+        not explained, so a likelihood above the reference is reachable. It has to come out
+        at zero sigma and inside the criterion, not as the square root of a negative number.
+        """
+        from transitionlistener.observability import Observability
+
+        delta = Observability._compute_delta_lnL(-105.0, -105.88364710)
+        self.assertLess(delta, 0.0)
+        self.assertEqual(0.0, Observability._delta_to_sigma(delta))
+        self.assertTrue(Observability._within_three_sigma(delta))
+
     def test_the_figure_draws_the_product_the_run_scored_against(self):
         """Both violin callers hand `add_violins` the product, not the default."""
         import types
