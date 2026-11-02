@@ -702,7 +702,7 @@ def requireUsableEnthalpy(value: float, T: float, terms: dict) -> float:
     two through.
     """
     if not np.isfinite(value) or value == 0.0:
-        raise errors.EnthalpyUnderflowError(T, terms)
+        raise errors.EnthalpyUnderflowError(T, terms, value=value)
     return value
 
 

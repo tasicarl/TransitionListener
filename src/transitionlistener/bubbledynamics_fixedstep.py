@@ -1971,7 +1971,7 @@ def symmetricPhaseEnthalpy(pot, X, T, include_decoupled: bool = True) -> float:
 def requireUsableEnthalpy(value: float, T: float, terms: dict) -> float:
     """Return the enthalpy, or refuse the point. The adaptive solver's copy carries why."""
     if not np.isfinite(value) or value == 0.0:
-        raise errors.EnthalpyUnderflowError(T, terms)
+        raise errors.EnthalpyUnderflowError(T, terms, value=value)
     return value
 
 

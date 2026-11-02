@@ -87,9 +87,9 @@ reported as 999 rather than left unnamed.
    * - 20
      - ``EnthalpyUnderflowError``
      - The enthalpy of the symmetric phase, which the transition strength is normalised by,
-       came out as zero, so the strength would have been reported as infinity. With the
-       vacuum energy left out of that enthalpy this means a phase with no plasma in it
-       rather than a loss of precision.
+       came out as zero or as a value that is not finite, none of which leaves a usable
+       strength. With the vacuum energy left out of that enthalpy this means a phase with no
+       plasma in it rather than a loss of precision.
    * - 999
      - ``UnexpectedError``
      - Any failure that carries no code of its own. Ten exception classes have none:

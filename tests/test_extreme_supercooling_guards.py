@@ -585,6 +585,10 @@ class EnthalpyNormalisationTests(unittest.TestCase):
                             module.calcAlphas(3.4e2, pot, Phase(0.0), Phase(0.5),
                                               verbose=False)
                     self.assertEqual(20, caught.exception.errorcode)
+                    # The message says which of the three it was, rather than asserting a
+                    # failure mode: an infinite enthalpy gives a strength of zero, not of
+                    # infinity, and a not-a-number one gives neither.
+                    self.assertIn(repr(value), str(caught.exception))
 
     def test_the_refusal_names_its_code_and_its_terms(self):
         """The error carries the terms the verdict was taken on."""

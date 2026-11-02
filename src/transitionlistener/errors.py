@@ -469,7 +469,7 @@ class EnthalpyUnderflowError(Exception):
     zero, infinite or not a number is indistinguishable from one a reader would trust.
     """
 
-    def __init__(self, T=None, terms=None, message=None):
+    def __init__(self, T=None, terms=None, message=None, value=None):
         """Attach the CLI error code and the terms the enthalpy was built from.
 
         `terms` is a mapping of name to value, because the two solvers build the enthalpy
@@ -478,16 +478,18 @@ class EnthalpyUnderflowError(Exception):
         cancel against the vacuum energy, and the message names whichever terms cancelled.
         """
         self.T = T
+        #: The enthalpy that was refused: zero, infinity or not-a-number.
+        self.value = value
         # Every class here has to be constructible with no arguments: the interface collects
         # the error codes by instantiating each one.
         self.terms = dict(terms or {})
         if message is None:
             shown = ", ".join("%s = %r" % item for item in self.terms.items())
             message = (
-                f"The enthalpy of the symmetric phase underflowed to zero at T = {T}, where "
-                f"{shown}. The terms it is built from are equal to every digit a double "
-                "carries, so the strength has nothing to be normalised against and would be "
-                "reported as infinity. The transition itself is not in question, only its "
+                f"The enthalpy of the symmetric phase came out as {value!r} at T = {T}, "
+                f"where {shown}. Zero, infinity and not-a-number all leave the strength "
+                "without anything to be normalised against, so the point is refused rather "
+                "than reported. The transition itself is not in question, only its "
                 "normalisation: the bag-model strength, which divides by the radiation "
                 "energy density rather than by a cancelling combination, is unaffected."
             )
