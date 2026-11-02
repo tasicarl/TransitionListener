@@ -1,4 +1,4 @@
-# Works which used TransitionListener
+# Works that used TransitionListener
 
 TransitionListener has been used in the studies below, each with one figure it produced. The
 first four are from the group that develops it and the last two are from elsewhere.

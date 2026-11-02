@@ -104,6 +104,10 @@ RULES: list[tuple[str, str, str]] = [
     (r"(?<![-\w])—|–",
      "an em or en dash",
      "a comma or a full stop"),
+    # "2-3 minutes" became "2, 3 minutes" when the dash rule was applied blindly.
+    (r"\b\d+,\s*\d+\s+(minutes|seconds|hours|days|per cent|GeV|MeV|points|decades)\b",
+     "a range written as two numbers separated by a comma",
+     "the range in words, as in two to three minutes"),
 ]
 
 #: Section titles and figure captions must be sentences, not fragments. A title that has no
@@ -609,6 +613,69 @@ BETA_OVER_H = re.compile(r"\\beta\s*/\s*H|\\frac\{\\beta\}\{H\}")
 BETA_SUBSCRIPT = re.compile(r"\s*(_|\\right\)\s*_|\)\s*_|\}\s*_)")
 
 
+#: A word that opens a subordinate clause. The comma closing such a clause is correct, so a
+#: match after one is left alone: "While being the most precise mode, it can be expensive".
+SUBORDINATORS = (
+    "after", "although", "as", "because", "before", "by", "during", "for", "from", "given",
+    "if", "in", "on", "once", "since", "so", "to", "under", "unless", "until", "when",
+    "where", "whereas", "while", "with", "without", "at", "of", "over", "through",
+)
+
+#: The shape a splice takes here: a comma, then a subject, then a finite verb.
+SPLICE = re.compile(
+    r",\s+(they|it|these|those)\s+"
+    r"(are|is|was|were|will|can|should|must|has|have|had|does|did)\b")
+
+
+def _comma_splice_violations(text: str) -> list[tuple[int, str, str]]:
+    """Two statements joined by a comma.
+
+    Written because the rule against dashes and semicolons was applied without reading the
+    sentences: "rerun the command, the table should now populate" and "Pip may report
+    warnings, they are harmless" both came out of it.
+
+    Only a pronoun subject is caught. With a noun subject the same shape is apposition or a
+    list as often as it is a splice, "three ways it can be absent: no spline could be built,
+    the condition was never met", and a rule that flags those is one that gets ignored.
+    A comma closing a subordinate clause is correct, so a match after one is left alone.
+    """
+    out = []
+    # Read the whole page rather than single lines: a sentence is wrapped across lines, and a
+    # line-by-line look sees "resources, it is useful" without the "when" that opened the
+    # clause two lines above.
+    lines = text.splitlines()
+    starts, offset = [], 0
+    for line in lines:
+        starts.append(offset)
+        offset += len(line) + 1
+    joined = "\n".join(lines)
+
+    def line_of(position):
+        import bisect
+
+        return bisect.bisect_right(starts, position)
+
+    for match in SPLICE.finditer(joined):
+        if True:
+            i = line_of(match.start())
+            before = joined[:match.start()].replace("\n", " ")
+            sentence = re.split(r"(?<=[.!?])\s+", before)[-1]
+            # The clause this comma closes, which is the part since the previous comma. Where
+            # it opens with a subordinator the comma is the one that clause takes, whether it
+            # sits at the start of the sentence or after an adverb like "Sometimes,".
+            clause = sentence.split(",")[-1].strip()
+            # "Note: While being the most precise mode, it can be expensive": the label is
+            # not the clause, so what follows the colon is what decides.
+            clause = re.sub(r"^\w+:\s*", "", clause)
+            opener = clause.split()[0].lower().strip("`*:") if clause.split() else ""
+            if opener in SUBORDINATORS:
+                continue
+            out.append((i, "a comma where two statements meet, which is a splice",
+                        "a full stop, or a conjunction"))
+
+    return out
+
+
 def _betah_violations(text: str) -> list[tuple[int, str, str]]:
     """Every beta/H has to carry the subscript that says which of the two it is."""
     out = []
@@ -674,7 +741,8 @@ def check(paths: list[pathlib.Path]) -> list[str]:
         for finder in (_differential_violations, _subscript_violations, _title_violations,
                        _render_violations, _group_violations, _label_violations,
                        _capital_title_violations, _underline_violations,
-                       _undefined_symbol_violations, _betah_violations):
+                       _undefined_symbol_violations, _betah_violations,
+                       _comma_splice_violations):
             for i, what, instead in finder(text):
                 if questions_allowed and "question" in what:
                     continue

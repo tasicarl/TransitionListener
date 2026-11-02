@@ -55,6 +55,8 @@ class TestDocumentationStyle(unittest.TestCase):
             "a one-word bold label": "**Turbulence**, from the vortical motion.",
             "a bold label of several words": "**The first pass** locates the range.",
             "a word written twice": "The file is in the the output folder.",
+            "a splice before a pronoun": "Pip reports warnings, they are harmless.",
+            "a range written with a comma": "The first run takes 2, 3 minutes.",
             "a metaphor for a factor": (
                 "Inserting a self-energy costs a factor :math:`g^2` in the loop."),
             "a parameter called a knob": "The tolerance is the knob that sets the accuracy.",
