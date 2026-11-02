@@ -32,7 +32,7 @@ def _select_observables_class(pot):
         return _TransitionObservablesFixedStepSize
     return _TransitionObservablesAdaptiveStepSize
 from transitionlistener.gwfopt import FOPTspectrum
-from transitionlistener.observability import Observability
+from transitionlistener.observability import Observability, free_spectrum_path
 
 from transitionlistener import console
 from rich.panel import Panel
@@ -157,6 +157,10 @@ def _compute_single_point(
             notify("observables")
 
         if max_stage >= 4:
+            # Checked before the try: a name that is not a shipped product raises inside
+            # the spectrum stage, where `except Exception` absorbs it once transitions
+            # exist, and the run then finishes with no GW columns and no error.
+            free_spectrum_path(context["pot"].config.gwConf.pta_free_spectrum)
             try:
                 gwspectrum = FOPTspectrum(
                     context["strongest_transition_observables"],

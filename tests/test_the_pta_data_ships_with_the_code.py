@@ -24,6 +24,7 @@ import unittest
 import numpy as np
 
 from transitionlistener import observability as pfs
+from transitionlistener.observability import PTA_LIKELIHOOD_SETTINGS
 
 #: The seven files a ceffyl data set is made of.
 FILES = ("bandwidths.npy", "density.npy", "freqs.npy", "log10rhogrid.npy",
@@ -99,6 +100,34 @@ class TheProductsShipTests(unittest.TestCase):
         """Better nan than a distance from a best fit obtained on different data."""
         self.assertIsNone(pfs.bestfit_lnL("ng15_hd_v2", "IPTA2_13bins"))
         self.assertIsNone(pfs.bestfit_lnL("ipta2_cp_v1", "NG15_14bins"))
+
+    def test_each_label_is_scored_on_its_own_array(self):
+        """A label is a data set and a bin count, so the data has to be that data set.
+
+        Every label was built from one product, so `NG12_5bins` and `IPTA2_13bins` were
+        scored against NANOGrav 15 yr free spectra and their log-likelihoods belonged to no
+        measurement. The run's choice now applies to the labels whose array it is.
+        """
+        self.assertEqual("ng12p5_cp_v1", pfs.free_spectrum_for_label("NG12_5bins"))
+        self.assertEqual("ipta2_cp_v1", pfs.free_spectrum_for_label("IPTA2_13bins"))
+        for label in ("NG15_14bins", "NG15_5bins"):
+            with self.subTest(label=label):
+                self.assertEqual(pfs.DEFAULT_PTA_FREE_SPECTRUM,
+                                 pfs.free_spectrum_for_label(label))
+                # A NANOGrav 15 yr product the run selected is used for those labels.
+                self.assertEqual("ng15_cp_v1",
+                                 pfs.free_spectrum_for_label(label, "ng15_cp_v1"))
+        # and selecting one does not drag the other two arrays onto it
+        self.assertEqual("ipta2_cp_v1",
+                         pfs.free_spectrum_for_label("IPTA2_13bins", "ng15_cp_v1"))
+
+    def test_each_label_finds_the_reference_of_the_product_it_is_scored_on(self):
+        """The pairing the references are filed under is the pairing that is used."""
+        for label in PTA_LIKELIHOOD_SETTINGS:
+            with self.subTest(label=label):
+                product = pfs.free_spectrum_for_label(label)
+                self.assertIsNotNone(pfs.bestfit_lnL(product, label),
+                                     "%s has no reference on %s" % (label, product))
 
     def test_an_unknown_product_has_no_reference(self):
         self.assertIsNone(pfs.bestfit_lnL("not_a_product", "NG15_14bins"))
@@ -234,7 +263,11 @@ class ALabelWithNoReferenceReportsNothingTests(unittest.TestCase):
                     try:
                         getattr(plots, name)(gw, showplot=False, nfreq=5)
                     except Exception:
-                        pass
+                        # Tolerated after the violins are drawn: the rest of the figure is
+                        # built from a stand-in and is not what this test is about. Before
+                        # them it is the reason the test would fail, so it is raised.
+                        if not violins.called:
+                            raise
                 self.assertTrue(violins.called, "%s never drew the violins" % name)
                 self.assertEqual("ipta2_cp_v1", violins.call_args.kwargs.get("product"))
 

@@ -1746,6 +1746,16 @@ def plot1d(pot : generic_potential, x1 : float, x2 : float, ax : Optional[plt.Ax
     fig.tight_layout()
     return fig, ax
 
+def _violin_array_label(product: str | None) -> str:
+    """The short name of the array a product was inferred on, for the legend."""
+    from .observability import (DEFAULT_PTA_FREE_SPECTRUM, PTA_FREE_SPECTRA)
+
+    key = DEFAULT_PTA_FREE_SPECTRUM if product is None else str(product)
+    array = PTA_FREE_SPECTRA.get(key, {}).get("array", "")
+    return {"NANOGrav 15 yr": "NG15", "NANOGrav 12.5 yr": "NG12.5",
+            "IPTA DR2": "IPTA DR2"}.get(array, array or "PTA")
+
+
 def add_violins(ax : plt.Axes, violincolor : str = DESYdunkelrot, nfreq : int = 14,
                 product : str | None = None):
     """Add stylistic violin markers to highlight PTA frequency bins.
@@ -1796,7 +1806,9 @@ def add_violins(ax : plt.Axes, violincolor : str = DESYdunkelrot, nfreq : int = 
         for pc in violin_parts['bodies']:
             pc.set(color=violincolor, edgecolor=None, alpha=1, zorder=100)
         if i == 0:
-            pc.set(label="NG15 (violins)")
+            # Named after the product that was drawn: with another array selected the
+            # markers are NANOGrav 12.5 yr or IPTA DR2, and the legend said NG15 regardless.
+            pc.set(label="%s (violins)" % _violin_array_label(product))
 
 def add_NeffHatch(ax : plt.Axes, Neffcolor : str = DESYpetrol, h2OmegaNeff: float = 2.48e-7):
     """Overlay a hatched region indicating the :math:`\\Delta N_\\mathrm{eff}` bound.

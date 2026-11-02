@@ -156,10 +156,12 @@ def free_spectrum_path(name: str | None = None) -> str:
 #:
 #: Three of the four references released with v2.1 are reproduced by that calculation on the
 #: product they were made on, ``ng15_cp_v1``, to between 0.029 and 0.045 in log-likelihood.
-#: The fourth, ``IPTA2_13bins``, was released as -105.66903 and is not reachable: a nested
-#: sampler cannot overshoot a maximum, and adding a binary foreground with both parameters
-#: free, which can only raise it, still reaches only -105.854. More live points, and every bin
-#: count from 5 to 30, were ruled out by measurement. The value below is the reproducible one.
+#: The fourth, ``IPTA2_13bins``, was released as -105.66903 and this calculation did not
+#: reach it: adding a binary foreground with both parameters free, which can only raise the
+#: maximum, still reached -105.854, and more live points and every bin count from 5 to 30
+#: were tried. A sampler returns a lower bound on the maximum, so the gap of 0.215 is not
+#: explained, and the value below is the reproducible one rather than a disproof of the
+#: released one. Significances built on it are provisional until the gap is understood.
 PTA_BESTFIT_LNL = {
     "ng15_hd_v2": {"NG15_14bins": -105.65005153, "NG15_5bins": -33.89607940},
     "ng15_cp_v2": {"NG15_14bins": -104.88702140, "NG15_5bins": -33.86097277},
@@ -170,6 +172,38 @@ PTA_BESTFIT_LNL = {
     "ng12p5_cp_v1": {"NG12_5bins": -36.86269137},
     "ipta2_cp_v1": {"IPTA2_13bins": -105.88364710},
 }
+
+
+#: The pulsar timing array each likelihood label is scored on, keyed by the ``pta_name`` of
+#: :data:`PTA_LIKELIHOOD_SETTINGS` and matching the ``array`` of :data:`PTA_FREE_SPECTRA`.
+PTA_LABEL_ARRAY = {
+    "NG15": "NANOGrav 15 yr",
+    "NG12": "NANOGrav 12.5 yr",
+    "IPTA2": "IPTA DR2",
+}
+
+
+def free_spectrum_for_label(label: str, preferred: str | None = None) -> str | None:
+    """The shipped product a label is scored against, or None if none carries its array.
+
+    A label is a data set together with a number of frequency bins, so its likelihood only
+    means anything evaluated on the array it names: scoring ``NG12_5bins`` against a NANOGrav
+    15 yr free spectrum returns a number that belongs to no measurement. ``preferred`` is the
+    product the run selected, used where its array is the label's, which is what lets a run
+    choose among the six NANOGrav 15 yr products while the other two labels keep theirs.
+    """
+    settings = PTA_LIKELIHOOD_SETTINGS.get(label)
+    if settings is None:
+        return None
+    array = PTA_LABEL_ARRAY.get(str(settings["pta_name"]))
+    if array is None:
+        return None
+    if preferred and PTA_FREE_SPECTRA.get(str(preferred), {}).get("array") == array:
+        return str(preferred)
+    for name, info in PTA_FREE_SPECTRA.items():
+        if info["array"] == array:
+            return name
+    return None
 
 
 def bestfit_lnL(product: str, label: str) -> float | None:
@@ -541,8 +575,21 @@ class Observability(GW_Sensitivity_Data):
         self.calc_SNR()
         self.pta_likelihoods = {label: {} for label in self.PTA_labels}
         self.ptas = {}
+        #: Which shipped product each label was scored on. The run's choice applies to the
+        #: labels whose array it is; the others keep theirs, as PTArcade resolved them by
+        #: `pta_name` before the data shipped.
+        self.pta_products = {
+            label: free_spectrum_for_label(label, self.pta_free_spectrum)
+            for label in PTA_LIKELIHOOD_SETTINGS
+        }
         if signal_builder is not None and _PTA_IMPORT_ERROR is None:
             for label, settings in PTA_LIKELIHOOD_SETTINGS.items():
+                product = self.pta_products[label]
+                if product is None:
+                    # No shipped free spectrum for that array, so there is nothing to score
+                    # against and the label reports not-a-number rather than another array's
+                    # likelihood.
+                    continue
                 if include_smbhb:
                     input_payload = {
                         "config": PTAConfig(
@@ -560,7 +607,7 @@ class Observability(GW_Sensitivity_Data):
                         "model": PTAModel(self.my_spec),
                     }
                 self.ptas[label] = _build_ceffyl(
-                    free_spectrum_path(self.pta_free_spectrum),
+                    free_spectrum_path(product),
                     int(settings["nbins"]),
                     input_payload["model"],
                 )
@@ -713,8 +760,9 @@ class Observability(GW_Sensitivity_Data):
 
         logL_values: dict[str, float] = {}
         for label in PTA_LIKELIHOOD_SETTINGS:
-            pta = self.ptas[label]
-            logL_values[label] = float(pta.ln_likelihood(np.array([])))
+            pta = self.ptas.get(label)
+            logL_values[label] = (np.nan if pta is None
+                                  else float(pta.ln_likelihood(np.array([]))))
 
         self._populate_pta_likelihoods(logL_values)
 
@@ -736,7 +784,7 @@ class Observability(GW_Sensitivity_Data):
             # The reference belongs to the product, not to the label. A label with no
             # reference for the product in use reports nan rather than a distance from a best
             # fit obtained on different data.
-            reference = bestfit_lnL(self.pta_free_spectrum, label)
+            reference = bestfit_lnL(self.pta_products.get(label), label)
             bestfit = np.nan if reference is None else float(reference)
             mock = self._compute_mock_likelihood(threshold)
             smooth = self._compute_smoothened_likelihood(actual, mock, threshold)
