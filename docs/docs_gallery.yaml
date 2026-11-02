@@ -48,6 +48,8 @@ additional_plots:
   phases:
     plot?: True
     include_transitions?: False
+    Tmin_GeV: 0
+    Tmax_GeV: 0.03
 
   profileV:
     plot?: True

@@ -28,7 +28,7 @@ Five temperatures come out of a run, and they answer different questions.
    very slow one the condition is never met at all, which is reported rather than patched.
 
 :math:`T_\mathrm{perc}`
-   Where the true-vacuum fraction reaches :math:`f_\mathrm{perc} = 0.2896`, at which the
+   Where the true-vacuum fraction reaches :math:`f_\mathrm{perc} = 0.28957`, at which the
    bubbles form a connected network. This is the temperature the strength and the duration are
    evaluated at.
 
@@ -86,7 +86,7 @@ The two inverse durations
 How fast the transition proceeds is quoted as :math:`\beta/H`, and two different quantities go
 by that name. They answer different questions and they are not interchangeable.
 
-**The local one** is the logarithmic derivative of the rate at the percolation temperature,
+The local one is the logarithmic derivative of the rate at the percolation temperature,
 
 .. math::
    \left(\frac{\beta}{H}\right)_{S_3}
@@ -96,7 +96,7 @@ by that name. They answer different questions and they are not interchangeable.
 read off the action at one temperature. It is the inverse duration of the exponential
 approximation to the rate, and it is the quantity most of the literature means.
 
-**The integral one** is read off the mean separation between the bubbles,
+The integral one is read off the mean separation between the bubbles,
 
 .. math::
    \left(\frac{\beta}{H}\right)_{R_*} =

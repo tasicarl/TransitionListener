@@ -51,7 +51,7 @@ If you want to run a small grid scan using the command line interface, you can u
 
 The -j flag specifies the number of parallel jobs to run. Here we took 10 jobs.
 This can speed up the scan significantly on multi-core machines. The above scan takes
-a only a couple of minutes on a modern machine.
+only a couple of minutes on a modern machine.
 After the scan is complete, the results will be saved in the specified output
 directory. You will find various output files, including an overview plot of the grid for
 each output quantity, of the kind :doc:`algorithms/the_plots` shows.
@@ -133,7 +133,7 @@ parallelization you can use the following command:
 
 .. code-block:: console
 
-   $ mpiexec -n 16 tl -c config/example-nested-scan.yaml
+   $ mpiexec -n 16 tl -c examples/example_ultranest.yaml
 
 This will run a nested sampling scan with 16 parallel processes.
 The results will again be saved in a ``.csv`` file in the specified output directory.

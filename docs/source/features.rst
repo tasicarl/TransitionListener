@@ -32,14 +32,18 @@ and a dark sector of two singlet scalars that mix with each other.
 
    A barrier appearing as the universe cools, which is what makes a transition first order.
 
-Transitions at any degree of supercooling
------------------------------------------
+Strongly supercooled transitions
+--------------------------------
 
 Phases are traced in temperature and the candidate transitions between them are found
-automatically. The bounce action is computed along a path that is deformed until it is the
-real tunnelling path, and the machinery is built for the hard cases: transitions supercooled
-by many orders of magnitude, actions that are not monotonic, vacuum-dominated expansion, and
-scales anywhere from the MeV range to the GUT scale.
+automatically. The bounce action is computed along a path through field space that is
+deformed until it solves the equations of motion in every direction. The solvers are written
+for transitions supercooled by orders of magnitude below the critical temperature, for actions
+that are not monotonic in temperature, for expansion dominated by the vacuum energy, and for
+scales from the MeV range to the scale of grand unification. Only the thermal, three
+dimensional bounce is computed: a transition supercooled far enough that the four dimensional
+action :math:`S_4` is the smaller exponent is outside what this version covers, as
+:doc:`algorithms/the_bounce_action` states.
 
 .. figure:: _static/algorithm_shooting.png
    :width: 100%

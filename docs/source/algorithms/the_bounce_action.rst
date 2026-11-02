@@ -54,12 +54,16 @@ Finding the bounce
 Along one direction in field space, by shooting, which is the method of
 [Coleman1977]_ as implemented numerically by [Wainwright2011]_.
 
-The idea is that the equation above is a boundary-value problem, and it is turned into a
-sequence of initial-value problems. Pick a field value at the centre of the bubble, integrate
-outward, and see what happens. Start too close to the true vacuum and the field has too little
-energy: friction stops it before it reaches the false vacuum, and it falls back. Start too far
-and it arrives with energy to spare and shoots past. The solution lies between the two, and
-bisecting on the starting value finds it.
+The equation above is a boundary-value problem, and it is turned into a sequence of
+initial-value problems. A field value at the centre of the bubble is chosen and the equation
+is integrated outward from there. Read as the motion of a particle in the inverted potential
+:math:`-V`, with the radius as the time and the second term as friction, the true vacuum is
+the top of a hill. A start too close to the true vacuum leaves the particle near that top for
+a long radius, so the friction, which falls as :math:`2/r`, has died away before it rolls, and
+it arrives at the false vacuum with energy to spare and passes it, which is an overshoot. A
+start too far from the true vacuum rolls at once, loses energy to friction while it is still
+large, and turns back before reaching the false vacuum, which is an undershoot. The solution
+lies between the two, and bisecting on the starting value finds it.
 
 .. figure:: ../_static/algorithm_shooting.png
    :width: 100%
@@ -75,7 +79,7 @@ away.
 
 Three details make this work in practice.
 
-**The integration cannot start at the centre**, because the friction term diverges at
+The integration cannot start at the centre, because the friction term diverges at
 :math:`r = 0`.
 Near the centre the field barely moves, so the potential there is well approximated by a
 quadratic, and for a quadratic the equation has a closed-form solution in terms of Bessel
@@ -84,7 +88,7 @@ numerical integration takes over from there. The same closed form is used afterw
 the interior back in, so the profile that the action is computed from does start at
 :math:`r = 0`.
 
-**The starting value is parametrised logarithmically**, writing the field at the centre as
+The starting value is parametrised logarithmically, writing the field at the centre as
 
 .. math::
    \phi(0) = \phi_\mathrm{true} + \mathrm{e}^{-x}\,(\phi_\mathrm{false} - \phi_\mathrm{true}),
@@ -96,10 +100,11 @@ the solver bisects on :math:`x` rather than on the field directly. A thin-walled
 appears when the two minima are nearly degenerate, starts exponentially close to the true
 vacuum, and :math:`x` resolves that as easily as it resolves a thick-walled one.
 
-**A trial ends in one of three ways**: the field turns around before reaching the false vacuum,
-which is an undershoot and means the starting value was too close to the true vacuum. It passes
-the false vacuum, which is an overshoot. Or it arrives: the field and its derivative both land
-within a small distance of the false vacuum at rest, and the trial has converged.
+A trial ends in one of three ways. The field turns around before reaching the false vacuum,
+which is an undershoot and means the starting value was too far from the true vacuum. The
+field passes the false vacuum, which is an overshoot and means the starting value was too
+close to the true vacuum. Or the field and its derivative both land within a small distance of
+the false vacuum at rest, and the trial has converged.
 
 .. versionchanged:: 2.2
    Both tolerances in the paragraphs above are now measured against the bounce rather than

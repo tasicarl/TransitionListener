@@ -19,7 +19,7 @@ If you do not have a conda flavour installed yet, any of
 `conda <https://docs.conda.io/projects/conda/en/stable/>`_,
 `mamba <https://mamba.readthedocs.io/en/latest/>`_, or
 `micromamba <https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html>`_
-work. The commands below assume ``conda``, and ``mamba`` and
+work. The commands below assume ``conda``. Both ``mamba`` and
 ``micromamba`` accept the exact same syntax.
 
 .. note::

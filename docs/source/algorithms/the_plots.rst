@@ -13,7 +13,9 @@ The code is in :py:mod:`transitionlistener.plots` for a single point and in
 
 Every figure on this page was produced by the configuration shown beside it, run on the
 conformal dark :math:`U(1)` model of ``examples/example_point.yaml`` at
-:math:`g = 0.7`, :math:`v = 0.1` GeV and :math:`y = 0.01`.
+:math:`g = 0.7`, :math:`v = 0.1` GeV and :math:`y = 0.01`. The phases are numbered in the
+order the tracer found them and are labelled P1 and P2 in the panels: P1 is the broken phase,
+with the field away from the origin, and P2 the symmetric one.
 
 The potential
 -------------
@@ -48,6 +50,8 @@ The phases
      phases:
        plot?: True
        include_transitions?: False
+       Tmin_GeV: 0
+       Tmax_GeV: 0.03
 
 Every minimum the tracer followed, against temperature, which is the output of
 :doc:`phases_and_transitions`. A phase that stops early, jumps, or wanders away from a smooth
@@ -138,14 +142,15 @@ The true-vacuum fraction :math:`P_\mathrm{t}(T)` against temperature, with the n
 percolation temperatures marked, which is the subject of :doc:`nucleation_and_percolation`.
 The fraction is recomputed for the plot rather than read back from the run, so
 ``Tmin_GeV`` and ``Tmax_GeV`` are worth setting to a window around the transition: over the
-whole range of the scan the rise is one vertical line.
+whole range of the scan the rise is one vertical line. A window wider than the support of the
+run is cut back to it, so that the curve reaches both ends of the panel.
 
 .. figure:: ../_static/plots/percolation_0.png
    :width: 100%
 
-   The true-vacuum fraction of this benchmark point. Temperature falls to the left, so the
-   fraction rises from zero to one from right to left. The percolation temperature is where
-   the false vacuum has fallen to 0.71 of the volume, which is the dashed line.
+   The true-vacuum fraction of this benchmark point, with temperature falling to the left.
+   The dashed line is the percolation temperature, where the fraction reaches
+   :math:`f_\mathrm{perc} = 0.28957`.
 
 The bubble profile
 ------------------

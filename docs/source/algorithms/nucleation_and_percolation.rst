@@ -50,10 +50,10 @@ number, which is what makes a support of several hundred temperatures affordable
 sound speed is not that of radiation the same chain carries :math:`a(T)` and
 :math:`3 c_\mathrm{s}^2` explicitly, and in the radiation limit they cancel.
 
-The percolation temperature is where :math:`P` reaches a fixed fraction, conventionally about
-a third, at which the bubbles form a connected network [GuthWeinberg1981]_. The nucleation temperature, the more
-familiar quantity, is where roughly one bubble exists per Hubble volume [Enqvist1992]_
-[Turner1992]_. Neither is a property
+The percolation temperature is where :math:`P` reaches the fixed fraction
+:math:`f_\mathrm{perc} = 0.28957` at which the bubbles form a connected network
+[GuthWeinberg1981]_. The nucleation temperature, the more familiar quantity, is where one
+bubble has nucleated per Hubble volume [Enqvist1992]_ [Turner1992]_. Neither is a property
 of the potential alone: both depend on the expansion rate, which in turn depends on how much of
 the universe has already converted.
 
@@ -63,14 +63,14 @@ Three passes
 That circularity is handled by computing the history three times, each with a better expansion
 rate.
 
-**The first pass** locates the temperature range in which anything happens at all, so that the
+The first pass locates the temperature range in which anything happens at all, so that the
 later passes do not spend bounce actions far away from it. Actions are expensive and this is
 what makes the cost bearable.
 
-**The second pass** computes :math:`P(T)` using the expansion rate of a universe that has not
+The second pass computes :math:`P(T)` using the expansion rate of a universe that has not
 yet converted. This neglects the energy the transition releases.
 
-**The third pass** feeds the true-vacuum fraction back into the expansion rate and into the
+The third pass feeds the true-vacuum fraction back into the expansion rate and into the
 temperature of the phase the bubbles grow into, which is heated by the energy released. It is
 iterated to consistency, and it is the one that sets the reheating temperature and decides
 whether the transition completes.

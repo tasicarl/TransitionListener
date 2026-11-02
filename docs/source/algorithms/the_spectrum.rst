@@ -26,14 +26,14 @@ Three processes radiate, and their spectra are added:
 
 The sum, :math:`\Omega_\mathrm{GW}`, is what a detector would see. Its three terms are these.
 
-**Bubble collisions**, :math:`\Omega_\phi`, from the energy that stays in the scalar field and
+Bubble collisions, :math:`\Omega_\phi`, from the energy that stays in the scalar field and
 radiates when walls meet. This matters when the wall runs away, so that much of the energy
 never reaches the plasma.
 
-**Sound waves**, :math:`\Omega_\mathrm{sw}`, from the bulk motion left in the plasma after the
+Sound waves, :math:`\Omega_\mathrm{sw}`, from the bulk motion left in the plasma after the
 walls have passed. On most transitions this dominates.
 
-**Turbulence**, :math:`\Omega_\mathrm{turb}`, from the fraction of that motion which becomes
+Turbulence, :math:`\Omega_\mathrm{turb}`, from the fraction of that motion which becomes
 vortical.
 
 Kinetic energy fractions

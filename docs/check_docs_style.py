@@ -79,6 +79,9 @@ RULES: list[tuple[str, str, str]] = [
     (r"\bcommonest\b",
      "a superlative formed the short way",
      "most common"),
+    (r"\b(the|a|an|is|of|to|in|and|that|it)\s+\1\b",
+     "a word written twice",
+     "the word once"),
     (r"\bnot even wrong\b",
      "a phrase that dismisses rather than says what is wrong",
      "what the quantity actually is"),
@@ -520,9 +523,14 @@ def _label_violations(text: str) -> list[tuple[int, str, str]]:
     previous_blank = True
     for i, line in enumerate(text.splitlines(), 1):
         stripped = line.strip()
-        if previous_blank and re.match(r"^\*\*[^*]*[.:]\*\*", stripped):
+        bold = re.match(r"^\*\*([^*]+)\*\*([,:]?)", stripped)
+        # A paragraph that opens with a bold phrase of more than one word is a label the page
+        # did not need: ``**The first pass** locates ...`` reads as a heading. The same
+        # sentence without the bold reads as prose. A single bold word, such as the name of
+        # the package at the top of the landing page, is emphasis inside the sentence.
+        if previous_blank and bold and (len(bold.group(1).split()) > 1 or bold.group(2)):
             out.append((i, "a paragraph opens with a bold label",
-                        "the label as the first words of the sentence, without the full stop"))
+                        "the same words without the bold"))
         previous_blank = not stripped
     return out
 

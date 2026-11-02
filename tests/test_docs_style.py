@@ -51,6 +51,9 @@ class TestDocumentationStyle(unittest.TestCase):
             "an invented name": "The converted fraction reaches one at the end.",
             "a short superlative": "A jump is the commonest signature.",
             "a module named as a literal": "The stages are run by ``pipeline``.",
+            "a one-word bold label": "**Turbulence**, from the vortical motion.",
+            "a bold label of several words": "**The first pass** locates the range.",
+            "a word written twice": "The file is in the the output folder.",
         }
         import tempfile
 

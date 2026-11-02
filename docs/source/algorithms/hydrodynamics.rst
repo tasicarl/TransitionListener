@@ -191,7 +191,7 @@ References
    cosmological first-order phase transitions*, JCAP **06** (2010) 028,
    `arXiv:1004.4187 <https://arxiv.org/abs/1004.4187>`_.
 
-.. [vandeVis2023] J. van de Vis et al., *The bubble wall velocity in local thermal
+.. [vandeVis2023] W.-Y. Ai, B. Laurent and J. van de Vis, *The bubble wall velocity in local thermal
    equilibrium*, `arXiv:2303.10171 <https://arxiv.org/abs/2303.10171>`_.
 
 .. [EllisLewicki2019] J. Ellis, M. Lewicki, J. M. No and V. Vaskonen, *Gravitational wave

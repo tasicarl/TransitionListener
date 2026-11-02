@@ -155,7 +155,7 @@ NoViablePhasePairError
 
 Raised when no phase pair below the current phase was ever a tunnelling candidate.
 
-**Every claim here is about one step of the chain**, the phase the walk had reached, and
+Every claim here is about one step of the chain, the phase the walk had reached, and
 about the candidates offered below it. The transitions already found are counted in the
 message, because this error discards them, and nothing here reassesses them or says how
 they were obtained. In particular they need not have been solved: a second-order step
