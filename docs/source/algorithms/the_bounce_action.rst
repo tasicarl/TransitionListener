@@ -10,6 +10,9 @@ most expensive thing TransitionListener does. Everything downstream, the nucleat
 temperature, the percolation temperature, the inverse duration of the transition and the
 spectrum, rests on it.
 
+The one-dimensional problem is solved in :py:mod:`transitionlistener.tunneling1D` and the
+path through field space is found in :py:mod:`transitionlistener.pathDeformation`.
+
 The quantity
 ------------
 
@@ -101,7 +104,7 @@ within a small distance of the false vacuum at rest, and the trial has converged
 .. versionchanged:: 2.2
    Both tolerances in the paragraphs above are now measured against the bounce rather than
    against the distance between the two minima. The distance between the minima is a property
-   of the potential; the width of the barrier is set by the temperature, and on a strongly
+   of the potential, while the width of the barrier is set by the temperature, and on a strongly
    supercooled transition the two differ by orders of magnitude.
 
 In several field directions
@@ -122,7 +125,7 @@ one-dimensional problem leaves out. Along the path the field obeys the equation 
 
 where :math:`s` is the distance along the path and :math:`\perp` denotes the component of the
 gradient normal to it. The left side is the acceleration the path forces on a field moving
-along it at the speed the one-dimensional solution gives; the right side is the push the
+along it at the speed of the one-dimensional solution. The right side is the push the
 potential provides. Where they differ, the path is not a solution, and the difference is a
 normal force that tells each point of the path which way to move. The path is deformed along
 that force until it vanishes.
@@ -201,17 +204,7 @@ Settings
      - Points at which the potential is sampled along the path.
 
 The precision modes ``robust``, ``xtrace``, ``tunneltight`` and ``benchmark`` set several of
-these together; see :doc:`../usage`.
-
-In the code
------------
-
-``tunneling1D.SingleFieldInstanton`` solves the one-dimensional problem: ``findProfile`` shoots
-and bisects, ``integrateProfile`` carries one trial outward and classifies it, ``findAction``
-integrates the result. ``pathDeformation.fullTunneling`` runs the loop over paths, with
-``Deformation_Spline`` providing the normal force and the step, and ``SplinePath`` representing
-the path and the potential along it. ``pathDeformation.bounceAction`` is the entry point the
-rest of the package calls.
+these together. They are described in :doc:`../usage`.
 
 References
 ----------

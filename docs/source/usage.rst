@@ -53,13 +53,8 @@ The -j flag specifies the number of parallel jobs to run. Here we took 10 jobs.
 This can speed up the scan significantly on multi-core machines. The above scan takes
 a only a couple of minutes on a modern machine.
 After the scan is complete, the results will be saved in the specified output
-directory. You will find various output files, including
-also the following overview plot.
-
-.. image:: _static/example_grid.png
-   :alt: Example grid scan results produced by TransitionListener
-   :width: 600px
-   :align: center
+directory. You will find various output files, including an overview plot of the grid for
+each output quantity, of the kind :doc:`algorithms/the_plots` shows.
 
 On top of that, you will find close to 200 intermediate results saved in the output directory,
 in the form of ``.txt`` files as well as ``.pdf`` plots.
@@ -73,18 +68,13 @@ Alternatively, you can also run an example line scan using the following command
 This will perform a line scan over the specified parameter range with 5 parallel jobs.
 The results will be saved in the output directory as specified in the configuration file.
 The output is very similar to the grid scan case. For instance, you will find the
-efficiency factor for converting released vacuum energy to bulk fluid motion among them:
-
-.. image:: _static/example_kappa.png
-   :alt: Example line scan results produced by TransitionListener, showing the kappa sound wave parameter
-   :width: 600px
-   :align: center
+efficiency factor for converting released vacuum energy to bulk fluid motion among them.
 
 
 Choosing the percolation solver
 -------------------------------
 
-Two solvers compute the history of the converted fraction, selected with
+Two solvers compute the history of the true-vacuum fraction, selected with
 ``percolation_algorithm_mode``:
 
 .. code-block:: yaml

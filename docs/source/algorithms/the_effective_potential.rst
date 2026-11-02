@@ -4,10 +4,12 @@ The effective potential
 =======================
 
 Everything a run computes follows from one function: the free energy of the scalar fields at a
-given temperature. The phases are its minima, the transition is the passage between two of
-them, the bounce is a solution of its equations of motion, and the energy released is a
-difference of its values. A model file supplies the tree-level potential and the mass spectrum;
-this page describes what is built on top of them.
+given temperature, written below as the effective potential :math:`V(\phi, T)`. The phases are
+its minima. A transition is the passage from one minimum to another. The bounce is a solution
+of the equations of motion of the scalar fields in this potential, and the energy the
+transition releases is the difference between the values of the potential at the two minima.
+The model file specifies the tree-level potential and the field-dependent mass spectrum. This
+page describes the loop, thermal and resummed terms that the package adds to them.
 
 The quantity
 ------------
@@ -35,7 +37,11 @@ subtraction scheme, is
          \left( \ln\frac{|m_f^2|}{\mu^2} - \frac{3}{2} \right) \right],
 
 with :math:`n` the number of degrees of freedom of each species, :math:`m^2(\phi)` its
-field-dependent mass squared, and :math:`\mu` the renormalisation scale. The thermal part is
+field-dependent mass squared, and :math:`\mu` the renormalisation scale. The constant
+:math:`c_i` comes with the renormalisation scheme: in the modified minimal subtraction scheme
+it is :math:`3/2` for the scalars, the Goldstone modes and the fermions, and :math:`5/6` for
+the gauge bosons, counting their three polarisations together in the Landau gauge. Each
+species carries its own value, set in the mass spectrum of the model. The thermal part is
 the standard one-loop integral [DolanJackiw1974]_, evaluated from splined forms of the bosonic and fermionic
 thermal functions, which take the mass over temperature squared as their argument so that a
 negative mass squared can be handled as the real part of the defining integral.
@@ -57,11 +63,20 @@ them. They are fixed by requiring that the first and second derivatives of
 .. figure:: ../_static/algorithm_potential_vs_temperature.png
    :width: 100%
 
-   The shape the thermal corrections produce. Well above the critical temperature the only
-   minimum is the symmetric one. A second minimum appears, the two are degenerate at
-   :math:`T_\mathrm{c}`, and below that the broken minimum is the deeper of the two with a
-   barrier still between them. The barrier is what makes the transition first order, and it is
-   what the bounce of :doc:`the_bounce_action` tunnels through.
+   The effective potential of a benchmark model in dependence of temperature. Well above the
+   critical temperature the only minimum is the symmetric one. A second minimum appears, the
+   two are degenerate at :math:`T_\mathrm{c}`, and below that the broken minimum is the deeper
+   of the two with a barrier still between them.
+
+The barrier is what makes the transition first order. The bounce of :doc:`the_bounce_action`
+is the field configuration that carries the field over it, not through it: at finite
+temperature the field is lifted over the barrier by a thermal fluctuation rather than
+tunnelling under it.
+
+A model with more than one scalar field has a potential over a plane, and the same two minima
+are then separated by a ridge rather than by a point. The next figure is the same potential in
+its two field directions, at a temperature at which the origin has already stopped being a
+minimum.
 
 .. figure:: ../_static/algorithm_potential_2d.png
    :width: 100%
@@ -75,13 +90,21 @@ them. They are fixed by requiring that the first and second derivatives of
 Resummation of the infrared modes
 ---------------------------------
 
-At high temperature the one-loop expansion fails for the longitudinal modes of the gauge
-bosons and for the scalars, because their thermal masses are small against the temperature.
-The remedy is to resum the leading thermal corrections into the masses. Two prescriptions are
-offered, selected per model:
+At high temperature the loop expansion is no longer ordered by the coupling alone. Every
+bosonic field has a Matsubara zero mode, whose propagator carries no factor of
+:math:`\pi T` to suppress it, and inserting one more self-energy into a loop of that mode
+costs a factor :math:`g^2T^2/m^2` rather than :math:`g^2`. Where the field-dependent mass
+:math:`m` is of the order of the self-energy itself, which is the Debye mass of order
+:math:`gT`, that factor is of order one: the chain of daisy diagrams contributes at the same
+order, :math:`g^3T^4`, as the cubic term the one-loop thermal integral produces, and
+truncating at one loop keeps only part of a contribution. The remedy is to resum the
+self-energies into the masses of the modes that are infrared sensitive, which are the
+longitudinal modes of the gauge bosons, whose Debye mass is of order :math:`gT`, and the
+scalars. The transverse gauge modes have no Debye mass and are not resummed. Two prescriptions
+are offered, selected per model:
 
 ``ArnoldEspinosa`` [ArnoldEspinosa1993]_
-   The resummation is added as a separate cubic term, built from the difference between the
+   The resummation is added as a separate cubic potential term, built from the difference between the
    thermally corrected and the uncorrected masses, and applied to the longitudinal modes.
 
 ``Parwani`` [Parwani1992]_
@@ -149,16 +172,6 @@ Settings
      - setting
      - Which entropy the expansion history and the sound speed are built from; the two must
        agree.
-
-In the code
------------
-
-``generic_potential.Vtot`` assembles the pieces above. ``V1`` and ``V1T`` are the zero- and
-finite-temperature loop corrections, ``Vct`` the counterterms, ``Vdaisy`` the resummation, and
-``radiationEnergyDensity`` the field-independent part. ``dVdT`` and ``d2VdT2`` take the
-temperature derivatives, and ``daisy_outside_validity`` reports when the resummation is being
-used where it does not hold. A model file supplies ``V0``, ``boson_massSq`` and
-``fermion_massSq``.
 
 References
 ----------

@@ -8,6 +8,9 @@ drives in the plasma. How fast the wall moves, how the fluid flows around it, an
 the released energy ends up as bulk motion are hydrodynamic questions, and this page is about
 the equations that answer them.
 
+The code is in
+:py:mod:`transitionlistener.hydrodynamics`.
+
 The transition strength
 -----------------------
 
@@ -66,7 +69,7 @@ The wall velocity in local equilibrium
 --------------------------------------
 
 The wall is a surface across which the plasma flows. Conservation of the energy-momentum
-tensor across it gives the junction conditions, which relate the fluid velocity and enthalpy
+tensor across it yields the junction conditions, which relate the fluid velocity and enthalpy
 just ahead of the wall, :math:`v_+` and :math:`w_+`, to those just behind it, :math:`v_-` and
 :math:`w_-`, both in the wall's rest frame. Eliminating the enthalpies leaves one relation
 between the velocities and the strength at the wall,
@@ -134,7 +137,7 @@ A root of that residual is the wall velocity. The implementation follows [vandeV
    velocity is a **detonation**: it outruns every signal, so the plasma ahead is undisturbed
    and a rarefaction behind it carries the velocity back to zero exactly at the speed of sound.
    Between the two is the **hybrid**, which has both, a rarefaction behind the wall and a shock
-   ahead of it; the matching behind a hybrid wall is at the sound speed, which is what makes
+   ahead of it. The matching behind a hybrid wall is at the sound speed, which is what makes
    its two sides different.
 
    The strength quoted is the one just at the wall, which is smaller than the strength at
@@ -180,16 +183,6 @@ normalisation.
 
 These are fits over a range of strength and wall velocity. Outside that range they are
 extrapolations rather than results.
-
-In the code
------------
-
-``hydrodynamics.Hydrodynamics`` holds the problem. ``calc_cs`` is the sound speed and
-``sound_speed_is_step_dependent`` the diagnostic that says whether a value depends on the step
-it was taken with. ``get_vp`` is the junction condition, ``dfdv`` the fluid equations,
-``integrate_plasma`` their integration, ``shooting`` the residual, ``find_vJ`` the Jouguet
-velocity, ``max_al`` the largest strength admitting a solution, and ``find_vw`` the root.
-``kappa_sw`` and ``calc_kappas`` are the efficiency fits.
 
 References
 ----------

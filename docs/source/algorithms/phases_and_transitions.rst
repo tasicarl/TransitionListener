@@ -8,6 +8,9 @@ transition is the passage from one phase to another. Before any bounce can be co
 has to know which minima exist, over which temperature ranges, and which pairs of them are
 candidates for a transition.
 
+The tracing is in :py:mod:`transitionlistener.phases` and the pairing in
+:py:mod:`transitionlistener.transitions`.
+
 Tracing a minimum
 -----------------
 
@@ -17,7 +20,7 @@ obtained from the condition that the gradient of the potential stays zero. Diffe
 .. math::
    \left.\nabla V\right|_{\phi = \phi_{\min}(T)} = 0
 
-with respect to temperature gives
+with respect to temperature yields
 
 .. math::
    \frac{\mathrm{d}\phi_{\min}}{\mathrm{d}T}
@@ -46,8 +49,9 @@ asked for is exhausted.
 Symmetries and images
 ---------------------
 
-Where the potential is invariant under a group, a minimum is not one point but a set of images
-of the same physical state. Which image a trace ends up on is decided by the sign of a numerical
+Where the potential is invariant under a discrete symmetry group, such as the reflection
+:math:`\phi \to -\phi`, a minimum is not one point but a set of images of the same physical
+state. Which image a trace ends up on is decided by the sign of a numerical
 step and carries no physical meaning.
 
 .. figure:: ../_static/algorithm_images.png
@@ -104,15 +108,6 @@ Refusals
    offered to the nucleation solver and a step where a candidate was offered and the solve did
    not succeed were reported the same way, so a scan could not tell a numerical failure from a
    transition that genuinely does not proceed.
-
-In the code
------------
-
-``phases.traceMinimum`` follows one minimum, ``traceMultiMin`` finds and follows all of them,
-and ``Phases`` is the class that holds the result. ``canonicalImageElement`` chooses the image
-for a whole trace, ``generateMirrorPhases`` and ``symmetrizeInvariantPhases`` handle the images
-of the potential's symmetry group. ``reconstructTransitionHistory`` builds the chain of phases
-in temperature order. ``transitions`` turns that chain into candidate transitions.
 
 References
 ----------

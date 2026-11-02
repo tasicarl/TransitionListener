@@ -4,9 +4,10 @@ The plasma and its degrees of freedom
 =====================================
 
 The expansion rate, the energy released by the transition, the reheating that follows it and
-the redshift of the spectrum all depend on how much radiation the universe contains. That is
-counted as an effective number of degrees of freedom, and the counting has to be done once:
-every species has to appear exactly once, and no species may be left out.
+the redshift of the spectrum all depend on how much radiation the universe contains. The
+radiation is counted as an effective number of degrees of freedom, the number of massless
+bosonic modes that would carry the same energy density at that temperature, and every species
+has to enter that number exactly once.
 
 This is harder than it sounds, because TransitionListener holds the plasma in two separate
 inventories that have to be kept from overlapping.
@@ -49,17 +50,17 @@ zero-temperature vacuum,
    + \underbrace{2}_{\gamma},
 
 and with the top, bottom and tau included this is
-:math:`12 + \tfrac{7}{8}\times 28 = 36.5` at temperatures far above the masses.
-
-That number is the bridge between the two inventories.
+:math:`12 + \tfrac{7}{8}\times 28 = 36.5` at temperatures far above the masses. The same
+36.5 is what the tabulated bath holds for those fields, which is what makes the subtraction
+below possible.
 
 Removing the overlap
 --------------------
 
-Exactly those degrees of freedom are subtracted from the tabulated bath, at the masses the
-fields have in the zero-temperature vacuum. The books then close: in that vacuum the potential
-adds precisely what the table loses, and the total is the full tabulated bath plus whatever
-additional fields the model carries. Away from the vacuum the fields of the potential follow
+Those degrees of freedom are subtracted from the tabulated bath, at the masses the fields have
+in the zero-temperature vacuum. In that vacuum the potential then adds exactly what the table
+loses, and the total is the full tabulated bath plus whatever additional fields the model
+carries. Away from the vacuum the fields of the potential follow
 their field-dependent masses, which is what makes the two phases differ, while the table
 continues to supply the light species at the temperature in question.
 
@@ -80,7 +81,8 @@ continues to supply the light species at the temperature in question.
 
    The two inventories of the plasma, on one temperature axis. Above, the tabulated Standard
    Model bath. Below, the whole plasma of the two Higgs doublet model at the benchmark of
-   ``examples/bp_lisa.yaml``, counted separately in each of its two phases.
+   ``examples/bp_lisa.yaml``, counted separately in each of its two phases. Each curve ends in
+   an open circle at the temperature at which its phase stops existing.
 
 Reading the two panels
 ----------------------
@@ -101,7 +103,11 @@ Standard Model fields that appear in both counted once, so it is what the expans
 built from. In the broken phase the fields of the potential take their masses from the field
 and leave the plasma one after another, and the arrows mark where each has lost half of its
 contribution, solved from the same integral the counting uses rather than read off
-:math:`m = T`.
+:math:`m = T`. The heavy scalars :math:`A` and :math:`H^\pm` of this benchmark reach that
+point at 154 GeV, above the end of the broken phase, so they have no arrow. The broken-phase
+curve ends at 121 GeV, the last temperature of this grid at which the broken minimum still
+exists. Above it the field falls to the origin. A temperature grid ten times finer puts that
+end at 121.5 GeV, so it is where the phase ends and not where the grid happens to lie.
 
 In the symmetric phase those fields are massless and contribute their full 40.5 at every
 temperature, so the slope of that curve is not theirs. It is the bath around them, which loses
@@ -115,17 +121,6 @@ dominates that potential and is differenced away. The two curves meet where the 
 disappears. A model with a transition therefore has two different plasmas on the two sides of
 its bubble walls, which is why the count is taken at a field value and not only at a
 temperature.
-
-In the code
------------
-
-``thermodynamics.potential_fields_geff`` counts the fields of a potential in the gauge counting
-above, for the energy density, the pressure or the entropy. ``sm_fields_in_potential_geff``
-returns what those fields contribute to the tables, ghosts included, and zero for a model whose
-potential carries none of them. ``generic_potential.radiationEnergyDensity`` subtracts the one
-from the other. ``generic_potential._check_radiation_baths`` warns where a potential carrying
-Standard Model fields is given a coupled bath that is not the Standard Model table, since the
-subtraction then removes species the bath may not contain.
 
 A longer account, including the thermal functions and the resummation, is in
 :doc:`the_effective_potential`.

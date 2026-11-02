@@ -8,9 +8,12 @@ frequency at which it peaks follow from four numbers computed earlier: the stren
 :math:`\alpha`, the mean bubble separation :math:`R_*`, the temperature :math:`T_\mathrm{reh}`
 after the released energy has been shared out, and the wall velocity :math:`v_\mathrm{w}`.
 
-This page gives the spectrum as the code builds it. The templates follow the report of the
+This page describes the spectrum as the code builds it. The templates follow the report of the
 LISA Cosmology Working Group [LISACosWG2024]_, and the equation numbers quoted below are that
 report's.
+
+The spectrum is built in :py:mod:`transitionlistener.gwfopt` and compared with the
+detectors in :py:mod:`transitionlistener.observability`.
 
 The three sources
 -----------------
@@ -45,8 +48,8 @@ the factor :math:`\alpha/(1+\alpha)` is the released energy as a fraction of the
 :math:`\kappa_i` is the efficiency with which it reaches that source, computed in
 :doc:`hydrodynamics`. For the sound waves and the turbulence
 :math:`\varepsilon = 0.6`, which accounts for the efficiency of producing bulk motion relative
-to the single-bubble case as found in the Higgsless simulations of [Jinno2022]_; for the scalar
-field :math:`\varepsilon = 1`.
+to the single-bubble case as found in the Higgsless simulations of [Jinno2022]_. For the
+scalar field :math:`\varepsilon = 1`.
 
 Redshift to today
 -----------------
@@ -128,7 +131,7 @@ of the sound shell:
 :math:`\Delta_\mathrm{w}` is the shell thickness as a fraction of the bubble radius. A wall moving close
 to the speed of sound leaves a thin shell, which pushes :math:`f_2` far above :math:`f_1` and
 widens the flat part of the spectrum between them. This estimate assumes a detonation or a
-deflagration; a general solution would need the full hydrodynamic profile.
+deflagration, and a general solution would need the full hydrodynamic profile.
 
 The integrated amplitude is their equation (2.10),
 
@@ -181,19 +184,20 @@ eddy turnovers and :math:`v_A = \sqrt{3\Omega_s/4}` is the Alfvén velocity.
    :width: 100%
 
    The three templates, built with the package's own ``FOPTspectrum`` at the parameters shown.
-   The sound-wave efficiency is taken from ``hydrodynamics.kappa_sw`` at that strength and wall
-   velocity and the turbulent one is a tenth of it; the collision efficiency is set by hand,
+   The sound-wave efficiency is taken from the fit of :doc:`hydrodynamics` at that strength
+   and wall velocity and the turbulent one is a tenth of it. The collision efficiency is set
+   by hand,
    since for a wall the plasma holds back it is zero and there would be nothing to draw. Their
    sum is not drawn, because the sound waves dominate and it would lie on top of them.
 
    The sound-wave spectrum rises as :math:`f^3`, turns over to :math:`f` between its two
-   breaks and falls as :math:`f^{-3}`; with the breaks a factor twenty-two apart the middle
+   breaks and falls as :math:`f^{-3}`. With the breaks a factor twenty-two apart the middle
    segment is short, and what the eye reads is the change of curvature rather than a straight
    piece. The grey curve marked LISA is the power-law-integrated sensitivity as the package
    ships it, at the threshold and observation time stored with it, with a shallow shadow
    beneath it so that it reads as a band. A spectrum that rises above it is detectable, and
    this one does. The curve leaves the top of the panel at both ends, where the sensitivity is
-   poor; it does not stop there.
+   poor, and it does not stop there.
 
 Observability
 -------------
@@ -221,7 +225,7 @@ the best fit achievable on that data, as
 .. versionchanged:: 2.2
    Eight free spectra ship with the package and are selected by name, where one was previously
    downloaded while the run was in progress. The reference :math:`\ln L_\mathrm{best}` belongs to
-   the data set, so there is one per data set; a data set with no reference reports no distance
+   the data set, so there is one per data set. A data set with no reference reports no distance
    rather than a distance from a reference obtained on different data.
 
 .. admonition:: The templates have a range of validity
@@ -231,14 +235,6 @@ the best fit achievable on that data, as
    0.1. A scan reaching far stronger transitions is extrapolating, and the amplitude reported
    there is a statement about the template as much as about the model. For strongly supercooled
    transitions a template built for them is the appropriate one.
-
-In the code
------------
-
-``gwfopt.FOPTspectrum`` assembles the spectrum; ``h2Omega_0_sum`` is the sum above, ``BPL`` and
-``DBPL`` the two shapes. ``observability.Observability`` computes the signal-to-noise ratios and
-the pulsar timing likelihoods, and ``pta_free_spectra`` holds the shipped free spectra with
-their reference likelihoods.
 
 References
 ----------

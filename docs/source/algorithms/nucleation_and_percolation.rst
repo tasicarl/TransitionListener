@@ -3,10 +3,14 @@
 Nucleation, percolation and the expansion history
 =================================================
 
-A transition does not happen at a temperature; it happens over a range of them. Bubbles appear
+A transition does not happen at a temperature, it happens over a range of them. Bubbles appear
 at a rate that rises steeply as the universe cools, they grow, and at some point enough of
 space has converted that the transition is under way. This page describes how that history is
 computed and which temperature is reported as which.
+
+The code is in
+:py:mod:`transitionlistener.bubbledynamics` and in the modules whose names begin with
+``percolation_``.
 
 The fraction of space that has converted
 ----------------------------------------
@@ -25,7 +29,7 @@ rate and :math:`v_\mathrm{w}` the speed at which a bubble wall advances. The upp
 taken as the temperature at which the two phases become degenerate, above which no bubble can
 nucleate. The inner integral is the
 distance a bubble nucleated at :math:`T'` has grown by the time the universe has cooled to
-:math:`T`, and the cube of it is its volume. The converted fraction is
+:math:`T`, and the cube of it is its volume. The true-vacuum fraction is
 
 .. math::
    P(T) = 1 - \mathrm{e}^{-I(T)} .
@@ -41,10 +45,10 @@ the grid costs the cube. The same quantity is the end of a chain of four first-o
    \frac{\mathrm{d}J_3}{\mathrm{d}T} = -\frac{3 J_2}{H},
 
 each starting at zero at the hot end, with :math:`I = (4\pi/3)\,v_\mathrm{w}^3\,J_3`. One sweep from the
-hot end to the cold one gives :math:`I` at every support point, at a cost linear in their
+hot end to the cold one produces :math:`I` at every support point, at a cost linear in their
 number, which is what makes a support of several hundred temperatures affordable. Where the
 sound speed is not that of radiation the same chain carries :math:`a(T)` and
-:math:`3 c_\mathrm{s}^2` explicitly; in the radiation limit they cancel.
+:math:`3 c_\mathrm{s}^2` explicitly, and in the radiation limit they cancel.
 
 The percolation temperature is where :math:`P` reaches a fixed fraction, conventionally about
 a third, at which the bubbles form a connected network [GuthWeinberg1981]_. The nucleation temperature, the more
@@ -66,9 +70,9 @@ what makes the cost bearable.
 **The second pass** computes :math:`P(T)` using the expansion rate of a universe that has not
 yet converted. This neglects the energy the transition releases.
 
-**The third pass** feeds the converted fraction back into the expansion rate and into the
+**The third pass** feeds the true-vacuum fraction back into the expansion rate and into the
 temperature of the phase the bubbles grow into, which is heated by the energy released. It is
-iterated to consistency, and it is the one that gives the reheating temperature and decides
+iterated to consistency, and it is the one that sets the reheating temperature and decides
 whether the transition completes.
 
 Two backends
@@ -112,7 +116,7 @@ The fixed-step backend
 
 It lays ``n_action`` temperatures evenly across a trial range and computes the profile on them.
 If the result is unusable it changes the range rather than the sampling: it moves the window
-when the transition sits outside it, narrows it around a jump in the converted fraction when
+when the transition sits outside it, narrows it around a jump in the true-vacuum fraction when
 one is found, and tries again with the same number of points. The grid is always uniform and
 always the same size, so the cost of each attempt is known before it starts.
 
@@ -139,13 +143,13 @@ where the profile needs it.
 Scouting
 ~~~~~~~~
 
-The first pass works on :math:`\log_{10}(\Gamma/H^4)` rather than on the converted fraction,
+The first pass works on :math:`\log_{10}(\Gamma/H^4)` rather than on the true-vacuum fraction,
 because that is the quantity whose shape matters and it is well behaved over the whole range.
 It computes a sparse set of actions, reconstructs an approximate profile, and asks two
 questions: whether the hot end is far enough out that nucleation has not begun, and whether the
 cold end is far enough down that it can no longer contribute. The second has a quantitative
 answer: once the rate has fallen a thousand decades below its peak no colder point can change
-the converted fraction, and the tail below that is dead.
+the true-vacuum fraction, and the tail below that is dead.
 
 If either end fails the window is widened and more actions are spent, up to a ceiling. When the
 transition is bracketed the interior peak of the rate is located and a window is built around
@@ -157,19 +161,19 @@ Refinement
 Several strategies exist because there are several ways for a profile to be unresolved, and
 each has its own signature:
 
-A jump in the converted fraction is the commonest signature. Two neighbouring support points
+A jump in the true-vacuum fraction is the most common signature. Two neighbouring support points
 differing by more than :math:`\Delta P = 0.1` mean the rise between them is unresolved, and
 intermediate temperatures are added. Nothing else says as directly that the grid has stepped
 over the transition.
 
 The rise of the rate gets points across the interval where :math:`\log(\Gamma/H^4)` climbs,
-located from the sampled rate rather than from the converted fraction, so that the rise is
+located from the sampled rate rather than from the true-vacuum fraction, so that the rise is
 resolved before it has had any visible effect on :math:`P`.
 
 The peak of the rate is refined where the sampled maximum is a single point rather than a
 resolved shape.
 
-The hot shoulder is the region where the converted fraction is still near zero but the rate is
+The hot shoulder is the region where the true-vacuum fraction is still near zero but the rate is
 already appreciable, so the integral is accumulating where the grid treats the transition as
 not yet started.
 
@@ -263,7 +267,8 @@ The entropy used
 ~~~~~~~~~~~~~~~~
 
 The entropy can be taken in two ways, selected by ``entropy_definition``. ``dof_table``, the
-default, uses the counted degrees of freedom; ``eff_potential`` uses :math:`-\partial V/\partial T`
+default, uses the counted degrees of freedom, and ``eff_potential`` uses
+:math:`-\partial V/\partial T`
 of the effective potential. They are two forms of the same quantity and agree where the
 counting and the potential describe the same plasma. The important thing is that one of them is
 used throughout: the scale factor and the sound speed must come from the same entropy, or the
@@ -279,7 +284,7 @@ The temperatures reported
    Where about one bubble has nucleated per Hubble volume.
 
 ``Tperc``
-   Where the converted fraction reaches the percolation threshold.
+   Where the true-vacuum fraction reaches the percolation threshold.
 
 ``Tf``
    Where the transition completes, in the sense that the false-vacuum fraction has fallen to a
@@ -330,9 +335,20 @@ discretisation of
    \frac{\mathrm{d}T_\mathrm{b}}{\mathrm{d}T} = \frac{3\,S(T_\mathrm{b})}{T\,S'(T_\mathrm{b})}
    + \frac{P'(T)}{P(T)}\,\frac{e_\mathrm{s}(T) - E(T_\mathrm{b})}{E'(T_\mathrm{b})} ,
 
-with :math:`S` and :math:`E` the entropy and energy density of the broken phase and
-:math:`e_\mathrm{s}` the energy density of the symmetric one. The first term is the cooling the
-expansion alone would give; the second is the heating.
+Here :math:`T_\mathrm{b}` is the temperature of the broken phase, the plasma inside the
+bubbles, against the temperature :math:`T` of the symmetric phase outside them. :math:`S` and
+:math:`E` are the entropy and the energy density of the broken phase and
+:math:`e_\mathrm{s}` the energy density of the symmetric one. The first term is the cooling
+that the expansion alone would produce. The second is the heating by the energy the
+transition releases.
+
+The reheating temperature :math:`T_\mathrm{reh}` is the value this equation reaches at the
+end of the transition, when the whole volume is in the broken phase. It is the temperature
+the universe has once the released energy is spread through the plasma, and it is the one
+that enters the redshift of the spectrum, in place of the percolation temperature at which
+the bubbles were still growing. For a strong transition the two differ by a factor of
+:math:`(1+\alpha)^{1/4}` or more, which is why the package integrates the equation above
+rather than using that factor.
 
 .. versionchanged:: 2.2
    The equation is integrated with an error-controlled integrator rather than read off the
@@ -347,7 +363,7 @@ How fast the transition proceeds is quoted as :math:`\beta/H`, and there are two
 which answer different questions.
 
 The first is local: the logarithmic derivative of the rate at the percolation temperature,
-:math:`\beta/H = T\,d(S_3/T)/\mathrm{d}T`. The second is integral: it is read off the mean separation
+:math:`\beta/H = T\,\mathrm{d}(S_3/T)/\mathrm{d}T`. The second is integral: it is read off the mean separation
 between bubbles, :math:`R_*`, which follows from the whole nucleation history rather than from
 one temperature.
 
@@ -364,7 +380,7 @@ other.
 Refusals
 --------
 
-- The converted fraction never reaches the percolation threshold, so there is no percolation
+- The true-vacuum fraction never reaches the percolation threshold, so there is no percolation
   temperature on the range searched.
 - The transition percolates and then stalls, never reaching completion. This is reported
   separately from the previous case, because the physics differs: a transition that stalls
@@ -374,15 +390,6 @@ Refusals
   resolved.
 - The run exceeded its time limit. This is a statement about the clock and not about the
   physics, and it is reported as its own failure rather than as a verdict.
-
-In the code
------------
-
-``bubbledynamics.calcPercAndEvolve`` is the entry point and ``percIntegral`` the integral
-itself. The adaptive solver lives in ``percolation_adaptivestepsize`` for the controllers and
-the state, ``percolation_adaptive_gridbuilders`` for turning arrays into the next set of
-candidate temperatures, and ``percolation_adaptive_rate`` for locating the rise of the rate. A
-fixed-step solver exists alongside it in the modules ending ``_fixedstep``.
 
 References
 ----------

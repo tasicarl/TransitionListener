@@ -8,6 +8,9 @@ Besides the numbers, a run can draw what it computed. Each plot is switched on i
 the pipeline rather than a summary of the result, so they are the first place to look when a
 point behaves oddly.
 
+The code is in :py:mod:`transitionlistener.plots` for a single point and in
+:py:mod:`transitionlistener.gridplots` for a scan.
+
 Every figure on this page was produced by the configuration shown beside it, run on the
 conformal dark :math:`U(1)` model of ``examples/example_point.yaml`` at
 :math:`g = 0.7`, :math:`v = 0.1` GeV and :math:`y = 0.01`.
@@ -55,9 +58,9 @@ curve is the tracer losing it, and that is visible here and almost nowhere else.
    :width: 100%
 
    The two phases the tracer followed. The symmetric phase, with the field at the origin,
-   exists at every temperature; the broken phase ends at 0.025 GeV, where its minimum stops
+   exists at every temperature. The broken phase ends at 0.025 GeV, where its minimum stops
    being a minimum. A phase that ends where the potential says it should is the tracer
-   working; a phase that ends in the middle of a smooth curve is the tracer losing it.
+   working, and a phase that ends in the middle of a smooth curve is the tracer losing it.
 
 The action
 ----------
@@ -89,7 +92,7 @@ The energy density
      energy_density:
        plot?: True
        Tmin_GeV: 0.002
-       Tmax_GeV: 0.026
+       Tmax_GeV: 0.025
 
 The energy density of each phase against temperature. The gap between the two is the energy
 the transition has to release, so this is where a transition strength that looks surprising
@@ -108,7 +111,7 @@ The degrees of freedom
      dofs:
        plot?: True
        Tmin_GeV: 0.002
-       Tmax_GeV: 0.03
+       Tmax_GeV: 0.025
 
 The effective degrees of freedom of the plasma against temperature, in the sense of
 :doc:`the_plasma`, which fix the expansion rate and the redshift of the signal.
@@ -207,7 +210,7 @@ A scan over a grid of model parameters draws one map per output. The gallery bel
 
    $ tl -c examples/example_grid.yaml -j 10
 
-Each panel is a thumbnail; the full-size file is behind it.
+Each panel is a thumbnail, and the full-size file is behind it.
 
 Transition strength and the milestone temperatures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -295,10 +298,3 @@ How the predicted signals map into the signal-to-noise ratio of three future det
    :width: 31%
    :target: ../_static/example_output/SNR_ET.png
 
-In the code
------------
-
-``plots.TLPlots`` holds the per-stage plots, with ``plotPotential``, ``plotPhases``,
-``plotAction``, ``plotEnergyDensity``, ``plotDOFs``, ``plotPercolation``, ``plotProfile`` and
-``plotProfileV``. ``plotGWSpectrum`` and ``plotSensitivities`` draw the spectrum.
-``plot_settings`` holds the style, and ``colors`` the palette.

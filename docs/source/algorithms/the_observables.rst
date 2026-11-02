@@ -8,6 +8,10 @@ handful of numbers: when the transition happened, how much energy it released, h
 took, and how fast the walls moved. This page is about those numbers, how each is defined, and
 what the code reports when one of them cannot be trusted.
 
+The code is in
+:py:mod:`transitionlistener.transitionObservables`, with the pieces it shares with the
+percolation history in :py:mod:`transitionlistener.bubbledynamics`.
+
 The temperatures
 ----------------
 
@@ -31,7 +35,7 @@ Five temperatures come out of a run, and they answer different questions.
 :math:`T_\mathrm{f}`
    Where the transition is finished, taken as the true-vacuum fraction reaching
    :math:`f_\mathrm{final} = 0.99`. One per cent of space is still in the false vacuum there,
-   so this is a convention and not a sharp boundary; the value is a setting.
+   so this is a convention and not a sharp boundary, and the value is a setting.
 
 :math:`T_\mathrm{reh}`
    The temperature after the energy released has been shared out. It is not a point on the
@@ -57,8 +61,8 @@ the fraction converted during the step, is a discretisation of
 
 with :math:`S` and :math:`E` the entropy and energy density of the broken phase and
 :math:`e_\mathrm{s}` that of the symmetric one. The first term is the cooling the expansion
-alone would give and the second is the heating. The integration starts where the converted
-fraction first becomes non-negligible, with the instantaneous-reheating condition as its
+alone would produce and the second is the heating. The integration starts where the
+true-vacuum fraction first becomes non-negligible, with the instantaneous-reheating condition as its
 initial value, and the reheating temperature is its value at the end of the transition.
 
 .. versionchanged:: 2.2
@@ -89,8 +93,8 @@ by that name. They answer different questions and they are not interchangeable.
    = T\,\frac{\mathrm{d}}{\mathrm{d}T}\left(\frac{S_3}{T}\right)
    \;\Bigg|_{T_\mathrm{perc}} ,
 
-read off the action at one temperature. It is what the exponential approximation to the rate
-gives, and it is the quantity most of the literature means.
+read off the action at one temperature. It is the inverse duration of the exponential
+approximation to the rate, and it is the quantity most of the literature means.
 
 **The integral one** is read off the mean separation between the bubbles,
 
@@ -130,7 +134,7 @@ Completion
 
 Percolating is not the same as finishing. The false vacuum occupies a physical volume that the
 expansion inflates and the growth of the bubbles eats, and the transition completes only where
-the second wins; the criterion is in :doc:`nucleation_and_percolation`. A transition that
+the second wins. The criterion is in :doc:`nucleation_and_percolation`. A transition that
 percolates and then stalls is reported as such, and is a different outcome from one that never
 percolated.
 
@@ -138,7 +142,7 @@ Warnings and Diagnosis outputs
 ------------------------------
 
 Every run writes a row of warnings and diagnostics beside the observables. A warning is a
-statement that something about this point needs a human; a diagnostic is a measured number
+statement that something about this point needs a human, and a diagnostic is a measured number
 that says how far from ordinary it is. None of them stops a run, and none of them changes a
 result: the point of reporting is that the number is still there to be looked at.
 
@@ -167,7 +171,7 @@ The wall velocity
 The velocity in local thermal equilibrium is found by driving a matching residual to zero, and
 the search assumes that residual crosses zero once below the Jouguet velocity. For a strong
 transition it can cross more than once, and the velocity is then a choice among branches rather
-than a determination; the first warning says so. The second says no root exists at all, which
+than a determination, and the first warning says so. The second says no root exists at all, which
 is a different statement from a wall that runs away: a runaway is the expected outcome of a
 strongly supercooled transition and is not flagged.
 
@@ -188,7 +192,7 @@ The thermodynamics
 
 ``WARNING:noisy_c_s`` with ``DIAG:c_s_step_change`` says the sound speed moved when the
 differencing step was changed by a factor ten in each direction. A value can be round-off and
-still lie between zero and one, so no test on the value itself finds this; on a healthy point
+still lie between zero and one, so no test on the value itself finds this. On a healthy point
 the change is of order :math:`10^{-7}`.
 
 ``WARNING:daisy_outside_validity`` with ``DIAG:daisy_over_radiation`` says the Arnold-Espinosa
@@ -197,7 +201,7 @@ daisy term is being used where it does not apply, as described in
 
 ``WARNING:entropy_scheme_sensitive`` with ``DIAG:entropy_scheme_cs2_spread`` and
 ``DIAG:entropy_scheme_lna_gap`` says the two ways of counting the entropy, and so the two
-expansion histories they give, differ enough that the mean bubble separation of this point
+expansion histories built on them, differ enough that the mean bubble separation of this point
 depends on which was chosen. Nothing in the literature chooses between them, so the difference
 is carried as an uncertainty.
 
@@ -227,12 +231,3 @@ The bounce
 ``DIAG:action_rescue_attempts`` record that an action looked unstable against its neighbours
 and was recomputed at a tighter path deformation, and whether that helped.
 
-In the code
------------
-
-``transitionObservables`` assembles the row, with ``build_action_spline`` for the action
-interpolation and ``theChainEndedElsewhere`` for the phase check. ``bubbledynamics`` holds
-``calc_betaH_S3`` for the local inverse duration, ``integrate_broken_temperature`` for the
-reheating temperature, ``falseVacuumVolumeGrowthRate`` for the completion criterion and
-``entropy_scheme_sensitivity`` for the entropy comparison. The registry of every warning and
-diagnostic key, with the label each carries in a plot, is in ``config.py``.
