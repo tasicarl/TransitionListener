@@ -3,8 +3,10 @@
 `models/TL_2HDM.py` could not. It imports `counterterms/twohdm_solver.py`, which imports SymPy
 at module level, and SymPy was not in `pyproject.toml`. A clean `pip install -e .` followed by
 the first thing the README suggests therefore worked, because the example uses the conformal
-model, while the 2HDM raised `ModuleNotFoundError` at load. The tensors are cached, so the run
-would never have evaluated anything with SymPy. The import alone was enough.
+model, while the 2HDM raised `ModuleNotFoundError` at load. The import alone was enough to
+fail, and the cache does not make SymPy optional afterwards: building the potential from the
+shipped tensors calls `counterterms.tensors._require_sympy` 894 times, because the cached
+expressions are stored as strings and are parsed back with SymPy.
 
 The check here is the one that fails if a new model, or a new module a model reaches, imports
 something the metadata does not promise: the imports are taken from the source and compared with
@@ -142,6 +144,37 @@ class ACleanInstallHasWhatTheCodeImportsTests(unittest.TestCase):
         """Named on its own, because this is the one that was missing."""
         self.assertIn("sympy", _declared())
 
+    def test_a_cached_run_still_needs_sympy(self):
+        """SymPy is needed to use the 2HDM, not only to import it.
+
+        The shipped tensors are cached as strings and parsed back with SymPy, so a run that
+        regenerates nothing still calls into it. Counted rather than asserted in the
+        abstract: a stand-in for `_require_sympy` records how often the model reaches it
+        while the potential is built from the cache.
+        """
+        import contextlib
+        import importlib.util
+        import io as _io
+
+        from transitionlistener.counterterms import tensors
+
+        calls = []
+        real = tensors._require_sympy
+        spec = importlib.util.spec_from_file_location("TL_2HDM", ROOT / "models" / "TL_2HDM.py")
+        model = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(model)
+        try:
+            tensors._require_sympy = lambda: (calls.append(1), real())[1]
+            with contextlib.redirect_stdout(_io.StringIO()):
+                model.R2HDM(dict(lambda1=0.006, lambda2=0.25, lambda3=8.27, lambda4=-2.55,
+                                 lambda5=0.76, m12_sq_GeV2=14186.7, tan_beta=17.7,
+                                 yukawa_type=1, v_GeV=246.21965079413735), verbose=False)
+        finally:
+            tensors._require_sympy = real
+        self.assertGreater(len(calls), 0,
+                           "the cached path never reached SymPy, so the dependency claim "
+                           "in this file is wrong")
+
     def test_the_pta_stack_is_imported_behind_a_guard(self):
         """The one optional dependency the package has stays optional.
 
@@ -164,10 +197,9 @@ class ACleanInstallHasWhatTheCodeImportsTests(unittest.TestCase):
     def test_the_2hdm_reaches_sympy_through_the_solver_module(self):
         """The module the dependency comment names is the one the model loads.
 
-        Measured rather than read: importing `models/TL_2HDM.py` puts
-        `transitionlistener.counterterms.twohdm_solver` into `sys.modules` and leaves
-        `transitionlistener.counterterms.twohdm` out of it, because the plug-in registry
-        that would import the second is only loaded when counterterms are generated.
+        A static check of both files, not a run: it reads the imports of `models/TL_2HDM.py`
+        and of the solver it names. That the import really goes that way at run time is
+        measured by the test below, which loads the model and counts the SymPy calls.
         """
         model = ast.parse((ROOT / "models" / "TL_2HDM.py").read_text(encoding="utf-8"))
         reached = {node.module for node in ast.walk(model)
