@@ -43,6 +43,7 @@ dependencies = [
     "pandas",
     "rich",
     "scipy",
+    "sympy",
     "tqdm",
     "ultranest",
 ]

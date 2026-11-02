@@ -660,6 +660,55 @@ def HubbleParameter(rho: float | np.ndarray, CF: float) -> float:
     return np.sqrt(8 * np.pi / 3 * rho) / (cn.Mpl_GeV / CF)
 
 
+def hotEnergyDensity(pot, X, T, include_decoupled: bool = True) -> float:
+    """The part of ``pot.energyDensity`` that depends on the temperature.
+
+    ``energyDensity`` is this plus ``DV0``, the vacuum energy measured from the zero-
+    temperature minimum, which does not depend on the temperature. Anything built from a
+    temperature difference of the energy density has to difference this part alone: under
+    supercooling the vacuum energy is the larger by up to fifteen orders of magnitude, and a
+    difference of the sum then has no significant digits left, or none at all. Measured on
+    the conformal dark U(1) of ``examples/example_line.yaml`` at g = 0.5, where the two
+    energies either side of the step are the same double and their difference is exactly
+    zero, while this part differences cleanly.
+
+    The vacuum energy also carries no enthalpy, entering ``e`` as ``+rho_vac`` and ``p`` as
+    ``-rho_vac``, so an enthalpy formed as ``e + p`` leaves it out the same way.
+    """
+    return float(np.squeeze(pot.energyDensityDaisy(X, T)
+                            + pot.radiationEnergyDensity(X, T, include_decoupled)))
+
+
+def symmetricPhaseEnthalpy(pot, X, T, include_decoupled: bool = True) -> float:
+    """The enthalpy ``w = e + p`` of the phase at ``X``, without the vacuum energy.
+
+    ``include_decoupled`` selects the same plasma the caller's other thermodynamics uses: the
+    strength that drives the wall is normalised to the transitioning sector alone, the one
+    that drives the sound waves to the whole plasma where the two sectors are coupled.
+
+    The vacuum energy enters ``e`` as ``+rho_vac`` and ``p`` as ``-rho_vac``, so it cancels
+    analytically. Numerically the two are equal to every digit a double holds once the
+    transition is supercooled far enough: written as ``-Veff + e`` this enthalpy was 2 per
+    cent wrong at g = 0.5 of ``examples/example_line.yaml``. Built from the
+    temperature-dependent parts alone it is exact there and identical from g = 0.6 up.
+    """
+    return float(np.squeeze(
+        hotEnergyDensity(pot, X, T, include_decoupled)
+        - pot.V_thermal(X, T, include_decoupled=include_decoupled)))
+
+
+def requireUsableEnthalpy(value: float, T: float, terms: dict) -> float:
+    """Return the enthalpy, or refuse the point if it cannot normalise a strength.
+
+    Zero and not-a-number both produce a strength that is not a number, and infinity produces
+    zero, so none of the three may reach a reported value. Testing only for zero let the other
+    two through.
+    """
+    if not np.isfinite(value) or value == 0.0:
+        raise errors.EnthalpyUnderflowError(T, terms, value=value)
+    return value
+
+
 def calcSoundSpeedSq(pot, X, T) -> float:
     """Compute the symmetric-phase sound speed squared at ``(X, T)``.
 
@@ -3348,8 +3397,23 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     # separate question of which plasma 3 w refers to; it is not decided here.
     dT_e = temperatureDerivativeStep(pot, T, high_phi, include_decoupled=True,
                                      two_point=True)
-    dedT = (pot.energyDensity(high_phi, T + dT_e)
-            - pot.energyDensity(high_phi, T - dT_e))/(2*dT_e)
+    # Difference the part of the energy density that depends on the temperature, not the
+    # whole of it. `energyDensity` is that part plus the vacuum energy, which is constant in
+    # T and so cancels analytically but not numerically: on the conformal dark U(1) at
+    # g = 0.5 the vacuum energy is 1.486e8 in internal units while the thermal part is about
+    # 1e-15 of it, so differencing the sum returned exactly zero and the strength came back
+    # as infinity. At g = 0.517 it kept one digit and still looked like a number. Away from
+    # supercooling the two forms agree bit for bit, as the 2HDM benchmark does at every
+    # temperature, because there the offset is no larger than the plasma.
+    e_plus = hotEnergyDensity(pot, high_phi, T + dT_e)
+    e_minus = hotEnergyDensity(pot, high_phi, T - dT_e)
+    dedT = (e_plus - e_minus)/(2*dT_e)
+    # With the offset gone this can only fail where the plasma itself has no temperature
+    # dependence left, which is a phase with nothing in it rather than a precision loss.
+    if sym_usable:
+        requireUsableEnthalpy(
+            3 * csSq_sym * T * dedT, T,
+            {"hot e(T + dT)": e_plus, "hot e(T - dT)": e_minus, "dT": dT_e})
     if broken_usable and sym_usable:
         alpha_thetabar = (theta_sym - theta_bro) / (3* csSq_sym * T * dedT)
     else:
@@ -3386,11 +3450,13 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     m_bos_before = np.sqrt(np.where(m2_bos_before > 0, m2_bos_before, 0))
     delta_m_bos = np.maximum(m_bos_after - m_bos_before, 0)
 
-    # Enthalpy w = e + p of the symmetric phase of the transitioning sector alone,
-    # without a decoupled radiation bath. The vacuum parts cancel in e + p, and Veff_sym
-    # above is already the transitioning sector's effective potential.
-    e_sym_PT = pot.energyDensity(high_phi, T, include_decoupled=False)
-    w_sym_PT = -Veff_sym + e_sym_PT
+    # Enthalpy w = e + p of the symmetric phase of the transitioning sector alone, without a
+    # decoupled radiation bath. Built from the temperature-dependent parts: the vacuum energy
+    # cancels in e + p analytically, and subtracting it from itself loses every digit under
+    # supercooling, as it does in the pseudo-trace normalisation above.
+    w_sym_PT = requireUsableEnthalpy(
+        symmetricPhaseEnthalpy(pot, high_phi, T, include_decoupled=False), T,
+        {"plasma": "the transitioning sector alone"})
 
     # alpha_inf and alpha_eq as defined in section 2 of 1903.09642: the leading- and
     # next-to-leading-order friction pressures on the wall divided by the radiation energy
@@ -3407,9 +3473,12 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     # sound waves includes it when the two sectors are hydrodynamically coupled.
     alpha_hyd_wall = (theta_sym - theta_bro) / (3 * w_sym_PT)
     include_decoupled_in_enthalpy = bool(pot.config.gwConf.coupled_hydrodynamics)
-    Veff_sym_w = pot.Vtot(high_phi, T, include_decoupled=include_decoupled_in_enthalpy) - V0_ref
-    e_sym_w = pot.energyDensity(high_phi, T, include_decoupled=include_decoupled_in_enthalpy)
-    alpha_hyd = (theta_sym - theta_bro) / (3 * (-Veff_sym_w + e_sym_w))
+    w_sym_sw = requireUsableEnthalpy(
+        symmetricPhaseEnthalpy(pot, high_phi, T,
+                               include_decoupled=include_decoupled_in_enthalpy), T,
+        {"plasma": "with the decoupled bath" if include_decoupled_in_enthalpy
+                   else "the transitioning sector alone"})
+    alpha_hyd = (theta_sym - theta_bro) / (3 * w_sym_sw)
 
     alphas = (alpha_p, alpha_theta, alpha_thetabar, alpha_e, alpha_hyd, alpha_inf, alpha_eq)
     if return_wall_strength:
