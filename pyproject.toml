@@ -43,9 +43,6 @@ dependencies = [
     "pandas",
     "rich",
     "scipy",
-    # models/TL_2HDM.py builds its counterterms with SymPy. The tensors are cached, so a run
-    # does not evaluate them, but the model imports counterterms/twohdm_solver.py, which
-    # imports SymPy at module level, so loading the model alone needs it.
     "sympy",
     "tqdm",
     "ultranest",
