@@ -508,7 +508,8 @@ class TLPlots():
                        header="T_GeV S3_over_T Gamma_over_H4", fmt="%.6e")
 
     def plotPotential(self, plot_T_GeV : float, phi_ranges_GeV : list, n : int = 100,
-                      show : bool = False, save : bool = True, log : bool = False):
+                      show : bool = False, save : bool = True, log : bool = False,
+                      cfrac : float = 0.8):
         """Plot the potential energy landscape at a fixed temperature.
         
         Parameters
@@ -525,6 +526,11 @@ class TLPlots():
             Whether to save the plot.
         log : bool, optional
             Whether to use a logarithmic color scale (only for 2D plots).
+        cfrac : float, optional
+            The fraction of the potential's range the contours cover, from its minimum
+            upwards, for a model with more than one field. The default leaves the top of the
+            range without contours, which resolves the minima; setting it to 1 covers the
+            whole range.
         """
         if plot_T_GeV == 0.0:
             T_str = r"$T = {:g}$".format(plot_T_GeV)
@@ -557,7 +563,7 @@ class TLPlots():
                 yaxis=1,
                 n=n,
                 clevs=200,
-                cfrac=.8,
+                cfrac=cfrac,
                 log=log,
             )
         ax.set_title(self.plot_description + f": Potential at {T_str}" + r"$\,\mathrm{GeV}$")
@@ -758,16 +764,22 @@ class TLPlots():
         fig.tight_layout()
         save_figure(fig, self.output_folder_name + "profile.pdf")
 
-    def plotProfileV(self, phi1 : int, phi2 : int):
+    def plotProfileV(self, phi1 : int, phi2 : int, cfrac : float = 0.8):
         """Show the potential along the tunnelling path between two field values.
-    
+
         Parameters
         ----------
         phi1 : int
             Index of the first field dimension to plot.
         phi2 : int
             Index of the second field dimension to plot.
-        
+        cfrac : float, optional
+            The fraction of the potential's range the contours cover, from its minimum
+            upwards. The default resolves the minima at the price of leaving the top of the
+            range without contours, which on a point with a deep broken minimum is the
+            region around the origin the path starts from. Setting it to 1 covers the whole
+            range.
+
         """
         if self.pot.Ndim == 1:
             raise ValueError("plotProfileV only works for Ndim > 1.")
@@ -846,7 +858,7 @@ class TLPlots():
                 yaxis=yaxis,
                 n=100,
                 clevs=200,
-                cfrac=.8,
+                cfrac=cfrac,
             )
             axes[idx].plot(
                 start[xaxis] * self.pot.conversionFactor,
