@@ -357,7 +357,11 @@ def check_with_paper_style(fig, name: str = "figure") -> list[str]:
 #: How tall a figure may be, as a multiple of its width, for one row of panels. A single
 #: panel near square reads as a mistake on a page of running text. Each further row adds the
 #: same allowance again.
-MAX_ASPECT_PER_ROW = 0.80
+#: A panel of this gallery is between 0.52 and 0.62 times as tall as it is wide. One that is
+#: nearly square reads as a different kind of object on the page, which is what a reader
+#: notices first, so the allowance sits just above the widest of them rather than at a value
+#: no figure here needs.
+MAX_ASPECT_PER_ROW = 0.68
 
 #: The width a figure in the documentation must have, in pixels. Width and not the shorter
 #: side: every figure is shown at the width of the text column, so a wide short one is not

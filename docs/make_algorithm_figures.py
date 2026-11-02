@@ -697,7 +697,9 @@ def figure_spectrum_sources() -> None:
              ("Wall collisions", "bubble collisions", DESYaubergine, (0, (1, 1.6)))]
 
     use_house_style()
-    fig, ax = plt.subplots(figsize=(WIDTH, 0.78 * WIDTH))
+    # The same aspect as the other single-panel figures of this gallery. At 0.78 the panel
+    # was almost square, which no other figure here is.
+    fig, ax = plt.subplots(figsize=(WIDTH, 0.62 * WIDTH))
 
     # The shipped LISA power-law-integrated sensitivity, at the threshold and observation time
     # the package stores with it. A spectrum above this curve is detectable.
@@ -746,12 +748,12 @@ def figure_spectrum_sources() -> None:
     # panel says directly.
     ax.legend(frameon=False, loc="upper left", fontsize=7, handlelength=1.6)
     # The parameters are inside the panel, in a box of their own: they are what the three
-    # curves were computed from, so they are read with them. The box is against the right
-    # spine, two thirds of the way up, which is where a scan of the rendered panel for an
-    # empty rectangle of its size puts it. The corner above it is not free: at an upper
-    # limit of 1e-8 the high-frequency arm of the sensitivity curve and its band cross the
-    # top edge at 0.5 Hz.
-    ax.text(0.99, 0.68,
+    # curves were computed from, so they are read with them. The box sits under the legend,
+    # left of the sensitivity band, which is where a scan of the rendered panel for an empty
+    # rectangle of its size puts it. The two right-hand corners are not free: at an upper
+    # limit of 1e-8 the arms of the sensitivity curve and its band cross the top edge at
+    # 0.5 Hz, and the sound-wave curve leaves through the bottom edge at 0.6 Hz.
+    ax.text(0.015, 0.775,
             "\n".join([
                 r"$\alpha = 0.2$,  $R_* = 0.05$",
                 r"$T_\mathrm{reh} = 100$ GeV",
@@ -759,11 +761,11 @@ def figure_spectrum_sources() -> None:
                 r"$\kappa_\mathrm{sw} = %.3f$,  $\kappa_\mathrm{turb} = %.3f$"
                 % (k_sw, 0.1 * k_sw),
                 r"$\kappa_\phi = 0.02$"]),
-            transform=ax.transAxes, fontsize=6.5, ha="right", va="bottom",
+            transform=ax.transAxes, fontsize=6.5, ha="left", va="top",
             multialignment="left",
             bbox=dict(boxstyle="square,pad=0.35", facecolor="white", edgecolor="0.8",
                       linewidth=0.6))
-    fig.subplots_adjust(left=0.105, right=0.985, bottom=0.105, top=0.975)
+    fig.subplots_adjust(left=0.105, right=0.985, bottom=0.135, top=0.975)
     _check(fig, "algorithm_spectrum_sources")
     fig.savefig(OUT / "algorithm_spectrum_sources.png", dpi=200)
     plt.close(fig)
@@ -821,14 +823,26 @@ def figure_potential_2d() -> None:
 
 
 def main() -> int:
-    figure_shooting()
-    figure_rate_and_support()
-    figure_images()
-    figure_potential_vs_temperature()
-    figure_plasma_dof()
-    figure_fluid_profiles()
-    figure_spectrum_sources()
-    figure_potential_2d()
+    """Draw every figure, or only the ones named on the command line."""
+    import sys
+
+    builders = {
+        "shooting": figure_shooting,
+        "rate_and_support": figure_rate_and_support,
+        "images": figure_images,
+        "potential_vs_temperature": figure_potential_vs_temperature,
+        "plasma_dof": figure_plasma_dof,
+        "fluid_profiles": figure_fluid_profiles,
+        "spectrum_sources": figure_spectrum_sources,
+        "potential_2d": figure_potential_2d,
+    }
+    wanted = sys.argv[1:] or list(builders)
+    unknown = [name for name in wanted if name not in builders]
+    if unknown:
+        raise SystemExit("unknown figure(s): %s\nknown: %s"
+                         % (", ".join(unknown), ", ".join(builders)))
+    for name in wanted:
+        builders[name]()
     return 0
 
 
