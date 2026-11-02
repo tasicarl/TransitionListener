@@ -157,6 +157,16 @@ class ACleanInstallHasWhatTheCodeImportsTests(unittest.TestCase):
         import io as _io
 
         from transitionlistener.counterterms import tensors
+        from transitionlistener.counterterms.twohdm_solver import GENERATED_TENSOR_FILE
+
+        # The cached file is tracked (added in b5a763b) and present on a fresh checkout, so
+        # `_load_dataset` takes its cached branch. Were it missing, the loader would generate
+        # the tensors instead and this would count the calls of the generator, which proves
+        # nothing about a cached run. Stated rather than assumed, so the test fails loudly
+        # instead of measuring the wrong branch.
+        self.assertTrue(GENERATED_TENSOR_FILE.exists(),
+                        "no cached tensors at %s, so this would measure the generator"
+                        % GENERATED_TENSOR_FILE)
 
         calls = []
         real = tensors._require_sympy
