@@ -82,9 +82,11 @@ account of every one is in its pull request.
   going, the default is the 2026 Hellings-Downs re-run `ng15_hd_v2` rather than the 2023
   uncorrelated set every column used to rest on, and each reference log-likelihood was
   recomputed on the product its label is scored on, which moves the IPTA DR2 reference from
-  -105.66903 to -105.88365, lowers every IPTA2 significance built on it, and makes
-  `plots.add_violins` draw the product the likelihood used rather than the 2023
-  Gaussian-process set.
+  -105.66903 to -105.88365, lowers every IPTA2 significance built on it by up to 0.66, and
+  makes `plots.add_violins` draw the product the likelihood used rather than the 2023
+  Gaussian-process set. A sampler reports a lower bound on the maximum, so the released
+  value cannot be ruled out and the gap of 0.215 is not explained; the value shipped is the
+  reproducible one, and IPTA DR2 significances rest on it provisionally.
 
 - **One entropy for the expansion history.** The scale factor came from the counted degrees of
   freedom and the sound speed from the effective potential, which are two forms of the same
