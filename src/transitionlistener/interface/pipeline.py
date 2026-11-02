@@ -218,6 +218,13 @@ def _build_result_from_context(context: dict) -> dict:
         "strongestTransitionObservables": strongest,
         "gwspectrum": gwspectrum.gwspec_dict if gwspectrum is not None else {},
         "observability": observability_dict,
+        # Beside the observability dictionary rather than inside it: the run writes the
+        # product each likelihood was scored on into its summary, and a scan copies every
+        # key of the observability dictionary into its table, where three columns of
+        # constant text would be of no use.
+        "pta_products": dict(observability.pta_products)
+        if observability is not None
+        else {},
         "error": np.nan,
     }
 
@@ -277,6 +284,8 @@ def _handle_single_point_error(
     observability_dict.update(spectrum_entries)
     if observability_dict:
         result["observability"] = observability_dict
+    if observability is not None:
+        result["pta_products"] = dict(observability.pta_products)
 
     return result
 

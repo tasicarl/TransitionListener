@@ -161,10 +161,12 @@ def free_spectrum_path(name: str | None = None) -> str:
 #:
 #: Over a coarse grid of 120 points in the three template parameters above, the 5-bin
 #: likelihood reaches -37.98 at most on ``ng12p5_cp_v1`` and -31.13 on ``ng15_cp_v1``, and
-#: the 13-bin one -108.27 on ``ipta2_cp_v1`` and -96.37 on ``ng15_cp_v1``. Each filed value
-#: sits 1.1 to 2.4 above its own product's coarse maximum, where a sampler over the
-#: continuous parameters lands, and 5.7 (``NG12_5bins``) and 9.5 (``IPTA2_13bins``) below
-#: what the NANOGrav 15 yr product reaches, so neither was obtained there.
+#: the 13-bin one -108.27 on ``ipta2_cp_v1`` and -96.37 on ``ng15_cp_v1``. The three values
+#: checked against that grid, ``NG12_5bins``, ``IPTA2_13bins`` and ``NG15_5bins`` on
+#: ``ng15_cp_v1``, each sit 1.1 to 2.4 above their own product's coarse maximum, where a
+#: sampler over the continuous parameters lands. The first two sit 5.7 and 9.5 below what
+#: the NANOGrav 15 yr product reaches, so neither was obtained there. The other eleven
+#: entries were not put through this grid.
 #:
 #: Three of the four references released with v2.1 are reproduced by that calculation, each
 #: on its own product, to between 0.029 and 0.045 in log-likelihood: ``NG15_14bins`` and
@@ -174,7 +176,10 @@ def free_spectrum_path(name: str | None = None) -> str:
 #: the maximum, still reached -105.854, and more live points and every bin count from 5 to 30
 #: were tried. A sampler returns a lower bound on the maximum, so the gap of 0.215 is not
 #: explained, and the value below is the reproducible one rather than a disproof of the
-#: released one. Significances built on it are provisional until the gap is understood.
+#: released one. Because :math:`\sigma = \sqrt{2(\ln L_\mathrm{best} - \ln L)}`, the lower
+#: reference lowers every IPTA DR2 significance, by 0.66 at a point that sits at the best fit
+#: and by less further from it. Significances built on it are provisional until the gap is
+#: understood.
 PTA_BESTFIT_LNL = {
     "ng15_hd_v2": {"NG15_14bins": -105.65005153, "NG15_5bins": -33.89607940},
     "ng15_cp_v2": {"NG15_14bins": -104.88702140, "NG15_5bins": -33.86097277},
@@ -538,8 +543,9 @@ def _build_ceffyl(datadir: str, nbins: int, model):
     configuration and then downloads it from Zenodo. The assembly is the same. That the two
     agree was measured once, on the data set `ceffyl_builder` downloads, and the log-likelihood
     measured then is recorded in the test, which holds this builder to it. Only the data set
-    comes from this package instead of from the network, so a run is reproducible offline and
-    says which product it used.
+    comes from this package instead of from the network, so a run is reproducible offline.
+    A single-point run names the product each label was scored on at the head of the PTA
+    likelihood summary in ``2_Observability.txt``.
 
     `model.smbhb` is false on both adapters this is called with: the binary foreground enters
     through the spectrum, as `h2OmegaGW_with_astrobg_fun`, not as a second ceffyl signal. The

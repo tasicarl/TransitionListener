@@ -274,6 +274,54 @@ class AConfigFileChoosesTheProductTests(unittest.TestCase):
             self.assertIn("pta_free_spectrum", [kw.arg for kw in call.keywords])
 
 
+class TheRunSaysWhichProductItUsedTests(unittest.TestCase):
+    """A column can only be traced to its data if the run's own files name the product."""
+
+    def test_the_summary_names_the_product_of_every_label(self):
+        """The configuration file is not the record; the output of the run is."""
+        import tempfile
+        from transitionlistener.interface import single_point
+
+        result = {
+            "observability": {"logL_NG15_14bins": -105.0, "LISA_SNR": 3.0},
+            "pta_products": {"NG15_14bins": "ng15_cp_v1", "NG12_5bins": "ng12p5_cp_v1",
+                             "IPTA2_13bins": None},
+        }
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "")
+            single_point._write_observability_outputs(out, result, had_error=False)
+            with open(os.path.join(d, "2_Observability.txt"), encoding="utf-8") as f:
+                written = f.read()
+        self.assertIn("ng15_cp_v1", written)
+        self.assertIn("ng12p5_cp_v1", written)
+        self.assertIn("no shipped product", written)
+
+    def test_the_product_does_not_become_a_scan_column(self):
+        """A scan copies every observability key into its table, so this one stays outside.
+
+        Three columns of constant text in every scan table would be of no use, and the
+        summary reads the product from the result instead.
+        """
+        import pathlib
+
+        src = (pathlib.Path(pfs.__file__).parent / "interface" / "pipeline.py").read_text(
+            encoding="utf-8")
+        self.assertNotIn('observability_dict["pta_products"]', src)
+        self.assertIn('result["pta_products"]', src)
+
+    def test_the_standalone_sensitivity_plot_uses_the_run_s_product(self):
+        """A bare sensitivity object draws the default violins, whatever the run scored."""
+        import pathlib
+
+        src = (pathlib.Path(pfs.__file__).parent / "interface"
+               / "single_point.py").read_text(encoding="utf-8")
+        block = src.split('if key == "sensitivities":', 1)[1].split("return", 1)[0]
+        self.assertIn("gw.pta_free_spectrum", block)
+        self.assertLess(block.index("gw.pta_free_spectrum"),
+                        block.index("plots.plotSensitivities"),
+                        "the product is set after the plot is drawn")
+
+
 class ALabelWithNoReferenceReportsNothingTests(unittest.TestCase):
     """A product that carries no reference for a label is not a point that fits badly."""
 
