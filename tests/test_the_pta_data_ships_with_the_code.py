@@ -107,10 +107,17 @@ class TheProductsShipTests(unittest.TestCase):
 class TheBuilderReproducesItsRecordedLikelihoodTests(unittest.TestCase):
 
     def setUp(self):
-        try:
-            from transitionlistener.observability import _build_ceffyl, PTAModel  # noqa: F401
-        except Exception as exc:  # pragma: no cover - optional dependency
-            self.skipTest(f"PTA stack unavailable: {exc}")
+        """Skip where the PTA stack is missing, which the import alone does not show.
+
+        `observability` catches a failed import of ceffyl and ptarcade at module level and
+        leaves the names bound to None, so importing the builder from it succeeds in an
+        environment that cannot run it, and the test then failed on an attribute of None
+        instead of being skipped.
+        """
+        from transitionlistener import observability
+
+        if observability.Ceffyl is None or observability.models_utils is None:
+            self.skipTest("PTA stack unavailable: %s" % observability._PTA_IMPORT_ERROR)
 
     def test_the_shipped_builder_gives_the_recorded_likelihood(self):
         from transitionlistener.observability import _build_ceffyl, PTAModel
@@ -134,6 +141,70 @@ class TheBuilderReproducesItsRecordedLikelihoodTests(unittest.TestCase):
         self.assertGreater(abs(values[0] - values[1]), 1.0,
                            "the two products gave the same likelihood, so the selection "
                            "never reached the data")
+
+
+class AConfigFileChoosesTheProductTests(unittest.TestCase):
+    """The product has to be reachable from a configuration file, not only from Python.
+
+    The point of shipping the data is that a PTA column can be reproduced later. A run can
+    only be reproduced from the file that configured it, so the product the likelihood used
+    has to be settable there and has to reach `Observability`.
+    """
+
+    def test_the_default_product_is_the_registry_default(self):
+        from transitionlistener.config import GWConf
+
+        self.assertEqual(pfs.DEFAULT_PTA_FREE_SPECTRUM, GWConf().pta_free_spectrum)
+
+    def test_a_configured_product_reaches_the_configuration(self):
+        from transitionlistener.config import GWConf
+        from transitionlistener.runtime_options import apply_gw_overrides
+
+        conf = GWConf()
+        apply_gw_overrides(conf, {"gw_pta_free_spectrum": "ng15_cp_v1"})
+        self.assertEqual("ng15_cp_v1", conf.pta_free_spectrum)
+
+    def test_an_unknown_product_is_refused_before_the_run(self):
+        from transitionlistener.config import GWConf
+        from transitionlistener.runtime_options import apply_gw_overrides
+
+        with self.assertRaises(ValueError) as caught:
+            apply_gw_overrides(GWConf(), {"gw_pta_free_spectrum": "not_a_product"})
+        self.assertIn("not_a_product", str(caught.exception))
+
+    def test_the_pipeline_hands_the_configured_product_to_observability(self):
+        """Read off the call rather than off a run, which would cost a whole point."""
+        import ast
+        import pathlib
+
+        src = (pathlib.Path(pfs.__file__).parent / "interface" / "pipeline.py").read_text(
+            encoding="utf-8")
+        calls = [node for node in ast.walk(ast.parse(src))
+                 if isinstance(node, ast.Call)
+                 and getattr(node.func, "id", None) == "Observability"]
+        self.assertTrue(calls, "the pipeline no longer builds an Observability")
+        for call in calls:
+            self.assertIn("pta_free_spectrum", [kw.arg for kw in call.keywords])
+
+
+class ALabelWithNoReferenceReportsNothingTests(unittest.TestCase):
+    """A product that carries no reference for a label is not a point that fits badly."""
+
+    def test_the_distance_and_the_verdict_are_nan(self):
+        from transitionlistener.observability import Observability
+
+        delta = Observability._compute_delta_lnL(-100.0, np.nan)
+        self.assertTrue(np.isnan(delta))
+        self.assertTrue(np.isnan(Observability._delta_to_sigma(delta)))
+        self.assertIsNone(Observability._within_three_sigma(delta))
+
+    def test_a_likelihood_that_could_not_be_evaluated_still_reports_infinity(self):
+        from transitionlistener.observability import Observability
+
+        delta = Observability._compute_delta_lnL(np.nan, -100.0)
+        self.assertTrue(np.isinf(delta))
+        self.assertTrue(np.isinf(Observability._delta_to_sigma(delta)))
+        self.assertIs(False, Observability._within_three_sigma(delta))
 
 
 if __name__ == "__main__":

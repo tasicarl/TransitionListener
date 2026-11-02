@@ -163,7 +163,8 @@ def _compute_single_point(
                     astroparams_dict, verbose
                 )
                 observability = Observability(
-                    gwspectrum, verbose, include_smbhb=include_smbhb
+                    gwspectrum, verbose, include_smbhb=include_smbhb,
+                    pta_free_spectrum=context["pot"].config.gwConf.pta_free_spectrum,
                 )
                 context["gwspectrum"] = gwspectrum
                 context["observability"] = observability

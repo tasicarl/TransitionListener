@@ -16,6 +16,7 @@ import copy
 from collections.abc import Mapping
 
 from transitionlistener.config import TracingConf
+from transitionlistener.pta_free_spectra import PTA_FREE_SPECTRA
 from transitionlistener import errors
 from transitionlistener import constants as cn
 
@@ -66,6 +67,7 @@ PERCOLATION_OVERRIDE_KEYS = (
 
 GW_OVERRIDE_KEYS = (
     "gw_wall_velocity",
+    "gw_pta_free_spectrum",
 )
 
 PRECISION_MODE_NAMES = ("default", "robust", "xtrace", "tunneltight", "benchmark")
@@ -265,6 +267,15 @@ def apply_gw_overrides(gw_conf, overrides: dict[str, object]) -> None:
     """Apply runtime GW-observable overrides consumed from scan inputs."""
     if overrides.get("gw_wall_velocity") is not None:
         gw_conf.wall_velocity = overrides["gw_wall_velocity"]
+    if overrides.get("gw_pta_free_spectrum") is not None:
+        product = str(overrides["gw_pta_free_spectrum"])
+        # Refused here rather than where the likelihood is built, so a scan that names a
+        # product that does not exist stops before it spends an hour computing a transition.
+        if product not in PTA_FREE_SPECTRA:
+            raise ValueError(
+                "Unknown PTA free-spectrum product %r. The shipped products are: %s."
+                % (product, ", ".join(PTA_FREE_SPECTRA)))
+        gw_conf.pta_free_spectrum = product
 
 
 def apply_input_overrides(potential, args: tuple, dargs: dict) -> tuple[tuple, dict]:

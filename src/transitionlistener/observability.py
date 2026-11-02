@@ -44,9 +44,10 @@ def _require_pta_dependencies() -> None:
         ) from _PTA_IMPORT_ERROR
 
 # Mapping of PTA likelihood settings keyed by the label used throughout the codebase.
+# The reference log-likelihood each sigma is measured from belongs to the free-spectrum
+# product rather than to the label, so it lives in `pta_free_spectra.PTA_BESTFIT_LNL` and
+# is read through `bestfit_lnL`. Keeping a copy here left a second, stale source of truth.
 PTA_LIKELIHOOD_SETTINGS = OrderedDict(
-    # Best-fit likelihoods were obtained from PTArcade ultranest scans of
-    # first-order phase-transition GW spectra following arXiv:2403.03723.
     [
         (
             "NG15_14bins",
@@ -54,7 +55,6 @@ PTA_LIKELIHOOD_SETTINGS = OrderedDict(
                 "pta_name": "NG15",
                 "nbins": 14,
                 "threshold": -110.0,
-                "bestfit_lnL": -103.12759208991564,
             },
         ),
         (
@@ -63,7 +63,6 @@ PTA_LIKELIHOOD_SETTINGS = OrderedDict(
                 "pta_name": "NG15",
                 "nbins": 5,
                 "threshold": -35.0,
-                "bestfit_lnL": -29.55312949665563,
             },
         ),
         (
@@ -72,7 +71,6 @@ PTA_LIKELIHOOD_SETTINGS = OrderedDict(
                 "pta_name": "NG12",
                 "nbins": 5,
                 "threshold": -45.0,
-                "bestfit_lnL": -36.89179733242301,
             },
         ),
         (
@@ -81,7 +79,6 @@ PTA_LIKELIHOOD_SETTINGS = OrderedDict(
                 "pta_name": "IPTA2",
                 "nbins": 13,
                 "threshold": -115.0,
-                "bestfit_lnL": -105.66902507253809,
             },
         ),
     ]
@@ -352,10 +349,11 @@ def _build_ceffyl(datadir: str, nbins: int, model):
     """Assemble a ceffyl likelihood for one spectrum against a shipped free spectrum.
 
     This replaces `ptarcade.signal_builder.ceffyl_builder`, which resolves a data set from a
-    configuration and then downloads it from Zenodo. The assembly is the same, and a test
-    asserts the two give the same log-likelihood; only the data set comes from this package
-    instead of from the network, so a run is reproducible offline and says which product it
-    used.
+    configuration and then downloads it from Zenodo. The assembly is the same. That the two
+    agree was measured once, on the data set `ceffyl_builder` downloads, and the log-likelihood
+    measured then is recorded in the test, which holds this builder to it. Only the data set
+    comes from this package instead of from the network, so a run is reproducible offline and
+    says which product it used.
 
     `model.smbhb` is false on both adapters this is called with: the binary foreground enters
     through the spectrum, as `h2OmegaGW_with_astrobg_fun`, not as a second ceffyl signal. The
@@ -652,14 +650,28 @@ class Observability(GW_Sensitivity_Data):
 
     @staticmethod
     def _delta_to_sigma(delta_lnL: float) -> float:
-        """Translate a log-likelihood difference into an approximate sigma distance."""
+        """Translate a log-likelihood difference into an approximate sigma distance.
+
+        Not-a-number means there is no reference for this product and label, so there is no
+        distance to report. Infinity means the likelihood itself could not be evaluated, which
+        is a point that fits the data infinitely badly. Mapping the first onto the second
+        reported a scan point with no reference as one that was ruled out.
+        """
+        if np.isnan(delta_lnL):
+            return np.nan
         if not np.isfinite(delta_lnL):
             return np.inf
         return np.sqrt(2.0 * max(delta_lnL, 0.0))
 
     @staticmethod
-    def _within_three_sigma(delta_lnL: float) -> bool:
-        """Return True if the delta log-likelihood is within the 3-sigma criterion."""
+    def _within_three_sigma(delta_lnL: float) -> bool | None:
+        """Return True inside the 3-sigma criterion, and None where there is no reference.
+
+        None is written out as not-a-number, which is the honest answer for a product whose
+        reference this label does not have. False would say the point was tested and failed.
+        """
+        if np.isnan(delta_lnL):
+            return None
         return bool(np.isfinite(delta_lnL) and delta_lnL < DELTA_LNL_WITHIN_THRESHOLD)
 
     def _print_pta_likelihood_table(self):

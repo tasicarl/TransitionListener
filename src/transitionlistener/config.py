@@ -10,6 +10,8 @@ Authors:
 
 import copy
 
+from .pta_free_spectra import DEFAULT_PTA_FREE_SPECTRUM
+
 
 class TracingConf:
     """Phase-tracing and tunneling computation parameters."""
@@ -188,6 +190,7 @@ class GWConf:
     sound_speed = "compute"            # Sound-speed strategy: "compute" (broken-phase cs), "1/3" (bag value), or a float in (0, 1).
     coupled_hydrodynamics = True       # Couple the dark and visible sectors in the hydro solve.
     check_if_T0_global_min = False     # If True, require the T=0 minimum to be global (else just warn).
+    pta_free_spectrum = DEFAULT_PTA_FREE_SPECTRUM  # Shipped PTA free-spectrum product the likelihoods are evaluated against.
 
 
 class Configuration:
