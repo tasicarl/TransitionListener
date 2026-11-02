@@ -2,8 +2,6 @@
 # Run it from the repository root with
 #     tl -c docs/docs_gallery.yaml
 # tests/test_docs_style.py checks that the settings quoted on that page are these.
-# Single-point scan for the conformal U(1) model
-# Run with: tl -c examples/example_point.yaml -v
 
 # ==================================================
 # Scan settings
@@ -50,11 +48,6 @@ additional_plots:
     include_transitions?: False
     Tmin_GeV: 0
     Tmax_GeV: 0.03
-
-  profileV:
-    plot?: True
-    field_index_1: 0
-    field_index_2: 1
 
   energy_density:
     plot?: True

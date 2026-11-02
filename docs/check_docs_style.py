@@ -119,18 +119,32 @@ MAX_CAPTION_WORDS = 90
 
 
 def _differential_violations(text: str) -> list[tuple[int, str, str]]:
-    """``d`` as a differential, italic, which reads as a variable named d."""
+    """``d`` as a differential, italic, which reads as a variable named d.
+
+    Only maths is searched: the body of a ``.. math::`` block and the content of inline
+    ``:math:`...``` spans. An indented line of prose is not maths, and searching it reported
+    every English word that starts with d and has a second letter, "do" among them.
+    """
     out = []
     pattern = re.compile(r"(?<![\\\w])d(?=[A-Za-z]\b|\s*\\phi|\s*\\xi|\s*\\tau)")
+    in_block = False
     for i, line in enumerate(text.splitlines(), 1):
-        if ":math:" not in line and ".. math::" not in line and not line.startswith("   "):
+        if line.lstrip().startswith(".. math::"):
+            in_block = True
             continue
-        for m in pattern.finditer(line):
-            tail = line[m.start():m.start() + 12]
-            if tail.startswith("decay") or tail.startswith("density"):
-                continue
-            out.append((i, "the differential d is italic, so it reads as a variable",
-                        r"\mathrm{d}"))
+        if in_block and line.strip() and not line.startswith(("   ", "\t")):
+            in_block = False
+        if in_block:
+            pieces = [line]
+        else:
+            pieces = re.findall(r":math:`([^`]*)`", line)
+        for piece in pieces:
+            for m in pattern.finditer(piece):
+                tail = piece[m.start():m.start() + 12]
+                if tail.startswith("decay") or tail.startswith("density"):
+                    continue
+                out.append((i, "the differential d is italic, so it reads as a variable",
+                            r"\mathrm{d}"))
     return out
 
 

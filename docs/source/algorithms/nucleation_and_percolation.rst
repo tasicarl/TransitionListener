@@ -107,9 +107,15 @@ accuracy.
        worse.
      - More machinery, and its refinement decisions are harder to follow.
 
-Both share the thermodynamics: the rate, the integral, the energy densities and the expansion
-history come from the same routines, so a difference between the two backends is a difference
-in sampling and not in physics.
+Both build on the same physics: the rate, the integral over it, the energy densities and the
+expansion history follow the same definitions. They do not share the code that evaluates
+them. The percolation integral, the strengths, the inverse duration, the mean bubble
+separation and the Hubble rate each exist twice, once in
+:py:mod:`transitionlistener.bubbledynamics` for the adaptive backend and once in
+:py:mod:`transitionlistener.bubbledynamics_fixedstep` for the fixed-step one, so the two can and
+sometimes do differ beyond their sampling. The transition strength is the case to know: the
+fixed-step backend reports the bag-model value under ``alpha`` where the adaptive one reports
+the pseudo-trace value, as :doc:`hydrodynamics` sets out.
 
 The fixed-step backend
 ----------------------

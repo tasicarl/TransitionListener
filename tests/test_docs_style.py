@@ -81,6 +81,26 @@ class TestDocumentationStyle(unittest.TestCase):
                 found = checker.check([page])
                 self.assertTrue(found, "the checker missed %s: %r" % (name, line))
 
+    def test_prose_is_not_searched_for_italic_differentials(self):
+        """The rule reads maths, and an indented line of prose is not maths.
+
+        Searching every indented line reported each English word that begins with d and has
+        a second letter, so a figure caption containing "do" or "down" failed the suite with
+        nothing wrong in it.
+        """
+        sys.path.insert(0, str(DOCS))
+        import check_docs_style as checker
+
+        prose = ("   The derived parameters do carry one, and the panel below is labelled\n"
+                 "   with it, which the dashed line marks.\n")
+        self.assertEqual([], checker._differential_violations(prose))
+        self.assertTrue(
+            checker._differential_violations("The slope is :math:`d\\phi/dT` there."),
+            "the rule stopped catching an italic differential in inline maths")
+        self.assertTrue(
+            checker._differential_violations(".. math::\n   S = \\int dr\\, L\n"),
+            "the rule stopped catching an italic differential in a maths block")
+
 
 class TestTitlesAndFigures(unittest.TestCase):
     def test_a_lower_case_section_title_is_caught(self):
@@ -487,6 +507,50 @@ class TestPagesAgainstTheCode(unittest.TestCase):
             self.assertIn("``%s``" % variant, page)
         listed = set(re.findall(r"``(NG\d+_\d+bins|IPTA\d+_\d+bins)``", page))
         self.assertEqual(set(PTA_LIKELIHOOD_SETTINGS), listed)
+
+    def test_the_fixed_step_backend_reports_the_bag_strength_under_both_keys(self):
+        """The two backends differ in what ``alpha`` means, and the page has to say so."""
+        src = (ROOT / "src" / "transitionlistener"
+               / "transitionObservables_fixedstep.py").read_text(encoding="utf-8")
+        self.assertIn('derived["alpha"] = np.squeeze(alpha_theta)', src)
+        self.assertIn('derived["alpha_theta"] = np.squeeze(alpha_theta)', src)
+        self.assertNotIn("alpha_thetabar", src)
+        page = (DOCS / "source" / "algorithms" / "hydrodynamics.rst").read_text(encoding="utf-8")
+        self.assertIn("fixed-step solver does not", page)
+        self.assertIn("both keys", page)
+
+    def test_the_snr_carries_the_channel_factor_the_code_applies(self):
+        """The spectrum page gives the SNR the code computes, factor of two included."""
+        src = (ROOT / "src" / "transitionlistener"
+               / "observability.py").read_text(encoding="utf-8")
+        self.assertIn("snr2 = 2. * tobs * integral", src)
+        self.assertIn("snr2 /= 2.", src)
+        single = re.search(r"det_single_obs_names = \{([^}]*)\}", src)
+        self.assertIsNotNone(single, "the single-observation detector set moved")
+        names = set(re.findall(r'"([^"]+)"', single.group(1)))
+        page = (DOCS / "source" / "algorithms" / "the_spectrum.rst").read_text(encoding="utf-8")
+        self.assertIn(r"\sqrt{N\,\mathcal{T}", page)
+        for name in names:
+            self.assertIn(name.replace("_", " "), page,
+                          "%s takes a single observation but the page does not name it" % name)
+
+    def test_the_bounce_panel_says_which_temperature_it_used(self):
+        """``Tnuc`` is not always there, and the plots page may not promise it."""
+        src = (ROOT / "src" / "transitionlistener" / "plots.py").read_text(encoding="utf-8")
+        body = src.split("def _profile_reference_temperature", 1)[1].split("def ", 1)[0]
+        self.assertIn("T_\\mathrm{perc}", body)
+        page = (DOCS / "source" / "algorithms" / "the_plots.rst").read_text(encoding="utf-8")
+        self.assertIn("percolation temperature otherwise", page)
+        self.assertIn("title of", page)
+
+    def test_the_gallery_asks_for_no_panel_the_benchmark_cannot_draw(self):
+        """``profileV`` needs more than one field, and the gallery model has one."""
+        model = (ROOT / "models" / "TL_conformal_dark_u1.py").read_text(encoding="utf-8")
+        self.assertIn("self.Ndim = 1", model)
+        gallery = (DOCS / "docs_gallery.yaml").read_text(encoding="utf-8")
+        self.assertNotIn("profileV", gallery)
+        page = (DOCS / "source" / "algorithms" / "the_plots.rst").read_text(encoding="utf-8")
+        self.assertIn("needs a model with more than one field", page)
 
 
 if __name__ == "__main__":

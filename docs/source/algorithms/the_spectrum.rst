@@ -207,13 +207,15 @@ Observability
 For an interferometer the spectrum is compared with a noise curve by the signal-to-noise ratio
 
 .. math::
-   \mathrm{SNR} = \sqrt{\mathcal{T} \int \mathrm{d}f
+   \mathrm{SNR} = \sqrt{N\,\mathcal{T} \int \mathrm{d}f
                   \left[\frac{h^2\Omega_\mathrm{GW}(f)}{h^2\Omega_\mathrm{noise}(f)}\right]^2},
 
 with :math:`\mathcal{T}` the observation time and :math:`h^2\Omega_\mathrm{noise}` the
 detector's noise written as an energy density, so that the ratio under the integral is a
-signal-to-noise density. Curves for the interferometers and the pulsar
-timing arrays ship with the package.
+signal-to-noise density. :math:`N = 2` where the signal is cross-correlated between two
+independent data streams, which is what the code assumes by default, and :math:`N = 1` for a
+single instrument, which it applies to LISA, B-DECIGO, ET and muAres. Curves for the
+interferometers and the pulsar timing arrays ship with the package.
 
 For a pulsar timing array the comparison is made against the measured free spectrum rather
 than a noise curve. The data is a posterior for the amplitude in each frequency bin, obtained
@@ -264,9 +266,10 @@ rather than failing.
    downloaded while the run was in progress. They are six NANOGrav 15 yr products, which differ
    in the correlation the free spectrum was inferred with and in whether they predate the 2026
    correction to the sampler, together with the NANOGrav 12.5 yr and IPTA DR2 products. The
-   reference :math:`\ln L_\mathrm{best}` belongs to the data set, so there is one per data set.
-   A data set with no reference reports no distance rather than a distance from a reference
-   obtained on different data.
+   reference :math:`\ln L_\mathrm{best}` belongs to the free spectrum the likelihood is
+   evaluated on, so there is one per product rather than one per data set, and the six
+   NANOGrav 15 yr products each carry their own. A product with no reference for a label
+   reports no distance rather than a distance from a reference obtained on different data.
 
 .. admonition:: The templates have a range of validity
    :class: important

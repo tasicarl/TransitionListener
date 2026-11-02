@@ -161,8 +161,9 @@ what the panel shows.
 
    The true-vacuum fraction of this benchmark point, with temperature falling to the left.
    The dashed line is the percolation temperature 0.002212 GeV, where the fraction reaches
-   :math:`f_\mathrm{perc} = 0.28957`. This transition carries no nucleation temperature in
-   the object the plot reads, so no second line is drawn.
+   :math:`f_\mathrm{perc} = 0.28957`. The transition object this panel reads carries no
+   nucleation temperature, so no second line is drawn, while the derived parameters of the
+   same run do carry one and the bounce panel below is labelled with it.
 
 The bubble profile
 ------------------
@@ -172,14 +173,12 @@ The bubble profile
      profile:
        plot?: True
 
-     profileV:
-       plot?: True
-       field_index_1: 0
-       field_index_2: 1
-
-The field through the wall of the critical bubble at the nucleation temperature, and the path
-it takes through field space over the potential. The second is the one that shows whether the
-path deformation found a sensible path or cut a corner.
+The field through the wall of the critical bubble. The temperature is the nucleation
+temperature where the run has one and the percolation temperature otherwise, and the title of
+the panel says which. A second panel, ``profileV``, draws the path the field takes through
+field space over the potential and shows whether the path deformation found a sensible path
+or cut a corner. It needs a model with more than one field, so this one-field benchmark has
+none.
 
 .. figure:: ../_static/plots/profile.png
    :width: 100%
