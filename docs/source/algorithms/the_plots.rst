@@ -11,8 +11,8 @@ point behaves oddly.
 The code is in :py:mod:`transitionlistener.plots` for a single point and in
 :py:mod:`transitionlistener.gridplots` for a scan.
 
-Every figure on this page was produced by the configuration shown beside it, run on the
-conformal dark :math:`U(1)` model of ``examples/example_point.yaml`` at
+Every figure of the single-point gallery below was produced by the configuration block shown
+above it, run on the conformal dark :math:`U(1)` model of ``examples/example_point.yaml`` at
 :math:`g = 0.7`, :math:`v = 0.1` GeV and :math:`y = 0.01`. The phases are numbered in the
 order the tracer found them and are labelled P1 and P2 in the panels: P1 is the broken phase,
 with the field away from the origin, and P2 the symmetric one.
@@ -217,11 +217,12 @@ A scan over a grid of model parameters draws one map per output. The gallery bel
 
 Each panel is a thumbnail, and the full-size file is behind it.
 
-Transition strength and the milestone temperatures
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Transition strength and the characteristic temperatures
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-These panels say how the strength and the characteristic temperatures vary across a
-two-dimensional grid of model parameters.
+The panels below show the strength :math:`\alpha`, the inverse duration
+:math:`(\beta/H)_\mathrm{RH}` and the critical, nucleation, percolation, completion and
+reheating temperatures across a two-dimensional grid of model parameters.
 
 .. image:: ../_static/example_output/log_plot_alpha.png
    :width: 31%
@@ -254,8 +255,10 @@ two-dimensional grid of model parameters.
 The plasma and its thermodynamics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-These expose the background quantities that enter the time-temperature relation and the
-macroscopic observables.
+The sound speed :math:`c_\mathrm{s}` in each phase, the total degrees of freedom at the
+reheating temperature, and :math:`\xi_\mathrm{c} = v(T_\mathrm{c})/T_\mathrm{c}`, the
+field value at the critical temperature in units of that temperature, which is the usual
+measure of how strongly the symmetry is broken there.
 
 .. image:: ../_static/example_output/lin_plot_c_s_sym.png
    :width: 31%
@@ -276,7 +279,9 @@ macroscopic observables.
 The peak of the spectrum
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-The frequency and the amplitude at which the predicted spectrum peaks, across the scan.
+The frequency :math:`f_\mathrm{peak}` in Hz and the amplitude
+:math:`h^2\Omega_\mathrm{GW}` at which the predicted spectrum peaks, both as base-ten
+logarithms, across the scan.
 
 .. image:: ../_static/example_output/Add_info_log10_f_peak_Hz.png
    :width: 31%
@@ -286,10 +291,11 @@ The frequency and the amplitude at which the predicted spectrum peaks, across th
    :width: 31%
    :target: ../_static/example_output/Add_info_log10_h2OmegaGW_peak.png
 
-The reach of the detectors
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Signal-to-noise ratios
+~~~~~~~~~~~~~~~~~~~~~~
 
-How the predicted signals map into the signal-to-noise ratio of three future detectors.
+The signal-to-noise ratio of the predicted spectrum in three planned detectors: BBO, DECIGO
+and the Einstein Telescope.
 
 .. image:: ../_static/example_output/SNR_BBO.png
    :width: 31%
