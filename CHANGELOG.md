@@ -76,6 +76,18 @@ account of every one is in its pull request.
 
 ### Changed
 
+- **The pulsar timing data ships with the code, and the reference likelihoods are recomputed
+  (moves results).** Eight free-spectrum products ship under `tab_data/pta_free_spectra` and
+  are chosen with the `gw_pta_free_spectrum` key instead of being downloaded while the run is
+  going, the default is the 2026 Hellings-Downs re-run `ng15_hd_v2` rather than the 2023
+  uncorrelated set every column used to rest on, and each reference log-likelihood was
+  recomputed on the product its label is scored on, which moves the IPTA DR2 reference from
+  -105.66903 to -105.88365, lowers every IPTA2 significance built on it by up to 0.66, and
+  makes `plots.add_violins` draw the product the likelihood used rather than the 2023
+  Gaussian-process set. A sampler reports a lower bound on the maximum, so the released
+  value cannot be ruled out and the gap of 0.215 is not explained; the value shipped is the
+  reproducible one, and IPTA DR2 significances rest on it provisionally.
+
 - **One entropy for the expansion history.** The scale factor came from the counted degrees of
   freedom and the sound speed from the effective potential, which are two forms of the same
   relation. Both now come from the entropy `entropy_definition` selects, taken along the traced

@@ -169,6 +169,11 @@ class PlotExecutor:
             console.print(f"[bold green]Create {key} plot...[/bold green]")
             gw = obs.GW_Sensitivity_Data()
             gw.foldername = self._outpath
+            # A bare sensitivity object knows no product, and the violins would then be the
+            # default one whatever the run scored against. Read as in the pipeline, because
+            # a potential may carry a configuration without a GW section.
+            gw_conf = getattr(getattr(ctx.get("pot"), "config", None), "gwConf", None)
+            gw.pta_free_spectrum = getattr(gw_conf, "pta_free_spectrum", None)
             plots.plotSensitivities(gw, showplot=False, call_from_spectrum=False)
             console.print(f"[bold green]Done: {key} plot.[/bold green]")
             return
@@ -365,6 +370,7 @@ def _write_observability_outputs(outpath: str, result: dict, had_error: bool):
     observability = result.get("observability", {}) if isinstance(result, dict) else {}
     if not observability:
         return
+    pta_products = result.get("pta_products", {}) if isinstance(result, dict) else {}
 
     detectors: list[str] = []
     for key in observability.keys():
@@ -414,6 +420,14 @@ def _write_observability_outputs(outpath: str, result: dict, had_error: bool):
         printed_keys = set()
         if logL_keys:
             file.write("PTA likelihood summary:\n")
+            # Which shipped free spectrum each label was scored on, so that a column can be
+            # traced to its data from the run's own files rather than from the configuration.
+            for label, product in pta_products.items():
+                name = obs.PTA_DISPLAY_NAMES.get(label, label)
+                file.write("  {:<16} scored on {}\n".format(
+                    name, "no shipped product" if product is None else product))
+            if pta_products:
+                file.write("\n")
             file.write("{:<16} {:>6} {:<12} {:>12} {:>12} {:>10} {:>18}\n".format(
                 "PTA", "Bins", "Variant", "lnL", "Delta lnL", "Sigma", "Within 3 sigma?"
             ))
