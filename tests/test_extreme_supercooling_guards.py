@@ -515,8 +515,41 @@ class EnthalpyNormalisationTests(unittest.TestCase):
                 self.assertTrue(np.isfinite(before) and before != 0.0)
                 self.assertAlmostEqual(0.5 * before, after, delta=abs(before) * 1e-9)
 
+    def test_an_enthalpy_that_cannot_normalise_refuses_the_point(self):
+        """Driven through `calcAlphas`, not by constructing the error.
+
+        Zero, not-a-number and infinity all produce a strength no reader could use, and the
+        guard tested only for zero until this case was written. The enthalpy is replaced at
+        its source, which is what a phase with no plasma in it does to these numbers.
+        """
+        from pathlib import Path
+
+        from transitionlistener.helper_functions import load_potential
+
+        repo = Path(__file__).resolve().parents[1]
+        pot = load_potential(
+            str(repo / "models/TL_dark_U1_g_parameterization.py"), "specific_potential"
+        )({"g": 1.0, "v_GeV": 0.1, "lambda": 0.03}, verbose=False)
+
+        class Phase:
+            def __init__(self, x):
+                self.x = np.array([x])
+
+            def valAt(self, T):
+                return self.x
+
+        for module in (bd, bdf):
+            for value in (0.0, float("nan"), float("inf")):
+                with self.subTest(solver=module.__name__, enthalpy=value):
+                    with mock.patch.object(module, "symmetricPhaseEnthalpy",
+                                           lambda *a, **k: value):
+                        with self.assertRaises(errors.EnthalpyUnderflowError) as caught:
+                            module.calcAlphas(3.4e2, pot, Phase(0.0), Phase(0.5),
+                                              verbose=False)
+                    self.assertEqual(20, caught.exception.errorcode)
+
     def test_the_refusal_names_its_code_and_its_terms(self):
-        """The guard that remains for a phase with no plasma at all."""
+        """The error carries the terms the verdict was taken on."""
         error = errors.EnthalpyUnderflowError(2.9e-6, {"hot e": 0.0, "V_thermal": 0.0})
         self.assertEqual(20, error.errorcode)
         self.assertIn("hot e", str(error))

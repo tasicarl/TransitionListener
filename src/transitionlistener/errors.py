@@ -455,17 +455,18 @@ class ActionRateJitterError(Exception):
 class EnthalpyUnderflowError(Exception):
     """Raised when the enthalpy that normalises the transition strength underflows.
 
-    The strength reported as ``alpha`` is the pseudo-trace anomaly divided by three times the
-    enthalpy of the symmetric phase, and that enthalpy is obtained as a central difference of
-    the energy density. Under extreme supercooling the energy density is the vacuum energy to
-    every digit a double carries: on the conformal dark U(1) model at g = 0.5 the two energies
-    either side of the step are bit-identical at 1.4857e8 in internal units, because the
-    thermal part they differ by is about 1e-15 of them. The difference is then exactly zero
-    and the strength comes back as infinity, which is not a strength.
+    Every strength is divided by three times an enthalpy of the symmetric phase, and the two
+    solvers build that enthalpy in two ways. The adaptive one differences the energy density
+    across a temperature step for the pseudo-trace strength; both of them form ``e + p``
+    directly for the strengths that drive the wall and the sound waves. Either way the vacuum
+    energy cancels analytically and not numerically: on the conformal dark U(1) model at
+    g = 0.5 it is 1.4857e8 in internal units while the thermal part is about 1e-15 of it, so
+    the difference came back as exactly zero and the strength as infinity.
 
-    The point is refused rather than reported, because the transition itself is fine and only
-    its normalisation was lost, and an infinite strength is indistinguishable from one a
-    reader would trust.
+    Since v2.2 both constructions use the temperature-dependent part of the energy density
+    alone, so this is raised where the plasma itself has no enthalpy rather than where the
+    precision ran out. The point is refused rather than reported, because a strength that is
+    zero, infinite or not a number is indistinguishable from one a reader would trust.
     """
 
     def __init__(self, T=None, terms=None, message=None):

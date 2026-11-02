@@ -1942,7 +1942,7 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
     return betaH
 
 
-def hotEnergyDensity(pot, X, T) -> float:
+def hotEnergyDensity(pot, X, T, include_decoupled: bool = True) -> float:
     """The part of ``pot.energyDensity`` that depends on the temperature.
 
     The adaptive solver's copy carries the reasoning: ``energyDensity`` is this plus the
@@ -1951,19 +1951,28 @@ def hotEnergyDensity(pot, X, T) -> float:
     enthalpy formed as ``e + p`` may be built from the sum.
     """
     return float(np.squeeze(pot.energyDensityDaisy(X, T)
-                            + pot.radiationEnergyDensity(X, T, True)))
+                            + pot.radiationEnergyDensity(X, T, include_decoupled)))
 
 
-def symmetricPhaseEnthalpy(pot, X, T) -> float:
+def symmetricPhaseEnthalpy(pot, X, T, include_decoupled: bool = True) -> float:
     """The enthalpy ``w = e + p`` of the phase at ``X``, without the vacuum energy.
 
-    The vacuum energy enters ``e`` as ``+rho_vac`` and ``p`` as ``-rho_vac``, so it cancels
-    analytically. Numerically the two are equal to every digit a double holds once the
-    transition is supercooled far enough, so the sum is formed from the temperature-dependent
-    parts alone: the thermal energy density minus the thermal part of the potential.
+    ``include_decoupled`` selects the same plasma the caller's other thermodynamics uses, as
+    in the adaptive solver's copy. The vacuum energy enters ``e`` as ``+rho_vac`` and ``p`` as
+    ``-rho_vac``, so it cancels analytically. Numerically the two are equal to every digit a
+    double holds once the transition is supercooled far enough, so the sum is formed from the
+    temperature-dependent parts alone.
     """
-    return float(np.squeeze(hotEnergyDensity(pot, X, T)
-                            - pot.V_thermal(X, T, include_decoupled=True)))
+    return float(np.squeeze(
+        hotEnergyDensity(pot, X, T, include_decoupled)
+        - pot.V_thermal(X, T, include_decoupled=include_decoupled)))
+
+
+def requireUsableEnthalpy(value: float, T: float, terms: dict) -> float:
+    """Return the enthalpy, or refuse the point. The adaptive solver's copy carries why."""
+    if not np.isfinite(value) or value == 0.0:
+        raise errors.EnthalpyUnderflowError(T, terms)
+    return value
 
 
 def calcSoundSpeedSq(pot, X, T) -> float:
@@ -2078,14 +2087,13 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
         # enough. Written this way the sum is the thermal energy density minus the thermal
         # part of the potential, and it agrees bit for bit with the old form wherever that
         # form still had digits.
-        enthalpy_sym = symmetricPhaseEnthalpy(pot, high_phi, T)
-        # Zero now means a phase with no plasma in it rather than a precision loss, and the
-        # strength would be infinite either way, so the point is refused.
-        if enthalpy_sym == 0.0:
-            raise errors.EnthalpyUnderflowError(
-                T, {"hot e": hotEnergyDensity(pot, high_phi, T),
-                    "V_thermal": float(np.squeeze(
-                        pot.V_thermal(high_phi, T, include_decoupled=True)))})
+        # Zero and not-a-number both mean a phase with no plasma in it rather than a
+        # precision loss now, and neither can normalise a strength, so the point is refused.
+        enthalpy_sym = requireUsableEnthalpy(
+            symmetricPhaseEnthalpy(pot, high_phi, T), T,
+            {"hot e": hotEnergyDensity(pot, high_phi, T),
+             "V_thermal": float(np.squeeze(
+                 pot.V_thermal(high_phi, T, include_decoupled=True)))})
         alpha_theta = (theta_sym - theta_bro)/(3 * enthalpy_sym)
     
 
@@ -2116,10 +2124,14 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     m_bos_before = np.sqrt(np.where(m2_bos_before > 0, m2_bos_before, 0))
     delta_m_bos = np.maximum(m_bos_after - m_bos_before, 0)
 
-    # Enthalpy w = e + p of the symmetric phase of the transitioning sector alone,
-    # without a decoupled radiation bath; the hydrodynamic alphas do not depend on it.
-    w_sym_PT = (V0_ref - pot.Vtot(high_phi, T, include_decoupled=False)
-                + pot.energyDensity(high_phi, T, include_decoupled=False))
+    # Enthalpy w = e + p of the symmetric phase of the transitioning sector alone, without a
+    # decoupled radiation bath. Built from the temperature-dependent parts, as in the
+    # pseudo-trace normalisation above and in the adaptive solver: written as `-Veff + e` the
+    # vacuum energy is subtracted from itself and the result loses every digit under
+    # supercooling.
+    w_sym_PT = requireUsableEnthalpy(
+        symmetricPhaseEnthalpy(pot, high_phi, T, include_decoupled=False), T,
+        {"plasma": "the transitioning sector alone"})
 
     # alpha_inf and alpha_eq as defined in section 2 of 1903.09642, normalised to the
     # radiation energy density taken as 3 w / 4, as in the adaptive step size solver.
