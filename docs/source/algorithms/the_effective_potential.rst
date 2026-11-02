@@ -11,8 +11,8 @@ transition releases is the difference between the values of the potential at the
 The model file specifies the tree-level potential and the field-dependent mass spectrum. This
 page describes the loop, thermal and resummed terms that the package adds to them.
 
-The quantity
-------------
+Assembling the potential
+------------------------
 
 The effective potential is assembled as
 

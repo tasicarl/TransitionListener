@@ -88,15 +88,18 @@ Reading the two panels
 ----------------------
 
 The upper panel is the Standard Model bath on its own. The step near 0.2 GeV is the
-quark-gluon plasma turning into hadrons and the one near 100 GeV is the electroweak scale. The
-plateau at high temperature sits at 104.1 rather than the free-field 106.75, because the fit
-carries the interaction correction to the quark-gluon free energy. The energy and entropy
-counts differ wherever a species is neither relativistic nor gone, which is at and above the
-quark-hadron step, by at most 6.7 per cent at 0.2 GeV. Below about 0.5 MeV they part
-permanently, since the neutrinos no longer share the photons' temperature once electrons and
-positrons have annihilated, and the inset is the only place that can be seen, because 3.38
-against 3.93 is half a per cent of the main panel. The two fits meet at 0.12 GeV, and the
-small discontinuity there belongs to the fits and not to the physics.
+quark-gluon plasma turning into hadrons. The step near 100 GeV is the top quark, the
+:math:`W` and :math:`Z` bosons and the Higgs boson becoming non-relativistic and leaving the
+plasma. The plateau above it sits at :math:`g_\mathrm{eff} = 104.1` rather than the
+free-field 106.75, because the fit carries the interaction correction to the quark-gluon free
+energy. The counts in the energy density and in the entropy density differ wherever a species
+is neither relativistic nor gone, most of all across the quark-hadron step, where
+:math:`g_\mathrm{eff}` and :math:`h_\mathrm{eff}` are 6.7 per cent apart at 0.2 GeV. Below
+about 0.5 MeV the electrons and positrons annihilate and the neutrinos stop sharing the
+photons' temperature, so the two counts part for good and settle at
+:math:`g_\mathrm{eff} = 3.38` against :math:`h_\mathrm{eff} = 3.93` below 0.03 MeV. Both
+temperatures are off the left edge of this panel, which starts at 1 MeV. The two fits
+meet at 0.12 GeV, and the small discontinuity there is the seam between them.
 
 The lower panel carries the tabulated bath as well as the fields of the potential, with the
 Standard Model fields that appear in both counted once, so it is what the expansion rate is
@@ -109,18 +112,20 @@ curve ends at 121 GeV, the last temperature of this grid at which the broken min
 exists. Above it the field falls to the origin. A temperature grid ten times finer puts that
 end at 121.5 GeV, so it is where the phase ends and not where the grid happens to lie.
 
-In the symmetric phase those fields are massless and contribute their full 40.5 at every
-temperature, so the slope of that curve is not theirs. It is the bath around them, which loses
-degrees of freedom as it cools whether or not a transition happens. The curve ends in an open
+In the symmetric phase the fields of the potential are massless and contribute their full
+40.5 degrees of freedom at every temperature, so the slope of that curve comes from the
+tabulated bath around them, which loses degrees of freedom as it cools whether or not a
+transition happens. The curve ends in an open
 circle at the temperature below which the origin of this potential stops being a minimum, so
 that there is no symmetric phase to count. At the other end it is drawn to the top of the
 range: the origin is certainly a minimum at high temperature, where the thermal masses
 dominate, although the test cannot confirm it there, because the curvature is a finite
 difference of the full potential and above about a TeV the field-independent radiation
-dominates that potential and is differenced away. The two curves meet where the broken minimum
-disappears. A model with a transition therefore has two different plasmas on the two sides of
-its bubble walls, which is why the count is taken at a field value and not only at a
-temperature.
+dominates that potential and is differenced away. Between 122 GeV, where the broken phase ends, and the
+temperature at which the origin stops being a minimum, both phases exist and the two counts
+differ by about three degrees of freedom. A model with a transition therefore has two
+different plasmas on the two sides of its bubble walls, which is why the count is taken at a
+field value and not at a temperature alone.
 
 A longer account, including the thermal functions and the resummation, is in
 :doc:`the_effective_potential`.

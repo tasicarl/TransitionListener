@@ -13,8 +13,8 @@ spectrum, rests on it.
 The one-dimensional problem is solved in :py:mod:`transitionlistener.tunneling1D` and the
 path through field space is found in :py:mod:`transitionlistener.pathDeformation`.
 
-The quantity
-------------
+The bounce and its action
+-------------------------
 
 At a temperature :math:`T` the relevant configuration is the three-dimensional bounce, a
 static solution that is symmetric under rotations in space. It satisfies
@@ -51,8 +51,8 @@ shades it.
 Finding the bounce
 ------------------
 
-Along one direction in field space, by shooting, which is the method of
-[Coleman1977]_ as implemented numerically by [Wainwright2011]_.
+With one field, or along one direction in field space, the bounce is found by shooting, the
+method of [Coleman1977]_ in the numerical implementation of [Wainwright2011]_.
 
 The equation above is a boundary-value problem, and it is turned into a sequence of
 initial-value problems. A field value at the centre of the bubble is chosen and the equation
