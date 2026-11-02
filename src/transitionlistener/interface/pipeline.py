@@ -159,8 +159,12 @@ def _compute_single_point(
         if max_stage >= 4:
             # Checked before the try: a name that is not a shipped product raises inside
             # the spectrum stage, where `except Exception` absorbs it once transitions
-            # exist, and the run then finishes with no GW columns and no error.
-            free_spectrum_path(context["pot"].config.gwConf.pta_free_spectrum)
+            # exist, and the run then finishes with no GW columns and no error. Read with
+            # `getattr` because a potential may carry a configuration without a GW section,
+            # which is not this check's business; such a run takes the default product.
+            gw_conf = getattr(getattr(context["pot"], "config", None), "gwConf", None)
+            pta_free_spectrum = getattr(gw_conf, "pta_free_spectrum", None)
+            free_spectrum_path(pta_free_spectrum)
             try:
                 gwspectrum = FOPTspectrum(
                     context["strongest_transition_observables"],
@@ -168,7 +172,7 @@ def _compute_single_point(
                 )
                 observability = Observability(
                     gwspectrum, verbose, include_smbhb=include_smbhb,
-                    pta_free_spectrum=context["pot"].config.gwConf.pta_free_spectrum,
+                    pta_free_spectrum=pta_free_spectrum,
                 )
                 context["gwspectrum"] = gwspectrum
                 context["observability"] = observability
