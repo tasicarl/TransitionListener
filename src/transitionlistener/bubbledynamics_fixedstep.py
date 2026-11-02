@@ -1942,6 +1942,18 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
     return betaH
 
 
+def hotEnergyDensity(pot, X, T) -> float:
+    """The part of ``pot.energyDensity`` that depends on the temperature.
+
+    The adaptive solver's copy carries the reasoning: ``energyDensity`` is this plus the
+    vacuum energy, which does not depend on the temperature and is up to fifteen orders of
+    magnitude larger under supercooling, so neither a temperature difference of it nor an
+    enthalpy formed as ``e + p`` may be built from the sum.
+    """
+    return float(np.squeeze(pot.energyDensityDaisy(X, T)
+                            + pot.radiationEnergyDensity(X, T, True)))
+
+
 def calcSoundSpeedSq(pot, X, T) -> float:
     """Compute the sound speed squared.
 
@@ -2047,17 +2059,22 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
                      + (pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref)/csSq_bro)
         theta_bro = (pot.energyDensity(low_phi, T, include_decoupled=False)
                      + (pot.Vtot(low_phi, T, include_decoupled=False) - V0_ref)/csSq_bro)
-        # The same enthalpy as in the adaptive solver, formed as e + p rather than from a
-        # temperature derivative. Under extreme supercooling e and -p are both the vacuum
-        # energy to every digit a double carries, so their sum can come back as exactly zero
-        # and the strength as infinity. Refused here as it is there.
-        pressure_sym = -pot.Vtot(high_phi, T) + V0_ref
-        energy_sym = pot.energyDensity(high_phi, T)
-        enthalpy_sym = float(np.squeeze(pressure_sym + energy_sym))
+        # The enthalpy w = e + p, with the vacuum energy left out of both terms rather than
+        # added to one and subtracted from the other. It carries no enthalpy: it enters e as
+        # +rho_vac and p as -rho_vac, so it cancels analytically, while numerically the two
+        # are equal to every digit a double holds once the transition is supercooled far
+        # enough. Written this way the sum is the thermal energy density minus the thermal
+        # part of the potential, and it agrees bit for bit with the old form wherever that
+        # form still had digits.
+        hot_energy = hotEnergyDensity(pot, high_phi, T)
+        V_thermal_sym = pot.V_thermal(high_phi, T, include_decoupled=True)
+        enthalpy_sym = float(np.squeeze(hot_energy - V_thermal_sym))
+        # Zero now means a phase with no plasma in it rather than a precision loss, and the
+        # strength would be infinite either way, so the point is refused.
         if enthalpy_sym == 0.0:
             raise errors.EnthalpyUnderflowError(
-                T, {"e": float(np.squeeze(energy_sym)),
-                    "p": float(np.squeeze(pressure_sym))})
+                T, {"hot e": float(hot_energy),
+                    "V_thermal": float(np.squeeze(V_thermal_sym))})
         alpha_theta = (theta_sym - theta_bro)/(3 * enthalpy_sym)
     
 

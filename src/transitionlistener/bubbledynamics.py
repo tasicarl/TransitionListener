@@ -657,6 +657,25 @@ def HubbleParameter(rho: float | np.ndarray, CF: float) -> float:
     return np.sqrt(8 * np.pi / 3 * rho) / (cn.Mpl_GeV / CF)
 
 
+def hotEnergyDensity(pot, X, T) -> float:
+    """The part of ``pot.energyDensity`` that depends on the temperature.
+
+    ``energyDensity`` is this plus ``DV0``, the vacuum energy measured from the zero-
+    temperature minimum, which does not depend on the temperature. Anything built from a
+    temperature difference of the energy density has to difference this part alone: under
+    supercooling the vacuum energy is the larger by up to fifteen orders of magnitude, and a
+    difference of the sum then has no significant digits left, or none at all. Measured on
+    the conformal dark U(1) of ``examples/example_line.yaml`` at g = 0.5, where the two
+    energies either side of the step are the same double and their difference is exactly
+    zero, while this part differences cleanly.
+
+    The vacuum energy also carries no enthalpy, entering ``e`` as ``+rho_vac`` and ``p`` as
+    ``-rho_vac``, so an enthalpy formed as ``e + p`` leaves it out the same way.
+    """
+    return float(np.squeeze(pot.energyDensityDaisy(X, T)
+                            + pot.radiationEnergyDensity(X, T, True)))
+
+
 def calcSoundSpeedSq(pot, X, T) -> float:
     """Compute the symmetric-phase sound speed squared at ``(X, T)``.
 
@@ -3237,17 +3256,23 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     # separate question of which plasma 3 w refers to; it is not decided here.
     dT_e = temperatureDerivativeStep(pot, T, high_phi, include_decoupled=True,
                                      two_point=True)
-    e_plus = float(np.squeeze(pot.energyDensity(high_phi, T + dT_e)))
-    e_minus = float(np.squeeze(pot.energyDensity(high_phi, T - dT_e)))
+    # Difference the part of the energy density that depends on the temperature, not the
+    # whole of it. `energyDensity` is that part plus the vacuum energy, which is constant in
+    # T and so cancels analytically but not numerically: on the conformal dark U(1) at
+    # g = 0.5 the vacuum energy is 1.486e8 in internal units while the thermal part is about
+    # 1e-15 of it, so differencing the sum returned exactly zero and the strength came back
+    # as infinity. At g = 0.517 it kept one digit and still looked like a number. Away from
+    # supercooling the two forms agree bit for bit, as the 2HDM benchmark does at every
+    # temperature, because there the offset is no larger than the plasma.
+    e_plus = hotEnergyDensity(pot, high_phi, T + dT_e)
+    e_minus = hotEnergyDensity(pot, high_phi, T - dT_e)
     dedT = (e_plus - e_minus)/(2*dT_e)
-    # A difference of two energies that are equal to every digit a double carries. Under
-    # extreme supercooling the energy density is the vacuum energy and the thermal part the
-    # derivative is after is some 1e-15 of it, so the difference comes back as exactly zero
-    # and the division below returns infinity. An infinite strength is not a strength, and
-    # nothing downstream could tell it from one worth reading, so the point is refused.
+    # With the offset gone this can only vanish where the plasma itself has no temperature
+    # dependence left, which is a phase with nothing in it rather than a precision loss. The
+    # strength would still be infinite there, so the point is refused rather than reported.
     if sym_usable and (3 * csSq_sym * T * dedT) == 0.0:
         raise errors.EnthalpyUnderflowError(
-            T, {"e(T + dT)": e_plus, "e(T - dT)": e_minus, "dT": dT_e})
+            T, {"hot e(T + dT)": e_plus, "hot e(T - dT)": e_minus, "dT": dT_e})
     if broken_usable and sym_usable:
         alpha_thetabar = (theta_sym - theta_bro) / (3* csSq_sym * T * dedT)
     else:
