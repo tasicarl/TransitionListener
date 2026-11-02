@@ -5,6 +5,7 @@ each with the reason it exists. They are here as a test so that a page or a figu
 one fails the suite, rather than being found by a reader of the rendered page.
 """
 import pathlib
+import re
 import subprocess
 import sys
 import unittest
@@ -54,9 +55,20 @@ class TestDocumentationStyle(unittest.TestCase):
             "a one-word bold label": "**Turbulence**, from the vortical motion.",
             "a bold label of several words": "**The first pass** locates the range.",
             "a word written twice": "The file is in the the output folder.",
+            "a metaphor for a factor": (
+                "Inserting a self-energy costs a factor :math:`g^2` in the loop."),
+            "a parameter called a knob": "The tolerance is the knob that sets the accuracy.",
+            "an inverse duration with no subscript": (
+                "The transition is quoted as :math:`\\beta/H` at percolation."),
+            "the same one as a fraction": (
+                "It is :math:`\\frac{\\beta}{H}` evaluated at percolation."),
         }
         cases["a short section underline"] = (
             "A long section title\n-------\n\nText.")
+        cases["a definition list of symbols"] = (
+            ":math:`T_\\mathrm{c}`\n   Where the two minima are degenerate.\n")
+        cases["a definition list of output keys"] = (
+            "``Tcrit``\n   Where the two minima are degenerate.\n")
         import tempfile
 
         with tempfile.TemporaryDirectory() as d:
@@ -100,6 +112,26 @@ class TestTitlesAndFigures(unittest.TestCase):
                                 for m in figures.check_figure_wording(fig, "probe")))
             ax.set_title("The tabulated bath")
             self.assertEqual([], figures.check_figure_wording(fig, "probe"))
+        finally:
+            plt.close(fig)
+
+    def test_a_nearly_square_single_panel_is_caught(self):
+        """One panel of this gallery is a wide panel, not a square one."""
+        sys.path.insert(0, str(DOCS))
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import check_figure_style as figures
+
+        fig, ax = plt.subplots(figsize=(6.1, 0.78 * 6.1))
+        try:
+            self.assertTrue(any("as tall as it is wide" in m
+                                for m in figures.check_shape(fig, "probe")))
+        finally:
+            plt.close(fig)
+        fig, ax = plt.subplots(figsize=(6.1, 0.62 * 6.1))
+        try:
+            self.assertEqual([], figures.check_shape(fig, "probe"))
         finally:
             plt.close(fig)
 
@@ -423,6 +455,36 @@ class TestFigureStyle(unittest.TestCase):
         ax.set_ylim(0.0, 1.0)
         self.assertTrue(cfs.check_curves_span(ax, "panel"))
         plt.close(fig)
+
+
+class TestPagesAgainstTheCode(unittest.TestCase):
+    """Statements a page makes about what the code reports, checked against the code.
+
+    A reader takes these as the package's behaviour, so they are the sentences that have to
+    fail a test when the behaviour changes, rather than being re-read by eye at each release.
+    """
+
+    def test_the_reported_strength_is_the_pseudo_trace_one(self):
+        """The hydrodynamics page says ``alpha`` is the pseudo-trace strength."""
+        src = (ROOT / "src" / "transitionlistener"
+               / "transitionObservables.py").read_text(encoding="utf-8")
+        self.assertIn('derived["alpha"] = np.squeeze(alpha_thetabar)', src)
+        page = (DOCS / "source" / "algorithms" / "hydrodynamics.rst").read_text(encoding="utf-8")
+        self.assertIn("``alpha`` is the", page)
+        self.assertIn("pseudo-trace", page)
+
+    def test_the_pta_likelihoods_on_the_page_are_the_ones_computed(self):
+        """The spectrum page names every likelihood and every variant, and no others."""
+        from transitionlistener.observability import (PTA_LIKELIHOOD_SETTINGS,
+                                                      PTA_LIKELIHOOD_VARIANTS)
+
+        page = (DOCS / "source" / "algorithms" / "the_spectrum.rst").read_text(encoding="utf-8")
+        for label in PTA_LIKELIHOOD_SETTINGS:
+            self.assertIn("``%s``" % label, page)
+        for variant in PTA_LIKELIHOOD_VARIANTS:
+            self.assertIn("``%s``" % variant, page)
+        listed = set(re.findall(r"``(NG\d+_\d+bins|IPTA\d+_\d+bins)``", page))
+        self.assertEqual(set(PTA_LIKELIHOOD_SETTINGS), listed)
 
 
 if __name__ == "__main__":

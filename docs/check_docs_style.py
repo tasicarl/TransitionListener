@@ -79,6 +79,11 @@ RULES: list[tuple[str, str, str]] = [
     (r"\bcommonest\b",
      "a superlative formed the short way",
      "most common"),
+    # A diagram does not cost a factor and a parameter is not a knob. The computational cost
+    # of a run is a real cost and is left alone.
+    (r"\bcosts?\s+a\s+factor\b|\b(buys|pays|levers?|knobs?|backbones?|rungs?)\b",
+     "a metaphor in place of the verb or the noun that was meant",
+     "contributes, multiplies, needs, setting, parameter"),
     (r"\b(the|a|an|is|of|to|in|and|that|it)\s+\1\b",
      "a word written twice",
      "the word once"),
@@ -280,8 +285,12 @@ def _strip_literal_blocks(text: str) -> str:
     while i < len(lines):
         line = lines[i]
         stripped = line.lstrip()
+        # A directive is not a literal block: the body of a list-table is prose and is held
+        # to the same rules as the paragraph beside it. Only a code block, an include, and
+        # the "::" that introduces a literal block are skipped.
+        is_directive = re.match(r"\s*\.\.\s+[\w-]+::", line) is not None
         starts = (
-            (line.rstrip().endswith("::") and not stripped.startswith(".. math::"))
+            (line.rstrip().endswith("::") and not is_directive)
             or stripped.startswith(".. code-block::")
             or stripped.startswith(".. literalinclude::"))
         out.append(line)
@@ -592,6 +601,54 @@ def _repo_path_violations(text: str) -> list[tuple[int, str, str]]:
     return out
 
 
+#: An inverse duration written without its subscript. The package computes two of them and
+#: they differ by orders of magnitude on a slow transition, so a bare beta/H names neither.
+BETA_OVER_H = re.compile(r"\\beta\s*/\s*H|\\frac\{\\beta\}\{H\}")
+
+#: What may follow it: a subscript, directly or through the closing bracket of a \left( pair.
+BETA_SUBSCRIPT = re.compile(r"\s*(_|\\right\)\s*_|\)\s*_|\}\s*_)")
+
+
+def _betah_violations(text: str) -> list[tuple[int, str, str]]:
+    """Every beta/H has to carry the subscript that says which of the two it is."""
+    out = []
+    for match in BETA_OVER_H.finditer(text):
+        if BETA_SUBSCRIPT.match(text[match.end():match.end() + 16]):
+            continue
+        line = text.count("\n", 0, match.start()) + 1
+        out.append((line,
+                    "an inverse duration with no subscript, so it names neither of the two",
+                    r"(\beta/H)_{S_3} for the local one, "
+                    r"(\beta/H)_\mathrm{RH} for the integral one"))
+    return out
+
+
+#: A definition-list term that is nothing but a symbol or a literal. Sphinx renders the
+#: description on the line below it, so the reader reads five symbols and then five
+#: descriptions. A two-column list-table puts each description beside its symbol.
+DEFINITION_TERM = re.compile(r"^(:math:`[^`]+`|``[^`]+``)\s*$")
+
+
+def _definition_list_violations(text: str) -> list[tuple[int, str, str]]:
+    """Find definition lists whose terms are bare symbols."""
+    out = []
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if not DEFINITION_TERM.match(line):
+            continue
+        if i and lines[i - 1].strip():
+            continue
+        if i + 1 >= len(lines):
+            continue
+        body = lines[i + 1]
+        if not body.strip() or not body.startswith(" "):
+            continue
+        out.append((i + 1,
+                    "a definition list, which puts the description under the symbol",
+                    "a two-column list-table, which puts it beside the symbol"))
+    return out
+
+
 def check(paths: list[pathlib.Path]) -> list[str]:
     problems: list[str] = []
     for path in paths:
@@ -617,13 +674,15 @@ def check(paths: list[pathlib.Path]) -> list[str]:
         for finder in (_differential_violations, _subscript_violations, _title_violations,
                        _render_violations, _group_violations, _label_violations,
                        _capital_title_violations, _underline_violations,
-                       _undefined_symbol_violations):
+                       _undefined_symbol_violations, _betah_violations):
             for i, what, instead in finder(text):
                 if questions_allowed and "question" in what:
                     continue
                 problems.append("%s:%d: %s -> write %s" % (rel, i, what, instead))
         # The raw page, because a path is written as a literal and the prose rules blank
         # literals out before they read a line.
+        for i, what, instead in _definition_list_violations(raw):
+            problems.append("%s:%d: %s -> write %s" % (rel, i, what, instead))
         for i, what, instead in _module_literal_violations(raw):
             problems.append("%s:%d: %s -> write %s" % (rel, i, what, instead))
         for i, what, instead in _repo_path_violations(raw):
