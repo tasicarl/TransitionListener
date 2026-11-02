@@ -64,9 +64,24 @@ RULES: list[tuple[str, str, str]] = [
      r"[^.?!]{0,8}?(,\s*(is|are)\b|\bthat\b)",
      "a pseudo-cleft",
      "say it straight: put the subject first"),
-    (r";[^;]*;",
-     "more than one semicolon in a sentence",
-     "full stops, or commas"),
+    (r";",
+     "a semicolon",
+     "a full stop, or a comma"),
+    # "A model gives an effective potential. The potential gives phases." Nothing in the
+    # package gives anything: it specifies, computes, returns or describes, and which of
+    # those it does is the information the sentence is for.
+    (r"\b(gives?|gave|giving)\b",
+     "the verb give, which stands for whichever verb was meant",
+     "specify, describe, compute, return, produce or set"),
+    (r"\bconverted fraction\b",
+     "a name for the fraction of space in the true vacuum that no one else uses",
+     "true-vacuum fraction, or false-vacuum fraction"),
+    (r"\bcommonest\b",
+     "a superlative formed the short way",
+     "most common"),
+    (r"\bnot even wrong\b",
+     "a phrase that dismisses rather than says what is wrong",
+     "what the quantity actually is"),
     (r"\bCrucially\b|\bNotably\b|\bIt is worth noting\b|\bImportantly\b",
      "an LLM filler word",
      "cut it"),
@@ -176,6 +191,58 @@ def _title_violations(text: str) -> list[tuple[int, str, str]]:
     return out
 
 
+#: The modules of the package, taken from the source tree. A page that names one of these in
+#: a literal is naming a module, and a module has a page of its own in the API reference, so
+#: it is written as a cross-reference and not as a word in backticks.
+def _package_modules() -> set:
+    src = DOCS.parent.parent / "src" / "transitionlistener"
+    if not src.is_dir():
+        return set()
+    return {p.stem for p in src.rglob("*.py") if not p.stem.startswith("__")}
+
+
+def _module_literal_violations(text: str) -> list[tuple[int, str, str]]:
+    """``pipeline`` where :py:mod:`transitionlistener.pipeline` was meant.
+
+    A module named in backticks reads as a word the reader is expected to know. Written as a
+    reference it is a link to the module's own documentation, which is where the reader who
+    stops at that word wants to go.
+    """
+    modules = _package_modules()
+    out = []
+    for i, line in enumerate(text.splitlines(), 1):
+        for m in LITERAL_TOKEN.finditer(line):
+            token = (m.group(1) or m.group(2)).strip()
+            head = token.split(".")[0]
+            if head in modules and not token.endswith(".yaml"):
+                out.append((i, "the module %r is named as a literal" % head,
+                            ":py:mod:`transitionlistener.%s`" % head))
+    return out
+
+
+def _capital_title_violations(text: str) -> list[tuple[int, str, str]]:
+    """A section title starts with a capital letter.
+
+    Lower-case titles were written for the figures and crept into the pages with them. A
+    title that starts in lower case reads as the continuation of the paragraph above it.
+    """
+    out = []
+    lines = text.splitlines()
+    for i in range(len(lines) - 1):
+        title, under = lines[i].strip(), lines[i + 1].strip()
+        if not title or len(under) < 3:
+            continue
+        if not re.fullmatch(r"[-=~^\"'`#*+_]{3,}", under):
+            continue
+        if len(under) < len(title) - 2:
+            continue
+        first = title.lstrip(":`*")[:1]
+        if first and first.isalpha() and not first.isupper():
+            out.append((i + 1, "a section title that starts in lower case",
+                        "a capital letter"))
+    return out
+
+
 def _strip_literal_blocks(text: str) -> str:
     """Blank out code blocks, which are neither prose nor maths.
 
@@ -203,6 +270,27 @@ def _strip_literal_blocks(text: str) -> str:
                                   or len(lines[i]) - len(lines[i].lstrip()) >= indent > 0):
             out.append("")
             i += 1
+    return "\n".join(out)
+
+
+def _blank_citations(text: str) -> str:
+    """Blank out bibliography entries.
+
+    A reference is written the way the journal writes it, which includes the semicolon between
+    two papers published together, and the house rules are about the prose of the pages.
+    """
+    out, lines = [], text.split("\n")
+    i = 0
+    while i < len(lines):
+        if lines[i].lstrip().startswith(".. ["):
+            out.append("")
+            i += 1
+            while i < len(lines) and (not lines[i].strip() or lines[i].startswith(("   ", "\t"))):
+                out.append("")
+                i += 1
+            continue
+        out.append(lines[i])
+        i += 1
     return "\n".join(out)
 
 
@@ -476,7 +564,7 @@ def _repo_path_violations(text: str) -> list[tuple[int, str, str]]:
 def check(paths: list[pathlib.Path]) -> list[str]:
     problems: list[str] = []
     for path in paths:
-        raw = _strip_literal_blocks(path.read_text(encoding="utf-8"))
+        raw = _blank_citations(_strip_literal_blocks(path.read_text(encoding="utf-8")))
         text = _blank_inline_literals(raw)
         prose = _blank_maths(text)
         try:
@@ -497,13 +585,15 @@ def check(paths: list[pathlib.Path]) -> list[str]:
                     problems.append("%s:%d: %s -> write %s" % (rel, i, what, instead))
         for finder in (_differential_violations, _subscript_violations, _title_violations,
                        _render_violations, _group_violations, _label_violations,
-                       _undefined_symbol_violations):
+                       _capital_title_violations, _undefined_symbol_violations):
             for i, what, instead in finder(text):
                 if questions_allowed and "question" in what:
                     continue
                 problems.append("%s:%d: %s -> write %s" % (rel, i, what, instead))
         # The raw page, because a path is written as a literal and the prose rules blank
         # literals out before they read a line.
+        for i, what, instead in _module_literal_violations(raw):
+            problems.append("%s:%d: %s -> write %s" % (rel, i, what, instead))
         for i, what, instead in _repo_path_violations(raw):
             problems.append("%s:%d: %s -> write %s" % (rel, i, what, instead))
         for i, what, instead in _caption_violations(path, text):

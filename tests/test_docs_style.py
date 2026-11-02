@@ -45,6 +45,12 @@ class TestDocumentationStyle(unittest.TestCase):
             "filler": "Crucially, the step has to be small.",
             "bold label": "**A trial ends in one of three ways.** The field turns around.",
             "a path that does not exist": "The files are in ``config/``.",
+            "one semicolon": "The step is small; the tolerance is smaller.",
+            "the verb give": "A model gives an effective potential.",
+            "the same verb in the past": "The potential gave a sound speed of one.",
+            "an invented name": "The converted fraction reaches one at the end.",
+            "a short superlative": "A jump is the commonest signature.",
+            "a module named as a literal": "The stages are run by ``pipeline``.",
         }
         import tempfile
 
@@ -55,6 +61,54 @@ class TestDocumentationStyle(unittest.TestCase):
                 page.write_text("Title\n=====\n\n%s\n" % line, encoding="utf-8")
                 found = checker.check([page])
                 self.assertTrue(found, "the checker missed %s: %r" % (name, line))
+
+
+class TestTitlesAndFigures(unittest.TestCase):
+    def test_a_lower_case_section_title_is_caught(self):
+        """Titles start with a capital letter, on the pages as in the panels."""
+        sys.path.insert(0, str(DOCS))
+        import check_docs_style as checker
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as d:
+            page = pathlib.Path(d) / "page.rst"
+            page.write_text("Title\n=====\n\nA sentence.\n\nthe plasma\n----------\n\n"
+                            "Another sentence.\n", encoding="utf-8")
+            found = checker.check([page])
+            self.assertTrue(any("lower case" in f for f in found), found)
+            page.write_text("Title\n=====\n\nA sentence.\n\nThe plasma\n----------\n\n"
+                            "Another sentence.\n", encoding="utf-8")
+            self.assertEqual([], checker.check([page]))
+
+    def test_a_lower_case_panel_title_is_caught(self):
+        """The same rule, read off a figure rather than off a page."""
+        sys.path.insert(0, str(DOCS))
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import check_figure_style as figures
+
+        fig, ax = plt.subplots()
+        try:
+            ax.set_title("the tabulated bath")
+            self.assertTrue(any("lower case" in m
+                                for m in figures.check_figure_wording(fig, "probe")))
+            ax.set_title("The tabulated bath")
+            self.assertEqual([], figures.check_figure_wording(fig, "probe"))
+        finally:
+            plt.close(fig)
+
+    def test_the_house_style_pads_no_space_beside_a_curve(self):
+        """Every curve of a shipped plot reaches both ends of its panel.
+
+        Matplotlib pads an axis by five per cent of the data range on each side, and a
+        percolation history and a bubble profile both ended short of the frame because of it.
+        A reader cannot tell that padding from a curve that stopped early, which is the one
+        thing those plots are looked at for.
+        """
+        from transitionlistener.plot_settings import plot_settings
+
+        self.assertEqual(0.0, plot_settings["axes.xmargin"])
 
 
 class TestThePlotsPageIsReproducible(unittest.TestCase):

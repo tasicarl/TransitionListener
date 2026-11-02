@@ -441,6 +441,15 @@ def check_figure_wording(fig, name: str) -> list[str]:
     import check_docs_style as prose
 
     problems = []
+    # A panel title starts with a capital letter, as a section title does. The lower-case
+    # titles of these figures were written as if they continued the caption, and the caption
+    # is not next to them in the built page.
+    for ax in fig.get_axes():
+        for title in (ax.get_title(), ax.get_title("left"), ax.get_title("right")):
+            head = title.strip().lstrip("$\\")[:1]
+            if head and head.isalpha() and not head.isupper():
+                problems.append("%s: the panel title %r starts in lower case"
+                                % (name, title.strip()[:48]))
     for text in fig.findobj(mtext.Text):
         body = text.get_text()
         if not body.strip():
