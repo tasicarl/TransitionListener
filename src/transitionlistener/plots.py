@@ -9,6 +9,7 @@ Authors:
 """
 
 from pathlib import Path
+
 from typing import Optional
 
 import numpy as np
@@ -38,7 +39,7 @@ from .plot_settings import plot_settings as TL_plot_settings
 from .plot_settings import add_TL_logo, save_figure
 from .colors import *
 import transitionlistener.constants as cn
-from .observability import Observability
+from .observability import Observability, free_spectrum_path
 from .gwfopt import FOPTspectrum
 from . import thermodynamics as td
 from .helper_functions import import_file, load_potential
@@ -1272,7 +1273,10 @@ def plotSensitivities(gw, showplot : bool =False, call_from_spectrum=False, nfre
         
 
     
-    add_violins(ax, violincolor="#C0105A", nfreq=nfreq)
+    # The product this run scored its likelihoods against, where the caller passed an
+    # `Observability`. A plain sensitivity object does not know one, and the default is drawn.
+    add_violins(ax, violincolor="#C0105A", nfreq=nfreq,
+                product=getattr(gw, "pta_free_spectrum", None))
     add_NeffHatch(ax, Neffcolor="grey", h2OmegaNeff=2.48e-7) 
     if not call_from_spectrum:
         ax.set_title("PLI sensitivities and PTA violins")
@@ -1388,7 +1392,10 @@ def plotSensitivitiesPTA(gw, showplot : bool = False, call_from_spectrum : bool 
         
 
     
-    add_violins(ax, violincolor="#C0105A", nfreq=nfreq)
+    # The product this run scored its likelihoods against, where the caller passed an
+    # `Observability`. A plain sensitivity object does not know one, and the default is drawn.
+    add_violins(ax, violincolor="#C0105A", nfreq=nfreq,
+                product=getattr(gw, "pta_free_spectrum", None))
     add_NeffHatch(ax, Neffcolor="grey", h2OmegaNeff=2.48e-7) 
     if not call_from_spectrum:
         ax.set_title("PLI sensitivities and PTA violins")
@@ -1739,7 +1746,18 @@ def plot1d(pot : generic_potential, x1 : float, x2 : float, ax : Optional[plt.Ax
     fig.tight_layout()
     return fig, ax
 
-def add_violins(ax : plt.Axes, violincolor : str = DESYdunkelrot, nfreq : int = 14):
+def _violin_array_label(product: str | None) -> str:
+    """The short name of the array a product was inferred on, for the legend."""
+    from .observability import (DEFAULT_PTA_FREE_SPECTRUM, PTA_FREE_SPECTRA)
+
+    key = DEFAULT_PTA_FREE_SPECTRUM if product is None else str(product)
+    array = PTA_FREE_SPECTRA.get(key, {}).get("array", "")
+    return {"NANOGrav 15 yr": "NG15", "NANOGrav 12.5 yr": "NG12.5",
+            "IPTA DR2": "IPTA DR2"}.get(array, array or "PTA")
+
+
+def add_violins(ax : plt.Axes, violincolor : str = DESYdunkelrot, nfreq : int = 14,
+                product : str | None = None):
     """Add stylistic violin markers to highlight PTA frequency bins.
     
     Parameters
@@ -1750,8 +1768,16 @@ def add_violins(ax : plt.Axes, violincolor : str = DESYdunkelrot, nfreq : int = 
         The color of the violins.
     nfreq : int, optional
         Number of frequency bins for the violins. Default is 14.
+    product : str, optional
+        Which shipped free-spectrum product to draw, a key of
+        :data:`observability.PTA_FREE_SPECTRA`. ``None`` takes the default, which is the
+        one the PTA likelihoods use.
     """
-    directory = DATA_DIR / "30f_fs{hd}_100fDMGP_ceffyl"
+    # The same product the PTA likelihoods are evaluated against. Until v2.2 these two
+    # disagreed: the likelihood used whichever data set PTArcade downloaded, the 2023
+    # common-uncorrelated one, while this figure drew the 2023 Gaussian-process one, so the
+    # free spectrum behind a spectrum was not the free spectrum it had been scored on.
+    directory = Path(free_spectrum_path(product))
 
     def log10_h2O(log10_rho, f, T):
         return np.log10(8 * np.pi**4 / cn.H100_Hz**2 * 10**(2 * log10_rho) * f**5 * T)
@@ -1780,7 +1806,9 @@ def add_violins(ax : plt.Axes, violincolor : str = DESYdunkelrot, nfreq : int = 
         for pc in violin_parts['bodies']:
             pc.set(color=violincolor, edgecolor=None, alpha=1, zorder=100)
         if i == 0:
-            pc.set(label="NG15 (violins)")
+            # Named after the product that was drawn: with another array selected the
+            # markers are NANOGrav 12.5 yr or IPTA DR2, and the legend said NG15 regardless.
+            pc.set(label="%s (violins)" % _violin_array_label(product))
 
 def add_NeffHatch(ax : plt.Axes, Neffcolor : str = DESYpetrol, h2OmegaNeff: float = 2.48e-7):
     """Overlay a hatched region indicating the :math:`\\Delta N_\\mathrm{eff}` bound.

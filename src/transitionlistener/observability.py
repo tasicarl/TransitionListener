@@ -15,10 +15,14 @@ import numpy as np
 from scipy import integrate
 try:  # Optional PTA dependencies; skipped if environment lacks tempo2/ptarcade stack.
     from ptarcade import signal_builder  # type: ignore
+    from ptarcade import models_utils  # type: ignore
+    from ceffyl import Ceffyl  # type: ignore
     from enterprise.signals.parameter import Uniform
     _PTA_IMPORT_ERROR: Exception | None = None
 except Exception as exc:  # pragma: no cover - optional dependency
     signal_builder = None  # type: ignore
+    models_utils = None  # type: ignore
+    Ceffyl = None  # type: ignore
     Uniform = None  # type: ignore
     _PTA_IMPORT_ERROR = exc
 
@@ -37,10 +41,204 @@ def _require_pta_dependencies() -> None:
             "set up tempo2 and ptarcade or disable PTA calculations."
         ) from _PTA_IMPORT_ERROR
 
+# ---------------------------------------------------------------------------------------
+# The pulsar-timing free-spectrum products this package ships, and how to load one.
+#
+# Until v2.2 the PTA likelihoods used no data this package ships. They were built by
+# `ptarcade.signal_builder.ceffyl_builder`, which resolves a data set from the configuration
+# and then downloads it from Zenodo while the run is going, and the records it fetched were
+# the 2023 ones whatever the configuration said. The products below ship instead, under
+# `tab_data/pta_free_spectra`. Each is a kernel density representation of a free-spectrum
+# posterior in the format `ceffyl` reads, seven files of about 2.4 MB. Six are the versions
+# compared in the appendix of the binary-foreground paper; the other two are the data sets
+# PTArcade would have downloaded for NANOGrav 12.5 yr and for IPTA DR2, byte-identical to
+# them, so nothing is fetched any more.
+# ---------------------------------------------------------------------------------------
+
+#: Directory holding one subdirectory per product.
+PTA_FREE_SPECTRUM_DIR = os.path.join(
+    os.path.dirname(__file__), "tab_data", "pta_free_spectra")
+
+#: The product used when nothing names one.
+DEFAULT_PTA_FREE_SPECTRUM = "ng15_hd_v2"
+
+#: Every shipped product: what it is, when it was made, and which chain it came from.
+#:
+#: ``array`` is the pulsar timing array, ``correlation`` the overlap reduction function the
+#: free spectrum was inferred with, and ``chain`` the posterior sample the kernel density was
+#: built from, as the product's own ``log.txt`` records it. "ptswapfix" marks the 2026 re-runs
+#: made after the correction to the sampler's parallel-tempering swaps.
+PTA_FREE_SPECTRA = OrderedDict([
+    ("ng15_hd_v2", {
+        "array": "NANOGrav 15 yr", "correlation": "Hellings-Downs",
+        "created": "2026-04-06", "chain": "model_hd_30f_ptswapfix",
+        "note": "the 2026 re-run; the default",
+    }),
+    ("ng15_cp_v2", {
+        "array": "NANOGrav 15 yr", "correlation": "common uncorrelated red noise",
+        "created": "2026-04-06", "chain": "model_crn_30f_ptswapfix",
+        "note": "the 2026 re-run",
+    }),
+    ("ng15_hdall_v2", {
+        "array": "NANOGrav 15 yr",
+        "correlation": "Hellings-Downs with a monopole, a dipole and a common process",
+        "created": "2025-12-15", "chain": "model_cpmpdphd_30f_ptswapfix",
+        "note": "the most conservative set of components",
+    }),
+    ("ng15_hd_v1", {
+        "array": "NANOGrav 15 yr", "correlation": "Hellings-Downs",
+        "created": "2023-12-10", "chain": "30fCP_30fiRN_3A",
+        "note": "before the 2026 correction to the sampler",
+    }),
+    ("ng15_cp_v1", {
+        "array": "NANOGrav 15 yr", "correlation": "common uncorrelated red noise",
+        "created": "2023-12-10", "chain": "30fCP_30fiRN_2A_2",
+        "note": "what PTArcade downloads, and what every TransitionListener PTA column "
+                "rested on before v2.2",
+    }),
+    ("ng15_hd_dmgp_v1", {
+        "array": "NANOGrav 15 yr",
+        "correlation": "Hellings-Downs, dispersion measure as a Gaussian process",
+        "created": "2023-05-15", "chain": "fshd_dmgp",
+        "note": "the set this package already shipped, for the free spectrum drawn behind "
+                "the spectrum figure",
+    }),
+    ("ng12p5_cp_v1", {
+        "array": "NANOGrav 12.5 yr", "correlation": "common uncorrelated red noise",
+        "created": "2024-01-16", "chain": "30fCP_30fiRN_2A_ext",
+        "note": "what PTArcade downloads for NANOGrav 12.5 yr",
+    }),
+    ("ipta2_cp_v1", {
+        "array": "IPTA DR2", "correlation": "common uncorrelated red noise",
+        "created": "2024-01-07", "chain": "ipta_dr2_fs_crn",
+        "note": "what PTArcade downloads for IPTA DR2",
+    }),
+])
+
+
+def free_spectrum_path(name: str | None = None) -> str:
+    """Return the directory of one shipped product.
+
+    Parameters
+    ----------
+    name : str, optional
+        A key of :data:`PTA_FREE_SPECTRA`. ``None`` selects
+        :data:`DEFAULT_PTA_FREE_SPECTRUM`.
+
+    Raises
+    ------
+    ValueError
+        If the name is not a shipped product, or its directory is missing from the
+        installation, which an incomplete package data entry would cause.
+    """
+    key = DEFAULT_PTA_FREE_SPECTRUM if name is None else str(name)
+    if key not in PTA_FREE_SPECTRA:
+        raise ValueError(
+            f"Unknown PTA free-spectrum product {key!r}. "
+            f"Shipped: {', '.join(PTA_FREE_SPECTRA)}."
+        )
+    path = os.path.join(PTA_FREE_SPECTRUM_DIR, key)
+    if not os.path.isdir(path):
+        raise ValueError(
+            f"The free-spectrum product {key!r} is named but not installed; "
+            f"expected it at {path}."
+        )
+    return path
+
+
+#: Reference log-likelihood per product and per likelihood label.
+#:
+#: Each ``sigma`` the code reports is ``bestfit_lnL - lnL``, so the reference has to belong to
+#: the product the likelihood was evaluated on. These were obtained with ultranest over the
+#: transition strength, the inverse duration and the reheating temperature of the sound-wave
+#: template, flat priors throughout, the efficiency factor from
+#: :func:`hydrodynamics.kappa_sw` at a wall velocity of one.
+#:
+#: Every reference was computed on the product that carries the label's own array, since a
+#: label is a data set together with a bin count: ``NG15_14bins`` and ``NG15_5bins`` on the
+#: six NANOGrav 15 yr products, ``NG12_5bins`` on ``ng12p5_cp_v1`` and ``IPTA2_13bins`` on
+#: ``ipta2_cp_v1``.
+#:
+#: Over a coarse grid of 120 points in the three template parameters above, the 5-bin
+#: likelihood reaches -37.98 at most on ``ng12p5_cp_v1`` and -31.13 on ``ng15_cp_v1``, and
+#: the 13-bin one -108.27 on ``ipta2_cp_v1`` and -96.37 on ``ng15_cp_v1``. The three values
+#: checked against that grid, ``NG12_5bins``, ``IPTA2_13bins`` and ``NG15_5bins`` on
+#: ``ng15_cp_v1``, each sit 1.1 to 2.4 above their own product's coarse maximum, where a
+#: sampler over the continuous parameters lands. The first two sit 5.7 and 9.5 below what
+#: the NANOGrav 15 yr product reaches, so neither was obtained there. The other eleven
+#: entries were not put through this grid.
+#:
+#: Three of the four references released with v2.1 are reproduced by that calculation, each
+#: on its own product, to between 0.029 and 0.045 in log-likelihood: ``NG15_14bins`` and
+#: ``NG15_5bins`` on ``ng15_cp_v1``, and ``NG12_5bins`` on ``ng12p5_cp_v1``. The fourth,
+#: ``IPTA2_13bins`` on ``ipta2_cp_v1``, was released as -105.66903 and this calculation did
+#: not reach it: adding a binary foreground with both parameters free, which can only raise
+#: the maximum, still reached -105.854, and more live points and every bin count from 5 to 30
+#: were tried. A sampler returns a lower bound on the maximum, so the gap of 0.215 is not
+#: explained, and the value below is the reproducible one rather than a disproof of the
+#: released one. Because :math:`\sigma = \sqrt{2(\ln L_\mathrm{best} - \ln L)}`, the lower
+#: reference lowers every IPTA DR2 significance, by 0.66 at a point that sits at the best fit
+#: and by less further from it. Significances built on it are provisional until the gap is
+#: understood.
+PTA_BESTFIT_LNL = {
+    "ng15_hd_v2": {"NG15_14bins": -105.65005153, "NG15_5bins": -33.89607940},
+    "ng15_cp_v2": {"NG15_14bins": -104.88702140, "NG15_5bins": -33.86097277},
+    "ng15_hdall_v2": {"NG15_14bins": -108.98115566, "NG15_5bins": -37.42190053},
+    "ng15_hd_v1": {"NG15_14bins": -103.47695026, "NG15_5bins": -29.33904777},
+    "ng15_cp_v1": {"NG15_14bins": -103.08982451, "NG15_5bins": -29.50838035},
+    "ng15_hd_dmgp_v1": {"NG15_14bins": -112.13013487, "NG15_5bins": -35.61306571},
+    "ng12p5_cp_v1": {"NG12_5bins": -36.86269137},
+    "ipta2_cp_v1": {"IPTA2_13bins": -105.88364710},
+}
+
+
+#: The pulsar timing array each likelihood label is scored on, keyed by the ``pta_name`` of
+#: :data:`PTA_LIKELIHOOD_SETTINGS` and matching the ``array`` of :data:`PTA_FREE_SPECTRA`.
+PTA_LABEL_ARRAY = {
+    "NG15": "NANOGrav 15 yr",
+    "NG12": "NANOGrav 12.5 yr",
+    "IPTA2": "IPTA DR2",
+}
+
+
+def free_spectrum_for_label(label: str, preferred: str | None = None) -> str | None:
+    """The shipped product a label is scored against, or None if none carries its array.
+
+    A label is a data set together with a number of frequency bins, so its likelihood only
+    means anything evaluated on the array it names: scoring ``NG12_5bins`` against a NANOGrav
+    15 yr free spectrum returns a number that belongs to no measurement. ``preferred`` is the
+    product the run selected, used where its array is the label's, which is what lets a run
+    choose among the six NANOGrav 15 yr products while the other two labels keep theirs.
+    """
+    settings = PTA_LIKELIHOOD_SETTINGS.get(label)
+    if settings is None:
+        return None
+    array = PTA_LABEL_ARRAY.get(str(settings["pta_name"]))
+    if array is None:
+        return None
+    if preferred and PTA_FREE_SPECTRA.get(str(preferred), {}).get("array") == array:
+        return str(preferred)
+    for name, info in PTA_FREE_SPECTRA.items():
+        if info["array"] == array:
+            return name
+    return None
+
+
+def bestfit_lnL(product: str, label: str) -> float | None:
+    """The reference log-likelihood for one label on one product, or None if there is none.
+
+    A missing entry is reported as ``None`` rather than guessed, so that a label evaluated on a
+    product it has no reference for comes out as not-a-number rather than as a distance from
+    somebody else's best fit.
+    """
+    return PTA_BESTFIT_LNL.get(str(product), {}).get(str(label))
+
+
 # Mapping of PTA likelihood settings keyed by the label used throughout the codebase.
+# The reference log-likelihood each sigma is measured from belongs to the free-spectrum
+# product rather than to the label, so it lives in `PTA_BESTFIT_LNL` and
+# is read through `bestfit_lnL`. Keeping a copy here left a second, stale source of truth.
 PTA_LIKELIHOOD_SETTINGS = OrderedDict(
-    # Best-fit likelihoods were obtained from PTArcade ultranest scans of
-    # first-order phase-transition GW spectra following arXiv:2403.03723.
     [
         (
             "NG15_14bins",
@@ -48,7 +246,6 @@ PTA_LIKELIHOOD_SETTINGS = OrderedDict(
                 "pta_name": "NG15",
                 "nbins": 14,
                 "threshold": -110.0,
-                "bestfit_lnL": -103.12759208991564,
             },
         ),
         (
@@ -57,7 +254,6 @@ PTA_LIKELIHOOD_SETTINGS = OrderedDict(
                 "pta_name": "NG15",
                 "nbins": 5,
                 "threshold": -35.0,
-                "bestfit_lnL": -29.55312949665563,
             },
         ),
         (
@@ -66,7 +262,6 @@ PTA_LIKELIHOOD_SETTINGS = OrderedDict(
                 "pta_name": "NG12",
                 "nbins": 5,
                 "threshold": -45.0,
-                "bestfit_lnL": -36.89179733242301,
             },
         ),
         (
@@ -75,7 +270,6 @@ PTA_LIKELIHOOD_SETTINGS = OrderedDict(
                 "pta_name": "IPTA2",
                 "nbins": 13,
                 "threshold": -115.0,
-                "bestfit_lnL": -105.66902507253809,
             },
         ),
     ]
@@ -342,15 +536,55 @@ class PTAModel_SMBHB:
 
 
 
+def _build_ceffyl(datadir: str, nbins: int, model):
+    """Assemble a ceffyl likelihood for one spectrum against a shipped free spectrum.
+
+    This replaces `ptarcade.signal_builder.ceffyl_builder`, which resolves a data set from a
+    configuration and then downloads it from Zenodo. The assembly is the same. That the two
+    agree was measured once, on the data set `ceffyl_builder` downloads, and the log-likelihood
+    measured then is recorded in the test, which holds this builder to it. Only the data set
+    comes from this package instead of from the network, so a run is reproducible offline.
+    A single-point run names the product each label was scored on at the head of the PTA
+    likelihood summary in ``2_Observability.txt``.
+
+    `model.smbhb` is false on both adapters this is called with: the binary foreground enters
+    through the spectrum, as `h2OmegaGW_with_astrobg_fun`, not as a second ceffyl signal. The
+    branch of `ceffyl_builder` that adds one is therefore never taken here and is not copied.
+    """
+    pta = Ceffyl.ceffyl(datadir)
+    pta.add_signals([
+        Ceffyl.signal(
+            N_freqs=int(nbins),
+            psd=models_utils.omega2cross(model.spectrum, ceffyl=True),
+            params=list(model.parameters.values()),
+            name="",
+        )
+    ])
+    return pta
+
+
 class Observability(GW_Sensitivity_Data):
     """Compute SNRs, PTA likelihoods and derived quantities for a GW spectrum."""
 
     def __init__(self, gwspec_dict: dict, verbose: bool=False,
-                 include_smbhb: bool=False):
-        """Store the supplied spectrum and immediately evaluate all observables."""
+                 include_smbhb: bool=False, pta_free_spectrum: str | None=None):
+        """Store the supplied spectrum and immediately evaluate all observables.
+
+        ``pta_free_spectrum`` names the shipped free-spectrum product the PTA likelihoods are
+        evaluated against, a key of :data:`PTA_FREE_SPECTRA`. ``None`` takes
+        the default. It is recorded on the instance because the reference log-likelihood each
+        reported sigma is measured from belongs to the product, not to the label.
+        """
         super(Observability, self).__init__()
         self.gwspec_dict = gwspec_dict
         self.verbose = verbose
+        self.pta_free_spectrum = (
+            DEFAULT_PTA_FREE_SPECTRUM if pta_free_spectrum is None else str(pta_free_spectrum))
+        # Checked here and not only in the pipeline: `free_spectrum_for_label` honours a name
+        # whose array matches the label and otherwise falls back to the first product of that
+        # array, so a typo would be scored on a different product from the one recorded on
+        # this instance, with nothing raised. A direct caller gets the same check as a run.
+        free_spectrum_path(self.pta_free_spectrum)
 
         if include_smbhb:
             self.my_spec = gwspec_dict["h2OmegaGW_with_astrobg_fun"]
@@ -365,8 +599,21 @@ class Observability(GW_Sensitivity_Data):
         self.calc_SNR()
         self.pta_likelihoods = {label: {} for label in self.PTA_labels}
         self.ptas = {}
+        #: Which shipped product each label was scored on. The run's choice applies to the
+        #: labels whose array it is; the others keep theirs, as PTArcade resolved them by
+        #: `pta_name` before the data shipped.
+        self.pta_products = {
+            label: free_spectrum_for_label(label, self.pta_free_spectrum)
+            for label in PTA_LIKELIHOOD_SETTINGS
+        }
         if signal_builder is not None and _PTA_IMPORT_ERROR is None:
             for label, settings in PTA_LIKELIHOOD_SETTINGS.items():
+                product = self.pta_products[label]
+                if product is None:
+                    # No shipped free spectrum for that array, so there is nothing to score
+                    # against and the label reports not-a-number rather than another array's
+                    # likelihood.
+                    continue
                 if include_smbhb:
                     input_payload = {
                         "config": PTAConfig(
@@ -383,7 +630,11 @@ class Observability(GW_Sensitivity_Data):
                         ),
                         "model": PTAModel(self.my_spec),
                     }
-                self.ptas[label] = signal_builder.ceffyl_builder(input_payload)
+                self.ptas[label] = _build_ceffyl(
+                    free_spectrum_path(product),
+                    int(settings["nbins"]),
+                    input_payload["model"],
+                )
             if include_smbhb:
                 self.calc_PTA_logL_with_astronoise(
                     gwspec_dict.astroparams_dict["A"],
@@ -533,8 +784,9 @@ class Observability(GW_Sensitivity_Data):
 
         logL_values: dict[str, float] = {}
         for label in PTA_LIKELIHOOD_SETTINGS:
-            pta = self.ptas[label]
-            logL_values[label] = float(pta.ln_likelihood(np.array([])))
+            pta = self.ptas.get(label)
+            logL_values[label] = (np.nan if pta is None
+                                  else float(pta.ln_likelihood(np.array([]))))
 
         self._populate_pta_likelihoods(logL_values)
 
@@ -553,7 +805,11 @@ class Observability(GW_Sensitivity_Data):
         for label, settings in PTA_LIKELIHOOD_SETTINGS.items():
             actual = logL_values.get(label, np.nan)
             threshold = float(settings["threshold"])
-            bestfit = float(settings["bestfit_lnL"])
+            # The reference belongs to the product, not to the label. A label with no
+            # reference for the product in use reports nan rather than a distance from a best
+            # fit obtained on different data.
+            reference = bestfit_lnL(self.pta_products.get(label), label)
+            bestfit = np.nan if reference is None else float(reference)
             mock = self._compute_mock_likelihood(threshold)
             smooth = self._compute_smoothened_likelihood(actual, mock, threshold)
 
@@ -598,21 +854,48 @@ class Observability(GW_Sensitivity_Data):
 
     @staticmethod
     def _compute_delta_lnL(value: float, bestfit: float) -> float:
-        """Return the log-likelihood distance to the best-fit value."""
+        """Return the log-likelihood distance to the best-fit value.
+
+        The missing reference is tested first. A label with no reference for the product in
+        use has `bestfit` not-a-number, and if its likelihood could not be evaluated either,
+        testing `value` first returned infinity, which reads as a point that was scored and
+        ruled out rather than as one that was never scored.
+        """
+        if np.isnan(bestfit):
+            return np.nan
         if not np.isfinite(value):
             return np.inf
         return bestfit - value
 
     @staticmethod
     def _delta_to_sigma(delta_lnL: float) -> float:
-        """Translate a log-likelihood difference into an approximate sigma distance."""
+        """Translate a log-likelihood difference into an approximate sigma distance.
+
+        Not-a-number means there is no reference for this product and label, so there is no
+        distance to report. Infinity means the likelihood itself could not be evaluated, which
+        is a point that fits the data infinitely badly. Mapping the first onto the second
+        reported a scan point with no reference as one that was ruled out.
+
+        A negative distance is reported as zero rather than refused. A reference is the best
+        fit a sampler reached, which is a lower bound on the true maximum, so a point can
+        score above it; such a point is no distance from the best fit rather than a negative
+        one, and the ``within_3sigma`` verdict counts it as inside.
+        """
+        if np.isnan(delta_lnL):
+            return np.nan
         if not np.isfinite(delta_lnL):
             return np.inf
         return np.sqrt(2.0 * max(delta_lnL, 0.0))
 
     @staticmethod
-    def _within_three_sigma(delta_lnL: float) -> bool:
-        """Return True if the delta log-likelihood is within the 3-sigma criterion."""
+    def _within_three_sigma(delta_lnL: float) -> bool | None:
+        """Return True inside the 3-sigma criterion, and None where there is no reference.
+
+        None is written out as not-a-number, which is the honest answer for a product whose
+        reference this label does not have. False would say the point was tested and failed.
+        """
+        if np.isnan(delta_lnL):
+            return None
         return bool(np.isfinite(delta_lnL) and delta_lnL < DELTA_LNL_WITHIN_THRESHOLD)
 
     def _print_pta_likelihood_table(self):

@@ -32,7 +32,7 @@ def _select_observables_class(pot):
         return _TransitionObservablesFixedStepSize
     return _TransitionObservablesAdaptiveStepSize
 from transitionlistener.gwfopt import FOPTspectrum
-from transitionlistener.observability import Observability
+from transitionlistener.observability import Observability, free_spectrum_path
 
 from transitionlistener import console
 from rich.panel import Panel
@@ -157,13 +157,22 @@ def _compute_single_point(
             notify("observables")
 
         if max_stage >= 4:
+            # Checked before the try: a name that is not a shipped product raises inside
+            # the spectrum stage, where `except Exception` absorbs it once transitions
+            # exist, and the run then finishes with no GW columns and no error. Read with
+            # `getattr` because a potential may carry a configuration without a GW section,
+            # which is not this check's business; such a run takes the default product.
+            gw_conf = getattr(getattr(context["pot"], "config", None), "gwConf", None)
+            pta_free_spectrum = getattr(gw_conf, "pta_free_spectrum", None)
+            free_spectrum_path(pta_free_spectrum)
             try:
                 gwspectrum = FOPTspectrum(
                     context["strongest_transition_observables"],
                     astroparams_dict, verbose
                 )
                 observability = Observability(
-                    gwspectrum, verbose, include_smbhb=include_smbhb
+                    gwspectrum, verbose, include_smbhb=include_smbhb,
+                    pta_free_spectrum=pta_free_spectrum,
                 )
                 context["gwspectrum"] = gwspectrum
                 context["observability"] = observability
@@ -209,6 +218,13 @@ def _build_result_from_context(context: dict) -> dict:
         "strongestTransitionObservables": strongest,
         "gwspectrum": gwspectrum.gwspec_dict if gwspectrum is not None else {},
         "observability": observability_dict,
+        # Beside the observability dictionary rather than inside it: the run writes the
+        # product each likelihood was scored on into its summary, and a scan copies every
+        # key of the observability dictionary into its table, where three columns of
+        # constant text would be of no use.
+        "pta_products": dict(observability.pta_products)
+        if observability is not None
+        else {},
         "error": np.nan,
     }
 
@@ -268,6 +284,8 @@ def _handle_single_point_error(
     observability_dict.update(spectrum_entries)
     if observability_dict:
         result["observability"] = observability_dict
+    if observability is not None:
+        result["pta_products"] = dict(observability.pta_products)
 
     return result
 
