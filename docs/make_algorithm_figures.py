@@ -374,11 +374,11 @@ def figure_plasma_dof() -> None:
     phi_bro = np.array(phi_bro)
 
     # Where the broken minimum stops existing, the minimiser falls into the origin and the
-    # count jumps by three degrees of freedom. The jump is the end of the broken phase, not a
-    # feature of its plasma: on a grid ten times finer the jump is the same size, 3.04 against
-    # 3.22, and sits between 121.5 and 122.0 GeV against 120.8 and 130.1 GeV here. The curve
-    # therefore ends at the last temperature at which the broken minimum exists, which is
-    # marked.
+    # count jumps by about three degrees of freedom, the would-be Goldstone modes. The jump is
+    # the end of the broken phase, not a feature of its plasma: followed in steps of 2 MeV the
+    # minimum survives to 121.882 GeV at a field value of 192 GeV and is gone 2 MeV later, and
+    # the jump converges to 2.91 from 3.22 on this 220-point grid. The curve therefore ends at
+    # the last temperature of the grid at which the broken minimum exists, which is marked.
     collapsed = np.flatnonzero(phi_bro < 0.5 * np.max(phi_bro))
     bro_end_index = int(collapsed[0]) - 1
     tot_bro[bro_end_index + 1:] = np.nan

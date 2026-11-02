@@ -108,9 +108,12 @@ and leave the plasma one after another, and the arrows mark where each has lost 
 contribution, solved from the same integral the counting uses rather than read off
 :math:`m = T`. The heavy scalars :math:`A` and :math:`H^\pm` of this benchmark reach that
 point at 154 GeV, above the end of the broken phase, so they have no arrow. The broken-phase
-curve ends at 121 GeV, the last temperature of this grid at which the broken minimum still
-exists. Above it the field falls to the origin. A temperature grid ten times finer puts that
-end at 121.5 GeV, so it is where the phase ends and not where the grid happens to lie.
+curve ends at the last point of this grid below 121.88 GeV, which is where the broken minimum
+ceases to exist. Followed in steps of 2 MeV instead, the minimum survives to 121.882 GeV at a
+field value of 192 GeV and is gone 2 MeV later, so the end is the spinodal of that minimum and
+not a step of the grid. The count jumps there by about three degrees of freedom, 2.91 at the
+converged end, which is the three would-be Goldstone modes that are massive in the broken
+phase and massless in the symmetric one.
 
 In the symmetric phase the fields of the potential are massless and contribute their full
 40.5 degrees of freedom at every temperature, so the slope of that curve comes from the
@@ -121,7 +124,7 @@ that there is no symmetric phase to count. At the other end it is drawn to the t
 range: the origin is certainly a minimum at high temperature, where the thermal masses
 dominate, although the test cannot confirm it there, because the curvature is a finite
 difference of the full potential and above about a TeV the field-independent radiation
-dominates that potential and is differenced away. Between 122 GeV, where the broken phase ends, and the
+dominates that potential and is differenced away. Between 121.9 GeV, where the broken phase ends, and the
 temperature at which the origin stops being a minimum, both phases exist and the two counts
 differ by about three degrees of freedom. A model with a transition therefore has two
 different plasmas on the two sides of its bubble walls, which is why the count is taken at a

@@ -48,8 +48,14 @@ The speed of sound in each phase follows from the effective potential,
 .. math::
    c_\mathrm{s}^2 = \frac{\partial V/\partial T}{T\,\partial^2 V/\partial T^2},
 
-evaluated separately in the symmetric and the broken phase. It is not a constant: only for a
-bag equation of state does it take the radiation value :math:`1/3`. It enters the matching
+evaluated separately in the symmetric and the broken phase. It is not a constant. For a free
+relativistic gas, where the free energy goes as :math:`T^4`, the expression returns
+:math:`1/3`, and any term of a different power in the temperature moves it away from that
+value. The cubic term of the Arnold-Espinosa resummation moves it upward, above the free-gas
+value: the conformal :math:`U(1)` benchmark of :doc:`the_plots` has
+:math:`c_\mathrm{s}^2 = 0.3475` in the broken phase, 4 per cent above :math:`1/3`, with a
+daisy term about a third of the radiation. That is a property of the resummed potential and
+not a numerical failure, and it is reported as such. It enters the matching
 below, the speed at which bubbles expand, which is :math:`\max(v_\mathrm{w}, c_\mathrm{s})`, and the thickness of
 the sound shell that sets the peak of the spectrum.
 

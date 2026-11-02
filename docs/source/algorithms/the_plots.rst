@@ -37,7 +37,7 @@ unreliable.
 .. figure:: ../_static/plots/potential.png
    :width: 100%
 
-   The potential at 0.020 GeV, just below the critical temperature of 0.0218 GeV. The
+   The potential at 0.020 GeV, just below the critical temperature of 0.02173 GeV. The
    barrier at :math:`\phi = 0.042` GeV separates the symmetric minimum at the origin from the
    broken one at :math:`\phi = 0.0965` GeV, and is 81 per cent as high as the broken minimum
    is deep.
@@ -86,7 +86,12 @@ is the plot on which an unresolved bounce shows up.
 .. figure:: ../_static/plots/action.png
    :width: 100%
 
-   The action against temperature.
+   The action :math:`S_3/T` of the transition from the symmetric to the broken phase, above,
+   and the nucleation rate in units of the expansion rate, :math:`\Gamma/H^4`, below. The
+   action diverges at the critical temperature 0.02173 GeV, where the two minima are
+   degenerate. The rate leaves the bottom of the lower panel at 0.0136 GeV because
+   :math:`\exp(-S_3/T)` with :math:`S_3/T = 747` is below the smallest double, not because
+   the solver stopped.
 
 The energy density
 ------------------
@@ -125,8 +130,10 @@ The effective degrees of freedom of the plasma against temperature, in the sense
 
    The counts and the energy densities of this benchmark point, split into the fields of the
    potential and the tabulated baths. Each quantity is drawn once per phase, so the pair of
-   curves of one colour is the same quantity in the symmetric and in the broken phase, and
-   the percolation and reheating temperatures are marked.
+   curves of one colour is the same quantity in the symmetric and in the broken phase. The
+   broken-phase curves stop at the reheating temperature, where the transition history that
+   this plot follows enters the broken phase. The symmetric-phase curves continue above it,
+   because the symmetric phase still exists there.
 
 The percolation history
 -----------------------
@@ -138,19 +145,24 @@ The percolation history
        Tmin_GeV: 0.00235
        Tmax_GeV: 0.00285
 
-The true-vacuum fraction :math:`P_\mathrm{t}(T)` against temperature, with the nucleation and
-percolation temperatures marked, which is the subject of :doc:`nucleation_and_percolation`.
-The fraction is recomputed for the plot rather than read back from the run, so
-``Tmin_GeV`` and ``Tmax_GeV`` are worth setting to a window around the transition: over the
-whole range of the scan the rise is one vertical line. A window wider than the support of the
-run is cut back to it, so that the curve reaches both ends of the panel.
+The true-vacuum fraction :math:`P_\mathrm{t}(T)` against temperature, with the percolation
+temperature marked, and the nucleation temperature as well where the transition carries one.
+The subject is :doc:`nucleation_and_percolation`. The fraction is recomputed for the plot
+rather than read back from the run, so ``Tmin_GeV`` and ``Tmax_GeV`` are worth setting to a
+window around the transition: over the whole range of the scan the rise is one vertical line.
+The panel then spans the temperatures at which the fraction was actually computed, which are
+the support points of the run. A window that asks for less is widened to them and one that
+asks for more is cut back, so the curve reaches both ends of the panel. Here the block above
+asks for 0.00235 to 0.00285 GeV and the support runs from 0.00209 to 0.00277 GeV, which is
+what the panel shows.
 
 .. figure:: ../_static/plots/percolation_0.png
    :width: 100%
 
    The true-vacuum fraction of this benchmark point, with temperature falling to the left.
-   The dashed line is the percolation temperature, where the fraction reaches
-   :math:`f_\mathrm{perc} = 0.28957`.
+   The dashed line is the percolation temperature 0.002212 GeV, where the fraction reaches
+   :math:`f_\mathrm{perc} = 0.28957`. This transition carries no nucleation temperature in
+   the object the plot reads, so no second line is drawn.
 
 The bubble profile
 ------------------
