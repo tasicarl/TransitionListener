@@ -93,7 +93,7 @@ Resummation of the infrared modes
 At high temperature the loop expansion is no longer ordered by the coupling alone. Every
 bosonic field has a Matsubara zero mode, whose propagator carries no factor of
 :math:`\pi T` to suppress it, and inserting one more self-energy into a loop of that mode
-costs a factor :math:`g^2T^2/m^2` rather than :math:`g^2`. Where the field-dependent mass
+contributes a factor :math:`g^2T^2/m^2` to it rather than :math:`g^2`. Where the field-dependent mass
 :math:`m` is of the order of the self-energy itself, which is the Debye mass of order
 :math:`gT`, that factor is of order one: the chain of daisy diagrams contributes at the same
 order, :math:`g^3T^4`, as the cubic term the one-loop thermal integral produces, and
@@ -103,16 +103,21 @@ longitudinal modes of the gauge bosons, whose Debye mass is of order :math:`gT`,
 scalars. The transverse gauge modes have no Debye mass and are not resummed. Two prescriptions
 are offered, selected per model:
 
-``ArnoldEspinosa`` [ArnoldEspinosa1993]_
-   The resummation is added as a separate cubic potential term, built from the difference between the
-   thermally corrected and the uncorrected masses, and applied to the longitudinal modes.
+.. list-table::
+   :header-rows: 1
+   :widths: 22 78
 
-``Parwani`` [Parwani1992]_
-   The thermal masses are substituted into the one-loop thermal integral directly, so that all
-   modes are resummed.
-
-``off``
-   No resummation, which is correct only where no mode is light against the temperature.
+   * - Setting
+     - What it does
+   * - ``ArnoldEspinosa``
+     - The resummation is added as a separate cubic potential term, built from the difference
+       between the thermally corrected and the uncorrected masses, and applied to the
+       longitudinal modes [ArnoldEspinosa1993]_.
+   * - ``Parwani``
+     - The thermal masses are substituted into the one-loop thermal integral directly, so that
+       all modes are resummed [Parwani1992]_.
+   * - ``off``
+     - No resummation, which is correct only where no mode is light against the temperature.
 
 Neither prescription is uniformly better, and they differ by terms of the order that is being
 resummed. Where a result depends on which is chosen, that dependence is an uncertainty of the
@@ -170,8 +175,8 @@ Settings
      - Step used for the derivatives that fix the counterterms.
    * - ``entropy_definition``
      - setting
-     - Which entropy the expansion history and the sound speed are built from; the two must
-       agree.
+     - Which entropy the expansion history and the sound speed are built from. The two
+       must agree.
 
 References
 ----------

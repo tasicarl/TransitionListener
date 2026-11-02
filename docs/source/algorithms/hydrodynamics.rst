@@ -17,14 +17,35 @@ The transition strength
 The energy released, measured against the energy already present, is
 
 .. math::
-   \alpha = \frac{\Delta\theta}{3 w_\mathrm{sym}},
-   \qquad \theta = \frac{e - 3p}{4},
+   \alpha = \frac{\Delta\bar\theta}{3\,w_\mathrm{sym}},
+   \qquad
+   \bar\theta = e - \frac{p}{c_\mathrm{s,bro}^2},
 
-where :math:`\theta` is the trace anomaly, :math:`e` and :math:`p` are the energy density and
-the pressure, :math:`w = e + p` is the enthalpy, :math:`w_\mathrm{sym}` its value in the
-symmetric phase, and :math:`\Delta` is the difference between the symmetric and the broken
-phase. Several strengths appear in a run: one evaluated at
-nucleation, one at the wall, and the asymptotic ones that fix how much pressure the wall feels.
+where :math:`e` and :math:`p` are the energy density and the pressure, :math:`w = e + p` is
+the enthalpy, :math:`w_\mathrm{sym}` its value in the symmetric phase,
+:math:`c_\mathrm{s,bro}` is the sound speed of the broken phase, and :math:`\Delta` is the
+difference between the symmetric and the broken phase.
+
+:math:`\bar\theta` is the pseudo-trace anomaly of [Giese2020]_, which carries
+:math:`1/c_\mathrm{s}^2` where the bag equation of state has the factor 3 in front of the
+pressure. The bag trace anomaly :math:`\theta = (e-3p)/4` is the same quantity up to that
+factor only for a plasma whose sound speed is :math:`1/\sqrt{3}`, and the sound speed of a
+resummed potential is not that number. For a plasma of radiation the two strengths are equal,
+because :math:`\bar\theta = 4\theta` and :math:`3w = 4e` there. The bag-model strength is
+computed as well and reported under the key ``alpha_theta``, while ``alpha`` is the
+pseudo-trace one above.
+
+One sound speed, that of the broken phase, is used in both phases, so that everything the two
+phases share cancels in the difference. One sound speed per phase would leave the radiation
+bath and the zero point of the potential behind.
+
+In the code the denominator is evaluated as
+:math:`3\,c_\mathrm{s,sym}^2\,T\,\mathrm{d}e/\mathrm{d}T`, which is
+:math:`3 w_\mathrm{sym}` because :math:`c_\mathrm{s}^2\,\mathrm{d}e/\mathrm{d}T
+= \mathrm{d}p/\mathrm{d}T = s`, the entropy density, and :math:`w = Ts`.
+
+Several strengths appear in a run: one evaluated at nucleation, one at the wall, and the
+asymptotic ones that fix how much pressure the wall feels.
 
 .. admonition:: They must share a normalisation
    :class: important
@@ -181,17 +202,33 @@ The efficiency factors
 ----------------------
 
 What fraction of the released energy reaches each source is given by fits to hydrodynamic
-simulations [Espinosa2010]_. The sound-wave efficiency is interpolated between four limiting
-regimes, chosen by the wall velocity relative to the sound speed and the Jouguet velocity, each
-with its own closed form in :math:`\alpha`. The bubble-collision efficiency [EllisLewicki2019]_
-depends on the ratios of the strengths discussed above, which is why they must share a
-normalisation.
+simulations [Espinosa2010]_. The sound-wave efficiency :math:`\kappa_\mathrm{sw}` is
+interpolated between four limiting regimes, chosen by the wall velocity relative to the sound
+speed and the Jouguet velocity, each with its own closed form in :math:`\alpha`. The
+turbulent efficiency is a fixed fraction of it, set by ``epsilon_turbulence``. The
+bubble-collision efficiency [EllisLewicki2019]_ depends on the ratios of the strengths
+discussed above, which is why they must share a normalisation, and what is left after the
+collisions have taken their share, :math:`\alpha(1-\kappa_\phi)`, is what the sound-wave fit
+is evaluated at.
 
-These are fits over a range of strength and wall velocity. Outside that range they are
-extrapolations rather than results.
+The fits are what the pipeline uses, including for a wall velocity obtained in local
+equilibrium. The solver of the previous section computes its own efficiency on the way, by
+integrating :math:`(\xi v)^2 w/(1-v^2)` over the profile it has just found, which is the
+definition rather than a fit to simulations of it. That routine is ``Hydrodynamics.find_kappa``,
+and nothing in the package calls it: the efficiencies that reach the spectrum come from
+``calc_kappas`` and so from the fits.
+
+The fits cover a range of strength and wall velocity. Outside it they are extrapolations
+rather than results. They were also made for a plasma with :math:`c_\mathrm{s}^2 = 1/3`: the
+computed sound speed is substituted into the regime boundaries and into the Jouguet velocity,
+while the coefficients of the four closed forms are the ones fitted at that value.
 
 References
 ----------
+
+.. [Giese2020] F. Giese, T. Konstandin and J. van de Vis, *Model-independent energy budget of
+   cosmological first-order phase transitions*, JCAP **07** (2020) 057,
+   `arXiv:2004.06995 <https://arxiv.org/abs/2004.06995>`_.
 
 .. [Espinosa2010] J. R. Espinosa, T. Konstandin, J. M. No and G. Servant, *Energy budget of
    cosmological first-order phase transitions*, JCAP **06** (2010) 028,

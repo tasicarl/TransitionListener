@@ -17,29 +17,32 @@ The temperatures
 
 Five temperatures come out of a run, and they answer different questions.
 
-:math:`T_\mathrm{c}`
-   Where the two minima are degenerate. A property of the potential alone, computed before any
-   bounce, and the only one of the five that does not depend on the expansion history.
+.. list-table::
+   :header-rows: 1
+   :widths: 14 86
 
-:math:`T_\mathrm{nuc}`
-   Where roughly one bubble has nucleated per Hubble volume, the condition
-   :math:`\Gamma/H^4 = 1`. The familiar quantity, and the weakest of the five: on a strongly
-   supercooled transition it can sit far from where the universe actually converts, and on a
-   very slow one the condition is never met at all, which is reported rather than patched.
-
-:math:`T_\mathrm{perc}`
-   Where the true-vacuum fraction reaches :math:`f_\mathrm{perc} = 0.28957`, at which the
-   bubbles form a connected network. This is the temperature the strength and the duration are
-   evaluated at.
-
-:math:`T_\mathrm{f}`
-   Where the transition is finished, taken as the true-vacuum fraction reaching
-   :math:`f_\mathrm{final} = 0.99`. One per cent of space is still in the false vacuum there,
-   so this is a convention and not a sharp boundary, and the value is a setting.
-
-:math:`T_\mathrm{reh}`
-   The temperature after the energy released has been shared out. It is not a point on the
-   percolation curve but the end of a separate integration, described below.
+   * - Temperature
+     - What it is
+   * - :math:`T_\mathrm{c}`
+     - Where the two minima are degenerate. A property of the potential alone, computed before
+       any bounce, and the only one of the five that does not depend on the expansion history.
+   * - :math:`T_\mathrm{nuc}`
+     - Where roughly one bubble has nucleated per Hubble volume, the condition
+       :math:`\Gamma/H^4 = 1`. The familiar quantity, and the weakest of the five: on a
+       strongly supercooled transition it can sit far from where the universe actually
+       converts, and on a very slow one the condition is never met at all, which is reported
+       rather than patched.
+   * - :math:`T_\mathrm{perc}`
+     - Where the true-vacuum fraction reaches :math:`f_\mathrm{perc} = 0.28957`, at which the
+       bubbles form a connected network. This is the temperature the strength and the duration
+       are evaluated at.
+   * - :math:`T_\mathrm{f}`
+     - Where the transition is finished, taken as the true-vacuum fraction reaching
+       :math:`f_\mathrm{final} = 0.99`. One per cent of space is still in the false vacuum
+       there, so this is a convention and not a sharp boundary, and the value is a setting.
+   * - :math:`T_\mathrm{reh}`
+     - The temperature after the energy released has been shared out. It is not a point on the
+       percolation curve but the end of a separate integration, described below.
 
 .. versionchanged:: 2.2
    The nucleation temperature is read from a spline of the rate rather than from a bracketing
@@ -75,16 +78,17 @@ The strength
 ------------
 
 How much energy the transition releases, measured against the energy already present, is
-:math:`\alpha`; it is defined from the trace anomaly in :doc:`hydrodynamics`, where the wall
-velocity it feeds is computed. Several strengths appear in a run, evaluated at different
+:math:`\alpha`. It is built from the pseudo-trace anomaly, and it is defined in
+:doc:`hydrodynamics`, where the wall velocity it feeds is computed. Several strengths appear in a run, evaluated at different
 places, and the important thing is that they share a normalisation, because the efficiency
 with which bubble collisions radiate depends on ratios of them.
 
 The two inverse durations
 -------------------------
 
-How fast the transition proceeds is quoted as :math:`\beta/H`, and two different quantities go
-by that name. They answer different questions and they are not interchangeable.
+How fast the transition proceeds is quoted as an inverse duration in units of the Hubble rate,
+and two different quantities go by that name. They answer different questions and they are not
+interchangeable.
 
 The local one is the logarithmic derivative of the rate at the percolation temperature,
 
@@ -99,12 +103,16 @@ approximation to the rate, and it is the quantity most of the literature means.
 The integral one is read off the mean separation between the bubbles,
 
 .. math::
-   \left(\frac{\beta}{H}\right)_{R_*} =
+   \left(\frac{\beta}{H}\right)_\mathrm{RH} =
    \left(\frac{8\pi}{f_\mathrm{perc}}\right)^{1/3}
    \frac{\max(v_\mathrm{w}, c_\mathrm{s})}{R_*} ,
 
 where :math:`R_*` follows from the whole nucleation history, as in
-:doc:`nucleation_and_percolation`, and not from any single temperature.
+:doc:`nucleation_and_percolation`, and not from any single temperature. The subscript is the
+one the output key ``betaH_RH`` carries, and it stands for :math:`R_*` measured in Hubble
+radii. The two are written out as :math:`(\beta/H)_{S_3}` and :math:`(\beta/H)_\mathrm{RH}`
+wherever they appear, because the symbol without a subscript does not say which of them is
+meant.
 
 The two agree when the transition is fast, because then the rate really is well described by
 its slope at one point. They do not agree when it is slow, and the difference is physical

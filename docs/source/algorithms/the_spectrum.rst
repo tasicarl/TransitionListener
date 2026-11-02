@@ -106,14 +106,16 @@ Bubble collisions
 A single break, with
 
 .. math::
-   h^2\Omega_\phi^\mathrm{peak} = R\, A_\phi\, \frac{K_\phi^2}{(\beta/H)^2},
+   h^2\Omega_\phi^\mathrm{peak} = R\, A_\phi\,
+       \frac{K_\phi^2}{(\beta/H)_\mathrm{RH}^2},
    \qquad
-   f_\mathrm{b} = 0.11\,\frac{\beta}{H}\, H_{*,0},
+   f_\mathrm{b} = 0.11\,\left(\frac{\beta}{H}\right)_\mathrm{RH} H_{*,0},
 
 their equation (2.7), and the shape parameters
 :math:`A_\phi = 0.05`, :math:`n_1 = 2.4`, :math:`n_2 = -2.4`, :math:`a_1 = 1.2`. The inverse
 duration here is the one read off the bubble separation,
-:math:`\beta/H = (8\pi/f_\mathrm{perc})^{1/3}\max(v_\mathrm{w},c_\mathrm{s})/R_*`.
+:math:`(\beta/H)_\mathrm{RH} = (8\pi/f_\mathrm{perc})^{1/3}\max(v_\mathrm{w},c_\mathrm{s})/R_*`,
+and never the local one of :doc:`the_observables`.
 
 Sound waves
 -----------
@@ -222,11 +224,49 @@ the best fit achievable on that data, as
 .. math::
    \sigma = \sqrt{2\,\big(\ln L_\mathrm{best} - \ln L\big)} .
 
+Four likelihoods are evaluated for every point, and each is a data set together with the
+number of frequency bins the fit uses:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 30 48
+
+   * - Key
+     - Data
+     - Bins
+   * - ``NG15_14bins``
+     - NANOGrav 15 yr
+     - 14, the bins the collaboration's own searches use
+   * - ``NG15_5bins``
+     - NANOGrav 15 yr
+     - 5, the lowest ones only
+   * - ``NG12_5bins``
+     - NANOGrav 12.5 yr
+     - 5
+   * - ``IPTA2_13bins``
+     - IPTA DR2
+     - 13
+
+Each of the four is reported in three variants. ``PTArcade`` is the likelihood itself.
+``mock`` is a quadratic in the distance of the peak frequency and the peak amplitude from a
+reference point. The quadratic is defined everywhere, including where the signal is so far
+from the data that the likelihood is flat to the precision it is computed with. ``smooth`` takes the
+likelihood where it is above a threshold and the quadratic below it, so that a scan has a
+quantity to interpolate across its whole plane. Only the first is a likelihood, and only the
+first carries the three-sigma verdict.
+
+Evaluating them needs ``ptarcade``, ``enterprise`` and ``tempo2``. Without them a run
+computes the signal-to-noise ratios and says that the likelihood columns are unavailable,
+rather than failing.
+
 .. versionchanged:: 2.2
    Eight free spectra ship with the package and are selected by name, where one was previously
-   downloaded while the run was in progress. The reference :math:`\ln L_\mathrm{best}` belongs to
-   the data set, so there is one per data set. A data set with no reference reports no distance
-   rather than a distance from a reference obtained on different data.
+   downloaded while the run was in progress. They are six NANOGrav 15 yr products, which differ
+   in the correlation the free spectrum was inferred with and in whether they predate the 2026
+   correction to the sampler, together with the NANOGrav 12.5 yr and IPTA DR2 products. The
+   reference :math:`\ln L_\mathrm{best}` belongs to the data set, so there is one per data set.
+   A data set with no reference reports no distance rather than a distance from a reference
+   obtained on different data.
 
 .. admonition:: The templates have a range of validity
    :class: important

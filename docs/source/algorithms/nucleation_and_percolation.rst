@@ -98,7 +98,7 @@ accuracy.
      - By adding points inside the intervals that need them, keeping what is computed.
    * - Cost
      - Known in advance: ``n_action`` actions per range it tries.
-     - Bounded by the budget; a temperature whose action is cached is free.
+     - Bounded by the budget. A temperature whose action is cached is free.
    * - Strength
      - Simple, predictable, and adequate when the transition is not supercooled.
      - Resolves a rise that occupies a small fraction of the range.
@@ -137,7 +137,7 @@ where the profile needs it.
    :width: 100%
 
    The rate in Hubble units is appreciable over a short interval and negligible elsewhere. A
-   grid spread evenly over the temperature range steps across the rise and sees the converted
+   grid spread evenly over the temperature range steps across the rise and sees the true-vacuum
    fraction jump from zero to one with nothing in between.
 
 Scouting
@@ -161,31 +161,25 @@ Refinement
 Several strategies exist because there are several ways for a profile to be unresolved, and
 each has its own signature:
 
-A jump in the true-vacuum fraction is the most common signature. Two neighbouring support points
-differing by more than :math:`\Delta P = 0.1` mean the rise between them is unresolved, and
-intermediate temperatures are added. Nothing else says as directly that the grid has stepped
-over the transition.
-
-The rise of the rate gets points across the interval where :math:`\log(\Gamma/H^4)` climbs,
-located from the sampled rate rather than from the true-vacuum fraction, so that the rise is
-resolved before it has had any visible effect on :math:`P`.
-
-The peak of the rate is refined where the sampled maximum is a single point rather than a
-resolved shape.
-
-The hot shoulder is the region where the true-vacuum fraction is still near zero but the rate is
-already appreciable, so the integral is accumulating where the grid treats the transition as
-not yet started.
-
-The hot head is the hottest retained support point, which has to sit where nothing has happened
-yet. If the profile still rises there, the window did not start early enough.
-
-Remeshing from anchors places a fresh batch at fixed values of :math:`P` rather than adding to
-the existing grid, which distributes effort by how much of the transition each interval
-carries.
-
-Extending the range adds small batches beyond the cold end, with the new boundary chosen from
-how much the last extension gained.
+- A jump in the true-vacuum fraction is the most common signature. Two neighbouring support
+  points differing by more than :math:`\Delta P = 0.1` mean the rise between them is
+  unresolved, and intermediate temperatures are added. Nothing else says as directly that the
+  grid has stepped over the transition.
+- The rise of the rate gets points across the interval where :math:`\log(\Gamma/H^4)` climbs,
+  located from the sampled rate rather than from the true-vacuum fraction, so that the rise is
+  resolved before it has had any visible effect on :math:`P`.
+- The peak of the rate is refined where the sampled maximum is a single point rather than a
+  resolved shape.
+- The hot shoulder is the region where the true-vacuum fraction is still near zero but the rate
+  is already appreciable, so the integral is accumulating where the grid treats the transition
+  as not yet started.
+- The hot head is the hottest retained support point, which has to sit where nothing has
+  happened yet. If the profile still rises there, the window did not start early enough.
+- Remeshing from anchors places a fresh batch at fixed values of :math:`P` rather than adding
+  to the existing grid, which distributes effort by how much of the transition each interval
+  carries.
+- Extending the range adds small batches beyond the cold end, with the new boundary chosen
+  from how much the last extension gained.
 
 Acceptance
 ~~~~~~~~~~
@@ -229,7 +223,7 @@ Settings
      - Support points added per adaptive refinement iteration.
    * - ``n_action_max``
      - 60
-     - Most new support points in one update; a cached action is free.
+     - Most new support points in one update. A cached action is free.
    * - ``max_action_temperatures``
      - 100
      - Most actions the scout may spend bracketing the transition.
@@ -241,7 +235,7 @@ Settings
      - Neighbouring jump in :math:`P` above which a profile is refused.
    * - ``percolation_maxit``
      - 20
-     - Refinement iterations before the solver gives up.
+     - Refinement iterations before the solver stops and refuses the point.
    * - ``f_perc``
      - 0.28957
      - Converted fraction defining the percolation temperature.
@@ -268,8 +262,7 @@ The entropy used
 
 The entropy can be taken in two ways, selected by ``entropy_definition``. ``dof_table``, the
 default, uses the counted degrees of freedom, and ``eff_potential`` uses
-:math:`-\partial V/\partial T`
-of the effective potential. They are two forms of the same quantity and agree where the
+:math:`-\partial V/\partial T` of the effective potential. They are two forms of the same quantity and agree where the
 counting and the potential describe the same plasma. The important thing is that one of them is
 used throughout: the scale factor and the sound speed must come from the same entropy, or the
 expansion history is not consistent with the thermodynamics it is built from.
@@ -277,21 +270,23 @@ expansion history is not consistent with the thermodynamics it is built from.
 The temperatures reported
 -------------------------
 
-``Tcrit``
-   Where the two minima are degenerate. A property of the potential alone.
+.. list-table::
+   :header-rows: 1
+   :widths: 14 86
 
-``Tnuc``
-   Where about one bubble has nucleated per Hubble volume.
-
-``Tperc``
-   Where the true-vacuum fraction reaches the percolation threshold.
-
-``Tf``
-   Where the transition completes, in the sense that the false-vacuum fraction has fallen to a
-   small final value.
-
-``Treh``
-   The temperature after the released energy has been shared out.
+   * - Key
+     - What it is
+   * - ``Tcrit``
+     - Where the two minima are degenerate. A property of the potential alone.
+   * - ``Tnuc``
+     - Where about one bubble has nucleated per Hubble volume.
+   * - ``Tperc``
+     - Where the true-vacuum fraction reaches the percolation threshold.
+   * - ``Tf``
+     - Where the transition completes, in the sense that the false-vacuum fraction has fallen
+       to a small final value.
+   * - ``Treh``
+     - The temperature after the released energy has been shared out.
 
 Completion
 ----------
@@ -359,13 +354,17 @@ rather than using that factor.
 The inverse duration
 --------------------
 
-How fast the transition proceeds is quoted as :math:`\beta/H`, and there are two of them,
-which answer different questions.
+How fast the transition proceeds is quoted as an inverse duration in units of the Hubble
+rate, and there are two of them, which answer different questions. They are written
+:math:`(\beta/H)_{S_3}` and :math:`(\beta/H)_\mathrm{RH}` here and everywhere else in this
+documentation, because the symbol without a subscript does not say which of the two is
+meant.
 
-The first is local: the logarithmic derivative of the rate at the percolation temperature,
-:math:`\beta/H = T\,\mathrm{d}(S_3/T)/\mathrm{d}T`. The second is integral: it is read off the mean separation
-between bubbles, :math:`R_*`, which follows from the whole nucleation history rather than from
-one temperature.
+The local one is the logarithmic derivative of the rate at the percolation temperature,
+:math:`(\beta/H)_{S_3} = T\,\mathrm{d}(S_3/T)/\mathrm{d}T`. The integral one is read off the
+mean separation between bubbles, :math:`R_*`, which follows from the whole nucleation history
+rather than from one temperature. Its subscript is the one the output key ``betaH_RH``
+carries, and it stands for :math:`R_*` measured in Hubble radii.
 
 The two agree when the transition is fast, because then the rate is well described by its
 slope at one point. They do not agree when it is slow, and the difference is physical rather
