@@ -23,7 +23,7 @@ import unittest
 
 import numpy as np
 
-from transitionlistener import pta_free_spectra as pfs
+from transitionlistener import observability as pfs
 
 #: The seven files a ceffyl data set is made of.
 FILES = ("bandwidths.npy", "density.npy", "freqs.npy", "log10rhogrid.npy",
@@ -197,6 +197,46 @@ class ALabelWithNoReferenceReportsNothingTests(unittest.TestCase):
         self.assertTrue(np.isnan(delta))
         self.assertTrue(np.isnan(Observability._delta_to_sigma(delta)))
         self.assertIsNone(Observability._within_three_sigma(delta))
+
+    def test_no_reference_and_no_likelihood_is_still_nothing_rather_than_a_verdict(self):
+        """Both missing is the case that read as a point scored and ruled out.
+
+        `_compute_delta_lnL` tested the likelihood before the reference, so a label with
+        neither returned infinity, which `_within_three_sigma` turns into False.
+        """
+        from transitionlistener.observability import Observability
+
+        delta = Observability._compute_delta_lnL(np.nan, np.nan)
+        self.assertTrue(np.isnan(delta))
+        self.assertTrue(np.isnan(Observability._delta_to_sigma(delta)))
+        self.assertIsNone(Observability._within_three_sigma(delta))
+
+    def test_the_figure_draws_the_product_the_run_scored_against(self):
+        """Both violin callers hand `add_violins` the product, not the default."""
+        import types
+        from unittest import mock
+
+        from transitionlistener import plots
+
+        gw = mock.MagicMock()
+        gw.pta_free_spectrum = "ipta2_cp_v1"
+        gw.det = {}
+        gw.det_names = ()
+        for name in ("plotSensitivities", "plotSensitivitiesPTA"):
+            with self.subTest(function=name):
+                # `save_figure` as well: the mock stands in for the figure's path too, and
+                # an unpatched save writes a file named after the mock into the repository.
+                with mock.patch.object(plots, "add_violins") as violins, \
+                     mock.patch.object(plots, "add_NeffHatch"), \
+                     mock.patch.object(plots, "save_figure"), \
+                     mock.patch.object(plots.plt, "savefig"), \
+                     mock.patch.object(plots.plt, "show"):
+                    try:
+                        getattr(plots, name)(gw, showplot=False, nfreq=5)
+                    except Exception:
+                        pass
+                self.assertTrue(violins.called, "%s never drew the violins" % name)
+                self.assertEqual("ipta2_cp_v1", violins.call_args.kwargs.get("product"))
 
     def test_a_likelihood_that_could_not_be_evaluated_still_reports_infinity(self):
         from transitionlistener.observability import Observability

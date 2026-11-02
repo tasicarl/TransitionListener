@@ -16,7 +16,6 @@ import copy
 from collections.abc import Mapping
 
 from transitionlistener.config import TracingConf
-from transitionlistener.pta_free_spectra import PTA_FREE_SPECTRA
 from transitionlistener import errors
 from transitionlistener import constants as cn
 
@@ -268,6 +267,10 @@ def apply_gw_overrides(gw_conf, overrides: dict[str, object]) -> None:
     if overrides.get("gw_wall_velocity") is not None:
         gw_conf.wall_velocity = overrides["gw_wall_velocity"]
     if overrides.get("gw_pta_free_spectrum") is not None:
+        # Imported here rather than at module level: `observability` pulls in matplotlib and
+        # the optional PTA stack, and this module is loaded for every model.
+        from transitionlistener.observability import PTA_FREE_SPECTRA
+
         product = str(overrides["gw_pta_free_spectrum"])
         # Refused here rather than where the likelihood is built, so a scan that names a
         # product that does not exist stops before it spends an hour computing a transition.

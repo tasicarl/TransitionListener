@@ -10,7 +10,6 @@ Authors:
 
 from pathlib import Path
 
-from .pta_free_spectra import free_spectrum_path
 from typing import Optional
 
 import numpy as np
@@ -40,7 +39,7 @@ from .plot_settings import plot_settings as TL_plot_settings
 from .plot_settings import add_TL_logo, save_figure
 from .colors import *
 import transitionlistener.constants as cn
-from .observability import Observability
+from .observability import Observability, free_spectrum_path
 from .gwfopt import FOPTspectrum
 from . import thermodynamics as td
 from .helper_functions import import_file, load_potential
@@ -1274,7 +1273,10 @@ def plotSensitivities(gw, showplot : bool =False, call_from_spectrum=False, nfre
         
 
     
-    add_violins(ax, violincolor="#C0105A", nfreq=nfreq)
+    # The product this run scored its likelihoods against, where the caller passed an
+    # `Observability`. A plain sensitivity object does not know one, and the default is drawn.
+    add_violins(ax, violincolor="#C0105A", nfreq=nfreq,
+                product=getattr(gw, "pta_free_spectrum", None))
     add_NeffHatch(ax, Neffcolor="grey", h2OmegaNeff=2.48e-7) 
     if not call_from_spectrum:
         ax.set_title("PLI sensitivities and PTA violins")
@@ -1390,7 +1392,10 @@ def plotSensitivitiesPTA(gw, showplot : bool = False, call_from_spectrum : bool 
         
 
     
-    add_violins(ax, violincolor="#C0105A", nfreq=nfreq)
+    # The product this run scored its likelihoods against, where the caller passed an
+    # `Observability`. A plain sensitivity object does not know one, and the default is drawn.
+    add_violins(ax, violincolor="#C0105A", nfreq=nfreq,
+                product=getattr(gw, "pta_free_spectrum", None))
     add_NeffHatch(ax, Neffcolor="grey", h2OmegaNeff=2.48e-7) 
     if not call_from_spectrum:
         ax.set_title("PLI sensitivities and PTA violins")
@@ -1755,7 +1760,7 @@ def add_violins(ax : plt.Axes, violincolor : str = DESYdunkelrot, nfreq : int = 
         Number of frequency bins for the violins. Default is 14.
     product : str, optional
         Which shipped free-spectrum product to draw, a key of
-        :data:`pta_free_spectra.PTA_FREE_SPECTRA`. ``None`` takes the default, which is the
+        :data:`observability.PTA_FREE_SPECTRA`. ``None`` takes the default, which is the
         one the PTA likelihoods use.
     """
     # The same product the PTA likelihoods are evaluated against. Until v2.2 these two
