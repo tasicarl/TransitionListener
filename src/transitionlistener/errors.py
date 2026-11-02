@@ -452,6 +452,51 @@ class ActionRateJitterError(Exception):
         self.errorcode = 17
 
 
+class EnthalpyUnderflowError(Exception):
+    """Raised when the enthalpy that normalises the transition strength underflows.
+
+    Every strength is divided by three times an enthalpy of the symmetric phase, and the two
+    solvers build that enthalpy in two ways. The adaptive one differences the energy density
+    across a temperature step for the pseudo-trace strength; both of them form ``e + p``
+    directly for the strengths that drive the wall and the sound waves. Either way the vacuum
+    energy cancels analytically and not numerically: on the conformal dark U(1) model at
+    g = 0.5 it is 1.4857e8 in internal units while the thermal part is about 1e-15 of it, so
+    the difference came back as exactly zero and the strength as infinity.
+
+    Since v2.2 both constructions use the temperature-dependent part of the energy density
+    alone, so this is raised where the plasma itself has no enthalpy rather than where the
+    precision ran out. The point is refused rather than reported, because a strength that is
+    zero, infinite or not a number is indistinguishable from one a reader would trust.
+    """
+
+    def __init__(self, T=None, terms=None, message=None, value=None):
+        """Attach the CLI error code and the terms the enthalpy was built from.
+
+        `terms` is a mapping of name to value, because the two solvers build the enthalpy
+        differently: the adaptive one differences the energy density either side of a
+        temperature step, the fixed-step one adds the energy density to the pressure. Both
+        cancel against the vacuum energy, and the message names whichever terms cancelled.
+        """
+        self.T = T
+        #: The enthalpy that was refused: zero, infinity or not-a-number.
+        self.value = value
+        # Every class here has to be constructible with no arguments: the interface collects
+        # the error codes by instantiating each one.
+        self.terms = dict(terms or {})
+        if message is None:
+            shown = ", ".join("%s = %r" % item for item in self.terms.items())
+            message = (
+                f"The enthalpy of the symmetric phase came out as {value!r} at T = {T}, "
+                f"where {shown}. Zero, infinity and not-a-number all leave the strength "
+                "without anything to be normalised against, so the point is refused rather "
+                "than reported. The transition itself is not in question, only its "
+                "normalisation: the bag-model strength, which divides by the radiation "
+                "energy density rather than by a cancelling combination, is unaffected."
+            )
+        super().__init__(message)
+        self.errorcode = 20
+
+
 class UnexpectedError(Exception):
     """Raised when an unclassified failure occurs in the CLI.
 

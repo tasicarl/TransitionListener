@@ -15,6 +15,7 @@ from unittest import mock
 import numpy as np
 
 from transitionlistener import bubbledynamics as bd
+from transitionlistener import errors
 from transitionlistener import bubbledynamics_fixedstep as bdf
 from transitionlistener.hydrodynamics import Hydrodynamics
 
@@ -383,6 +384,217 @@ class FixedStepPseudoTraceGuardTests(PseudoTraceGuardTests):
         alphas = self._alphas(1.0 / 3.0)
         self.assertTrue(np.isfinite(alphas["alpha_theta"]))
         self.assertTrue(np.isfinite(alphas["alpha_hyd"]))
+
+
+class EnthalpyNormalisationTests(unittest.TestCase):
+    """The strength must not be normalised by a difference of the vacuum energy with itself.
+
+    Measured on the conformal dark U(1) model of `examples/example_line.yaml`, whose full
+    coupling range the release paper plots the strength over: at g = 0.5 and its percolation
+    temperature of 2.94e-6 GeV the energy density either side of the derivative step is the
+    same double, 1.48570035040305108e+08 in internal units, because the thermal part the
+    derivative is after is about 1e-15 of the vacuum energy. The difference was exactly zero
+    and the strength came back as infinity, and at g = 0.517 it kept one digit and still
+    looked like a number.
+    """
+
+    #: (coupling, percolation temperature in GeV) of the two leftmost points of that scan,
+    #: as the solver computed them, and two couplings where the old form still had digits.
+    POINTS = ((0.500, 2.937788918807139e-06), (0.517, 1.031688466184511e-05),
+              (0.600, 1.0e-3), (0.800, 1.0e-2))
+
+    def _conformal(self, g):
+        from pathlib import Path
+
+        from transitionlistener.helper_functions import load_potential
+
+        repo = Path(__file__).resolve().parents[1]
+        return load_potential(
+            str(repo / "models/TL_conformal_dark_u1.py"), "specific_potential"
+        )({"g": g, "y": 0.01, "v_GeV": 0.14}, verbose=False)
+
+    def test_the_hot_part_is_the_energy_density_without_a_constant(self):
+        """What the helper leaves out may not depend on the temperature.
+
+        The decomposition is the whole claim: if a temperature-dependent term sat outside
+        the helper, differencing the helper would silently drop it.
+        """
+        for module in (bd, bdf):
+            pot = self._conformal(0.8)
+            X = np.zeros(pot.Ndim)
+            T = 1.0e-2 / pot.conversionFactor
+            left = [float(np.squeeze(pot.energyDensity(X, t)))
+                    - module.hotEnergyDensity(pot, X, t)
+                    for t in (T, 2.0 * T, 5.0 * T)]
+            with self.subTest(solver=module.__name__):
+                self.assertAlmostEqual(left[0], left[1], delta=abs(left[0]) * 1e-12)
+                self.assertAlmostEqual(left[0], left[2], delta=abs(left[0]) * 1e-12)
+
+    def test_the_hot_part_differences_where_the_whole_energy_cannot(self):
+        """At the two leftmost points of the shipped scan, and still agrees at the others."""
+        from transitionlistener.bubbledynamics import temperatureDerivativeStep
+
+        expected_zero = {0.500}
+        for g, T_GeV in self.POINTS:
+            pot = self._conformal(g)
+            X = np.zeros(pot.Ndim)
+            T = T_GeV / pot.conversionFactor
+            dT = temperatureDerivativeStep(pot, T, X, include_decoupled=True, two_point=True)
+            whole = (float(np.squeeze(pot.energyDensity(X, T + dT)))
+                     - float(np.squeeze(pot.energyDensity(X, T - dT)))) / (2 * dT)
+            hot = (bd.hotEnergyDensity(pot, X, T + dT)
+                   - bd.hotEnergyDensity(pot, X, T - dT)) / (2 * dT)
+            with self.subTest(g=g):
+                self.assertTrue(np.isfinite(hot) and hot > 0.0)
+                if g in expected_zero:
+                    # The measured case: the whole energy differences to exactly zero, which
+                    # is what sent the strength to infinity.
+                    self.assertEqual(0.0, whole)
+                elif g >= 0.6:
+                    # Where the old form still had digits the two agree, so no number that
+                    # was trustworthy moves.
+                    self.assertAlmostEqual(hot, whole, delta=abs(hot) * 1e-9)
+
+    def test_an_ordinary_point_still_gives_a_strength(self):
+        """The 2HDM-scale case, where the two forms are bit-identical, still computes."""
+        from pathlib import Path
+
+        from transitionlistener.helper_functions import load_potential
+
+        repo = Path(__file__).resolve().parents[1]
+        pot = load_potential(
+            str(repo / "models/TL_dark_U1_g_parameterization.py"), "specific_potential"
+        )({"g": 1.0, "v_GeV": 0.1, "lambda": 0.03}, verbose=False)
+
+        class Phase:
+            def __init__(self, x):
+                self.x = np.array([x])
+
+            def valAt(self, T):
+                return self.x
+
+        for module, index in ((bd, 2), (bdf, 1)):
+            with self.subTest(solver=module.__name__):
+                values = module.calcAlphas(3.4e2, pot, Phase(0.0), Phase(0.5), verbose=False)
+                self.assertTrue(np.isfinite(float(np.squeeze(values[index]))))
+
+    def test_both_solvers_normalise_through_the_helper(self):
+        """The decomposition only helps where the solver's own number comes from it.
+
+        Each helper is replaced by one that returns twice its value, which has to halve the
+        strength. A solver that builds its enthalpy inline calls the helper and ignores it,
+        and that is what this catches.
+        """
+        from pathlib import Path
+
+        from transitionlistener.helper_functions import load_potential
+
+        repo = Path(__file__).resolve().parents[1]
+        pot = load_potential(
+            str(repo / "models/TL_dark_U1_g_parameterization.py"), "specific_potential"
+        )({"g": 1.0, "v_GeV": 0.1, "lambda": 0.03}, verbose=False)
+
+        class Phase:
+            def __init__(self, x):
+                self.x = np.array([x])
+
+            def valAt(self, T):
+                return self.x
+
+        # The adaptive solver normalises by a temperature derivative of the hot energy, the
+        # fixed-step one by the enthalpy built from it. Doubling either halves the strength.
+        for module, name, index in ((bd, "hotEnergyDensity", 2),
+                                    (bdf, "symmetricPhaseEnthalpy", 1)):
+            with self.subTest(solver=module.__name__):
+                real = getattr(module, name)
+                args = (3.4e2, pot, Phase(0.0), Phase(0.5))
+                before = float(np.squeeze(module.calcAlphas(*args, verbose=False)[index]))
+                with mock.patch.object(module, name,
+                                       lambda *a, **k: 2.0 * real(*a, **k)):
+                    after = float(np.squeeze(module.calcAlphas(*args, verbose=False)[index]))
+                self.assertTrue(np.isfinite(before) and before != 0.0)
+                self.assertAlmostEqual(0.5 * before, after, delta=abs(before) * 1e-9)
+
+    def test_the_wall_strengths_are_normalised_through_the_helper_too(self):
+        """Not only the pseudo-trace: the hydrodynamic strengths share the same enthalpy.
+
+        `alpha_hyd`, `alpha_inf` and `alpha_eq` are all divided by the enthalpy of the
+        symmetric phase, which was written as `-Veff + e`, the same cancelling form. Doubling
+        the helper has to halve all three; a solver that builds its own leaves them alone.
+        """
+        from pathlib import Path
+
+        from transitionlistener.helper_functions import load_potential
+
+        repo = Path(__file__).resolve().parents[1]
+        pot = load_potential(
+            str(repo / "models/TL_dark_U1_g_parameterization.py"), "specific_potential"
+        )({"g": 1.0, "v_GeV": 0.1, "lambda": 0.03}, verbose=False)
+
+        class Phase:
+            def __init__(self, x):
+                self.x = np.array([x])
+
+            def valAt(self, T):
+                return self.x
+
+        args = (3.4e2, pot, Phase(0.0), Phase(0.5))
+        # (alpha_hyd, alpha_inf, alpha_eq) in each solver's return tuple.
+        for module, indices in ((bd, (4, 5, 6)), (bdf, (3, 4, 5))):
+            real = module.symmetricPhaseEnthalpy
+            before = module.calcAlphas(*args, verbose=False)
+            with mock.patch.object(module, "symmetricPhaseEnthalpy",
+                                   lambda *a, **k: 2.0 * real(*a, **k)):
+                after = module.calcAlphas(*args, verbose=False)
+            for index in indices:
+                with self.subTest(solver=module.__name__, index=index):
+                    was = float(np.squeeze(before[index]))
+                    now = float(np.squeeze(after[index]))
+                    self.assertTrue(np.isfinite(was) and was != 0.0)
+                    self.assertAlmostEqual(0.5 * was, now, delta=abs(was) * 1e-9)
+
+    def test_an_enthalpy_that_cannot_normalise_refuses_the_point(self):
+        """Driven through `calcAlphas`, not by constructing the error.
+
+        Zero, not-a-number and infinity all produce a strength no reader could use, and the
+        guard tested only for zero until this case was written. The enthalpy is replaced at
+        its source, which is what a phase with no plasma in it does to these numbers.
+        """
+        from pathlib import Path
+
+        from transitionlistener.helper_functions import load_potential
+
+        repo = Path(__file__).resolve().parents[1]
+        pot = load_potential(
+            str(repo / "models/TL_dark_U1_g_parameterization.py"), "specific_potential"
+        )({"g": 1.0, "v_GeV": 0.1, "lambda": 0.03}, verbose=False)
+
+        class Phase:
+            def __init__(self, x):
+                self.x = np.array([x])
+
+            def valAt(self, T):
+                return self.x
+
+        for module in (bd, bdf):
+            for value in (0.0, float("nan"), float("inf")):
+                with self.subTest(solver=module.__name__, enthalpy=value):
+                    with mock.patch.object(module, "symmetricPhaseEnthalpy",
+                                           lambda *a, **k: value):
+                        with self.assertRaises(errors.EnthalpyUnderflowError) as caught:
+                            module.calcAlphas(3.4e2, pot, Phase(0.0), Phase(0.5),
+                                              verbose=False)
+                    self.assertEqual(20, caught.exception.errorcode)
+                    # The message says which of the three it was, rather than asserting a
+                    # failure mode: an infinite enthalpy gives a strength of zero, not of
+                    # infinity, and a not-a-number one gives neither.
+                    self.assertIn(repr(value), str(caught.exception))
+
+    def test_the_refusal_names_its_code_and_its_terms(self):
+        """The error carries the terms the verdict was taken on."""
+        error = errors.EnthalpyUnderflowError(2.9e-6, {"hot e": 0.0, "V_thermal": 0.0})
+        self.assertEqual(20, error.errorcode)
+        self.assertIn("hot e", str(error))
 
 
 class UnmockedEntryPointTests(unittest.TestCase):

@@ -84,6 +84,12 @@ reported as 999 rather than left unnamed.
      - No phase pair below the phase the walk had reached was ever a tunnelling candidate, so
        nothing about the rate at that step was computed; see
        :ref:`err-no-viable-phase-pair-error`.
+   * - 20
+     - ``EnthalpyUnderflowError``
+     - The enthalpy of the symmetric phase, which the transition strength is normalised by,
+       came out as zero or as a value that is not finite, none of which leaves a usable
+       strength. With the vacuum energy left out of that enthalpy this means a phase with no
+       plasma in it rather than a loss of precision.
    * - 999
      - ``UnexpectedError``
      - Any failure that carries no code of its own. Ten exception classes have none:
