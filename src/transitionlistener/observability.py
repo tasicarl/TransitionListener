@@ -159,6 +159,13 @@ def free_spectrum_path(name: str | None = None) -> str:
 #: six NANOGrav 15 yr products, ``NG12_5bins`` on ``ng12p5_cp_v1`` and ``IPTA2_13bins`` on
 #: ``ipta2_cp_v1``.
 #:
+#: Over a coarse grid of 120 points in the three template parameters above, the 5-bin
+#: likelihood reaches -37.98 at most on ``ng12p5_cp_v1`` and -31.13 on ``ng15_cp_v1``, and
+#: the 13-bin one -108.27 on ``ipta2_cp_v1`` and -96.37 on ``ng15_cp_v1``. Each filed value
+#: sits 1.1 to 2.4 above its own product's coarse maximum, where a sampler over the
+#: continuous parameters lands, and 5.7 (``NG12_5bins``) and 9.5 (``IPTA2_13bins``) below
+#: what the NANOGrav 15 yr product reaches, so neither was obtained there.
+#:
 #: Three of the four references released with v2.1 are reproduced by that calculation, each
 #: on its own product, to between 0.029 and 0.045 in log-likelihood: ``NG15_14bins`` and
 #: ``NG15_5bins`` on ``ng15_cp_v1``, and ``NG12_5bins`` on ``ng12p5_cp_v1``. The fourth,
