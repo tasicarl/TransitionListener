@@ -228,8 +228,26 @@ class TestDocumentationMaths(unittest.TestCase):
 
         if not checker.pages():
             self.skipTest("no documentation pages were found")
-        problems = checker.violations()
+        try:
+            problems = checker.violations()
+        except checker.TeXUnavailable as err:
+            self.skipTest(str(err))
         self.assertEqual(problems, [], "\n" + "\n".join(problems))
+
+    def test_no_latex_is_a_skip_and_not_a_clean_result(self):
+        """Without this the coverage test passed having compiled nothing.
+
+        `violations` returned an empty list where `pdflatex` was missing, which reads as
+        every equation rendering. It now says it checked nothing.
+        """
+        import unittest.mock
+
+        sys.path.insert(0, str(DOCS))
+        import check_docs_math as checker
+
+        with unittest.mock.patch.object(checker.shutil, "which", return_value=None):
+            with self.assertRaises(checker.TeXUnavailable):
+                checker.violations()
 
     def test_an_equation_that_cannot_render_is_caught(self):
         """A rule that cannot fail is not a rule."""
@@ -508,16 +526,31 @@ class TestPagesAgainstTheCode(unittest.TestCase):
         listed = set(re.findall(r"``(NG\d+_\d+bins|IPTA\d+_\d+bins)``", page))
         self.assertEqual(set(PTA_LIKELIHOOD_SETTINGS), listed)
 
-    def test_the_fixed_step_backend_reports_the_bag_strength_under_both_keys(self):
-        """The two backends differ in what ``alpha`` means, and the page has to say so."""
-        src = (ROOT / "src" / "transitionlistener"
-               / "transitionObservables_fixedstep.py").read_text(encoding="utf-8")
-        self.assertIn('derived["alpha"] = np.squeeze(alpha_theta)', src)
-        self.assertIn('derived["alpha_theta"] = np.squeeze(alpha_theta)', src)
-        self.assertNotIn("alpha_thetabar", src)
+    def test_the_fixed_step_backend_aliases_the_pseudo_trace_strength(self):
+        """``alpha_theta`` is not the same quantity on the two backends.
+
+        The fixed-step solver computes no bag-model strength: the name ``alpha_theta`` holds
+        its pseudo-trace value, which it writes to ``alpha`` as well. Reading it as the bag
+        strength, which is what the adaptive solver puts there, is the mistake this guards.
+        """
+        observables = (ROOT / "src" / "transitionlistener"
+                       / "transitionObservables_fixedstep.py").read_text(encoding="utf-8")
+        self.assertIn('derived["alpha"] = np.squeeze(alpha_theta)', observables)
+        self.assertIn('derived["alpha_theta"] = np.squeeze(alpha_theta)', observables)
+        self.assertNotIn("alpha_thetabar", observables)
+
+        solver = (ROOT / "src" / "transitionlistener"
+                  / "bubbledynamics_fixedstep.py").read_text(encoding="utf-8")
+        self.assertIn("alpha_theta = (theta_sym - theta_bro)/(3 * enthalpy_sym)", solver)
+        self.assertNotIn("alpha_theta = (DeltaE + 3 * DeltaV)", solver)
+
+        adaptive = (ROOT / "src" / "transitionlistener"
+                    / "bubbledynamics.py").read_text(encoding="utf-8")
+        self.assertIn("alpha_theta = (DeltaE + 3 * DeltaV)", adaptive)
+
         page = (DOCS / "source" / "algorithms" / "hydrodynamics.rst").read_text(encoding="utf-8")
-        self.assertIn("fixed-step solver does not", page)
-        self.assertIn("both keys", page)
+        self.assertIn("computes\nno bag-model strength", page)
+        self.assertIn("pseudo-trace strength in both places", page)
 
     def test_the_snr_carries_the_channel_factor_the_code_applies(self):
         """The spectrum page gives the SNR the code computes, factor of two included."""

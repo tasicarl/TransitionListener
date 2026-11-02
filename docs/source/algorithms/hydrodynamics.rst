@@ -33,10 +33,13 @@ factor only for a plasma whose sound speed is :math:`1/\sqrt{3}`, and the sound 
 resummed potential is not that number. For a plasma of radiation the two strengths are equal,
 because :math:`\bar\theta = 4\theta` and :math:`3w = 4e` there. The bag-model strength is
 computed as well and reported under the key ``alpha_theta``, while ``alpha`` is the
-pseudo-trace one above. That holds for the adaptive solver. The fixed-step solver does not
-compute the pseudo-trace strength and writes the bag-model one to both keys, so a run with
+pseudo-trace one above. That holds for the adaptive solver. The fixed-step solver computes
+no bag-model strength and writes the pseudo-trace one to both keys, so a run with
 ``percolation_algorithm_mode: fixed_step_size`` reports the same number under ``alpha`` and
-``alpha_theta``.
+``alpha_theta``, and that number is the pseudo-trace strength in both places. It normalises
+it by :math:`3 w_\mathrm{sym}` directly rather than through
+:math:`3\,c_\mathrm{s,sym}^2\,T\,\mathrm{d}e/\mathrm{d}T`, which is the same quantity by
+the identity below.
 
 One sound speed, that of the broken phase, is used in both phases, so that everything the two
 phases share cancels in the difference. One sound speed per phase would leave the radiation

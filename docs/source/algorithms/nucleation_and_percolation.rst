@@ -113,9 +113,10 @@ them. The percolation integral, the strengths, the inverse duration, the mean bu
 separation and the Hubble rate each exist twice, once in
 :py:mod:`transitionlistener.bubbledynamics` for the adaptive backend and once in
 :py:mod:`transitionlistener.bubbledynamics_fixedstep` for the fixed-step one, so the two can and
-sometimes do differ beyond their sampling. The transition strength is the case to know: the
-fixed-step backend reports the bag-model value under ``alpha`` where the adaptive one reports
-the pseudo-trace value, as :doc:`hydrodynamics` sets out.
+sometimes do differ beyond their sampling. The transition strength is the case to know: both
+report the pseudo-trace value under ``alpha``, and the fixed-step backend writes that same
+value to ``alpha_theta`` as well, where the adaptive one puts the bag-model strength, as
+:doc:`hydrodynamics` sets out.
 
 The fixed-step backend
 ----------------------

@@ -76,9 +76,18 @@ def _compile(bodies: list[str], workdir: Path) -> bool:
     return run.returncode == 0
 
 
+class TeXUnavailable(RuntimeError):
+    """Raised where no LaTeX is installed, so that nothing reports a clean result.
+
+    Returning an empty list here made the coverage test pass without compiling a single
+    equation, which is the one outcome this checker must never produce.
+    """
+
+
 def violations() -> list[str]:
     if shutil.which("pdflatex") is None:
-        return []
+        raise TeXUnavailable(
+            "pdflatex is not installed, so no equation was compiled and nothing was checked")
     out: list[str] = []
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
@@ -97,7 +106,10 @@ def violations() -> list[str]:
 
 
 if __name__ == "__main__":
-    problems = violations()
+    try:
+        problems = violations()
+    except TeXUnavailable as err:
+        raise SystemExit(str(err))
     for p in problems:
         print(p)
     print("%d unrenderable equations in %d pages" % (len(problems), len(pages())))
