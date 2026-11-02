@@ -15,6 +15,7 @@ from unittest import mock
 import numpy as np
 
 from transitionlistener import bubbledynamics as bd
+from transitionlistener import errors
 from transitionlistener import bubbledynamics_fixedstep as bdf
 from transitionlistener.hydrodynamics import Hydrodynamics
 
@@ -383,6 +384,74 @@ class FixedStepPseudoTraceGuardTests(PseudoTraceGuardTests):
         alphas = self._alphas(1.0 / 3.0)
         self.assertTrue(np.isfinite(alphas["alpha_theta"]))
         self.assertTrue(np.isfinite(alphas["alpha_hyd"]))
+
+
+class EnthalpyUnderflowGuardTests(unittest.TestCase):
+    """A strength whose normalisation underflowed is refused, not reported as infinity.
+
+    Measured on the conformal dark U(1) model at g = 0.5, the leftmost point of
+    `examples/example_line.yaml`: at its percolation temperature of 2.94e-6 GeV the energy
+    density either side of the derivative step is the same double, 1.48570035040305108e+08
+    in internal units, because the thermal part the derivative is after is about 1e-15 of
+    the vacuum energy. The difference is exactly zero and `alpha` came back as infinity with
+    no error raised. That point takes eight minutes to compute, so the condition is
+    reproduced here by holding the energy density constant, which is what the model does to
+    every digit that matters.
+    """
+
+    def setUp(self):
+        from pathlib import Path
+
+        from transitionlistener.helper_functions import load_potential
+
+        repo = Path(__file__).resolve().parents[1]
+        self.pot = load_potential(
+            str(repo / "models/TL_dark_U1_g_parameterization.py"), "specific_potential"
+        )({"g": 1.0, "v_GeV": 0.1, "lambda": 0.03}, verbose=False)
+
+        class Phase:
+            def __init__(self, x):
+                self.x = np.array([x])
+
+            def valAt(self, T):
+                return self.x
+
+        self.high, self.low = Phase(0.0), Phase(0.5)
+        self.T = 3.4e2
+
+    def _V0_ref(self):
+        return (self.pot.V0(self.pot.X0) + self.pot.Vct(self.pot.X0)
+                + self.pot.V1_from_X(self.pot.X0))
+
+    def test_the_adaptive_solver_refuses_a_difference_that_underflowed(self):
+        constant = 1.48570035040305108e+08
+
+        with mock.patch.object(type(self.pot), "energyDensity",
+                               lambda *a, **k: np.array([constant])):
+            with self.assertRaises(errors.EnthalpyUnderflowError) as caught:
+                bd.calcAlphas(self.T, self.pot, self.high, self.low, verbose=False)
+        self.assertEqual(20, caught.exception.errorcode)
+        self.assertIn("e(T + dT)", str(caught.exception))
+
+    def test_the_fixed_step_solver_refuses_an_enthalpy_that_cancelled(self):
+        V0_ref = self._V0_ref()
+        high = self.high.valAt(self.T)
+
+        def energy(pot_self, X, T, *args, **kwargs):
+            # e = -p exactly, which is what vacuum domination approaches: the sum the
+            # strength is normalised by is then zero.
+            return np.atleast_1d(pot_self.Vtot(high, T) - V0_ref)
+
+        with mock.patch.object(type(self.pot), "energyDensity", energy):
+            with self.assertRaises(errors.EnthalpyUnderflowError) as caught:
+                bdf.calcAlphas(self.T, self.pot, self.high, self.low, verbose=False)
+        self.assertEqual(20, caught.exception.errorcode)
+        self.assertIn("e", caught.exception.terms)
+
+    def test_a_usable_enthalpy_still_gives_a_strength(self):
+        """The guard fires on zero only, so an ordinary point is untouched."""
+        values = bd.calcAlphas(self.T, self.pot, self.high, self.low, verbose=False)
+        self.assertTrue(np.isfinite(float(np.squeeze(values[2]))))
 
 
 class UnmockedEntryPointTests(unittest.TestCase):

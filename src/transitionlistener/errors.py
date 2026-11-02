@@ -452,6 +452,46 @@ class ActionRateJitterError(Exception):
         self.errorcode = 17
 
 
+class EnthalpyUnderflowError(Exception):
+    """Raised when the enthalpy that normalises the transition strength underflows.
+
+    The strength reported as ``alpha`` is the pseudo-trace anomaly divided by three times the
+    enthalpy of the symmetric phase, and that enthalpy is obtained as a central difference of
+    the energy density. Under extreme supercooling the energy density is the vacuum energy to
+    every digit a double carries: on the conformal dark U(1) model at g = 0.5 the two energies
+    either side of the step are bit-identical at 1.4857e8 in internal units, because the
+    thermal part they differ by is about 1e-15 of them. The difference is then exactly zero
+    and the strength comes back as infinity, which is not a strength.
+
+    The point is refused rather than reported, because the transition itself is fine and only
+    its normalisation was lost, and an infinite strength is indistinguishable from one a
+    reader would trust.
+    """
+
+    def __init__(self, T, terms, message=None):
+        """Attach the CLI error code and the terms the enthalpy was built from.
+
+        `terms` is a mapping of name to value, because the two solvers build the enthalpy
+        differently: the adaptive one differences the energy density either side of a
+        temperature step, the fixed-step one adds the energy density to the pressure. Both
+        cancel against the vacuum energy, and the message names whichever terms cancelled.
+        """
+        self.T = T
+        self.terms = dict(terms)
+        if message is None:
+            shown = ", ".join("%s = %r" % item for item in self.terms.items())
+            message = (
+                f"The enthalpy of the symmetric phase underflowed to zero at T = {T}, where "
+                f"{shown}. The terms it is built from are equal to every digit a double "
+                "carries, so the strength has nothing to be normalised against and would be "
+                "reported as infinity. The transition itself is not in question, only its "
+                "normalisation: the bag-model strength, which divides by the radiation "
+                "energy density rather than by a cancelling combination, is unaffected."
+            )
+        super().__init__(message)
+        self.errorcode = 20
+
+
 class UnexpectedError(Exception):
     """Raised when an unclassified failure occurs in the CLI.
 

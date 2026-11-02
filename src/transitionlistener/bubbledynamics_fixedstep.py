@@ -2047,8 +2047,18 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
                      + (pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref)/csSq_bro)
         theta_bro = (pot.energyDensity(low_phi, T, include_decoupled=False)
                      + (pot.Vtot(low_phi, T, include_decoupled=False) - V0_ref)/csSq_bro)
-        alpha_theta = (theta_sym - theta_bro)/(3 * (-pot.Vtot(high_phi, T) + V0_ref
-                                                    + pot.energyDensity(high_phi, T)))
+        # The same enthalpy as in the adaptive solver, formed as e + p rather than from a
+        # temperature derivative. Under extreme supercooling e and -p are both the vacuum
+        # energy to every digit a double carries, so their sum can come back as exactly zero
+        # and the strength as infinity. Refused here as it is there.
+        pressure_sym = -pot.Vtot(high_phi, T) + V0_ref
+        energy_sym = pot.energyDensity(high_phi, T)
+        enthalpy_sym = float(np.squeeze(pressure_sym + energy_sym))
+        if enthalpy_sym == 0.0:
+            raise errors.EnthalpyUnderflowError(
+                T, {"e": float(np.squeeze(energy_sym)),
+                    "p": float(np.squeeze(pressure_sym))})
+        alpha_theta = (theta_sym - theta_bro)/(3 * enthalpy_sym)
     
 
     alpha_e = DeltaE / rho_rad_tot

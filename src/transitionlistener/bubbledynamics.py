@@ -3237,8 +3237,17 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     # separate question of which plasma 3 w refers to; it is not decided here.
     dT_e = temperatureDerivativeStep(pot, T, high_phi, include_decoupled=True,
                                      two_point=True)
-    dedT = (pot.energyDensity(high_phi, T + dT_e)
-            - pot.energyDensity(high_phi, T - dT_e))/(2*dT_e)
+    e_plus = float(np.squeeze(pot.energyDensity(high_phi, T + dT_e)))
+    e_minus = float(np.squeeze(pot.energyDensity(high_phi, T - dT_e)))
+    dedT = (e_plus - e_minus)/(2*dT_e)
+    # A difference of two energies that are equal to every digit a double carries. Under
+    # extreme supercooling the energy density is the vacuum energy and the thermal part the
+    # derivative is after is some 1e-15 of it, so the difference comes back as exactly zero
+    # and the division below returns infinity. An infinite strength is not a strength, and
+    # nothing downstream could tell it from one worth reading, so the point is refused.
+    if sym_usable and (3 * csSq_sym * T * dedT) == 0.0:
+        raise errors.EnthalpyUnderflowError(
+            T, {"e(T + dT)": e_plus, "e(T - dT)": e_minus, "dT": dT_e})
     if broken_usable and sym_usable:
         alpha_thetabar = (theta_sym - theta_bro) / (3* csSq_sym * T * dedT)
     else:
