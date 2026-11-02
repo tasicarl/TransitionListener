@@ -121,6 +121,22 @@ class TheProductsShipTests(unittest.TestCase):
         self.assertEqual("ipta2_cp_v1",
                          pfs.free_spectrum_for_label("IPTA2_13bins", "ng15_cp_v1"))
 
+    def test_an_unknown_product_is_refused_by_the_constructor(self):
+        """A typo must not be scored on another product with nothing said.
+
+        `free_spectrum_for_label` honours a name whose array matches the label and otherwise
+        takes the first product of that array, so an unknown name silently became
+        `ng15_hd_v2` while the instance recorded the typo. The pipeline and the scan override
+        check the name; a direct caller did not.
+        """
+        from transitionlistener.observability import Observability
+
+        spec = _fixed_spectrum()
+        with self.assertRaises(ValueError) as caught:
+            Observability(spec.gwspec_dict, verbose=False,
+                          pta_free_spectrum="ng15_typo_v9")
+        self.assertIn("ng15_typo_v9", str(caught.exception))
+
     def test_the_violin_legend_names_the_array_it_drew(self):
         """Read off the drawn collection, not off the source.
 

@@ -561,6 +561,11 @@ class Observability(GW_Sensitivity_Data):
         self.verbose = verbose
         self.pta_free_spectrum = (
             DEFAULT_PTA_FREE_SPECTRUM if pta_free_spectrum is None else str(pta_free_spectrum))
+        # Checked here and not only in the pipeline: `free_spectrum_for_label` honours a name
+        # whose array matches the label and otherwise falls back to the first product of that
+        # array, so a typo would be scored on a different product from the one recorded on
+        # this instance, with nothing raised. A direct caller gets the same check as a run.
+        free_spectrum_path(self.pta_free_spectrum)
 
         if include_smbhb:
             self.my_spec = gwspec_dict["h2OmegaGW_with_astrobg_fun"]
