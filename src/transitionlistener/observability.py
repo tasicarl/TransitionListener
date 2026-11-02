@@ -154,11 +154,17 @@ def free_spectrum_path(name: str | None = None) -> str:
 #: template, flat priors throughout, the efficiency factor from
 #: :func:`hydrodynamics.kappa_sw` at a wall velocity of one.
 #:
-#: Three of the four references released with v2.1 are reproduced by that calculation on the
-#: product they were made on, ``ng15_cp_v1``, to between 0.029 and 0.045 in log-likelihood.
-#: The fourth, ``IPTA2_13bins``, was released as -105.66903 and this calculation did not
-#: reach it: adding a binary foreground with both parameters free, which can only raise the
-#: maximum, still reached -105.854, and more live points and every bin count from 5 to 30
+#: Every reference was computed on the product that carries the label's own array, since a
+#: label is a data set together with a bin count: ``NG15_14bins`` and ``NG15_5bins`` on the
+#: six NANOGrav 15 yr products, ``NG12_5bins`` on ``ng12p5_cp_v1`` and ``IPTA2_13bins`` on
+#: ``ipta2_cp_v1``.
+#:
+#: Three of the four references released with v2.1 are reproduced by that calculation, each
+#: on its own product, to between 0.029 and 0.045 in log-likelihood: ``NG15_14bins`` and
+#: ``NG15_5bins`` on ``ng15_cp_v1``, and ``NG12_5bins`` on ``ng12p5_cp_v1``. The fourth,
+#: ``IPTA2_13bins`` on ``ipta2_cp_v1``, was released as -105.66903 and this calculation did
+#: not reach it: adding a binary foreground with both parameters free, which can only raise
+#: the maximum, still reached -105.854, and more live points and every bin count from 5 to 30
 #: were tried. A sampler returns a lower bound on the maximum, so the gap of 0.215 is not
 #: explained, and the value below is the reproducible one rather than a disproof of the
 #: released one. Significances built on it are provisional until the gap is understood.

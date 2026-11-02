@@ -101,6 +101,24 @@ class TheProductsShipTests(unittest.TestCase):
         self.assertIsNone(pfs.bestfit_lnL("ng15_hd_v2", "IPTA2_13bins"))
         self.assertIsNone(pfs.bestfit_lnL("ipta2_cp_v1", "NG15_14bins"))
 
+    def test_every_filed_reference_belongs_to_the_label_s_own_array(self):
+        """A reference filed under a product of another array would be a distance from a
+        best fit obtained on different data, and nothing downstream could notice.
+
+        `SERVES` above is written by hand, so this reads the pairing out of the two
+        registries instead: the array of the product a reference is filed under has to be
+        the array the label is scored on.
+        """
+        for product, labels in pfs.PTA_BESTFIT_LNL.items():
+            product_array = pfs.PTA_FREE_SPECTRA[product]["array"]
+            for label in labels:
+                with self.subTest(product=product, label=label):
+                    pta_name = str(PTA_LIKELIHOOD_SETTINGS[label]["pta_name"])
+                    self.assertEqual(
+                        pfs.PTA_LABEL_ARRAY[pta_name], product_array,
+                        f"{label} is scored on {pfs.PTA_LABEL_ARRAY[pta_name]} but its "
+                        f"reference is filed under {product}, which is {product_array}")
+
     def test_each_label_is_scored_on_its_own_array(self):
         """A label is a data set and a bin count, so the data has to be that data set.
 
