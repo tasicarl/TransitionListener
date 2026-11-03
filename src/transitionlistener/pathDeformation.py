@@ -261,6 +261,10 @@ class Deformation_Spline(object):
         F, dV = self.forces()
         F_max = np.max(np.sqrt(np.sum(F*F,-1)))
         dV_max = np.max(np.sqrt(np.sum(dV*dV,-1)))
+        if dV_max == 0.0:
+            # The potential is flat to rounding along the whole path, which happens on a very short path around a
+            # field where the gradient vanishes: there is nothing to follow, and the scale below would be 0 / 0.
+            return self._step_rval(lastStep, False, 0.0)
         fRatio1 = F_max / dV_max
         # Rescale the normal force so that it's relative to L:
         F *= self._L / dV_max
