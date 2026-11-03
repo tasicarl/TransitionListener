@@ -196,6 +196,7 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
+- The second quartic counterterm of the dark flip-flop model multiplies `phi_2 ** 4`, as its own docstring states, where it multiplied `phi_2 ** 2`. The coupling `dlambda2` that it carries is set to zero by `calcCounterTerms`, so no published number moves; the term shifted the mass of the second field rather than renormalising its self-coupling, and would have done so for anyone who set the coupling by hand.
 - A broken-phase temperature below the symmetric one now fails the point with an error code.
   The transition releases energy and happens below the critical temperature, so the broken
   phase is reheated and `T_bro > T_sym` holds by construction, whatever accuracy the solver
