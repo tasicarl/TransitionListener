@@ -32,6 +32,7 @@ Authors:
 """
 
 import numpy as np
+from collections import namedtuple
 from scipy import optimize
 from rich.columns import Columns as RichColumns
 import rich
@@ -132,6 +133,9 @@ def _daisy_mass_cubed_difference(m20, m2T, Pi=None):
     return out
 
 
+_Fermions = namedtuple("_Fermions", "masses_sq dof")
+
+
 class generic_potential():
     """
     An abstract class from which one can easily create finite-temperature effective potentials.
@@ -184,14 +188,13 @@ class generic_potential():
         May be overridden by subclasses; defaults to 1000.0 in internal units.
     """
 
-    #: Finite-difference step, in internal field units, for the derivatives of
-    #: the zero-temperature one-loop potential at the vev that fix the
-    #: counterterms (``dV1atvev``, ``d2V1atvev``, ``dV1physatvev``). It is kept
+    #: Finite-difference step, in internal field units, for the species whose mass
+    #: vanishes at the vev in the derivatives of the zero-temperature one-loop
+    #: potential that fix the counterterms (``dV1atvev``, ``d2V1atvev``,
+    #: ``dV1physatvev``); the other species take a larger step in `_derivative_at_vev`. It is kept
     #: separate from the phase-tracing accuracy ``x_eps`` on purpose: tightening a
     #: tracing tolerance must not change the potential. For the abelian dark
-    #: Higgs, with ``|V_CW|`` of order 1e9 at the vev, steps below 1e-3 are dominated
-    #: by round-off (1e-4 shifts the second derivative by up to 1.4 %). Above it
-    #: the second derivative drifts with the logarithm of the step, by 0.05 % to
+    #: Higgs the second derivative drifts with the logarithm of the step, by 0.05 % to
     #: 0.5 % per decade: the tree-level Goldstone mass vanishes at the vacuum, so
     #: its Coleman-Weinberg term is infrared divergent there and the step acts as
     #: the regulator. The physical cure is the resummation of the Goldstone
@@ -199,6 +202,8 @@ class generic_potential():
     #: arXiv:1406.2355). 1e-3 is the step these counterterms have always been
     #: computed with in the default setup. Models may override it.
     counterterm_derivative_step: float = 1.0e-3
+    #: Step, as a fraction of the vev, for the species that are smooth at the vev; see `_derivative_at_vev`.
+    _SMOOTH_STEP_FRACTION: float = 1.0e-3
 
     def __init__(self, *args, **dargs) -> None:
         """Prepare configuration objects and delegate to :meth:`init` for setup."""
@@ -1253,6 +1258,50 @@ class generic_potential():
         T = np.asanyarray(T)[..., np.newaxis, np.newaxis]
         return f(X, T, False)
 
+    def _derivative_at_vev(self, one_loop, derivative):
+        """The derivative of a one-loop potential at the vev, added up species by species.
+
+        The sum of the species is of order 1e9 at the vev, so a finite difference with the small step that regulates
+        the Goldstone boson is mostly rounding: 1e-14 in a coupling moves the second derivative by 1e-4. A species is
+        differentiated on its own, with a step of ``_SMOOTH_STEP_FRACTION`` of the vev, which is free of rounding and
+        of truncation; only a species whose mass changes by more than half across that step keeps
+        `counterterm_derivative_step`, and it is small there, so its finite difference has no rounding to speak of.
+
+        ``one_loop`` is V1 or V1phys, ``derivative`` a class of helper_functions taking (function, eps, Ndim, order).
+        """
+        at_vev = np.array([self.v], dtype=float)
+        smooth_step = max(self.counterterm_derivative_step, self._SMOOTH_STEP_FRACTION * abs(float(self.v)))
+        n_bosons = np.size(self.boson_massSq(at_vev, 0.0)[1])
+        n_fermions = np.size(tuple(self.fermion_massSq(at_vev))[1])
+
+        def species_step(masses):
+            change = max(np.abs(masses(at_vev + side * smooth_step) - masses(at_vev)) for side in (-2.0, 2.0))
+            return smooth_step if change <= 0.5 * np.abs(masses(at_vev)) else self.counterterm_derivative_step
+
+        total = 0.0
+        for species in range(n_bosons + n_fermions):
+            boson_weights, fermion_weights = np.zeros(n_bosons), np.zeros(n_fermions)
+            if species < n_bosons:
+                boson_weights[species] = 1.0
+
+                def masses(X, i=species):
+                    return np.ravel(self.boson_massSq(X, 0.0)[0])[i]
+            else:
+                fermion_weights[species - n_bosons] = 1.0
+
+                def masses(X, i=species - n_bosons):
+                    return np.ravel(tuple(self.fermion_massSq(X))[0])[i]
+
+            def contribution(X, boson_weights=boson_weights, fermion_weights=fermion_weights):
+                m2, n, c, physical = self.boson_massSq(X, 0.0)
+                fermion_masses, dof = tuple(self.fermion_massSq(X))[:2]
+                return one_loop((m2, n * boson_weights, c, physical), _Fermions(fermion_masses, dof * fermion_weights))
+
+            total = total + derivative(contribution, eps=species_step(masses), Ndim=self.Ndim,
+                                       order=self.deriv_order)(at_vev)
+        # np.squeeze shrinks (1,1) and (1,) to a 0d array, for evaluating Vtot at more than one point at the same time.
+        return np.squeeze(total)
+
     def dV1atvev(self):
         """
         Find the first derivative of the one loop zero temperature potential,
@@ -1281,21 +1330,7 @@ class generic_potential():
             res = self._dV1atvev
 
         except BaseException:
-            # vev means here an arbitrary point in field space
-            def V_coleman_weinberg(X):
-                bosonsvev0 = self.boson_massSq(X, 0.0)
-                fermionsvev = self.fermion_massSq(X)
-                return self.V1(bosonsvev0, fermionsvev)
-
-            dV1 = helper_functions.gradientFunction(
-                V_coleman_weinberg, eps=self.counterterm_derivative_step, Ndim=self.Ndim,
-                order=self.deriv_order)
-
-            # Use np.squeeze to shrink array sizes from (1,1) and (1,) to a 0d
-            # array... otherways problems when evaluating Vtot at more than one
-            # point in field space at the same time in the code.
-
-            self._dV1atvev = np.squeeze(dV1(np.array([self.v])))
+            self._dV1atvev = self._derivative_at_vev(self.V1, helper_functions.gradientFunction)
             res = self._dV1atvev
         return res
 
@@ -1327,20 +1362,7 @@ class generic_potential():
         try:
             res = self._dV1physatvev
         except BaseException:
-            # vev means here an arbitrary point in field space
-            def V_coleman_weinberg(X):
-                bosonsvev0 = self.boson_massSq(X, 0.0)
-                fermionsvev = self.fermion_massSq(X)
-                return self.V1phys(bosonsvev0, fermionsvev)
-            dV1 = helper_functions.gradientFunction(
-                V_coleman_weinberg, eps=self.counterterm_derivative_step, Ndim=self.Ndim,
-                order=self.deriv_order)
-           
-            # Use np.squeeze to shrink array sizes from (1,1) and (1,) to a 0d
-            # array... otherways problems when evaluating Vtot at more than one
-            # point in field space at the same time in the code.
-
-            self._dV1physatvev = np.squeeze(dV1(np.array([self.v])))
+            self._dV1physatvev = self._derivative_at_vev(self.V1phys, helper_functions.gradientFunction)
             res = self._dV1physatvev
         return res
 
@@ -1575,20 +1597,7 @@ class generic_potential():
         try:
             res = self._d2V1atvev
         except BaseException:
-            # vev means here an arbitrary point in field space
-            def V_coleman_weinberg(X):
-                bosonsvev0 = self.boson_massSq(X, 0.0)
-                fermionsvev = self.fermion_massSq(X)
-                return self.V1(bosonsvev0, fermionsvev)
-
-            d2V1 = helper_functions.hessianFunction(
-                V_coleman_weinberg, eps=self.counterterm_derivative_step, Ndim=self.Ndim,
-                order=self.deriv_order)
-
-            # Use np.squeeze to shrink array sizes from (1,1) and (1,) to a 0d
-            # array... otherways problems when evaluating Vtot at more than one
-            # point in field space at the same time in the code.
-            self._d2V1atvev = np.squeeze(d2V1(np.array([self.v])))
+            self._d2V1atvev = self._derivative_at_vev(self.V1, helper_functions.hessianFunction)
             res = self._d2V1atvev
         return res
 
