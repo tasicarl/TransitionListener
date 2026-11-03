@@ -322,7 +322,6 @@ def calcPercAndEvolve(
             state.Hr,
             state.Sr,
             state.Pr,
-            vw=vw,
         )
         metadata = PercolationDiagnostics.from_state(state, grid, jitter_diagnostic, tnuc_estimate)
         if return_metadata:
@@ -2906,13 +2905,12 @@ def estimate_spline_tnuc_from_rate_history(
     H: np.ndarray,
     S: np.ndarray,
     P: np.ndarray,
-    vw: float = 1.0,
 ) -> dict[str, float | str | None]:
     r"""Estimate ``Tnuc`` from the saved rate/P/H splines without new actions.
 
     The diagnostic solves
 
-    ``N(T) = 4*pi/3 * v_w^3 * int_T^Tinit Gamma/H^4 * (1-P) dT/T = 1``
+    ``N(T) = 4*pi/3 * int_T^Tinit Gamma/H^4 * (1-P) dT/T = 1``
 
     on a dense spline grid.  It is intentionally warning-only: if the final
     action bank does not bracket ``N=1`` the caller can still return a valid
@@ -2950,21 +2948,40 @@ def estimate_spline_tnuc_from_rate_history(
         if u.size < 3 or np.ptp(u) <= 1.0e-12:
             return {"Tnuc": None, "warning": "spline_tnuc_unavailable", "max_N": math.nan}
 
-        rate_spline = interpolate.PchipInterpolator(u, rate, extrapolate=False)
+        # A cubic spline, as the double integral uses: N crosses one on the hot side, where the support points are
+        # sparse, and the slopes of a monotone interpolant there are only first-order accurate and move with them.
+        rate_spline = interpolate.CubicSpline(u, rate, extrapolate=False)
         prob_spline = interpolate.PchipInterpolator(u, prob, extrapolate=False)
         n_grid = max(1000, 20 * int(u.size))
         u_dense = np.linspace(float(u[0]), float(u[-1]), n_grid)
         rate_dense = np.asarray(rate_spline(u_dense), dtype=float)
         prob_dense = np.clip(np.asarray(prob_spline(u_dense), dtype=float), 0.0, 1.0)
-        with np.errstate(over="ignore", invalid="ignore"):
-            integrand = np.exp(np.clip(rate_dense, -745.0, 700.0)) * (1.0 - prob_dense)
-        integrand[~np.isfinite(integrand)] = 0.0
-        cumulative_from_cold = integrate.cumulative_trapezoid(integrand, x=u_dense, initial=0.0)
-        total = float(cumulative_from_cold[-1])
-        prefactor = 4.0 * np.pi / 3.0 * float(vw) ** 3
-        N_dense = prefactor * (total - cumulative_from_cold)
-        max_N = float(np.nanmax(N_dense)) if N_dense.size else math.nan
-        if not np.isfinite(max_N):
+        with np.errstate(divide="ignore"):
+            log_integrand = (rate_dense + np.log1p(-prob_dense))[::-1]
+        # Summed from the hot end: N runs over many decades, and a difference from the total would
+        # lose the hot end, where N crosses one, to the rounding of the total. The integrand is an
+        # exponential on a dense interval, so each is integrated as one: the trapezoid would be off
+        # by a share (rate step)^2/12 of N, and the rate moves by about one e-fold per interval.
+        prefactor = 4.0 * np.pi / 3.0      # a Hubble volume H^-3: no wall velocity enters
+        step = float(u_dense[1] - u_dense[0])
+        integrand = np.exp(np.minimum(log_integrand[:-1], 700.0))
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            growth = np.diff(log_integrand) / step
+            ratio = np.where(
+                np.abs(growth * step) > 1.0e-8,
+                np.expm1(np.minimum(growth * step, 700.0)) / (growth * step),
+                1.0,
+            )
+            cells = integrand * step * ratio
+        cells[~np.isfinite(cells)] = 0.0
+        # The grid may stop just above the crossing. The rate above it falls exponentially at the slope of the last node.
+        hot_slope = float(rate_spline(u[-1], 1))
+        above_grid = float(np.exp(np.minimum(log_integrand[0], 700.0))) / -hot_slope if hot_slope < 0.0 else 0.0
+        N_hot_to_cold = above_grid + np.concatenate(([0.0], np.cumsum(cells)))
+        N_hot_to_cold *= prefactor
+        # Infinite is an answer: the spline may overshoot on the cold side, past the crossing, where P is close to one.
+        max_N = float(np.nanmax(N_hot_to_cold)) if N_hot_to_cold.size else math.nan
+        if np.isnan(max_N):
             return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": math.nan}
         if max_N < 1.0:
             return {
@@ -2974,24 +2991,17 @@ def estimate_spline_tnuc_from_rate_history(
                 "integral_prefactor": prefactor,
             }
 
-        u_hot_to_cold = u_dense[::-1]
-        N_hot_to_cold = N_dense[::-1]
         crossing = np.flatnonzero(N_hot_to_cold >= 1.0)
         if crossing.size == 0:
             return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": max_N}
         idx = int(crossing[0])
         if idx == 0:
-            u_cross = float(u_hot_to_cold[0])
+            u_cross = float(u_dense[-1])
         else:
-            n0 = float(N_hot_to_cold[idx - 1])
-            n1 = float(N_hot_to_cold[idx])
-            u0 = float(u_hot_to_cold[idx - 1])
-            u1 = float(u_hot_to_cold[idx])
-            if abs(n1 - n0) <= 1.0e-300:
-                u_cross = u1
-            else:
-                frac = (1.0 - n0) / (n1 - n0)
-                u_cross = u0 + frac * (u1 - u0)
+            missing = (1.0 - float(N_hot_to_cold[idx - 1])) / prefactor / float(integrand[idx - 1])
+            exponent = float(growth[idx - 1])
+            below = np.log1p(missing * exponent) / exponent if abs(missing * exponent) > 1.0e-8 else missing
+            u_cross = float(u_dense[-idx]) - below
         return {
             "Tnuc": float(np.exp(u_cross)),
             "warning": None,

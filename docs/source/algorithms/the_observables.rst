@@ -31,12 +31,14 @@ Five temperatures come out of a run, and they answer different questions.
        a run uses whichever it can. The search that runs before percolation solves the
        instantaneous :math:`\Gamma/H^4 = 1`. Where that search finds no root on the range it
        explores, which is what a strongly supercooled transition does to it, the percolation
-       stage solves the integrated form :math:`N(T) = \frac{4\pi}{3} v_\mathrm{w}^3
+       stage solves the integrated form :math:`N(T) = \frac{4\pi}{3}
        \int_T^{T_\mathrm{i}} \frac{\Gamma}{H^4} (1 - P_\mathrm{t})
        \frac{\mathrm{d}T}{T} = 1`, which counts the bubbles that have actually been
-       nucleated in the space still in the symmetric phase. The two differ wherever the rate rises steeply: on the conformal
-       benchmark of :doc:`the_plots`, :math:`\Gamma/H^4` reaches one at 2.75 MeV and
-       :math:`N` reaches one at 2.57 MeV. This is the familiar quantity and the weakest of the
+       nucleated in the space still in the symmetric phase. No wall velocity enters, because
+       :math:`N` counts the bubbles in a Hubble volume rather than the volume they fill.
+       The two differ wherever the rate rises steeply: on the conformal benchmark of
+       :doc:`the_plots`, :math:`\Gamma/H^4` reaches one at 2.75 MeV and :math:`N` reaches
+       one at 2.57 MeV. This is the familiar quantity and the weakest of the
        five: on a strongly supercooled transition it sits far from where the universe actually
        converts, and where neither condition is met the run reports that rather than patching
        it.

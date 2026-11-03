@@ -600,7 +600,8 @@ class TestPagesAgainstTheCode(unittest.TestCase):
         estimate = solver.split("def estimate_spline_tnuc_from_rate_history", 1)[1]
         estimate = estimate.split("\ndef ", 1)[0]
         self.assertIn("Gamma/H^4 * (1-P) dT/T = 1", estimate)
-        self.assertIn("4.0 * np.pi / 3.0 * float(vw) ** 3", estimate)
+        self.assertIn("prefactor = 4.0 * np.pi / 3.0", estimate)
+        self.assertNotIn("float(vw)", estimate)
 
         page = (DOCS / "source" / "algorithms"
                 / "the_observables.rst").read_text(encoding="utf-8")
