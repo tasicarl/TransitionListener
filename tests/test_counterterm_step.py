@@ -42,17 +42,18 @@ class CountertermStepTests(unittest.TestCase):
     def test_model_may_override_the_step(self):
         pot = build(ABELIAN)
         self.assertEqual(pot.counterterm_derivative_step, 1.0e-3)
-        dark_u1 = load_potential(str(REPO / "models/TL_dark_U1.py"), "specific_potential")(
-            {"g_tilde": 2.65, "l": 1.5e-3, "v_GeV": 1e7}, verbose=False)
-        self.assertEqual(dark_u1.counterterm_derivative_step, 0.1)
+        pot.counterterm_derivative_step = 0.1
+        self.assertEqual(pot.counterterm_derivative_step, 0.1)
 
 
 class RoundingOfTheCounterterms(unittest.TestCase):
     """The finite difference at the vev of a sum of order 1e9 is free of rounding, and the step still regulates."""
 
     @staticmethod
-    def model(g=1.0, **attributes):
+    def model(g=1.0, resummed=False, **attributes):
         cls = load_potential(str(REPO / "models/TL_dark_U1_g_parameterization.py"), "specific_potential")
+        if not resummed:
+            attributes["setGoldstoneShift"] = lambda self: None
         original = {name: getattr(cls, name) for name in attributes}
         for name, value in attributes.items():
             setattr(cls, name, value)
@@ -96,6 +97,18 @@ class RoundingOfTheCounterterms(unittest.TestCase):
                 err_msg="the spectrum written out here is not the spectrum of the model any more")
         exact = (-V1(v - 2 * h) + 16 * V1(v - h) - 30 * V1(v) + 16 * V1(v + h) - V1(v + 2 * h)) / (12 * h**2)
         self.assertAlmostEqual(float(pot.d2V1atvev()) / float(exact), 1.0, delta=1e-9)
+
+    def test_a_fermion_counts_once(self):
+        """A fermion against the closed form of its second derivative, on top of the same bosons."""
+        pot = self.model()
+        without = float(pot.d2V1atvev())
+        yukawa, dof = 0.3, 12.0
+        pot.fermion_massSq = lambda X: ((yukawa * np.asarray(X)[..., :1])**2, np.array([dof]))
+        del pot._d2V1atvev
+        phi, Q2 = 1000.0, pot.renormScaleSq
+        log = np.log(yukawa**2 * phi**2 / Q2)
+        expected = -dof * yukawa**4 * phi**2 * (12.0 * (log - 1.5) + 14.0) / (64.0 * np.pi**2)
+        self.assertAlmostEqual((float(pot.d2V1atvev()) - without) / expected, 1.0, delta=1e-9)
 
     def test_the_step_still_regulates_the_goldstone_boson(self):
         small, large = self.model(), self.model(counterterm_derivative_step=0.1)
@@ -146,6 +159,7 @@ def two_field_potential(spectrum=separable_spectrum, vev=VEV, **overrides):
         v=vev, Ndim=np.size(vev), deriv_order=4, renormScaleSq=Q_SQ,
         counterterm_derivative_step=gp.generic_potential.counterterm_derivative_step,
         _SMOOTH_STEP_FRACTION=gp.generic_potential._SMOOTH_STEP_FRACTION,
+        goldstone_shift=gp.generic_potential.goldstone_shift,
         boson_massSq=spectrum,
         fermion_massSq=lambda X: (np.zeros(np.shape(X)[:-1] + (0,)), np.zeros(0)))
     for name, value in overrides.items():
@@ -342,6 +356,40 @@ class AModelThatKeepsOneNumberForTwoFieldDirections(unittest.TestCase):
         gradient = np.asarray(self.pot.dV1physatvev(), dtype=float)
         self.assertEqual(gradient.shape, (2,))
         self.assertTrue(np.all(np.isfinite(gradient)), f"the gradient is {gradient}")
+
+
+class GoldstoneResummation(unittest.TestCase):
+    """The shift of arXiv:1406.2652 in the Coleman-Weinberg term of a model with counterterms at the vev."""
+
+    model = staticmethod(lambda **k: RoundingOfTheCounterterms.model(resummed=True, **k))
+
+    def test_the_shift_is_the_physical_derivative_of_the_one_loop_potential(self):
+        pot = self.model()
+        phi, Q2, lam, g = 1000.0, pot.renormScaleSq, pot.l, pot.g
+        _, dof, constants, _ = pot.boson_massSq(np.array([[phi]]), 0.0)
+        dof, constants = np.ravel(dof), np.ravel(constants)
+        species = [(dof[0], 2.0 * lam * phi**2, 6.0 * lam * phi, constants[0]),
+                   (dof[2], g**2 * phi**2, 2.0 * g**2 * phi, constants[2]),
+                   (dof[3], g**2 * phi**2, 2.0 * g**2 * phi, constants[3])]
+        slope = sum(n * m2 * dm2 * (2.0 * (np.log(m2 / Q2) - c) + 1.0) for n, m2, dm2, c in species)
+        self.assertAlmostEqual(pot.goldstone_shift / (slope / (64.0 * np.pi**2) / phi), 1.0, delta=1e-9)
+
+    def test_the_step_no_longer_regulates(self):
+        values = [self.model(counterterm_derivative_step=step).dmu2 for step in (1e-5, 1e-3, 1e-1)]
+        self.assertAlmostEqual(values[0] / values[2], 1.0, delta=1e-9)
+        self.assertAlmostEqual(values[1] / values[2], 1.0, delta=1e-9)
+
+    def test_the_shift_stays_out_of_the_thermal_masses(self):
+        pot = self.model()
+        X = np.array([[300.0]])
+        m2 = np.ravel(pot.boson_massSq(X, 0.0)[0])
+        self.assertAlmostEqual(m2[1], -pot.mu2 + pot.l * 300.0**2, delta=1e-9)
+
+    def test_the_vev_and_the_scalar_mass_are_those_of_the_tree_level(self):
+        pot = self.model()
+        vev, T = np.array([1000.0]), 1e-6
+        self.assertLess(abs(float(np.ravel(pot.gradV(vev, T))[0])), 1e-6 * pot.mDH**2 * 1000.0)
+        self.assertAlmostEqual(float(np.ravel(pot.d2V(vev, T))[0]) / pot.mDH**2, 1.0, delta=1e-3)
 
 
 if __name__ == "__main__":

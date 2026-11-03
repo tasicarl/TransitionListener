@@ -88,6 +88,7 @@ class TemplatePotenital(generic_potential):
         self.renormScale_GeV = np.sqrt(self.renormScaleSq) * self.conversionFactor
 
         # Impose the renormalization conditions on the potential.
+        self.setGoldstoneShift()
         dV1 = self.dV1atvev()
         d2V1 = self.d2V1atvev()
         self.dmu2 = 3./2. * dV1 / self.v - 1./2. * d2V1

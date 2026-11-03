@@ -69,9 +69,8 @@ class specific_potential(generic_potential.generic_potential):
 
         self.mass_spectrum = self._build_mass_spectrum()
 
-        # Calculate counter mass and counter coupling. This model has always
-        # taken these derivatives with a step of 0.1.
-        self.counterterm_derivative_step = 0.1
+        # Calculate counter mass and counter coupling
+        self.setGoldstoneShift()
         dV1 = self.dV1atvev()
         d2V1 = self.d2V1atvev()
         # The finite-difference derivatives of the potential (gradV, d2V) also
