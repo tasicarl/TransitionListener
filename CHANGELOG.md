@@ -301,6 +301,29 @@ Each line says what was wrong and when it bit.
 - `Phases.testTmax` documented `ValueError` and raises `WrongHighTPhaseError`, and
   `PotentialError`'s docstring described a tuple convention its constructor does not follow, so
   a reader deciding what to catch would have caught nothing.
+- The integrated nucleation condition was summed from the cold end of the rate history and
+  carried a wall velocity that does not belong in it. `N(T) = 4 pi/3 int_T^Tinit Gamma/H^4
+  (1 - P) dT/T = 1` is the nucleation temperature a strongly supercooled transition reports,
+  because the instantaneous `Gamma/H^4 = 1` has no root on the range the earlier search
+  explores. `N` was accumulated from the cold end and the hot end taken as a difference from
+  the total, and `N` runs over many decades, so the crossing of `N = 1` was lost to the
+  rounding of that total: on the synthetic rate `ln(Gamma/H^4) = 60 - 40 ln(T)`, whose count
+  reaches 1.2e25 at the cold end, the reported temperature was 2.2540 against the closed-form
+  4.2359, and at `ln(Gamma/H^4) = 300 - 40 ln(T)` it was 2.2637 against 1708.87, in both cases
+  a temperature set by the rounding rather than by the rate. The sum now runs from the hot end,
+  where the crossing is, with each cell of the dense grid integrated as the exponential its
+  integrand is rather than as a trapezoid. The factor `v_w^3` is gone, since `N` counts the
+  bubbles nucleated in a volume of Hubble radius and not the volume they go on to fill. The
+  rate is interpolated with a cubic spline rather than a monotone interpolant, which is the
+  whole of the move on the conformal benchmark of the documentation, 2.5695 MeV to 2.5700 MeV,
+  the three other changes together accounting for 4 per cent of that move, since the rounding
+  of the total never mattered there: the count reaches only 5.3e4 at the cold end.
+  Where the count already exceeds one bubble at the hottest temperature of the rate history,
+  no temperature in the history brackets the crossing, and the run now reports
+  `WARNING:spline_tnuc_failed` instead of that hottest temperature. The temperature the
+  documentation quotes for the instantaneous condition on that benchmark, 2.75 MeV, is
+  corrected to 2.68 MeV, where the saved rate history changes sign, so the page now reads both
+  temperatures off one history.
 
 ## [2.1.0] - 2026-07-28
 

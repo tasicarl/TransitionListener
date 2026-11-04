@@ -2948,8 +2948,11 @@ def estimate_spline_tnuc_from_rate_history(
         if u.size < 3 or np.ptp(u) <= 1.0e-12:
             return {"Tnuc": None, "warning": "spline_tnuc_unavailable", "max_N": math.nan}
 
-        # A cubic spline, as the double integral uses: N crosses one on the hot side, where the support points are
-        # sparse, and the slopes of a monotone interpolant there are only first-order accurate and move with them.
+        # A cubic spline for the rate: N crosses one on the hot side of the history, where the
+        # support points are sparse, and the slopes of a monotone interpolant there are only
+        # first-order accurate and move with the nodes. The percolation integral interpolates the
+        # same logarithmic rate with a PCHIP, so the bubble count here and the true-vacuum
+        # fraction there rest on rate models that differ by the interpolant.
         rate_spline = interpolate.CubicSpline(u, rate, extrapolate=False)
         prob_spline = interpolate.PchipInterpolator(u, prob, extrapolate=False)
         n_grid = max(1000, 20 * int(u.size))
@@ -2959,10 +2962,12 @@ def estimate_spline_tnuc_from_rate_history(
         with np.errstate(divide="ignore"):
             log_integrand = (rate_dense + np.log1p(-prob_dense))[::-1]
         # Summed from the hot end: N runs over many decades, and a difference from the total would
-        # lose the hot end, where N crosses one, to the rounding of the total. The integrand is an
-        # exponential on a dense interval, so each is integrated as one: the trapezoid would be off
-        # by a share (rate step)^2/12 of N, and the rate moves by about one e-fold per interval.
-        prefactor = 4.0 * np.pi / 3.0      # a Hubble volume H^-3: no wall velocity enters
+        # lose the hot end, where N crosses one, to the rounding of the total. Each cell is
+        # integrated as the exponential its integrand is. The trapezoid of an exponential over a
+        # cell exceeds the exact integral by a share (step in ln f)^2/12 while that step is small,
+        # and the step reaches 57.6 in the steepest cell of the conformal benchmark of the
+        # documentation, with a median of 0.158, where the trapezoid is wrong by a factor.
+        prefactor = 4.0 * np.pi / 3.0      # the volume of a sphere of Hubble radius 1/H
         step = float(u_dense[1] - u_dense[0])
         integrand = np.exp(np.minimum(log_integrand[:-1], 700.0))
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
@@ -2974,12 +2979,26 @@ def estimate_spline_tnuc_from_rate_history(
             )
             cells = integrand * step * ratio
         cells[~np.isfinite(cells)] = 0.0
-        # The grid may stop just above the crossing. The rate above it falls exponentially at the slope of the last node.
+        # The grid may stop just above the crossing, so the contribution above the hottest node is
+        # added from the slope of the rate there. The extrapolation is cut off one grid range in
+        # ln(T) above that node: the slope of a cubic spline at its last node can be arbitrarily
+        # close to zero, and the integral to infinite temperature, exp(ln f)/(-slope), then grows
+        # without bound and counts bubbles no support point of the rate history reports.
         hot_slope = float(rate_spline(u[-1], 1))
-        above_grid = float(np.exp(np.minimum(log_integrand[0], 700.0))) / -hot_slope if hot_slope < 0.0 else 0.0
+        u_above = float(u[-1] - u[0])
+        if np.isfinite(hot_slope) and hot_slope < 0.0:
+            decay = hot_slope * u_above
+            above_grid = float(np.exp(np.minimum(log_integrand[0], 700.0))) * u_above * (
+                np.expm1(decay) / decay if abs(decay) > 1.0e-8 else 1.0
+            )
+        else:
+            above_grid = 0.0
         N_hot_to_cold = above_grid + np.concatenate(([0.0], np.cumsum(cells)))
         N_hot_to_cold *= prefactor
-        # Infinite is an answer: the spline may overshoot on the cold side, past the crossing, where P is close to one.
+        # A non-finite total is still an answer. On a rate that spans hundreds of e-folds the
+        # integrand overflows in the cells below the crossing, which the zeroing of the non-finite
+        # cells drops, and the crossing is reached from the hot end before the integrand grows
+        # that far, so an infinite total costs the max_N diagnostic and not the temperature.
         max_N = float(np.nanmax(N_hot_to_cold)) if N_hot_to_cold.size else math.nan
         if np.isnan(max_N):
             return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": math.nan}
@@ -2996,12 +3015,13 @@ def estimate_spline_tnuc_from_rate_history(
             return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": max_N}
         idx = int(crossing[0])
         if idx == 0:
-            u_cross = float(u_dense[-1])
-        else:
-            missing = (1.0 - float(N_hot_to_cold[idx - 1])) / prefactor / float(integrand[idx - 1])
-            exponent = float(growth[idx - 1])
-            below = np.log1p(missing * exponent) / exponent if abs(missing * exponent) > 1.0e-8 else missing
-            u_cross = float(u_dense[-idx]) - below
+            # One bubble is already counted at the hottest temperature of the rate history, so the
+            # crossing lies above every support point and this history cannot say where it is.
+            return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": max_N}
+        missing = (1.0 - float(N_hot_to_cold[idx - 1])) / prefactor / float(integrand[idx - 1])
+        exponent = float(growth[idx - 1])
+        below = np.log1p(missing * exponent) / exponent if abs(missing * exponent) > 1.0e-8 else missing
+        u_cross = float(u_dense[-idx]) - below
         return {
             "Tnuc": float(np.exp(u_cross)),
             "warning": None,
