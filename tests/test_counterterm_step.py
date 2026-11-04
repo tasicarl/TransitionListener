@@ -307,6 +307,72 @@ class TheFermionSpectrumIsThePairTheModelReturns(unittest.TestCase):
         self.assertTrue(np.isfinite(float(np.squeeze(pot.dV1physatvev()))))
 
 
+class TheSmoothnessProbeWalksEachDirection(unittest.TestCase):
+    """A mass that moves along a coordinate but not along the diagonal takes the small step.
+
+    `species_step` decides a species' step by how much its mass squared changes across the
+    stencil. Probing with every field direction shifted together misses a mass built from a
+    difference of fields: with ``m^2 = M + k (phi_0 - phi_1)`` at a vev whose two components
+    are equal, the diagonal probe leaves the mass exactly where it was, while each coordinate
+    stencil moves it by ``2 k h``. Measured on the spectrum below, whose species 0 has
+    ``m^2 = 1`` in internal units of mass squared at the vev: the diagonal probe returns 1,
+    unchanged, and the coordinate probe returns 3 in one direction and -1 in the other, so a
+    stencil at the larger step straddles a vanishing mass squared.
+    """
+
+    VEV = np.array([1000.0, 1000.0])
+
+    @staticmethod
+    def spectrum(X, T):
+        X = np.asanyarray(X)
+        first, second = X[..., 0], X[..., 1]
+        difference = 1.0 + (first - second)
+        smooth = 0.018 * (first ** 2 + second ** 2)
+        return (np.stack([difference, smooth], axis=-1), np.array([1.0, 1.0]),
+                np.array([1.5, 1.5]), np.array([True, True]))
+
+    def potential(self):
+        pot = types.SimpleNamespace(
+            v=self.VEV, Ndim=2, deriv_order=4, renormScaleSq=1.0e6,
+            counterterm_derivative_step=gp.generic_potential.counterterm_derivative_step,
+            _SMOOTH_STEP_FRACTION=gp.generic_potential._SMOOTH_STEP_FRACTION,
+            boson_massSq=self.spectrum,
+            fermion_massSq=lambda X: (np.zeros(np.shape(X)[:-1] + (0,)), np.zeros(0)))
+        pot.V1 = types.MethodType(gp.generic_potential.V1, pot)
+        return pot
+
+    def test_the_diagonal_leaves_that_mass_where_it_was(self):
+        """The premise of the test below, so that it cannot pass on a changed fixture."""
+        at_vev = np.array([self.VEV])
+        step = max(gp.generic_potential.counterterm_derivative_step,
+                   gp.generic_potential._SMOOTH_STEP_FRACTION * 1000.0)
+        here = float(np.ravel(self.spectrum(at_vev, 0.0)[0])[0])
+        diagonal = float(np.ravel(self.spectrum(at_vev + 2.0 * step, 0.0)[0])[0])
+        coordinate = float(np.ravel(self.spectrum(
+            at_vev + np.array([[2.0 * step, 0.0]]), 0.0)[0])[0])
+        self.assertEqual(here, diagonal)
+        self.assertNotEqual(here, coordinate)
+        self.assertLess(here - (coordinate - here), 0.0,
+                        "the coordinate stencil does not straddle a vanishing mass squared")
+
+    def test_such_a_species_is_differenced_at_the_small_step(self):
+        pot = self.potential()
+        steps = []
+        real = helper_functions.hessianFunction
+
+        def spy(f, eps=None, **kwargs):
+            steps.append(np.array(eps, dtype=float).copy() if eps is not None else None)
+            return real(f, eps=eps, **kwargs)
+
+        gp.generic_potential._derivative_at_vev(pot, pot.V1, spy)
+        small = pot.counterterm_derivative_step
+        self.assertTrue(np.all(np.isclose(np.atleast_1d(steps[0]), small)),
+                        f"the species built from a difference of fields was differenced at "
+                        f"{steps[0]} rather than at the small step {small}")
+        self.assertFalse(np.all(np.isclose(np.atleast_1d(steps[1]), small)),
+                         f"the smooth species was also dropped to the small step: {steps[1]}")
+
+
 class AModelThatKeepsOneNumberForTwoFieldDirections(unittest.TestCase):
     """`models/TL_dark_flipflop.py` has `Ndim` of 2 and keeps its vev as a single number.
 
