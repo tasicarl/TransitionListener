@@ -218,6 +218,20 @@ Each line says what was wrong and when it bit.
   time the support reaches the boundary and without a bound of its own the approach repeats
   on every rebuild: twelve approaches on a single point took that grid from 45 minutes to
   12 hours 45.
+- The convergence test of the one-dimensional bounce no longer fails on processors other than
+  the one it was written on, and no longer rests on a value of the action that the processor
+  changes. `test_the_action_converges_as_the_tolerance_is_tightened` pinned the action at the
+  configured tolerance, `phitol = xtol = 1e-10`, to within 3e-05 of a single measurement. The
+  same code and library build give 2388.1790354 on an AMD EPYC 7453 and 2388.1789926 on an AMD
+  EPYC 9454, 4.27e-05 apart, so the test passed on the first and failed on the second. Widening
+  the window is not enough on its own: the action under the bisection stopping rule the
+  assertion was written to reject, an absolute `xtol` window, falls inside every window that
+  holds both processors, because its range across the two overlaps the shipped rule's range.
+  The test now states the convergence as a ratio of two measured moves of the action and the
+  stopping rule as the number of profile integrations the bisection runs, which is the same
+  integer on both processors, 36 against the absolute window's 33. A 4e-05 window on the action
+  is kept for the rule those two assertions cannot see, the field scale `epsabs` is measured
+  against, and rejects that rule on both processors with a margin of 3.5.
 - A broken-phase temperature below the symmetric one now fails the point with an error code.
   The transition releases energy and happens below the critical temperature, so the broken
   phase is reheated and `T_bro > T_sym` holds by construction, whatever accuracy the solver
