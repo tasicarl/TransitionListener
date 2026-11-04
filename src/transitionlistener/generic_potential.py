@@ -198,20 +198,30 @@ class generic_potential():
     #: 1e-4 to 1e-1 in internal field units: the tree-level Goldstone mass vanishes at the
     #: vacuum, so the Coleman-Weinberg term of the Goldstone boson is infrared divergent
     #: there and the step acts as the regulator. How large the drift is depends on the
-    #: point. Over five coupling pairs of that model it ran from 0.0005 per cent per decade
-    #: at lambda = 0.0018 to 49 per cent over the first decade at lambda = 0.2, where the
-    #: Goldstone term dominates d2V1/dphi2. :meth:`setGoldstoneShift` removes that drift
+    #: point. At that gauge coupling it runs from 0.0005 per cent per decade at
+    #: lambda = 0.0018 to 49 per cent over the first decade at lambda = 0.2, where the
+    #: Goldstone term dominates d2V1/dphi2, and at g = 0.1 from 0.34 per cent per decade at
+    #: lambda = 0.0018 to 4.2 per cent at lambda = 0.03. :meth:`setGoldstoneShift` removes that drift
     #: by resumming the Goldstone contributions, m_G^2 -> m_G^2 + (1/phi) dV_1,phys/dphi
-    #: (arXiv:1406.2652, arXiv:1406.2355); after it the Goldstone mass no longer vanishes
-    #: at the vev and the Goldstone boson takes the larger step of a smooth species.
-    #: 1e-3 is the step these counterterms have always been computed with in the default
-    #: setup. Models may override it.
+    #: (arXiv:1406.2652, arXiv:1406.2355). What removes the drift is that the resummed
+    #: Goldstone mass squared no longer vanishes at the vev, so the Coleman-Weinberg term
+    #: of the Goldstone boson is finite there and needs no regulator: the spread of ``dmu2``
+    #: of the abelian dark Higgs over steps of 1e-4 to 1e-1 falls below 2e-5 in relative
+    #: terms at every coupling pair measured. Which step the Goldstone boson then takes
+    #: depends on the point and no longer matters. At g = 1 it takes the larger step of a
+    #: smooth species, at g = 0.1 and lambda up to 0.03 it still takes this one, because the
+    #: resummed mass squared is small enough there that it changes by more than half across
+    #: the stencil. 1e-3 is the step these counterterms have always been computed with in the
+    #: default setup. Models may override it.
     counterterm_derivative_step: float = 1.0e-3
     #: Step for a species whose mass squared is smooth at the vev, as a fraction of the
     #: vev of each field direction and bounded below by ``counterterm_derivative_step``.
     #: See :meth:`_derivative_at_vev`.
     _SMOOTH_STEP_FRACTION: float = 1.0e-3
-    #: Added to the Goldstone masses in `V1`; see `setGoldstoneShift`.
+    #: Added in :meth:`V1` to the mass squared of every species the spectrum marks
+    #: unphysical, which is the Goldstone bosons of the models that ship with
+    #: TransitionListener. Zero unless a model calls :meth:`setGoldstoneShift`, and a zero
+    #: value leaves :meth:`V1` at the unresummed expression. See :meth:`setGoldstoneShift`.
     goldstone_shift: float = 0.0
 
     def __init__(self, *args, **dargs) -> None:
@@ -625,7 +635,11 @@ class generic_potential():
         :func:`Vtot`.
         """
         m2, n, c, physical = bosons
-        m2 = m2 + self.goldstone_shift * (1.0 - physical)
+        if self.goldstone_shift:
+            # Only the unphysical species are resummed, and only when a model asked for it.
+            # The branch keeps V1 on the arithmetic of the unresummed expression for every
+            # other model, which matters because Vtot calls V1 at every field point of a bounce.
+            m2 = m2 + self.goldstone_shift * (1.0 - physical)
         y = np.sum(n * m2 * m2 * (np.log(np.abs(m2 / self.renormScaleSq) + 1e-100) - c), axis=-1)
 
         m2, n = fermions
@@ -638,19 +652,71 @@ class generic_potential():
         r"""Resum the Goldstone bosons in the one-loop potential.
 
         The tree-level mass of a Goldstone boson vanishes at the vev, and the second derivative of its
-        Coleman-Weinberg term diverges there. The hard modes shift the mass by
+        Coleman-Weinberg term diverges there. The hard modes shift the mass squared by
 
         .. math::
            \delta_{\rm GB} = \frac{1}{\phi} \frac{\partial V_{1,\rm phys}}{\partial\phi}\bigg|_{\rm vev},
 
-        the first derivative of the one-loop potential without Goldstone bosons (arXiv:1406.2652, arXiv:1406.2355).
-        `V1` adds it to the Goldstone masses, which keeps the derivatives at the vev finite and free of a regulator;
-        with counterterms that hold the tree-level vev, the tree-level mass vanishes there and the resummed mass is
-        the shift itself. The thermal functions keep the masses of the spectrum. Call this before `dV1atvev` and
-        `d2V1atvev` in the counterterms of a model.
+        the first derivative of the one-loop potential without the Goldstone bosons, evaluated at the
+        vev (Elias-Miro, Espinosa and Konstandin, arXiv:1406.2652 eqs. 11, 12 and 16; Martin,
+        arXiv:1406.2355 eqs. 4.2 and 4.10). This method computes the shift in internal units of mass
+        squared and stores it in `goldstone_shift`. With counterterms that hold the tree-level vev,
+        the tree-level Goldstone mass squared vanishes at the vev and the resummed one is the shift
+        itself, so the Coleman-Weinberg term is finite there and the finite-difference step of
+        `dV1atvev` and `d2V1atvev` stops acting as a regulator. Call this before `dV1atvev`,
+        `d2V1atvev` and `dV1physatvev` in the counterterms of a model.
+
+        What the shift reaches, and what it does not:
+
+        - `V1` adds the shift to every species the spectrum marks unphysical, at every field value and
+          not only at the vev, so the zero-temperature one-loop potential of a model that calls this
+          method changes everywhere, and with it the traced phases, the critical temperature and every
+          observable downstream. `CHANGELOG.md` gives the measured size of that change for the two
+          abelian dark Higgs models.
+        - `boson_massSq`, `debye_massSq`, `V1T` and the daisy term keep the mass squared of the
+          spectrum, so the thermal part of the potential does not see the shift.
+        - A model that overrides `V1` has to add the shift in its own override, or the shift reaches
+          the choice of step in :meth:`_derivative_at_vev` and nothing else.
+        - The analytic counterterm derivatives of :meth:`coleman_weinberg_from_curvatures`, which the
+          two-Higgs-doublet model uses, carry no shift. No model mixes the two paths.
+
+        Raises
+        ------
+        errors.InitPotentialError
+            If `dV1atvev` or `d2V1atvev` has already been evaluated, because both cache their result
+            and the shift would not reach the cached value; if the field space has more than one
+            dimension, because the shift is one number and the resummation of a Goldstone direction
+            of a larger field space is not implemented; or if the shift is not finite.
         """
+        for cached, name in ((hasattr(self, "_dV1atvev"), "dV1atvev"),
+                             (hasattr(self, "_d2V1atvev"), "d2V1atvev")):
+            if cached:
+                raise errors.InitPotentialError(
+                    f"setGoldstoneShift() was called after {name}(), whose result is cached, so the "
+                    "Goldstone resummation would not reach the counterterms. Call "
+                    "setGoldstoneShift() before the counterterm derivatives.",
+                    error_type="goldstone shift after the counterterm derivatives")
+        # Reset first, so that the shift is computed from the unresummed potential whichever state
+        # the instance was in. `V1phys` drops the unphysical species, so the value does not depend
+        # on the reset, and a second call to this method returns the same number as the first.
         self.goldstone_shift = 0.0
-        self.goldstone_shift = float(self.dV1physatvev()) / float(self.v)
+        derivative = np.asarray(self.dV1physatvev(), dtype=float)
+        vev = np.asarray(self.v, dtype=float)
+        if derivative.size != 1 or vev.size != 1:
+            raise errors.InitPotentialError(
+                "setGoldstoneShift() is implemented for a field space of one dimension, and this "
+                f"model has a vev of {vev.size} component(s) and a one-loop gradient of "
+                f"{derivative.size} component(s) at the vev.",
+                error_type="goldstone shift in more than one field direction")
+        shift = float(derivative.reshape(())) / float(vev.reshape(()))
+        if not np.isfinite(shift):
+            raise errors.InitPotentialError(
+                f"The Goldstone shift (1/phi) dV1phys/dphi at the vev is {shift}, computed from a "
+                f"one-loop gradient of {float(derivative.reshape(()))} and a vev of "
+                f"{float(vev.reshape(()))} in internal units. A non-finite shift would make the "
+                "one-loop potential non-finite at every field value without raising.",
+                error_type="non-finite goldstone shift")
+        self.goldstone_shift = shift
 
     def V1phys(self, bosons, fermions) -> np.ndarray:
         """
@@ -1297,10 +1363,19 @@ class generic_potential():
         `counterterm_derivative_step`. Varying that fraction by a decade in each direction moves
         d2V1/dphi2 of the abelian dark Higgs by less than 1e-8 in relative terms, which is the
         measurement behind calling the larger step free of both round-off and truncation. Every
-        other species keeps `counterterm_derivative_step`. The Goldstone boson is the species that
-        keeps it in the abelian dark Higgs, and the Coleman-Weinberg term of the Goldstone boson
-        is of order 1e-4 in internal units across that step, so differencing that term carries no
-        round-off worth the name.
+        other species keeps `counterterm_derivative_step`. Without the Goldstone resummation of
+        :meth:`setGoldstoneShift` the Goldstone boson is the species that keeps it in the abelian
+        dark Higgs, and the Coleman-Weinberg term of the Goldstone boson is of order 1e-4 in
+        internal units across that step, so differencing that term carries no round-off worth the
+        name. With the resummation the Goldstone mass squared at the vev is the shift rather than
+        zero, and which of the two steps the Goldstone boson takes depends on the point: at gauge
+        coupling g = 1 every species of that model takes the smooth step, at g = 0.1 and quartic
+        lambda = 0.018012121212121212 the Goldstone boson still takes
+        `counterterm_derivative_step`. Neither choice leaves a step dependence in the result once
+        the resummation is in place.
+
+        The mass squared used for this test carries `goldstone_shift` for every species the
+        spectrum marks unphysical, so that the test sees the same mass squared as :meth:`V1`.
 
         The step is chosen per field direction, since a direction whose vev is small needs a small
         step, and the lower bound means that a direction whose vev is below

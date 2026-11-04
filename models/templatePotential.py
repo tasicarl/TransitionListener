@@ -88,6 +88,11 @@ class TemplatePotenital(generic_potential):
         self.renormScale_GeV = np.sqrt(self.renormScaleSq) * self.conversionFactor
 
         # Impose the renormalization conditions on the potential.
+        # The Goldstone boson of the spectrum below has a vanishing tree-level mass at the
+        # vev, where the second derivative of its one-loop term diverges. setGoldstoneShift
+        # resums it, so that the two derivatives are finite and do not depend on the
+        # finite-difference step. It has to be called before the derivatives, which cache
+        # their result, and a model whose spectrum has no Goldstone boson can leave it out.
         self.setGoldstoneShift()
         dV1 = self.dV1atvev()
         d2V1 = self.d2V1atvev()
