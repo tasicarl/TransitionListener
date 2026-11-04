@@ -196,6 +196,15 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
+- The bubble count above the hottest temperature of the rate history now includes a rate
+  whose logarithmic slope there is exactly zero. The contribution is
+  `exp(ln f) * u_above * (exp(d) - 1) / d` with `d` the slope times the extrapolation range,
+  and at a slope of zero that factor is 1, so the term is the whole rectangle rather than
+  nothing. Excluding it dropped a term the size of the ones being kept: on a history with
+  `ln(Gamma/H^4)` of -1 throughout, the count above the hottest node is 7.096 and the
+  nucleation temperature has no bracket inside the history, which the estimate has to refuse;
+  with the term dropped the count read 0 there and a temperature was reported from a bracket
+  the history does not contain.
 - A broken-phase temperature below the symmetric one now fails the point with an error code.
   The transition releases energy and happens below the critical temperature, so the broken
   phase is reheated and `T_bro > T_sym` holds by construction, whatever accuracy the solver

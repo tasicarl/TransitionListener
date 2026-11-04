@@ -55,7 +55,7 @@ def test_each_cell_of_the_dense_grid_is_integrated_as_the_exponential_it_is(monk
     assert found["Tnuc"] == pytest.approx(expected, rel=1e-5)
 
 
-@pytest.mark.parametrize("hot_end_slope", [-1.0e-3, -1.0e-6, -1.0e-9])
+@pytest.mark.parametrize("hot_end_slope", [-1.0e-3, -1.0e-6, -1.0e-9, 0.0])
 def test_a_flat_rate_at_the_hot_end_counts_no_bubbles_the_history_does_not_support(monkeypatch, hot_end_slope):
     """The count above the hottest temperature of the history must not grow as that slope goes to zero.
 
@@ -64,6 +64,11 @@ def test_a_flat_rate_at_the_hot_end_counts_no_bubbles_the_history_does_not_suppo
     alone. Integrating the rate above the hottest node to infinite temperature gives
     (4 pi/3) exp(-20)/(-slope), which reaches 8.6 for a slope of -1e-9 and reports the hottest
     temperature of the history as the nucleation temperature instead.
+
+    A slope of exactly zero is in the list because it is the series limit of the same
+    expression and not an absent contribution. Excluding it from the branch dropped the whole
+    rectangle, `exp(ln f) * u_above`, which is the size of the terms being kept, so the count
+    above the hottest node read as nothing at all.
     """
     knee, cold_slope, plateau = 2.3, 40.0, -20.0
     T = np.geomspace(1e2, 1.0, 400)
@@ -82,16 +87,22 @@ def test_a_flat_rate_at_the_hot_end_counts_no_bubbles_the_history_does_not_suppo
     assert found["Tnuc"] < T.max()
 
 
-def test_a_count_already_above_one_at_the_hottest_temperature_is_refused(monkeypatch):
+@pytest.mark.parametrize("hot_end_slope", [-1.0e-9, 0.0])
+def test_a_count_already_above_one_at_the_hottest_temperature_is_refused(monkeypatch, hot_end_slope):
     """Where the crossing lies above every support point, the history cannot say where it is.
 
     With ln(Gamma/H^4) = -1 over the whole history, the bubbles counted above the hottest
     temperature already number 7.096, so N = 1 has no bracket inside the history. Reporting the
     hottest temperature of the history as the nucleation temperature would be an answer the rate
     history does not contain.
+
+    The slope of exactly zero is the case that fails when the extrapolation above the hottest
+    node excludes a zero slope instead of taking its series limit: the term is then 0 rather
+    than 7.096, the count no longer exceeds one at the hot end, and a temperature is reported
+    from a bracket the history does not have.
     """
     T = np.geomspace(1e2, 1.0, 400)
-    monkeypatch.setattr(bd, "logGamma", lambda t, s: -1.0 - 1.0e-9 * np.log(t))
+    monkeypatch.setattr(bd, "logGamma", lambda t, s: -1.0 + hot_end_slope * np.log(t))
     found = bd.estimate_spline_tnuc_from_rate_history(T, *_flat_history(T.size))
     assert found["Tnuc"] is None
     assert found["warning"] == "spline_tnuc_failed"

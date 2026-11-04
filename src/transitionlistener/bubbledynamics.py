@@ -2986,12 +2986,21 @@ def estimate_spline_tnuc_from_rate_history(
         # without bound and counts bubbles no support point of the rate history reports.
         hot_slope = float(rate_spline(u[-1], 1))
         u_above = float(u[-1] - u[0])
-        if np.isfinite(hot_slope) and hot_slope < 0.0:
+        if np.isfinite(hot_slope) and hot_slope <= 0.0:
+            # A slope of exactly zero is the series limit of the expression below and not an
+            # absent contribution: at `decay` of zero the factor is 1 and the term is the
+            # rectangle `exp(ln f) * u_above`. Excluding it dropped a term the same size as
+            # the ones being kept, so a flat hot tail could make the count appear to cross
+            # inside the history when the bounded count above the hottest node already
+            # exceeds one. The `abs(decay) > 1e-8` test below already carries the limit, so
+            # zero only has to be let through to it.
             decay = hot_slope * u_above
             above_grid = float(np.exp(np.minimum(log_integrand[0], 700.0))) * u_above * (
                 np.expm1(decay) / decay if abs(decay) > 1.0e-8 else 1.0
             )
         else:
+            # A positive slope means the rate rises towards the hot end, where it must fall,
+            # and a non-finite one means the spline could not be differentiated there.
             above_grid = 0.0
         N_hot_to_cold = above_grid + np.concatenate(([0.0], np.cumsum(cells)))
         N_hot_to_cold *= prefactor
