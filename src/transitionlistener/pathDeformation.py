@@ -1597,6 +1597,19 @@ def fullTunneling(
         raise errors.InfiniteActionError
 
     f_ratio = _compute_force_ratio(last_output.pts, last_output.dphi, dV, settings)
+    if not np.isfinite(f_ratio):
+        # The gradient of the final path is not a number, so the potential could not be
+        # evaluated along it and nothing here measures how far the path is from the true one.
+        # Reported as an unresolved bounce rather than as a ratio the caller cannot use:
+        # measured before this guard, a gradient poisoned to `nan` after three evaluations
+        # returned an action of 1340.6 with `trantype` 1, a resolved first-order bounce.
+        # `InfiniteActionError` and not `DeformationError`, because
+        # `_execute_full_tunneling` handles the first and turns it into an infinite action
+        # with `trantype` 0, while the second would escape it as an unhandled exception.
+        if settings.verbose:
+            print("The force ratio of the final path is %r, so the path's gradient could not "
+                  "be evaluated; reporting no tunnelling at this temperature." % f_ratio)
+        raise errors.InfiniteActionError
     rtuple = namedtuple(
         "fullTunneling_rval", "profile1D Phi action fRatio saved_steps"
     )

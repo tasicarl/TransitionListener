@@ -196,6 +196,16 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
+- A bounce whose final path has a gradient that is not a number is reported as no tunnelling
+  rather than as an action. `fullTunneling` measures the ratio of the transverse force to the
+  potential gradient on the path it ends with, and that measurement is the one use of the
+  ratio that the deformation's own refusal does not cover, because `_deform_path` catches the
+  refusal and continues with the path as it stands. Measured on a two-field double well whose
+  gradient returns `nan` from its fourth evaluation on: `bounceAction` returned an action of
+  1340.6042599160708 with `trantype` 1, a resolved first-order bounce built on a path whose
+  gradient could not be evaluated. It now returns an infinite action with `trantype` 0, which
+  every caller already reads as no tunnelling at that temperature. The same potential with a
+  usable gradient returns the same action as before.
 - A broken-phase temperature below the symmetric one now fails the point with an error code.
   The transition releases energy and happens below the critical temperature, so the broken
   phase is reheated and `T_bro > T_sym` holds by construction, whatever accuracy the solver

@@ -147,3 +147,53 @@ def test_an_underflowing_gradient_comes_back_as_an_unresolved_bounce():
                     dict(low_vev=true_vacuum, high_vev=false_vacuum))
     assert outdict[1.0]["action"] == np.inf
     assert outdict[1.0]["trantype"] == 0
+
+
+def _double_well(X, T=0.0):
+    """A two-field double well whose minima are at phi_1 = +1 and -1."""
+    X = np.asanyarray(X)
+    first, second = X[..., 0], X[..., 1]
+    return 0.25 * (first ** 2 - 1.0) ** 2 + 0.5 * second ** 2 - 0.05 * first
+
+
+def _double_well_gradient(X, T=0.0):
+    X = np.asanyarray(X)
+    first, second = X[..., 0], X[..., 1]
+    return np.stack([first ** 3 - first - 0.05, second], axis=-1)
+
+
+def test_a_gradient_that_becomes_a_nan_gives_no_tunnelling():
+    """The force ratio of the final path has to be a number, or there is no bounce to report.
+
+    `_compute_force_ratio` is the one use of the ratio that is not behind the refusal in the
+    deformation's own `step`, because `_deform_path` has already caught that exception and
+    continued with the path as it stands. Measured before this guard: with the gradient
+    returning `nan` from its fourth evaluation on, `bounceAction` returned an action of
+    1340.6042599160708 with `trantype` 1, a resolved first-order bounce built on a path whose
+    gradient could not be evaluated.
+    """
+    calls = {"n": 0}
+
+    def poisoned(X, T=0.0):
+        calls["n"] += 1
+        clean = _double_well_gradient(X, T)
+        return np.full_like(clean, np.nan) if calls["n"] > 3 else clean
+
+    outdict = {}
+    pd.bounceAction(0.0, _double_well, poisoned, outdict,
+                    dict(low_vev=np.array([1.0, 0.0]), high_vev=np.array([-1.0, 0.0])))
+    assert outdict[0.0]["trantype"] == 0, (
+        "the bounce was reported as type %r with an action of %r"
+        % (outdict[0.0]["trantype"], outdict[0.0]["action"]))
+    assert not np.isfinite(outdict[0.0]["action"]), (
+        "a finite action of %r was returned for a path whose gradient is not a number"
+        % (outdict[0.0]["action"],))
+
+
+def test_the_same_potential_with_a_usable_gradient_still_tunnels():
+    """So that the guard above cannot be satisfied by refusing every path."""
+    outdict = {}
+    pd.bounceAction(0.0, _double_well, _double_well_gradient, outdict,
+                    dict(low_vev=np.array([1.0, 0.0]), high_vev=np.array([-1.0, 0.0])))
+    assert outdict[0.0]["trantype"] == 1
+    assert abs(float(outdict[0.0]["action"]) / 1340.604260 - 1.0) < 1e-5
