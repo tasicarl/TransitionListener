@@ -196,6 +196,20 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
+- The support refinement now samples the interval that ends where the bounce stops solving.
+  The coldest end of a traced phase pair is a boundary and not a sample: below it the
+  symmetric phase is gone and there is nothing to tunnel out of, so the action is not a
+  number there. The nucleation rate is still rising as that boundary is approached, which
+  puts the support points that decide the percolation integral inside that interval. The
+  step-size test needs a rate at both ends of an interval, so an interval carrying a rate at
+  its warm end only never registered as unresolved and nothing placed points in it. On the
+  grid of figure 13 (dark U(1), 524 points, `benchmark` precision) 63 points failed with
+  error 8, the true vacuum fraction not reaching `f_final`; 45 of them now complete and no
+  point that completed before changed. The new refinement carries its own allowance of
+  `2 * n_action_increment` points, spent once per point, because the rate allowance is
+  already gone by the time the support reaches the boundary and without a bound of its own
+  the approach repeats on every rebuild: twelve approaches on a single point took that grid
+  from 45 minutes to 12 hours 45.
 - A broken-phase temperature below the symmetric one now fails the point with an error code.
   The transition releases energy and happens below the critical temperature, so the broken
   phase is reheated and `T_bro > T_sym` holds by construction, whatever accuracy the solver

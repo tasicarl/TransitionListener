@@ -895,6 +895,78 @@ def _build_dynamiczoomwindow_jump_grid(
     return refined if refined.size > 0 else None
 
 
+def _build_boundary_approach_grid(
+    warm: float,
+    boundary: float,
+    *,
+    max_new_points: int,
+) -> np.ndarray | None:
+    """Sample towards a temperature at which the bounce stops solving.
+
+    An interval whose colder end has no action ends at a boundary, not at a sample: below it
+    the symmetric phase is gone and there is nothing to tunnel out of. The nucleation rate is
+    still rising as that boundary is approached, so the samples that decide the percolation
+    integral are the ones closest to it, and a grid spread evenly over the interval does not
+    reach them. On the dark U(1) at l = 1e-4, v = 1.2689610031679234e7 GeV the interval runs
+    from T = 10.743 to the boundary at 5.5530 and the rate crosses one at 5.68, two per cent
+    above the boundary: eight points spread geometrically over the interval reach only 5.99.
+
+    So each point halves the remaining logarithmic distance to the boundary, which reaches
+    within a thousandth of it in ten points while still sampling the body of the interval.
+    """
+    warm = float(warm)
+    boundary = float(boundary)
+    if not (np.isfinite(warm) and np.isfinite(boundary)) or warm <= boundary or boundary <= 0.0:
+        return None
+    span = warm / boundary
+    if span - 1.0 <= 1e-10:
+        return None
+    # Spread over the interval rather than crowding the boundary. The rate rises towards the
+    # boundary, so the crossing can sit anywhere inside, and on the dark U(1) at l = 1e-4 it is
+    # 15 per cent of the way down from the warm end: a ladder that halves the remaining
+    # distance to the boundary steps from 5.7019 straight to 5.6275 and misses the crossing at
+    # 5.680, while every point it does place falls below the boundary, where the bounce does
+    # not solve. A geometric spread puts its warmest point at 5.683, on the crossing.
+    refined = np.geomspace(warm, boundary, int(max_new_points) + 2, dtype=float)[1:-1]
+    refined = _temperature_grid(refined)
+    return refined if refined.size > 0 else None
+
+
+def build_boundary_approach_candidates(
+    temperatures: np.ndarray,
+    actions: np.ndarray,
+    hubble: np.ndarray,
+    settings,
+    *,
+    max_new_points: int,
+) -> np.ndarray | None:
+    """Points approaching a boundary at which the bounce stops solving.
+
+    An interval whose colder end carries no action ends at such a boundary. The rate was
+    still rising at its warmer end, so the integral may depend entirely on temperatures
+    inside it, and nothing else in the controller will sample there: the step-size test needs
+    a rate at both ends, so the interval never registers as unresolved.
+    """
+    if max_new_points <= 0:
+        return None
+    temps = np.asarray(temperatures, dtype=float)
+    log10_rate = _log10_gamma_h4_array(temps, actions, hubble)
+    on_axis = np.isfinite(temps)
+    temps, log10_rate = temps[on_axis], log10_rate[on_axis]
+    if temps.size < 2:
+        return None
+    order = np.argsort(-temps)
+    temps, log10_rate = temps[order], log10_rate[order]
+    floor = _dead_rate_floor(log10_rate)
+    finite = np.isfinite(log10_rate)
+    unknown_cold = finite[:-1] & ~finite[1:] & (log10_rate[:-1] >= floor)
+    if not np.any(unknown_cold):
+        return None
+    index = int(np.flatnonzero(unknown_cold)[np.argmax(log10_rate[:-1][unknown_cold])])
+    return _build_boundary_approach_grid(
+        float(temps[index]), float(temps[index + 1]), max_new_points=int(max_new_points))
+
+
 def _build_rate_step_grid(
     temperatures: np.ndarray,
     actions: np.ndarray,
@@ -947,6 +1019,26 @@ def _build_rate_step_grid(
     floor = _dead_rate_floor(log10_rate)
     interval_is_live = log10_rate[1:] >= floor
     offending = np.flatnonzero(np.isfinite(steps) & (steps > threshold) & interval_is_live)
+    # An interval whose colder end has no rate at all is not evidence that nothing happens
+    # across it; it is the absence of evidence. The test above needs both ends, so such an
+    # interval can never offend and is never refined, however much budget is left. That is
+    # exactly the interval that matters on a strongly supercooled point: the bounce stops
+    # solving at the cold boundary of the traced phase, while the whole of the nucleation
+    # sits just above it. Measured on the dark U(1) at l = 1e-4, v = 1.2689610031679234e7
+    # GeV, the support ends at T = 5.553027 with no action and its warmer neighbour at
+    # 5.701860 carries log10(Gamma/H^4) of about 5; sampling between them gives 11.5 at
+    # 5.680. Unrefined, the integral reaches P = 1.3e-05 and the point is reported as never
+    # percolating, where the published scan percolates at 5.677.
+    #
+    # So an interval is also refined when its warmer end is live and its colder end has no
+    # rate. Requiring the *warmer* end to be live is what keeps this from walking down the
+    # dead tail: there the warmer end is already below the floor. The step is unknown, so
+    # the interval gets the same count a step of one threshold earns.
+    warm_is_live = log10_rate[:-1] >= floor
+    unknown_cold = np.isfinite(log10_rate[:-1]) & ~np.isfinite(log10_rate[1:]) & warm_is_live
+    if np.any(unknown_cold):
+        offending = np.unique(np.concatenate([offending, np.flatnonzero(unknown_cold)]))
+        steps = np.where(unknown_cold & ~np.isfinite(steps), threshold, steps)
     if offending.size == 0:
         return None
     # Refine every offending interval in the same rebuild, worst first, with enough
@@ -954,11 +1046,17 @@ def _build_rate_step_grid(
     # sweep and an iteration of the controller, which the Delta P refinement needs
     # afterwards.
     offending = offending[np.argsort(-steps[offending])]
+    settings_n_action_increment = int(getattr(settings, "n_action_increment", 8) or 8)
     budget = int(max_new_points)
     pieces = []
     for index in offending:
         if budget <= 0:
             break
+        if unknown_cold[index]:
+            # Handled by `build_boundary_approach_candidates`, which carries its own small
+            # allowance: by the time the support reaches the boundary the rate-repair
+            # allowance is long spent on intervals that cannot change the integral.
+            continue
         needed = max(int(math.ceil(float(steps[index]) / threshold)), 2) - 1
         count = min(needed, budget)
         points = _build_dynamiczoomwindow_jump_grid(float(temps[index]), float(temps[index + 1]), max_new_points=count)

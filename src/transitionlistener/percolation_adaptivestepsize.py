@@ -52,6 +52,7 @@ from transitionlistener.percolation_adaptive_gridbuilders import (
     _nucleation_is_dead,
     _raise_if_large_delta_p_underresolved,
     _build_rate_step_grid,
+    build_boundary_approach_candidates,
     _range_expand_batch_size,
 )
 
@@ -541,7 +542,16 @@ def _try_dynamiczoomwindow_rate_refinement(temperatures, actions, hubble, settin
         settings,
         max_new_points=int(settings.n_action_max),
     )
-    return rate_grid is not None and apply_candidate_grid(rate_grid, "rate_step_refine")
+    if rate_grid is not None and apply_candidate_grid(rate_grid, "rate_step_refine"):
+        return True
+    # The boundary approach is offered after the ordinary rate repair and carries its own
+    # allowance, because the support only reaches the boundary late, by which time the rate
+    # allowance has been spent on intervals far below the nucleation condition.
+    boundary_grid = build_boundary_approach_candidates(
+        temperatures, actions, hubble, settings,
+        max_new_points=max(int(getattr(settings, "n_action_increment", 8) or 8), 8),
+    )
+    return boundary_grid is not None and apply_candidate_grid(boundary_grid, "boundary_approach")
 
 
 def _try_dynamiczoomwindow_local_refinement(
@@ -1546,8 +1556,17 @@ def _initial_percolation_scan_dynamiczoomwindow(
     def _apply_candidate_grid(candidate_grid: np.ndarray, reason: str, *, extra_budget: int = 0) -> bool:
         nonlocal TSYM
         rate_refine = reason == "rate_step_refine"
+        boundary_refine = reason == "boundary_approach"
         bank_before = state.support_bank
-        if rate_refine:
+        if boundary_refine:
+            # Its own allowance, spent once: by the time the support reaches the boundary the
+            # rate allowance is gone, and without a bound of its own this repeats on every
+            # rebuild. Twelve approaches on one point took the fig. 13 grid from 45 minutes to
+            # 12 hours 45.
+            if int(state.boundary_refine_points) >= int(settings.n_action_increment) * 2:
+                return False
+            extra_budget = max(int(extra_budget), int(settings.n_action_max))
+        elif rate_refine:
             # The rate repair may add n_action_max points per run: a rebuild starts while
             # that allowance is not used up and admits its whole grid (at most
             # n_action_max new points).
@@ -1574,6 +1593,10 @@ def _initial_percolation_scan_dynamiczoomwindow(
         )
         if rate_refine and changed:
             state.rate_refine_points += _new_controller_added_points(
+                bank_before, state.support_bank, state.free_support_bank
+            )
+        if boundary_refine and changed:
+            state.boundary_refine_points += _new_controller_added_points(
                 bank_before, state.support_bank, state.free_support_bank
             )
         return changed
@@ -1814,8 +1837,17 @@ def _refine_percolation_temperature_dynamiczoomwindow(
     def _apply_candidate_grid(candidate_grid: np.ndarray, reason: str, *, extra_budget: int = 0) -> bool:
         nonlocal TSYM
         rate_refine = reason == "rate_step_refine"
+        boundary_refine = reason == "boundary_approach"
         bank_before = state.support_bank
-        if rate_refine:
+        if boundary_refine:
+            # Its own allowance, spent once: by the time the support reaches the boundary the
+            # rate allowance is gone, and without a bound of its own this repeats on every
+            # rebuild. Twelve approaches on one point took the fig. 13 grid from 45 minutes to
+            # 12 hours 45.
+            if int(state.boundary_refine_points) >= int(settings.n_action_increment) * 2:
+                return False
+            extra_budget = max(int(extra_budget), int(settings.n_action_max))
+        elif rate_refine:
             # The rate repair may add n_action_max points per run: a rebuild starts while
             # that allowance is not used up and admits its whole grid (at most
             # n_action_max new points).
@@ -1842,6 +1874,10 @@ def _refine_percolation_temperature_dynamiczoomwindow(
         )
         if rate_refine and changed:
             state.rate_refine_points += _new_controller_added_points(
+                bank_before, state.support_bank, state.free_support_bank
+            )
+        if boundary_refine and changed:
+            state.boundary_refine_points += _new_controller_added_points(
                 bank_before, state.support_bank, state.free_support_bank
             )
         return changed
