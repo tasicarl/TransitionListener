@@ -51,3 +51,6 @@ arxiv/*.run.xml
 arxiv/*.synctex.gz
 arxiv/*.toc
 arxiv/main.pdf
+
+# Local test-suite and batch-job logs
+suite_logs/
