@@ -69,7 +69,7 @@ def _Vct_with_a_quadratic_second_term(pot, X):
     """The counterterm potential as it read before the fix.
 
     The second counterterm multiplies `phi_2 ** 2`. The order of the operations
-    is the order `DarkFlipFlop.Vct` uses, so that two results that agree agree
+    is the order `DarkFlipFlop.Vct` uses, so that two results that agree do so
     bitwise and not only to a tolerance.
     """
     X = np.asarray(X)
