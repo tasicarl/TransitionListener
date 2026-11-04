@@ -202,7 +202,10 @@ Each line says what was wrong and when it bit.
   number there. The nucleation rate is still rising as the boundary is approached, which puts
   the support points that decide the percolation integral inside that last interval. The
   step-size test needs a rate at both ends of an interval, so an interval carrying a rate at
-  its warm end only never registered as unresolved and nothing placed points in it. On the
+  its warm end only never registered as unresolved and nothing placed points in it. On one
+  such point of the dark U(1), `l` = 1e-4 and `v` = 1.2689610031679234e7 GeV, the percolation
+  integral of the release candidate stalls at a true vacuum fraction of about 1.3e-5 against
+  the `f_perc` = 0.28957 it has to reach. On the
   900-point grid of figure 13 (dark U(1), quartic coupling `l` from 1e-4 to 1e-2, vacuum
   expectation value `v` from 1e6 to 1e10 GeV, `g_tilde` = 2.69, `benchmark` precision) the
   release candidate failed 63 points with error 8, the true vacuum fraction not reaching
