@@ -231,10 +231,50 @@ class BoundaryApproachAllowanceTests(unittest.TestCase):
                              f"{solver.__name__} does not hold exactly one "
                              "_apply_candidate_grid closure")
             found += 1
-            self.assertIn("_boundary_approach_is_exhausted", closures[0].co_names,
+            self.assertIn("_boundary_approach_capacity", closures[0].co_names,
                           f"{solver.__name__} admits a boundary approach without asking "
-                          "whether the allowance is spent")
+                          "for its capacity, which is where the allowance is enforced")
         self.assertEqual(found, 2, "the number of support solvers changed")
+
+    def test_an_exhausted_allowance_refuses_the_grid(self):
+        """The real decision, not a stand-in: `None` refuses, a number is the capacity.
+
+        The test above reads the closures' code objects, so a change that calls
+        `_boundary_approach_is_exhausted` and discards the answer passes it. This drives
+        `_boundary_approach_capacity`, which both closures call, so the answer has to decide.
+        """
+        cfg = settings(n_action_increment=5, n_action_max=60)
+        batch = pas._boundary_approach_batch(cfg)
+        cap = pas._BOUNDARY_APPROACH_ROUNDS * batch
+        for spent, refused in ((0, False), (batch, False), (cap - 1, False),
+                               (cap, True), (cap + batch, True)):
+            with self.subTest(points_spent=spent):
+                state = _state(spent)
+                granted = pas._boundary_approach_capacity(state, cfg, 0)
+                self.assertEqual(granted is None, refused,
+                                 f"with {spent} of {cap} allowed points spent the approach "
+                                 f"was {'refused' if granted is None else 'granted ' + str(granted)}")
+
+    def test_the_capacity_is_the_batch_the_builder_asked_for(self):
+        """A large increment must not arrive truncated by a smaller `n_action_max`."""
+        cfg = settings(n_action_increment=200, n_action_max=60)
+        state = _state(0)
+        granted = pas._boundary_approach_capacity(state, cfg, 0)
+        batch = pas._boundary_approach_batch(cfg)
+        self.assertEqual(batch, 200)
+        self.assertIsNotNone(granted)
+        self.assertGreaterEqual(granted, batch,
+                                f"the builder asks for {batch} points and the update grants "
+                                f"{granted}, so the grid arrives truncated and the allowance "
+                                f"is spent on approaches that never install it")
+
+
+def _state(boundary_refine_points):
+    """A `PercolationState` whose only field that matters here is the boundary counter."""
+
+    empty = np.asarray([], dtype=float)
+    return bd.PercolationState(TSYM=empty, Sr=empty, Hr=empty, Pr=empty, Tb=empty,
+                               boundary_refine_points=int(boundary_refine_points))
 
 
 def rate_step_grid(log10_rate, temperatures, *, max_new_points):
