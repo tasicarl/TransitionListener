@@ -197,19 +197,24 @@ account of every one is in its pull request.
 Each line says what was wrong and when it bit.
 
 - The support refinement now samples the interval that ends where the bounce stops solving.
-  The coldest end of a traced phase pair is a boundary and not a sample: below it the
-  symmetric phase is gone and there is nothing to tunnel out of, so the action is not a
-  number there. The nucleation rate is still rising as that boundary is approached, which
-  puts the support points that decide the percolation integral inside that interval. The
+  The coldest end of a traced phase pair is a boundary and not a sample: below the boundary
+  the symmetric phase is gone and there is nothing to tunnel out of, so the action is not a
+  number there. The nucleation rate is still rising as the boundary is approached, which puts
+  the support points that decide the percolation integral inside that last interval. The
   step-size test needs a rate at both ends of an interval, so an interval carrying a rate at
   its warm end only never registered as unresolved and nothing placed points in it. On the
-  grid of figure 13 (dark U(1), 524 points, `benchmark` precision) 63 points failed with
-  error 8, the true vacuum fraction not reaching `f_final`; 45 of them now complete and no
-  point that completed before changed. The new refinement carries its own allowance of
-  `2 * n_action_increment` points, spent once per point, because the rate allowance is
-  already gone by the time the support reaches the boundary and without a bound of its own
-  the approach repeats on every rebuild: twelve approaches on a single point took that grid
-  from 45 minutes to 12 hours 45.
+  900-point grid of figure 13 (dark U(1), quartic coupling `l` from 1e-4 to 1e-2, vacuum
+  expectation value `v` from 1e6 to 1e10 GeV, `g_tilde` = 2.69, `benchmark` precision) the
+  release candidate failed 63 points with error 8, the true vacuum fraction not reaching
+  `f_perc` = 0.28957. 45 of them now complete and no point that completed before changed; of
+  the 18 that still fail, 15 keep error 8 and 3 now reach a higher fraction and stop at error
+  15, the eternal-inflation criterion, because the fraction stays below `f_final` = 0.99 at
+  the lowest temperature evaluated. The new refinement carries an allowance of its own, two
+  approaches of `max(n_action_increment, 8)` support points each, which is eight at the
+  shipped settings, for every scan point, because the rate allowance is already gone by the
+  time the support reaches the boundary and without a bound of its own the approach repeats
+  on every rebuild: twelve approaches on a single point took that grid from 45 minutes to
+  12 hours 45.
 - A broken-phase temperature below the symmetric one now fails the point with an error code.
   The transition releases energy and happens below the critical temperature, so the broken
   phase is reheated and `T_bro > T_sym` holds by construction, whatever accuracy the solver

@@ -91,6 +91,36 @@ def _new_controller_added_points(
     return max(int(after) - int(before), 0)
 
 
+#: Boundary approaches one scan point may spend. The bound exists because most of the points
+#: an approach places return no action, which leaves a shorter boundary interval behind, so
+#: the approach qualifies again on the next rebuild and repeats without end. On the dark U(1)
+#: at l = 1e-4, v = 1.2689610031679234e7 GeV the first approach is already what recovers the
+#: point, and a run of it still has a boundary interval at 207 support points, long after
+#: the allowance is spent. Two rather than one because an approach whose
+#: points all fail to solve has placed nothing the integral can use. Without a bound of any
+#: kind twelve approaches on this one point took the 900-point grid of figure 13 from
+#: 45 minutes to 12 hours 45.
+_BOUNDARY_APPROACH_ROUNDS = 2
+
+
+def _boundary_approach_batch(settings) -> int:
+    """Support points one boundary approach may place.
+
+    Eight is the count the figure 13 measurement was taken with, and `n_action_increment` is
+    5 by default, so the count has a floor of 8 rather than following the setting down. The
+    allowance a scan point gets is ``_BOUNDARY_APPROACH_ROUNDS`` times this count, so the two
+    numbers cannot drift apart.
+    """
+    return max(int(settings.n_action_increment), 8)
+
+
+def _boundary_approach_is_exhausted(state: PercolationState, settings) -> bool:
+    """True once a point has spent every boundary approach it is allowed."""
+    return int(state.boundary_refine_points) >= (
+        _BOUNDARY_APPROACH_ROUNDS * _boundary_approach_batch(settings)
+    )
+
+
 def _rate_repair_budget(state: PercolationState, settings) -> int:
     """Extra support budget granted once the rate criterion has repaired the grid.
 
@@ -549,7 +579,7 @@ def _try_dynamiczoomwindow_rate_refinement(temperatures, actions, hubble, settin
     # allowance has been spent on intervals far below the nucleation condition.
     boundary_grid = build_boundary_approach_candidates(
         temperatures, actions, hubble, settings,
-        max_new_points=max(int(getattr(settings, "n_action_increment", 8) or 8), 8),
+        max_new_points=_boundary_approach_batch(settings),
     )
     return boundary_grid is not None and apply_candidate_grid(boundary_grid, "boundary_approach")
 
@@ -1559,11 +1589,10 @@ def _initial_percolation_scan_dynamiczoomwindow(
         boundary_refine = reason == "boundary_approach"
         bank_before = state.support_bank
         if boundary_refine:
-            # Its own allowance, spent once: by the time the support reaches the boundary the
-            # rate allowance is gone, and without a bound of its own this repeats on every
-            # rebuild. Twelve approaches on one point took the fig. 13 grid from 45 minutes to
-            # 12 hours 45.
-            if int(state.boundary_refine_points) >= int(settings.n_action_increment) * 2:
+            # An allowance of its own, two approaches per point: by the time the support
+            # reaches the boundary the rate allowance is gone, and without a bound of its own
+            # the approach repeats on every rebuild. See `_BOUNDARY_APPROACH_ROUNDS`.
+            if _boundary_approach_is_exhausted(state, settings):
                 return False
             extra_budget = max(int(extra_budget), int(settings.n_action_max))
         elif rate_refine:
@@ -1840,11 +1869,10 @@ def _refine_percolation_temperature_dynamiczoomwindow(
         boundary_refine = reason == "boundary_approach"
         bank_before = state.support_bank
         if boundary_refine:
-            # Its own allowance, spent once: by the time the support reaches the boundary the
-            # rate allowance is gone, and without a bound of its own this repeats on every
-            # rebuild. Twelve approaches on one point took the fig. 13 grid from 45 minutes to
-            # 12 hours 45.
-            if int(state.boundary_refine_points) >= int(settings.n_action_increment) * 2:
+            # An allowance of its own, two approaches per point: by the time the support
+            # reaches the boundary the rate allowance is gone, and without a bound of its own
+            # the approach repeats on every rebuild. See `_BOUNDARY_APPROACH_ROUNDS`.
+            if _boundary_approach_is_exhausted(state, settings):
                 return False
             extra_budget = max(int(extra_budget), int(settings.n_action_max))
         elif rate_refine:
