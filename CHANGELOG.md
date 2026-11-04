@@ -196,7 +196,20 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
-- The second quartic counterterm of the dark flip-flop model multiplies `phi_2 ** 4`, as its own docstring states, where it multiplied `phi_2 ** 2`. The coupling `dlambda2` that it carries is set to zero by `calcCounterTerms`, so no published number moves; the term shifted the mass of the second field rather than renormalising its self-coupling, and would have done so for anyone who set the coupling by hand.
+- The second quartic counterterm of the dark flip-flop model now multiplies the fourth power of
+  the second field. `models/TL_dark_flipflop.py` multiplied `phi_2 ** 2` where the docstring of
+  `Vct` states `dlambda2 / 4 * phi_2 ** 4`. The term shifted the mass of the second field
+  rather than renormalising the quartic self-coupling of that field. No published number moves,
+  and the claim holds for every path into the coupling and not only for the default one.
+  `calcCounterTerms` fixes `dmu1`, `dmu2` and `dlambda1` from the gradient and the Hessian of
+  the one-loop potential at the vacuum of the first field, which is three conditions and leaves
+  none for `dlambda2`, and it assigns `dlambda2 = 0` with no branch, at whatever step of the
+  derivative a caller asks for. `dlambda2` is not one of the model parameters, so a run that
+  passes the name in the parameter block is refused with `InitPotentialError`. The counterterm
+  potential of the muAres benchmark is bitwise what the old expression returned, over field
+  values of up to 3000 internal field units, which is three times the internal field scale of
+  this model. Assigning the attribute on an instantiated potential is the one remaining way to
+  make the term contribute, and for a user who did so the wrong power changed the result.
 - A broken-phase temperature below the symmetric one now fails the point with an error code.
   The transition releases energy and happens below the critical temperature, so the broken
   phase is reheated and `T_bro > T_sym` holds by construction, whatever accuracy the solver
