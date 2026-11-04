@@ -121,10 +121,22 @@ class TheFloorIsMeasuredAgainstTheRadius(unittest.TestCase):
         self.assertIn("drmin", str(caught.exception))
 
     def test_an_integration_that_never_arrives_is_ended_by_the_step_count(self):
-        """A step above the floor that never reaches `rmax` is ended by the count."""
-        # A constant step of 1e-6 at a radius of order 1 is nine orders above the floor, so
-        # the floor cannot fire, and `rmax` is out of reach within the permitted steps.
-        constant = (1e-6 for _ in range(tunneling1D._RADIAL_STEP_LIMIT + 10))
+        """A step above the floor that never reaches `rmax` is ended by the count.
+
+        The limit is lowered for the test so that the loop ends in milliseconds whether the
+        count is in force or not. Without that, removing the count does not fail this test,
+        it hangs it for a million iterations, and a test that hangs under the mutation it
+        exists to catch is a test a continuous-integration run cannot use.
+        """
+        limit = 50
+        original = tunneling1D._RADIAL_STEP_LIMIT
+        tunneling1D._RADIAL_STEP_LIMIT = limit
+        self.addCleanup(setattr, tunneling1D, "_RADIAL_STEP_LIMIT", original)
+        # A constant step of 1e-6 at a radius of order 1 is seven orders above the floor, so
+        # the floor cannot fire, and `rmax` is out of reach within the permitted steps. The
+        # sequence runs out shortly after the limit, so a missing count ends in a
+        # `StopIteration` rather than in a hang.
+        constant = (1e-6 for _ in range(limit + 10))
         with self.assertRaises(IntegrationError) as caught:
             self.integrate_with_steps(constant, rmax=1e30)
         self.assertIn("step count", str(caught.exception))
@@ -137,7 +149,24 @@ class TheBounceOfASupercooledPointIsSolved(unittest.TestCase):
     #: converging integration gives. Measured with the floor removed altogether, and
     #: unchanged when it is lowered by a further four orders, so these are the values the
     #: integration converges to and not values a floor selected.
+    #:
+    #: On an AMD EPYC 7453. The same values on an AMD EPYC 9454 are 33.2846471014,
+    #: 51.8423905255, 61.4770798341 and 64.7303585618, lower by 4.848e-04, 3.318e-04,
+    #: 2.864e-04 and 2.738e-04 in relative terms, and bit-identical across six runs on each
+    #: processor. So the value is deterministic per processor and differs between
+    #: processors, and `VALUE_TOLERANCE` has to clear that spread. A first version of this
+    #: test pinned the values to 1e-06 and passed on one processor while failing on the
+    #: other, which is the same defect that `tests/test_1d_tunneling.py` documents for the
+    #: action of its own configuration.
     MEASURED = {5.600: 33.300790, 5.630: 51.859599, 5.645: 61.494693, 5.650: 64.748089}
+
+    #: Ten times the measured spread between processors. It is loose on purpose: the gate
+    #: this class rests on is that the action is finite at all four temperatures, which five
+    #: of the seven temperatures of the module docstring failed before the fix and which no
+    #: processor difference can change. The value comparison is the weaker guard, against a
+    #: floor that lets the integration through but truncates it, and a truncated integration
+    #: is wrong by per cent and not by 1e-04.
+    VALUE_TOLERANCE = 5.0e-3
 
     @classmethod
     def setUpClass(cls):
@@ -177,7 +206,7 @@ class TheBounceOfASupercooledPointIsSolved(unittest.TestCase):
                 got = self.action_over_temperature(temperature)
                 self.assertTrue(np.isfinite(got),
                                 f"S_3/T at T_int = {temperature} is {got}")
-                self.assertAlmostEqual(got / expected, 1.0, delta=1e-6,
+                self.assertAlmostEqual(got / expected, 1.0, delta=self.VALUE_TOLERANCE,
                                        msg=f"S_3/T at T_int = {temperature} is {got:.6f} "
                                            f"against the converged {expected:.6f}")
 

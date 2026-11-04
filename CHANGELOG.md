@@ -213,8 +213,11 @@ Each line says what was wrong and when it bit.
   temperatures carrying the largest nucleation rate were dropped and the point failed with
   error 8 for want of a true vacuum fraction, having reached 4.75e-10 of the `f_perc` = 0.28957
   it needs. The recovered actions are `S_3/T` of 33.300790, 45.555308, 51.859599, 55.049073,
-  58.261247, 61.494693 and 64.748089 at those seven temperatures, a smooth and monotone
-  sequence, and the two temperatures that were already solved are unchanged to every digit.
+  33.30, 45.56, 51.86, 55.05, 58.26, 61.49 and 64.75 at those seven temperatures, a smooth and
+  monotone sequence, and the two temperatures that were already solved are unchanged. Those
+  figures are quoted to four digits because the bounce action of this point differs by about
+  5e-04 in relative terms between the two processor models of the machine it was measured on,
+  deterministically on each.
   Lowering the floor by a further four orders leaves all seven unchanged, so these are the
   values the integration converges to and not values a floor selected. The work the floor no
   longer bounds is bounded by a limit on the number of steps.
