@@ -39,6 +39,29 @@ from . import errors
 from .helper_functions import rkqs, IntegrationError
 from .helper_functions import cubicInterpFunction
 
+#: Smallest radial step the bubble wall integration is allowed to take, as a fraction of the
+#: radius it is taken at. A step smaller than ``r`` times the machine epsilon cannot advance
+#: the radius at all, so that is where the integration genuinely cannot proceed; this floor
+#: sits three orders above it and five orders below the smallest step a converging integration
+#: was measured to need, so it ends a stalled integration without ending a working one.
+#:
+#: It replaces a floor of one per cent of the *initial* step, which bore no relation to whether
+#: the integration could make progress. On the dark U(1) model at a quartic coupling ``l`` of
+#: 1e-4 and a vacuum expectation value of 1e10 GeV, where the barrier occupies about one part
+#: in a thousand of the path, the smallest step a converging integration needs wanders between
+#: 1.6e-06 and 9.6e-06 from one temperature to the next while that floor sat at 6.2e-06, so
+#: whether a temperature could be solved at all alternated with the temperature: 5.640 and
+#: 5.650 in internal units were solved and 5.600, 5.620, 5.630, 5.635 and 5.645 were refused.
+#: A refused temperature returned an infinite action, which the percolation integral reads as
+#: no nucleation, so the temperatures where the rate is largest were dropped.
+_RADIAL_STEP_FLOOR_FRACTION = 1.0e-13
+
+#: Most steps the bubble wall integration may take before it is called stalled. The floor above
+#: no longer bounds the work, so this does. A converging integration of the point named above
+#: takes about 10400 steps, and the documented benchmark takes about 5500, so this leaves two
+#: orders of headroom and still ends a runaway in seconds rather than never.
+_RADIAL_STEP_LIMIT = 1_000_000
+
 import sys
 
 #: Smallest slope away from ``phi_absMin`` a shooting trial can be started from. The value is
@@ -612,17 +635,26 @@ class SingleFieldInstanton:
         rmax += r0
 
         convergence_type = None
+        steps = 0
         while True:
             dy, dr, drnext = rkqs(y0, dydr0, r0, dY, dr, epsfrac, epsabs)
             r1 = r0 + dr
             y1 = y0 + dy
             dydr1 = dY(y1,r1)
+            steps += 1
+            # The step that means the integration cannot proceed is the one that cannot
+            # advance the radius, which is set by the radius and not by the step the
+            # integration started from. `drmin` is kept as an absolute floor for a caller
+            # that wants one and for the radii near zero where the relative floor vanishes.
+            step_floor = max(drmin, abs(r0) * _RADIAL_STEP_FLOOR_FRACTION)
 
             # Check for completion
             if (r1 > rmax):
                 raise IntegrationError("r > rmax")
-            elif (dr < drmin):
+            elif (dr < step_floor):
                 raise IntegrationError("dr < drmin")
+            elif steps > _RADIAL_STEP_LIMIT:
+                raise IntegrationError("step count exceeded")
             elif (abs(y1 - np.array([self.phi_metaMin,0])) < 3*epsabs).all():
                 r,y = r1,y1
                 convergence_type = "converged"
@@ -810,7 +842,9 @@ class SingleFieldInstanton:
         # Set r parameters
         rmin *= self.rscale
         dr0 = rmin
-        drmin = 0.01*rmin
+        # Not a share of the initial step: see `_RADIAL_STEP_FLOOR_FRACTION`. This absolute
+        # floor covers the radii near zero, where a floor relative to the radius vanishes.
+        drmin = rmin * _RADIAL_STEP_FLOOR_FRACTION
         rmax *= self.rscale
         # --
         # Set the phi parameters

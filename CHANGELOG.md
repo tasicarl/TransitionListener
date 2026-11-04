@@ -196,6 +196,28 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
+- The floor on the radial step of the bubble wall integration is now set by the radius rather
+  than by the step the integration started from. `integrateProfile` integrates outward in the
+  radius with an adaptive step and needs a floor, so that an integration which cannot advance
+  ends instead of spinning. That floor was one per cent of the initial step, which says nothing
+  about whether progress is possible: the step below which progress is impossible is the one
+  that cannot advance the radius in double precision, which is the radius times the machine
+  epsilon. On the dark U(1) model at a quartic coupling `l` of 1e-4 and a vacuum expectation
+  value `v` of 1e10 GeV, where the barrier occupies about one part in a thousand of the path
+  between the minima, the smallest step a converging integration needs wanders between 1.6e-06
+  and 9.6e-06 from one temperature to the next while that floor sat at 6.2e-06, nine orders
+  above the resolution of the radius. Whether a temperature could be solved therefore
+  alternated with the temperature: at internal temperatures 5.640 and 5.650 the bounce was
+  solved, at 5.600, 5.620, 5.630, 5.635 and 5.645 it was refused. A refused integration is
+  reported as an infinite action, which the percolation integral reads as no nucleation, so the
+  temperatures carrying the largest nucleation rate were dropped and the point failed with
+  error 8 for want of a true vacuum fraction, having reached 4.75e-10 of the `f_perc` = 0.28957
+  it needs. The recovered actions are `S_3/T` of 33.300790, 45.555308, 51.859599, 55.049073,
+  58.261247, 61.494693 and 64.748089 at those seven temperatures, a smooth and monotone
+  sequence, and the two temperatures that were already solved are unchanged to every digit.
+  Lowering the floor by a further four orders leaves all seven unchanged, so these are the
+  values the integration converges to and not values a floor selected. The work the floor no
+  longer bounds is bounded by a limit on the number of steps.
 - A broken-phase temperature below the symmetric one now fails the point with an error code.
   The transition releases energy and happens below the critical temperature, so the broken
   phase is reheated and `T_bro > T_sym` holds by construction, whatever accuracy the solver
