@@ -78,7 +78,7 @@ them. They are fixed by requiring that the first and second derivatives of
    longer regulates anything. A model asks for the resummation by calling ``setGoldstoneShift``
    before those derivatives, and the shift is zero for a model that does not. The shift enters the
    one-loop term at every field value, so the potential of a model that resums changes everywhere
-   and not only at the vacuum expectation value; ``CHANGELOG.md`` gives the size of that change.
+   and not only at the vacuum expectation value. ``CHANGELOG.md`` states the size of that change.
    The thermal part of the potential keeps the mass squared of the spectrum.
 
 .. figure:: ../_static/algorithm_potential_vs_temperature.png
