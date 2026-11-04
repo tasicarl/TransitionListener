@@ -601,7 +601,10 @@ class TestPagesAgainstTheCode(unittest.TestCase):
         estimate = estimate.split("\ndef ", 1)[0]
         self.assertIn("Gamma/H^4 * (1-P) dT/T = 1", estimate)
         self.assertIn("prefactor = 4.0 * np.pi / 3.0", estimate)
-        self.assertNotIn("float(vw)", estimate)
+        # No wall velocity in any spelling, since `float(vw)` alone leaves `vw ** 3` passing.
+        # What the prefactor is worth is pinned by tests/test_spline_tnuc_large_integral.py,
+        # where every assertion fails on a prefactor of (4 pi/3) * 0.5**3.
+        self.assertNotIn("vw", estimate)
 
         page = (DOCS / "source" / "algorithms"
                 / "the_observables.rst").read_text(encoding="utf-8")
