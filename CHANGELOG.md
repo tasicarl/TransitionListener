@@ -217,8 +217,10 @@ Each line says what was wrong and when it bit.
   two temperatures that were already solved are unchanged. Those figures are quoted to four
   digits and were measured on an AMD EPYC 9454: the bounce action of this point is higher by
   about 3e-04 in relative terms on an AMD EPYC 7453, deterministically on each processor.
-  Lowering the floor by a further four orders leaves all seven unchanged, so these are the
-  values the integration converges to and not values a floor selected. The work the floor no
+  Lowering the floor by a further four orders leaves all seven unchanged, bit for bit, so these
+  are the values the integration converges to and not values a floor selected; that
+  independence is what the suite asserts, rather than the values themselves, which move with
+  the potential and not with the floor. The work the floor no
   longer bounds is bounded by a limit on the number of steps, in the integration and in the
   saving of the profile alike, since the floor advances a radius by a fixed fraction of itself
   and so covers a decade in about 1e13 steps. `Rerr`, the radius at which the step first fell

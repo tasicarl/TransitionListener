@@ -301,21 +301,25 @@ class TheBounceOfASupercooledPointIsSolved(unittest.TestCase):
     #: were recorded first read 33.300790, 51.859599, 61.494693 and 64.748089 on an AMD
     #: EPYC 7453, higher by 4.848e-04, 3.318e-04, 2.864e-04 and 2.738e-04 in relative
     #: terms, and bit-identical across six runs on each processor. So the value is
-    #: deterministic per processor and differs between processors, and `VALUE_TOLERANCE`
-    #: has to clear that spread. A first version of this test pinned the values to 1e-06
-    #: and passed on one processor while failing on the other, which is the same defect
-    #: that `tests/test_1d_tunneling.py` documents for the action of its own
-    #: configuration.
+    #: deterministic per processor and differs between processors. A first version of this
+    #: test pinned the values to 1e-06 and passed on one processor while failing on the
+    #: other, which is the same defect that `tests/test_1d_tunneling.py` documents for the
+    #: action of its own configuration. They are kept as the record of what the floor
+    #: recovered and are not asserted: only the temperatures are read from here.
     MEASURED = {5.600: 33.284647, 5.620: 45.538412, 5.630: 51.842391, 5.635: 55.031718,
                 5.640: 58.243756, 5.645: 61.477080, 5.650: 64.730359}
 
-    #: Ten times the measured spread between processors. It is loose on purpose: the gate
-    #: this class rests on is that the action is finite at all seven temperatures, which five
-    #: of the seven temperatures of the module docstring failed before the fix and which no
-    #: processor difference can change. The value comparison is the weaker guard, against a
-    #: floor that lets the integration through but truncates it, and a truncated integration
-    #: is wrong by per cent and not by 1e-04.
-    VALUE_TOLERANCE = 5.0e-3
+    #: How closely the action has to agree with itself when the floor is lowered, which is
+    #: what says the integration converged rather than stopping where the floor put it. The
+    #: two agree bit for bit at this point, so this is four orders of headroom. The values in
+    #: `MEASURED` are not asserted: they were recorded before the Goldstone resummation of
+    #: `models/TL_dark_U1.py`, which moves this action by 5.58 per cent at T_int = 5.600, and
+    #: a test of this floor must not move with the potential. What the floor has to deliver
+    #: is a finite action, a monotone sequence, and a value that does not depend on the floor.
+    CONVERGENCE_TOLERANCE = 1.0e-6
+
+    #: How far the floor is lowered for that comparison.
+    FLOOR_FACTOR = 1.0e-4
 
     @classmethod
     def setUpClass(cls):
@@ -350,14 +354,40 @@ class TheBounceOfASupercooledPointIsSolved(unittest.TestCase):
 
     def test_every_temperature_of_the_measured_window_gives_a_finite_action(self):
         """Five of these seven temperatures came back infinite under the old floor."""
-        for temperature, expected in sorted(self.MEASURED.items()):
+        for temperature in sorted(self.MEASURED):
             with self.subTest(T_int=temperature):
                 got = self.action_over_temperature(temperature)
                 self.assertTrue(np.isfinite(got),
                                 f"S_3/T at T_int = {temperature} is {got}")
-                self.assertAlmostEqual(got / expected, 1.0, delta=self.VALUE_TOLERANCE,
-                                       msg=f"S_3/T at T_int = {temperature} is {got:.6f} "
-                                           f"against the converged {expected:.6f}")
+
+    def test_the_action_does_not_depend_on_the_floor(self):
+        """The claim the recorded values were standing in for.
+
+        Getting the same action back with the floor lowered is what says the integration
+        reached the bounce rather than stopping where the floor put it, and it asks nothing of
+        the potential, so the resummation of a companion branch moving this action by 5.58 per
+        cent does not touch it. Measured at T_int = 5.600 on an AMD EPYC 7453: the action is
+        33.30079021 at every floor fraction from 1e-13 to 1e-08, bit for bit, and at 1e-07 the
+        integration refuses with `InfiniteActionError` instead of returning a truncated value.
+        So a floor set too high is caught by the finiteness assertion above and this comparison
+        is what rules out the floor having chosen the value.
+        """
+        original = tunneling1D._RADIAL_STEP_FLOOR_FRACTION
+        self.addCleanup(setattr, tunneling1D, "_RADIAL_STEP_FLOOR_FRACTION", original)
+        for temperature in sorted(self.MEASURED):
+            with self.subTest(T_int=temperature):
+                tunneling1D._RADIAL_STEP_FLOOR_FRACTION = original
+                at_the_floor = self.action_over_temperature(temperature)
+                tunneling1D._RADIAL_STEP_FLOOR_FRACTION = original * self.FLOOR_FACTOR
+                lowered = self.action_over_temperature(temperature)
+                self.assertTrue(np.isfinite(at_the_floor) and np.isfinite(lowered),
+                                f"S_3/T at T_int = {temperature} is {at_the_floor} at the "
+                                f"floor and {lowered} with the floor lowered")
+                self.assertAlmostEqual(
+                    lowered / at_the_floor, 1.0, delta=self.CONVERGENCE_TOLERANCE,
+                    msg=f"S_3/T at T_int = {temperature} is {at_the_floor:.8f} at the floor "
+                        f"and {lowered:.8f} with the floor lowered by {self.FLOOR_FACTOR:g}, "
+                        "so the floor is still deciding the action")
 
     def test_the_action_falls_as_the_barrier_thins(self):
         """The sequence the infinite values were hiding: smooth and monotone in temperature."""
