@@ -442,7 +442,7 @@ class ASpeciesHeldUpByACancellationBetweenTwoDirections(unittest.TestCase):
         return float(self.spectrum(point, 0.0)[0][0, species])
 
     def test_one_direction_at_a_time_accepts_this_species(self):
-        """The premise of the test below, so that it cannot pass on a changed fixture."""
+        """The premise of the step test below, so that it cannot pass on a changed fixture."""
         reference = self.mass_sq([[0.0, 0.0]])
         self.assertEqual(reference, 1.0)
         for direction in (0, 1):
@@ -457,9 +457,9 @@ class ASpeciesHeldUpByACancellationBetweenTwoDirections(unittest.TestCase):
                         "the corner of the Hessian stencil drives the mass squared through zero")
 
     def test_the_other_species_is_smooth_on_the_whole_stencil(self):
-        """The control of the test below: it has to be possible to keep the larger step here."""
+        """The control of the step test below: the larger step has to be possible here."""
         reference = self.mass_sq([[0.0, 0.0]], species=1)
-        for offset in helper_functions.stencil_offsets(1.0, 2, 4):
+        for offset in helper_functions.stencil_offsets(self.STEP, 2, 4):
             with self.subTest(offset=tuple(offset)):
                 self.assertLessEqual(abs(self.mass_sq([offset], species=1) - reference),
                                      0.5 * abs(reference))
@@ -534,9 +534,9 @@ class AMassSquaredThatIsNotANumber(unittest.TestCase):
 
     Every comparison against nan is false, so a test of the form ``change > bound`` reads a
     species whose mass squared is nan as unchanged and differences it at the larger step. The
-    two fixtures here are non-finite at one point each, the vev in the first and one corner of
-    the Hessian's stencil in the second, so that the test of the reference and the comparison
-    over the stencil are each covered by a case the other does not catch.
+    three fixtures below are non-finite at one point each: at the vev in two of them, where the
+    reference the changes are measured against is read, and at one corner of the Hessian's
+    stencil in the third.
     """
 
     SMALL = gp.generic_potential.counterterm_derivative_step
