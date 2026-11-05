@@ -263,8 +263,8 @@ Each line says what was wrong and when it bit.
   not vanish at the vacuum expectation value, so the derivative is finite there and needs no
   regulator: the spread of `dmu2` over steps of 1e-4 to 1e-1 in internal field units falls below
   2e-5 in relative terms at every coupling pair measured, from 0.075 per cent at `g` = 1 and
-  from 28.5 per cent at `g` = 0.1. `models/TL_dark_U1.py`,
-  `models/TL_dark_U1_g_parameterization.py` and `models/templatePotential.py` call the new
+  from 28.5 per cent at `g` = 0.1. `models/TL_dark_U1.py` and
+  `models/TL_dark_U1_g_parameterization.py` call the new
   method, `models/TL_dark_U1.py` drops the local step of 0.1 in internal field units it had set
   to keep the step large enough that the divergence stayed out of its counterterms, and the two
   abelian dark Higgs models now return the
@@ -283,8 +283,11 @@ Each line says what was wrong and when it bit.
   by +0.0002 and -0.017 per cent at the third. The largest move measured is at `g_tilde` = 1 and
   `lambda` = 0.2, where `dmu2` goes from -1619.5 to -3320.3 and `dl` from 5.617e-3 to 3.862e-3,
   a factor 2.05 and -31 per cent, because that is the point where the Goldstone term dominates
-  the second derivative. `models/templatePotential.py` at its default parameters moves by 7.5e-6
-  and 6.7e-9 in relative terms.
+  the second derivative. `models/templatePotential.py` does not call the method, so none of its
+  numbers move under this entry: the mass squared of the unphysical mode of its spectrum at its
+  own vacuum expectation value is 2.001e6 in internal units, 99.9 per cent of the largest mass
+  squared of that spectrum, so its Coleman-Weinberg term is not infrared divergent there and
+  there is nothing to resum.
 
   The shift enters the Coleman-Weinberg term at every field value and not only at the vacuum
   expectation value, so the zero-temperature one-loop potential of a model that resums changes

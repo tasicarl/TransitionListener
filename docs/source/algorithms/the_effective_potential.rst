@@ -69,7 +69,7 @@ them. They are fixed by requiring that the first and second derivatives of
    takes 1e-3 of the vacuum expectation value of each field direction for the rest.
 
 .. versionchanged:: 2.2
-   The Goldstone bosons of the abelian dark Higgs models and of the model template are resummed in
+   The Goldstone bosons of the abelian dark Higgs models are resummed in
    the zero-temperature one-loop term. Their mass squared in that term is shifted by
    :math:`\delta_{\rm GB} = (1/\phi)\, \partial V_{1,\rm phys}/\partial\phi` at the vacuum
    expectation value, the first derivative of the one-loop term without the Goldstone bosons

@@ -564,5 +564,77 @@ class GoldstoneResummation(unittest.TestCase):
         self.assertAlmostEqual(float(np.ravel(pot.d2V(vev, T))[0]) / pot.mDH**2, 1.0, delta=1e-3)
 
 
+class OnlyADivergentTermIsResummed(unittest.TestCase):
+    """A model resums only where the term it shifts is the infrared divergent one.
+
+    `V1` adds `goldstone_shift` to the mass squared of every species the spectrum marks
+    unphysical, at every field value, so a model that calls `setGoldstoneShift` changes its
+    zero-temperature one-loop potential everywhere. The reason to accept that change is that the
+    Coleman-Weinberg term of a massless mode is infrared divergent at the vacuum expectation
+    value and the finite-difference step of the counterterm derivatives is otherwise its
+    regulator. A model whose unphysical mode carries a mass there has no such term, and shifting
+    it moves the potential for nothing. The test therefore reads the mass squared of every
+    unphysical species of every shipped model at its own zero-temperature vacuum and requires
+    that a model which resums has none that is massive.
+
+    `boson_massSq` carries no shift, so the mass squared read here is the unresummed one. The
+    converse does not hold and is not asserted: the two-Higgs-doublet models have massless
+    Goldstone bosons at their vacuum and do not resum, because they take the analytic
+    counterterm derivatives of `coleman_weinberg_from_curvatures` instead of finite differences.
+    """
+
+    @staticmethod
+    def spectrum_at_the_vacuum(name):
+        import contextlib
+        import io as _io
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from test_potential_broadcasting import build as build_model
+        with contextlib.redirect_stdout(_io.StringIO()):
+            pot = build_model(name)
+        X = np.atleast_1d(np.asarray(pot.X0, dtype=float)).ravel()[:pot.Ndim]
+        m2, _, _, physical = pot.boson_massSq(X, 0.0)
+        m2 = np.ravel(np.asarray(m2, dtype=float))
+        physical = np.ravel(np.asarray(physical)).astype(bool)
+        return pot, m2[~physical], float(np.max(np.abs(m2)))
+
+    def test_a_model_that_resums_has_no_massive_unphysical_mode(self):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from test_potential_broadcasting import MODELS
+        resumming, massive = [], []
+        for name in MODELS:
+            with self.subTest(model=name):
+                pot, unphysical, scale = self.spectrum_at_the_vacuum(name)
+                self.assertGreater(scale, 0.0, "the spectrum is massless at the vacuum")
+                relative = np.abs(unphysical) / scale
+                if pot.goldstone_shift:
+                    resumming.append(name)
+                    self.assertGreater(unphysical.size, 0,
+                                       f"{name} resums, and its spectrum marks no species "
+                                       "unphysical, so the shift reaches nothing")
+                    self.assertLess(
+                        float(np.max(relative)), 1e-12,
+                        f"{name} shifts the mass squared of an unphysical mode that is not "
+                        f"massless at its vacuum: the largest unphysical mass squared there is "
+                        f"{float(np.max(np.abs(unphysical))):.6e} in internal units, "
+                        f"{float(np.max(relative)):.3f} of the largest mass squared of the "
+                        "spectrum, so its Coleman-Weinberg term is not infrared divergent and "
+                        "the shift moves the potential everywhere for nothing")
+                elif unphysical.size and float(np.max(relative)) > 1e-12:
+                    massive.append(name)
+        # Neither list may be empty, or the loop above would assert nothing: the first keeps a
+        # model whose shift is read, the second a model whose unphysical mode is massive, which
+        # is the case the assertion is about.
+        self.assertTrue(resumming, "no shipped model resums, so nothing was checked")
+        self.assertTrue(massive, "no shipped model has a massive unphysical mode at its vacuum")
+
+    def test_the_template_carries_the_mass_it_states(self):
+        """The comment in `models/templatePotential.py` quotes the number that keeps it out."""
+        _, unphysical, _ = self.spectrum_at_the_vacuum("template")
+        self.assertEqual(unphysical.size, 1)
+        self.assertAlmostEqual(float(unphysical[0]) / 2.001e6, 1.0, delta=1e-3)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -88,12 +88,13 @@ class TemplatePotenital(generic_potential):
         self.renormScale_GeV = np.sqrt(self.renormScaleSq) * self.conversionFactor
 
         # Impose the renormalization conditions on the potential.
-        # The Goldstone boson of the spectrum below has a vanishing tree-level mass at the
-        # vev, where the second derivative of its one-loop term diverges. setGoldstoneShift
-        # resums it, so that the two derivatives are finite and do not depend on the
-        # finite-difference step. It has to be called before the derivatives, which cache
-        # their result, and a model whose spectrum has no Goldstone boson can leave it out.
-        self.setGoldstoneShift()
+        # A model whose tree-level Goldstone mass vanishes at the vev, where the second
+        # derivative of its one-loop term diverges, asks for the resummation of that term
+        # by calling setGoldstoneShift() here, before the two derivatives below, which
+        # cache their result. The mass squared of m_varphi in the spectrum below is
+        # -mu2 + l*phi^2, which at the vev of this template is 2.001e6 in internal units
+        # and does not vanish, so there is nothing to resum and the call is left out. The
+        # abelian dark Higgs models in models/ show the call in a model that needs it.
         dV1 = self.dV1atvev()
         d2V1 = self.d2V1atvev()
         self.dmu2 = 3./2. * dV1 / self.v - 1./2. * d2V1
