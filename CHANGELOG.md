@@ -215,6 +215,11 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
+- **The bubble count above the hottest temperature of the rate history includes a rate whose
+  logarithmic slope there is exactly zero**, which is the rectangle and not nothing. Excluding
+  it dropped a term the size of those being kept: on a history with `ln(Gamma/H^4)` of -1
+  throughout the count above the hottest node is 7.096, and the crossing then has no bracket
+  inside the history, which the estimate refuses.
 - **The floor on the radial step of the bubble wall integration is set by the radius rather
   than by the step the integration started from.** The step below which progress is impossible
   is the one that cannot advance the radius in double precision, which is the radius times the
@@ -505,6 +510,19 @@ Each line says what was wrong and when it bit.
 - `Phases.testTmax` documented `ValueError` and raises `WrongHighTPhaseError`, and
   `PotentialError`'s docstring described a tuple convention its constructor does not follow, so
   a reader deciding what to catch would have caught nothing.
+- **The integrated nucleation condition was summed from the cold end and carried a wall
+  velocity that does not belong in it.** `N(T) = 4 pi/3 int_T^Tinit Gamma/H^4 (1 - P) dT/T = 1`
+  is what a strongly supercooled transition reports, since the instantaneous `Gamma/H^4 = 1`
+  has no root on the range searched. Summing from the cold end lost the crossing to the
+  rounding of a total that runs over many decades: on `ln(Gamma/H^4) = 60 - 40 ln(T)` the
+  reported temperature was 2.2540 against the closed-form 4.2359. The sum now runs from the
+  hot end with each cell integrated in the logarithm as the exponential it is, and the factor
+  `v_w^3` is gone, since `N` counts bubbles nucleated in a Hubble volume and not the volume
+  they fill. On the conformal benchmark the nucleation temperature moves from 2.5695 MeV to
+  2.5700 MeV. A cell whose log integrand rises by more than 1451 exceeds the range of a double
+  and the run reports `WARNING:spline_tnuc_not_reached`; the steepest cell measured on a real
+  rate rises by 57.6.
+
 - A path along which the potential gradient vanishes at every point made the path deformation
   divide by zero. The deformation moves each point of the path by the transverse force divided
   by `dV_max`, the largest gradient magnitude along the path, and converges on the ratio

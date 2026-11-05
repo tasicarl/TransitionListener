@@ -327,7 +327,6 @@ def calcPercAndEvolve(
             state.Hr,
             state.Sr,
             state.Pr,
-            vw=vw,
         )
         metadata = PercolationDiagnostics.from_state(state, grid, jitter_diagnostic, tnuc_estimate)
         if return_metadata:
@@ -2911,13 +2910,12 @@ def estimate_spline_tnuc_from_rate_history(
     H: np.ndarray,
     S: np.ndarray,
     P: np.ndarray,
-    vw: float = 1.0,
 ) -> dict[str, float | str | None]:
     r"""Estimate ``Tnuc`` from the saved rate/P/H splines without new actions.
 
     The diagnostic solves
 
-    ``N(T) = 4*pi/3 * v_w^3 * int_T^Tinit Gamma/H^4 * (1-P) dT/T = 1``
+    ``N(T) = 4*pi/3 * int_T^Tinit Gamma/H^4 * (1-P) dT/T = 1``
 
     on a dense spline grid.  It is intentionally warning-only: if the final
     action bank does not bracket ``N=1`` the caller can still return a valid
@@ -2955,21 +2953,81 @@ def estimate_spline_tnuc_from_rate_history(
         if u.size < 3 or np.ptp(u) <= 1.0e-12:
             return {"Tnuc": None, "warning": "spline_tnuc_unavailable", "max_N": math.nan}
 
-        rate_spline = interpolate.PchipInterpolator(u, rate, extrapolate=False)
+        # A cubic spline for the rate: N crosses one on the hot side of the history, where the
+        # support points are sparse, and the slopes of a monotone interpolant there are only
+        # first-order accurate and move with the nodes. The percolation integral interpolates the
+        # same logarithmic rate with a PCHIP, so the bubble count here and the true-vacuum
+        # fraction there rest on rate models that differ by the interpolant.
+        rate_spline = interpolate.CubicSpline(u, rate, extrapolate=False)
         prob_spline = interpolate.PchipInterpolator(u, prob, extrapolate=False)
         n_grid = max(1000, 20 * int(u.size))
         u_dense = np.linspace(float(u[0]), float(u[-1]), n_grid)
         rate_dense = np.asarray(rate_spline(u_dense), dtype=float)
         prob_dense = np.clip(np.asarray(prob_spline(u_dense), dtype=float), 0.0, 1.0)
-        with np.errstate(over="ignore", invalid="ignore"):
-            integrand = np.exp(np.clip(rate_dense, -745.0, 700.0)) * (1.0 - prob_dense)
-        integrand[~np.isfinite(integrand)] = 0.0
-        cumulative_from_cold = integrate.cumulative_trapezoid(integrand, x=u_dense, initial=0.0)
-        total = float(cumulative_from_cold[-1])
-        prefactor = 4.0 * np.pi / 3.0 * float(vw) ** 3
-        N_dense = prefactor * (total - cumulative_from_cold)
-        max_N = float(np.nanmax(N_dense)) if N_dense.size else math.nan
-        if not np.isfinite(max_N):
+        with np.errstate(divide="ignore"):
+            log_integrand = (rate_dense + np.log1p(-prob_dense))[::-1]
+        # Summed from the hot end: N runs over many decades, and a difference from the total would
+        # lose the hot end, where N crosses one, to the rounding of the total. Each cell is
+        # integrated as the exponential its integrand is. The trapezoid of an exponential over a
+        # cell exceeds the exact integral by a share (step in ln f)^2/12 while that step is small,
+        # and the step reaches 57.6 in the steepest cell of the conformal benchmark of the
+        # documentation, with a median of 0.158, where the trapezoid is wrong by a factor.
+        prefactor = 4.0 * np.pi / 3.0      # the volume of a sphere of Hubble radius 1/H
+        step = float(u_dense[1] - u_dense[0])
+        # The cell is integrated in the logarithm, so that a cell whose log integrand rises
+        # by hundreds is still the exponential it is. Writing it as the larger endpoint
+        # times a factor below one keeps every intermediate finite: clipping the exponent
+        # instead undercounts such a cell by the factor it was clipped by, and a cell whose
+        # colder endpoint underflows came out as zero even when the warmer endpoint carries
+        # the whole count.
+        lower = log_integrand[:-1]
+        upper = log_integrand[1:]
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            growth = (upper - lower) / step
+            rise = np.abs(upper - lower)
+            larger = np.maximum(lower, upper)
+            cells = np.exp(larger + np.log(-np.expm1(-rise)) - np.log(rise)) * step
+            # A flat cell is the rectangle, which is the limit of the line above.
+            cells = np.where(rise <= 1.0e-8, np.exp(larger) * step, cells)
+            # An endpoint of zero, which is what a true-vacuum fraction that rounds to one
+            # leaves behind, has no logarithm and no exponential model. The cell is finite
+            # and not zero, so it is integrated in ordinary space, where a linear integrand
+            # is exact.
+            no_logarithm = ~np.isfinite(lower) | ~np.isfinite(upper)
+            cells = np.where(no_logarithm,
+                             0.5 * step * (np.exp(lower) + np.exp(upper)), cells)
+        cells[~np.isfinite(cells)] = 0.0
+        # The grid may stop just above the crossing, so the contribution above the hottest node is
+        # added from the slope of the rate there. The extrapolation is cut off one grid range in
+        # ln(T) above that node: the slope of a cubic spline at its last node can be arbitrarily
+        # close to zero, and the integral to infinite temperature, exp(ln f)/(-slope), then grows
+        # without bound and counts bubbles no support point of the rate history reports.
+        hot_slope = float(rate_spline(u[-1], 1))
+        u_above = float(u[-1] - u[0])
+        if np.isfinite(hot_slope) and hot_slope <= 0.0:
+            # A slope of exactly zero is the series limit of the expression below and not an
+            # absent contribution: at `decay` of zero the factor is 1 and the term is the
+            # rectangle `exp(ln f) * u_above`. Excluding it dropped a term the same size as
+            # the ones being kept, so a flat hot tail could make the count appear to cross
+            # inside the history when the bounded count above the hottest node already
+            # exceeds one. The `abs(decay) > 1e-8` test below already carries the limit, so
+            # zero only has to be let through to it.
+            decay = hot_slope * u_above
+            above_grid = float(np.exp(np.minimum(log_integrand[0], 700.0))) * u_above * (
+                np.expm1(decay) / decay if abs(decay) > 1.0e-8 else 1.0
+            )
+        else:
+            # A positive slope means the rate rises towards the hot end, where it must fall,
+            # and a non-finite one means the spline could not be differentiated there.
+            above_grid = 0.0
+        N_hot_to_cold = above_grid + np.concatenate(([0.0], np.cumsum(cells)))
+        N_hot_to_cold *= prefactor
+        # A non-finite total is still an answer. On a rate that spans hundreds of e-folds the
+        # integrand overflows in the cells below the crossing, which the zeroing of the non-finite
+        # cells drops, and the crossing is reached from the hot end before the integrand grows
+        # that far, so an infinite total costs the max_N diagnostic and not the temperature.
+        max_N = float(np.nanmax(N_hot_to_cold)) if N_hot_to_cold.size else math.nan
+        if np.isnan(max_N):
             return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": math.nan}
         if max_N < 1.0:
             return {
@@ -2979,24 +3037,46 @@ def estimate_spline_tnuc_from_rate_history(
                 "integral_prefactor": prefactor,
             }
 
-        u_hot_to_cold = u_dense[::-1]
-        N_hot_to_cold = N_dense[::-1]
         crossing = np.flatnonzero(N_hot_to_cold >= 1.0)
         if crossing.size == 0:
             return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": max_N}
         idx = int(crossing[0])
         if idx == 0:
-            u_cross = float(u_hot_to_cold[0])
+            # One bubble is already counted at the hottest temperature of the rate history, so the
+            # crossing lies above every support point and this history cannot say where it is.
+            return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": max_N}
+        # The place of the crossing inside its cell is solved in the logarithm, for the same
+        # reason the cell integral is. The cell's hot endpoint can be below the smallest
+        # normal double, as it is when the rate jumps by hundreds of e-folds inside one cell;
+        # dividing by it in ordinary space gave an infinite distance and returned a nucleation
+        # temperature of exactly zero with no warning at all.
+        shortfall = (1.0 - float(N_hot_to_cold[idx - 1])) / prefactor
+        start = float(lower[idx - 1])
+        exponent = float(growth[idx - 1])
+        if not (shortfall > 0.0) or not np.isfinite(start) or not np.isfinite(exponent):
+            return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": max_N}
+        log_shortfall = math.log(shortfall)
+        if exponent == 0.0:
+            # A flat cell is the rectangle, so the distance is the shortfall over the integrand.
+            log_below = log_shortfall - start
+            below = math.exp(log_below) if log_below < 709.0 else math.inf
         else:
-            n0 = float(N_hot_to_cold[idx - 1])
-            n1 = float(N_hot_to_cold[idx])
-            u0 = float(u_hot_to_cold[idx - 1])
-            u1 = float(u_hot_to_cold[idx])
-            if abs(n1 - n0) <= 1.0e-300:
-                u_cross = u1
+            # The logarithm of the dimensionless `shortfall * exponent / exp(start)`, which is
+            # what the exponential model has to reach inside the cell.
+            scale = log_shortfall + math.log(abs(exponent)) - start
+            if exponent > 0.0:
+                # log1p(exp(scale)), which stays finite however large `scale` is.
+                below = float(np.logaddexp(0.0, scale)) / exponent
+            elif scale >= 0.0:
+                # The cell falls towards the cold end and cannot supply the missing count.
+                return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": max_N}
             else:
-                frac = (1.0 - n0) / (n1 - n0)
-                u_cross = u0 + frac * (u1 - u0)
+                below = math.log1p(-math.exp(scale)) / exponent
+        if not np.isfinite(below) or below < 0.0:
+            return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": max_N}
+        # The crossing lies in this cell, so the distance cannot exceed its width.
+        below = min(below, step)
+        u_cross = float(u_dense[-idx]) - below
         return {
             "Tnuc": float(np.exp(u_cross)),
             "warning": None,
