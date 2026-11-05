@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import types
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import numpy as np
@@ -215,11 +216,11 @@ class BoundaryApproachAllowanceTests(unittest.TestCase):
 
         Both adaptive support solvers carry their own copy of `_apply_candidate_grid`, and a
         guard placed in one of the two is dead on the path the other drives. The test reads
-        the two closures' code objects and asserts each loads
-        `_boundary_approach_is_exhausted`. It says nothing about what the closures do with
-        the answer; `test_the_allowance_is_two_approaches_worth_of_points` covers that for
-        the guard itself. The count of solvers is measured here rather than assumed, so a
-        third copy fails the test instead of going uncovered.
+        the two closures' code objects and asserts each loads `_boundary_approach_capacity`.
+        It says nothing about what the closures do with the answer, which
+        `BoundaryApproachCounterTests` covers by running each of them on a real candidate
+        grid. The count of solvers is measured here rather than assumed, so a third copy
+        fails the test instead of going uncovered.
         """
         solvers = [pas._initial_percolation_scan_dynamiczoomwindow,
                    pas._refine_percolation_temperature_dynamiczoomwindow]
@@ -275,6 +276,264 @@ def _state(boundary_refine_points):
     empty = np.asarray([], dtype=float)
     return bd.PercolationState(TSYM=empty, Sr=empty, Hr=empty, Pr=empty, Tb=empty,
                                boundary_refine_points=int(boundary_refine_points))
+
+
+#: The two adaptive support solvers. Each carries its own `_apply_candidate_grid` closure, so
+#: a counter or a refusal written into one of them is dead on the path the other drives.
+SUPPORT_SOLVERS = (
+    pas._initial_percolation_scan_dynamiczoomwindow,
+    pas._refine_percolation_temperature_dynamiczoomwindow,
+)
+
+
+def _closure_code(solver):
+    """The `_apply_candidate_grid` code object the named support solver defines."""
+
+    found = [c for c in solver.__code__.co_consts
+             if getattr(c, "co_name", None) == "_apply_candidate_grid"]
+    if len(found) != 1:
+        raise AssertionError(
+            f"{solver.__name__} holds {len(found)} _apply_candidate_grid closures, not one")
+    return found[0]
+
+
+def apply_candidate_grid_of(solver, state, opts, active_grid, rebuilds):
+    """The solver's own `_apply_candidate_grid`, ready to call outside a percolation run.
+
+    The closure is the module's code object, rebuilt over cells holding the state, the
+    settings, the support window and the two callbacks a run would give it, so the body that
+    grants the capacity, calls the real support update and advances the counter is the one
+    that executes. The solvers set up that state by solving bounces over a traced phase pair,
+    which no unit test can do, and a stand-in closure would leave the counter and the refusal
+    uncovered, which is what reaching only `_boundary_approach_capacity` already did.
+
+    A code object carries no keyword defaults, so the rebuilt closure is given the zero the
+    source declares. `test_the_boundary_approach_passes_no_extra_budget` pins that the
+    refinement helper passes nothing and therefore uses that default.
+    """
+
+    code = _closure_code(solver)
+
+    def note_rebuild(reason, old_grid, new_grid):
+        rebuilds.append((reason, np.asarray(new_grid, dtype=float)))
+
+    def reset_arrays(new_grid):
+        state.TSYM = np.asarray(new_grid, dtype=float)
+
+    cells = {"TSYM": np.asarray(active_grid, dtype=float),
+             "_note_rebuild": note_rebuild,
+             "grid": types.SimpleNamespace(tmin=0.0, tmax=1.0e4),
+             "outdict": {},
+             "phase_broken": None,
+             "phase_symmetric": None,
+             "settings": opts,
+             "state": state}
+    # The two solvers name their array reset differently (`_reset_active_arrays` in step 2,
+    # `_reset_state_arrays` in step 3); every other free variable is shared.
+    closure = tuple(types.CellType(cells[name] if name in cells else reset_arrays)
+                    for name in code.co_freevars)
+    function = types.FunctionType(code, vars(pas), "_apply_candidate_grid", None, closure)
+    function.__kwdefaults__ = {"extra_budget": 0}
+    return function
+
+
+def _support_state(active_grid, *, spent=0, free_support_bank=()):
+    """A `PercolationState` holding the support banks the closure reads and writes."""
+
+    active = np.asarray(active_grid, dtype=float)
+    return bd.PercolationState(
+        TSYM=active.copy(), Sr=np.zeros_like(active), Hr=np.zeros_like(active),
+        Pr=np.zeros_like(active), Tb=np.zeros_like(active),
+        support_bank=active.copy(),
+        free_support_bank=np.asarray(free_support_bank, dtype=float),
+        boundary_refine_points=int(spent),
+    )
+
+
+def run_boundary_approach(solver, state, opts, active_grid, rebuilds,
+                          *, log10_rate=(-2.0, np.nan), temperatures=(WARM_END, BOUNDARY)):
+    """Drive one boundary approach through the path a running controller takes.
+
+    `_try_dynamiczoomwindow_rate_refinement` is what the post-sweep controller calls: it
+    builds the candidate grid with `build_boundary_approach_candidates` and hands it to the
+    solver's `_apply_candidate_grid` under the reason `boundary_approach`. The prescribed rate
+    history carries a step of a single decade, below `max_log10_rate_step`, so the ordinary
+    rate repair finds nothing and the boundary approach is the only refinement offered.
+    """
+
+    rates = np.asarray(log10_rate, dtype=float)
+    temps = np.asarray(temperatures, dtype=float)
+    apply_grid = apply_candidate_grid_of(solver, state, opts, active_grid, rebuilds)
+    with mock.patch.object(gridbuilders, "_log10_gamma_h4_array", lambda t, a, h: rates):
+        return pas._try_dynamiczoomwindow_rate_refinement(
+            temps, np.zeros(temps.size), np.ones(temps.size), opts, apply_grid)
+
+
+class BoundaryApproachCounterTests(unittest.TestCase):
+    """What the closures do with the allowance, run as the controller runs them.
+
+    `BoundaryApproachAllowanceTests` covers `_boundary_approach_capacity` on its own and reads
+    the closures' code objects for the call. Neither reaches the lines that spend the
+    allowance: with the counter increment deleted every rebuild ran past the documented cap
+    and the suite stayed green, and a closure that asked for the capacity and dropped the
+    answer refused nothing. These tests run each closure on a real candidate grid instead.
+    """
+
+    def test_the_number_of_support_solvers_is_the_number_covered(self):
+        # Measured rather than assumed: a third adaptive solver fails this instead of going
+        # uncovered by every test below, each of which iterates over `SUPPORT_SOLVERS`.
+        names = [name for name, value in vars(pas).items()
+                 if callable(value) and getattr(value, "__module__", None) == pas.__name__
+                 and any(getattr(c, "co_name", None) == "_apply_candidate_grid"
+                         for c in getattr(getattr(value, "__code__", None), "co_consts", ()))]
+        self.assertCountEqual(names, [solver.__name__ for solver in SUPPORT_SOLVERS])
+
+    def test_the_boundary_approach_passes_no_extra_budget(self):
+        """The capacity the closure grants is the batch, not a budget the caller supplied.
+
+        Every test here runs the closure at `extra_budget` = 0, and that is the value a run
+        uses only as long as the refinement helper passes nothing.
+        """
+        asked = {}
+
+        def apply_grid(grid, reason, **kwargs):
+            asked[reason] = dict(kwargs)
+            return True
+
+        with mock.patch.object(pas, "_build_rate_step_grid", return_value=None), \
+                mock.patch.object(pas, "build_boundary_approach_candidates",
+                                  return_value=np.linspace(6.0, 5.6, 8)):
+            pas._try_dynamiczoomwindow_rate_refinement(
+                np.linspace(10.0, 5.0, 4), np.ones(4), np.ones(4), settings(), apply_grid)
+        self.assertEqual(asked.get("boundary_approach"), {})
+
+    def test_the_increment_is_the_only_thing_that_writes_the_counter(self):
+        """Nothing else in the module may set `boundary_refine_points`.
+
+        The tests below give each closure the two callbacks a run would give it, so a
+        statement that zeroed the counter from somewhere else in the solver, the array reset
+        on a rebuild being the obvious place, would not show up in them. Read off the module's
+        syntax tree instead: two writes, the increment in each of the two closures.
+        """
+        import ast
+
+        source = Path(pas.__file__).read_text()
+        writes = []
+        for node in ast.walk(ast.parse(source)):
+            targets = []
+            if isinstance(node, ast.Assign):
+                targets = node.targets
+            elif isinstance(node, ast.AugAssign):
+                targets = [node.target]
+            for target in targets:
+                if isinstance(target, ast.Attribute) and target.attr == "boundary_refine_points":
+                    writes.append((node.lineno, type(node).__name__))
+        self.assertEqual(
+            [kind for _, kind in writes], ["AugAssign", "AugAssign"],
+            f"the counter is written at lines {[line for line, _ in writes]}, and the only "
+            "writes allowed are the increment in each support solver's _apply_candidate_grid")
+
+    def test_the_counter_advances_by_the_points_the_approach_added(self):
+        for solver in SUPPORT_SOLVERS:
+            with self.subTest(solver=solver.__name__):
+                opts = settings(n_action_increment=5, n_action_max=10)
+                expected = pas._boundary_approach_batch(opts)
+                active = np.linspace(10.0, WARM_END, 3)
+                state = _support_state(active)
+                rebuilds = []
+                self.assertTrue(run_boundary_approach(solver, state, opts, active, rebuilds),
+                                "the approach was not applied at all")
+                self.assertEqual(len(rebuilds), 1, "the support was not rebuilt once")
+                self.assertEqual(rebuilds[0][0], "boundary_approach")
+                self.assertEqual(rebuilds[0][1].size, active.size + expected)
+                self.assertEqual(int(state.boundary_refine_points), expected,
+                                 f"{expected} points were admitted and the counter stands at "
+                                 f"{int(state.boundary_refine_points)}, so the allowance is "
+                                 "not being spent")
+
+    def test_a_point_whose_action_already_ran_does_not_spend_the_allowance(self):
+        """The counter follows the points that need a new action, not the grid size.
+
+        A candidate temperature already in the free support bank has had its action computed,
+        so admitting it costs nothing and must not count against the two approaches.
+        """
+        for solver in SUPPORT_SOLVERS:
+            with self.subTest(solver=solver.__name__):
+                opts = settings(n_action_increment=5, n_action_max=10)
+                grid = boundary_grid([-2.0, np.nan], [WARM_END, BOUNDARY],
+                                     max_new_points=pas._boundary_approach_batch(opts))
+                self.assertEqual(grid.size, 8)
+                active = np.linspace(10.0, WARM_END, 3)
+                state = _support_state(active, free_support_bank=grid[:2])
+                rebuilds = []
+                self.assertTrue(run_boundary_approach(solver, state, opts, active, rebuilds))
+                self.assertEqual(rebuilds[0][1].size, active.size + grid.size,
+                                 "the free-bank points were not admitted")
+                self.assertEqual(int(state.boundary_refine_points), grid.size - 2,
+                                 "the two points whose action had already run were charged "
+                                 "to the allowance")
+
+    def test_an_exhausted_point_is_refused_the_next_grid(self):
+        """The spent allowance stops the approach where it is enforced.
+
+        A closure that asks `_boundary_approach_capacity` and discards the answer passes the
+        code-object test and fails this one: the grid is applied, the support grows and the
+        counter runs past the cap.
+        """
+        for solver in SUPPORT_SOLVERS:
+            with self.subTest(solver=solver.__name__):
+                opts = settings(n_action_increment=5, n_action_max=10)
+                cap = pas._BOUNDARY_APPROACH_ROUNDS * pas._boundary_approach_batch(opts)
+                active = np.linspace(10.0, WARM_END, 3)
+                state = _support_state(active, spent=cap)
+                bank_before = np.asarray(state.support_bank, dtype=float).copy()
+                rebuilds = []
+                self.assertFalse(run_boundary_approach(solver, state, opts, active, rebuilds),
+                                 "an exhausted point was granted a further approach")
+                self.assertEqual(rebuilds, [], "the support was rebuilt anyway")
+                np.testing.assert_array_equal(state.support_bank, bank_before)
+                self.assertEqual(int(state.boundary_refine_points), cap,
+                                 "the counter moved on a refused approach")
+
+    def test_the_last_point_of_the_allowance_is_still_admitted(self):
+        # The refusal has to sit at the cap and not below it: a guard that refused one
+        # approach early would pass the test above for the wrong reason.
+        for solver in SUPPORT_SOLVERS:
+            with self.subTest(solver=solver.__name__):
+                opts = settings(n_action_increment=5, n_action_max=10)
+                cap = pas._BOUNDARY_APPROACH_ROUNDS * pas._boundary_approach_batch(opts)
+                active = np.linspace(10.0, WARM_END, 3)
+                state = _support_state(active, spent=cap - 1)
+                rebuilds = []
+                self.assertTrue(run_boundary_approach(solver, state, opts, active, rebuilds),
+                                "the last approach of the allowance was refused")
+                self.assertEqual(len(rebuilds), 1)
+                self.assertEqual(int(state.boundary_refine_points),
+                                 cap - 1 + pas._boundary_approach_batch(opts))
+
+    def test_the_whole_batch_is_installed_when_the_increment_exceeds_the_maximum(self):
+        """The capacity reaches the support update, and it is the batch the builder asked for.
+
+        `n_action_increment` and `n_action_max` are independent settings. At an increment of
+        200 and a maximum of 10 the builder asks for 200 points, and a capacity taken from
+        `n_action_max` caps the support update at 20 points without a cached action, counted
+        over the whole support. On this fixture's three-point active grid that admits 17 of
+        the 200, blocks 183 and leaves the counter at 17, so the allowance of 400 is spent on
+        approaches that never install the grid the builder designed.
+        """
+        for solver in SUPPORT_SOLVERS:
+            with self.subTest(solver=solver.__name__):
+                opts = settings(n_action_increment=200, n_action_max=10)
+                grid = boundary_grid([-2.0, np.nan], [WARM_END, BOUNDARY],
+                                     max_new_points=pas._boundary_approach_batch(opts))
+                self.assertEqual(grid.size, 200, "the builder did not ask for the batch")
+                active = np.linspace(10.0, WARM_END, 3)
+                state = _support_state(active)
+                rebuilds = []
+                self.assertTrue(run_boundary_approach(solver, state, opts, active, rebuilds))
+                self.assertEqual(rebuilds[0][1].size, active.size + grid.size,
+                                 "the grid the builder designed arrived truncated")
+                self.assertEqual(int(state.boundary_refine_points), grid.size)
 
 
 def rate_step_grid(log10_rate, temperatures, *, max_new_points):
