@@ -230,6 +230,17 @@ Each line says what was wrong and when it bit.
   the saving of the profile, and a refusal from either is reported as an unresolved bounce
   rather than as an exception. `Rerr` records the first radius the floor had to force, which an
   inverted condition had always left as `None`.
+- **The support refinement now samples the interval that ends where the bounce stops
+  solving.** Below the coldest end of a traced phase pair the symmetric phase is gone, so the
+  action is not a number there, while the nucleation rate is still rising, which puts the
+  support points that decide the percolation integral inside that last interval. The step-size
+  test needs a rate at both ends of an interval, so an interval with a rate at its warm end
+  only never registered as unresolved. On the 900-point grid of figure 13 (dark U(1), `l` from
+  1e-4 to 1e-2, `v` from 1e6 to 1e10 GeV, `g_tilde` = 2.69, `benchmark` precision) 63 points
+  failed with error 8; 45 now complete, no point that completed before changed, and of the 18
+  that still fail 15 keep error 8 and 3 stop at error 15. The refinement carries its own
+  allowance of two approaches of `max(n_action_increment, 8)` points per scan point, without
+  which twelve approaches on one point took that grid from 45 minutes to 12 hours 45.
 
 - **The derivatives that fix the counterterms are taken species by species.** The first and
   second derivatives of the zero-temperature one-loop potential at the vacuum expectation value

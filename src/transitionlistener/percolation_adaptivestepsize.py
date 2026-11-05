@@ -52,6 +52,7 @@ from transitionlistener.percolation_adaptive_gridbuilders import (
     _nucleation_is_dead,
     _raise_if_large_delta_p_underresolved,
     _build_rate_step_grid,
+    build_boundary_approach_candidates,
     _range_expand_batch_size,
 )
 
@@ -88,6 +89,60 @@ def _new_controller_added_points(
     after = _controller_added_support_points(support_bank_after, free_support_bank_after)
     before = _controller_added_support_points(support_bank_before, free_support_bank_after)
     return max(int(after) - int(before), 0)
+
+
+#: Boundary approaches one scan point may spend. The bound exists because most of the points
+#: an approach places return no action, which leaves a shorter boundary interval behind, so
+#: the approach qualifies again on the next rebuild and repeats without end. On the dark U(1)
+#: at l = 1e-4, v = 1.2689610031679234e7 GeV the first approach is already what recovers the
+#: point, and a run of it still has a boundary interval at 207 support points, long after
+#: the allowance is spent. Two rather than one because an approach whose
+#: points all fail to solve has placed nothing the integral can use. Without a bound of any
+#: kind twelve approaches on this one point took the 900-point grid of figure 13 from
+#: 45 minutes to 12 hours 45.
+_BOUNDARY_APPROACH_ROUNDS = 2
+
+
+def _boundary_approach_batch(settings) -> int:
+    """Support points one boundary approach may place.
+
+    Eight is the count the figure 13 measurement was taken with, and `n_action_increment` is
+    5 by default, so the count has a floor of 8 rather than following the setting down. The
+    allowance a scan point gets is ``_BOUNDARY_APPROACH_ROUNDS`` times this count, so the two
+    numbers cannot drift apart.
+    """
+    return max(int(settings.n_action_increment), 8)
+
+
+def _boundary_approach_is_exhausted(state: PercolationState, settings) -> bool:
+    """True once a point has spent every boundary approach it is allowed."""
+    return int(state.boundary_refine_points) >= (
+        _BOUNDARY_APPROACH_ROUNDS * _boundary_approach_batch(settings)
+    )
+
+
+def _boundary_approach_capacity(state: PercolationState, settings, extra_budget: int):
+    """The support budget a boundary approach may use, or ``None`` to refuse it.
+
+    Kept out of the two `_apply_candidate_grid` closures so that the decision can be read
+    without a percolation run. The closures themselves are covered too, each rebuilt over its
+    own code object in `tests/test_boundary_approach_refinement.py`: while this function was
+    the only part reached, two changes left the suite green, a closure that consulted
+    `_boundary_approach_is_exhausted` and discarded the answer, and a deleted counter
+    increment, which let every rebuild run past the allowance.
+
+    The capacity is the batch the builder asked for and not `n_action_max`, which is a
+    different setting and may be smaller. `n_action_increment` is a runtime option with
+    nothing tying it to `n_action_max`: at an increment of 200 and a maximum of 60 the batch
+    is 200 points and the allowance 400, while granting `n_action_max` left the support update
+    a cap of 120 points without a cached action, counted over the whole support. The 200-point
+    geometric grid then arrived truncated whatever the support already held, and the allowance
+    went on approaches that never installed the grid the builder designed. The capacity here
+    is 200, which raises that cap to 260 and installs the whole grid.
+    """
+    if _boundary_approach_is_exhausted(state, settings):
+        return None
+    return max(int(extra_budget), _boundary_approach_batch(settings))
 
 
 def _rate_repair_budget(state: PercolationState, settings) -> int:
@@ -541,7 +596,16 @@ def _try_dynamiczoomwindow_rate_refinement(temperatures, actions, hubble, settin
         settings,
         max_new_points=int(settings.n_action_max),
     )
-    return rate_grid is not None and apply_candidate_grid(rate_grid, "rate_step_refine")
+    if rate_grid is not None and apply_candidate_grid(rate_grid, "rate_step_refine"):
+        return True
+    # The boundary approach is offered after the ordinary rate repair and carries its own
+    # allowance, because the support only reaches the boundary late, by which time the rate
+    # allowance has been spent on intervals far below the nucleation condition.
+    boundary_grid = build_boundary_approach_candidates(
+        temperatures, actions, hubble, settings,
+        max_new_points=_boundary_approach_batch(settings),
+    )
+    return boundary_grid is not None and apply_candidate_grid(boundary_grid, "boundary_approach")
 
 
 def _try_dynamiczoomwindow_local_refinement(
@@ -1546,8 +1610,17 @@ def _initial_percolation_scan_dynamiczoomwindow(
     def _apply_candidate_grid(candidate_grid: np.ndarray, reason: str, *, extra_budget: int = 0) -> bool:
         nonlocal TSYM
         rate_refine = reason == "rate_step_refine"
+        boundary_refine = reason == "boundary_approach"
         bank_before = state.support_bank
-        if rate_refine:
+        if boundary_refine:
+            # An allowance of its own, two approaches per point: by the time the support
+            # reaches the boundary the rate allowance is gone, and without a bound of its own
+            # the approach repeats on every rebuild. See `_BOUNDARY_APPROACH_ROUNDS`.
+            granted = _boundary_approach_capacity(state, settings, extra_budget)
+            if granted is None:
+                return False
+            extra_budget = granted
+        elif rate_refine:
             # The rate repair may add n_action_max points per run: a rebuild starts while
             # that allowance is not used up and admits its whole grid (at most
             # n_action_max new points).
@@ -1574,6 +1647,10 @@ def _initial_percolation_scan_dynamiczoomwindow(
         )
         if rate_refine and changed:
             state.rate_refine_points += _new_controller_added_points(
+                bank_before, state.support_bank, state.free_support_bank
+            )
+        if boundary_refine and changed:
+            state.boundary_refine_points += _new_controller_added_points(
                 bank_before, state.support_bank, state.free_support_bank
             )
         return changed
@@ -1814,8 +1891,17 @@ def _refine_percolation_temperature_dynamiczoomwindow(
     def _apply_candidate_grid(candidate_grid: np.ndarray, reason: str, *, extra_budget: int = 0) -> bool:
         nonlocal TSYM
         rate_refine = reason == "rate_step_refine"
+        boundary_refine = reason == "boundary_approach"
         bank_before = state.support_bank
-        if rate_refine:
+        if boundary_refine:
+            # An allowance of its own, two approaches per point: by the time the support
+            # reaches the boundary the rate allowance is gone, and without a bound of its own
+            # the approach repeats on every rebuild. See `_BOUNDARY_APPROACH_ROUNDS`.
+            granted = _boundary_approach_capacity(state, settings, extra_budget)
+            if granted is None:
+                return False
+            extra_budget = granted
+        elif rate_refine:
             # The rate repair may add n_action_max points per run: a rebuild starts while
             # that allowance is not used up and admits its whole grid (at most
             # n_action_max new points).
@@ -1842,6 +1928,10 @@ def _refine_percolation_temperature_dynamiczoomwindow(
         )
         if rate_refine and changed:
             state.rate_refine_points += _new_controller_added_points(
+                bank_before, state.support_bank, state.free_support_bank
+            )
+        if boundary_refine and changed:
+            state.boundary_refine_points += _new_controller_added_points(
                 bank_before, state.support_bank, state.free_support_bank
             )
         return changed
