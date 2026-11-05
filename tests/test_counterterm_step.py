@@ -410,5 +410,168 @@ class AModelThatKeepsOneNumberForTwoFieldDirections(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(gradient)), f"the gradient is {gradient}")
 
 
+class ASpeciesHeldUpByACancellationBetweenTwoDirections(unittest.TestCase):
+    """The Hessian displaces two directions at once, and the probe has to visit those corners.
+
+    The first species of the fixture changes by exactly half of its mass squared at the far
+    point of each coordinate stencil, which a probe that walks one direction at a time accepts,
+    and the two changes add up where both directions move the same way, so the corner of the
+    Hessian's off-diagonal stencil takes the mass squared below zero. Differencing a species
+    across a vanishing mass squared is the infrared behaviour the step selection exists to keep
+    away from.
+    """
+
+    VEV = np.array([1000.0, 1000.0])
+    #: the larger step of both directions at this vev, in internal field units
+    STEP = max(gp.generic_potential.counterterm_derivative_step,
+               gp.generic_potential._SMOOTH_STEP_FRACTION * 1000.0)
+
+    @classmethod
+    def spectrum(cls, X, T):
+        """Two species: one held up by the cancellation, one smooth everywhere."""
+        X = np.asanyarray(X)
+        first = (X[..., 0] - cls.VEV[0]) / cls.STEP
+        second = (X[..., 1] - cls.VEV[1]) / cls.STEP
+        held_up = 1.0 - 0.25 * (first + second) - 0.05 * first * second
+        smooth = 0.018 * (X[..., 0] ** 2 + X[..., 1] ** 2)
+        return (np.stack([held_up, smooth], axis=-1), np.array([1.0, 1.0]),
+                np.array([1.5, 1.5]), np.array([True, True]))
+
+    def mass_sq(self, offset, species=0):
+        point = np.array([self.VEV]) + np.asarray(offset, dtype=float) * self.STEP
+        return float(self.spectrum(point, 0.0)[0][0, species])
+
+    def test_one_direction_at_a_time_accepts_this_species(self):
+        """The premise of the test below, so that it cannot pass on a changed fixture."""
+        reference = self.mass_sq([[0.0, 0.0]])
+        self.assertEqual(reference, 1.0)
+        for direction in (0, 1):
+            for side in (-2.0, -1.0, 1.0, 2.0):
+                offset = np.zeros((1, 2))
+                offset[0, direction] = side
+                with self.subTest(direction=direction, side=side):
+                    self.assertLessEqual(abs(self.mass_sq(offset) - reference),
+                                         0.5 * abs(reference),
+                                         "a probe along one direction calls this species smooth")
+        self.assertLess(self.mass_sq([[2.0, 2.0]]), 0.0,
+                        "the corner of the Hessian stencil drives the mass squared through zero")
+
+    def test_the_other_species_is_smooth_on_the_whole_stencil(self):
+        """The control of the test below: it has to be possible to keep the larger step here."""
+        reference = self.mass_sq([[0.0, 0.0]], species=1)
+        for offset in helper_functions.stencil_offsets(1.0, 2, 4):
+            with self.subTest(offset=tuple(offset)):
+                self.assertLessEqual(abs(self.mass_sq([offset], species=1) - reference),
+                                     0.5 * abs(reference))
+
+    def test_the_cancelling_species_is_differenced_at_the_small_step(self):
+        _, steps = record_steps(two_field_potential(spectrum=self.spectrum, vev=self.VEV))
+        small = gp.generic_potential.counterterm_derivative_step
+        self.assertTrue(np.all(np.isclose(np.atleast_1d(steps[0]), small)),
+                        f"the species held up by the cancellation was differenced at {steps[0]} "
+                        f"rather than at the small step {small}")
+        self.assertFalse(np.all(np.isclose(np.atleast_1d(steps[1]), small)),
+                         f"the smooth species was also dropped to the small step: {steps[1]}")
+
+
+class TheProbeCoversTheStencilTheDerivativeEvaluates(unittest.TestCase):
+    """`helper_functions.stencil_offsets` is measured against the points the helpers evaluate."""
+
+    EPS = np.array([1.0, 0.5])
+
+    def evaluated(self, helper):
+        """The displacements `helper` hands to its function, read off a recording call."""
+        seen = []
+
+        def record(X):
+            X = np.asanyarray(X)
+            seen.append(np.reshape(X, (-1, X.shape[-1])))
+            return np.zeros(X.shape[:-1])
+
+        helper(record, eps=self.EPS, Ndim=2, order=4)(np.zeros((1, 2)))
+        return np.unique(np.concatenate(seen, axis=0), axis=0)
+
+    def test_every_point_the_helpers_evaluate_is_probed(self):
+        probed = {tuple(row) for row in helper_functions.stencil_offsets(self.EPS, 2, 4)}
+        for helper in (helper_functions.gradientFunction, helper_functions.hessianFunction):
+            with self.subTest(helper=helper.__name__):
+                evaluated = self.evaluated(helper)
+                self.assertGreater(len(evaluated), 0, "the helper evaluated nothing at all")
+                missing = [tuple(row) for row in evaluated if tuple(row) not in probed]
+                self.assertEqual(missing, [], f"{helper.__name__} evaluates points the probe "
+                                              f"never visits: {missing}")
+
+    def test_the_undisplaced_point_is_among_them(self):
+        """A mass squared that is not finite at the vev is refused through this point.
+
+        The reference the changes are measured against is the mass squared at the vev, and an
+        infinite reference passes the comparison against half of itself at every finite point of
+        the stencil. The undisplaced point is where `inf - inf` makes the comparison false.
+        """
+        probed = helper_functions.stencil_offsets(self.EPS, 2, 4)
+        self.assertIn((0.0, 0.0), {tuple(row) for row in probed})
+
+    def test_the_mixed_corners_are_among_them(self):
+        """Sixteen of the twenty-five points displace both directions at once."""
+        probed = helper_functions.stencil_offsets(self.EPS, 2, 4)
+        self.assertEqual(len(probed), 25)
+        mixed = probed[np.all(probed != 0.0, axis=-1)]
+        self.assertEqual(len(mixed), 16)
+        self.assertEqual(sorted({abs(value) for value in np.ravel(mixed / self.EPS)}), [1.0, 2.0])
+
+
+class AMassSquaredThatIsNotANumber(unittest.TestCase):
+    """A comparison against a measured mass squared has to refuse a non-finite one.
+
+    Every comparison against nan is false, so a test of the form ``change > bound`` reads a
+    species whose mass squared is nan as unchanged and differences it at the larger step. The
+    two fixtures here are non-finite at one point each, the vev in the first and one corner of
+    the Hessian's stencil in the second, so that the test of the reference and the comparison
+    over the stencil are each covered by a case the other does not catch.
+    """
+
+    SMALL = gp.generic_potential.counterterm_derivative_step
+    #: the mixed corner of the two-dimensional stencil at the steps of this fixture's vevs
+    CORNER = np.array([2.0, 2.0]) * np.array([1.0, 0.005])
+
+    @staticmethod
+    def spectrum_that_is(value, where):
+        """A spectrum whose first species is `value` at `where` and 1.0 everywhere else."""
+        def spectrum(X, T):
+            X = np.asanyarray(X)
+            picked = np.all(np.isclose(X - VEV, where), axis=-1)
+            masses = np.stack([np.where(picked, value, 1.0),
+                               0.018 * (X[..., 0] ** 2 + X[..., 1] ** 2)], axis=-1)
+            return masses, np.array([1.0, 1.0]), np.array([1.5, 1.5]), np.array([True, True])
+        return spectrum
+
+    def steps_for(self, value, where):
+        spectrum = self.spectrum_that_is(value, where)
+        self.assertFalse(np.isfinite(np.ravel(spectrum(np.array([VEV + where]), 0.0)[0])[0]),
+                         "the fixture is not finite where it is meant to be")
+        self.assertEqual(float(np.ravel(spectrum(np.array([VEV + 1.5 * self.CORNER]),
+                                                 0.0)[0])[0]), 1.0,
+                         "the fixture is a number away from that one point")
+        with np.errstate(all="ignore"):
+            _, steps = record_steps(two_field_potential(spectrum=spectrum))
+        return steps
+
+    def test_a_mass_squared_of_nan_at_the_vev_keeps_the_small_step(self):
+        steps = self.steps_for(np.nan, np.zeros(2))
+        self.assertTrue(np.all(np.isclose(np.atleast_1d(steps[0]), self.SMALL)),
+                        f"a mass squared of nan at the vev was differenced at {steps[0]}")
+
+    def test_an_infinite_mass_squared_at_the_vev_keeps_the_small_step(self):
+        steps = self.steps_for(np.inf, np.zeros(2))
+        self.assertTrue(np.all(np.isclose(np.atleast_1d(steps[0]), self.SMALL)),
+                        f"an infinite mass squared at the vev was differenced at {steps[0]}")
+
+    def test_a_mass_squared_of_nan_at_a_corner_of_the_stencil_keeps_the_small_step(self):
+        steps = self.steps_for(np.nan, self.CORNER)
+        self.assertTrue(np.all(np.isclose(np.atleast_1d(steps[0]), self.SMALL)),
+                        f"a mass squared that is nan on the stencil was differenced at {steps[0]}")
+
+
+
 if __name__ == "__main__":
     unittest.main()
