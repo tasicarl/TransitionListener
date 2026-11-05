@@ -153,8 +153,9 @@ account of every one is in its pull request.
   counterterms took their step from `x_eps`, so tightening a tracing tolerance changed the
   potential. They now take `counterterm_derivative_step`, whose default 1e-3 is the step they
   have always used in the default setup. On the abelian dark Higgs, where the Coleman-Weinberg
-  term at the vacuum is of order 1e9 in internal units, steps below 1e-3 are dominated by
-  round-off: 1e-4 shifts the second derivative by up to 1.4 per cent.
+  term at the vacuum is of order 1e9 in internal units, differencing the sum over species at
+  steps below 1e-3 was dominated by round-off, which is what the entry below on differencing
+  the species one at a time removes.
 
 - **An unstable action slope is retried at a tighter path deformation.** `calc_betaH_S3` fits
   the slope of `S_3/T` near the percolation temperature twice, over the support samples and
@@ -194,6 +195,24 @@ account of every one is in its pull request.
 
 ### Fixed
 
+- **The template model's quadratic term, which put its declared vacuum expectation value
+  nowhere near a minimum of its own potential.** `models/templatePotential.py` is the file a
+  new model is copied from. Its tree potential is `-mu2*phi^2/2 + l*phi^4/4`, whose minimum
+  sits at `phi^2 = mu2/l`, so the vacuum expectation value it declares requires
+  `mu2 = l*v^2`; it set `mu2 = -2*v^2` instead, which at its own defaults is -2.0e+06 against
+  the 1.0e+03 required, and of the wrong sign. Both terms were then positive and the potential
+  rose monotonically out of the origin: `V0` read 0, +2.50e+11, +1.00e+12 and +2.25e+12 in
+  internal units at `phi` of 0, `v`/2, `v` and 3`v`/2, so `self.X0`, which the template sets to
+  `v`, was not a stationary point. The mass of the unphysical mode, `-mu2 + l*phi^2`, came out
+  as 2.001e+06 at the vacuum where a Goldstone mass must vanish, and `m1_GeV`, declared with a
+  default of 125.20 GeV, was read and never used, because `mu2` was what it should have fixed.
+  With `mu2 = l*v^2` the potential has its minimum at `v`, the Goldstone mass is exactly zero,
+  the scalar mass is `2*l*v^2`, and the superfluous input is gone. Two further faults on the
+  same path: the attribute was named `mu2_GeV` and printed as `mu2_GeV2`, and
+  `makePrettyDictionaryPrint` was passed two dictionaries where it takes one, so constructing
+  the template with `verbose=True` raised `AttributeError` and then `TypeError`. The class name
+  was spelled `TemplatePotenital` and is now `TemplatePotential`.
+
 Each line says what was wrong and when it bit.
 
 - The support refinement now samples the interval that ends where the bounce stops solving.
@@ -218,6 +237,126 @@ Each line says what was wrong and when it bit.
   time the support reaches the boundary and without a bound of its own the approach repeats
   on every rebuild: twelve approaches on a single point took that grid from 45 minutes to
   12 hours 45.
+- **The derivatives that fix the counterterms are taken species by species.** The first and
+  second derivatives of the zero-temperature one-loop potential at the vacuum expectation value
+  were finite differences of the sum over species. The step has to stay small because the
+  tree-level Goldstone mass vanishes at the vacuum, so the Coleman-Weinberg term of the
+  Goldstone boson is infrared divergent there and the step is what regulates it. The sum over
+  species is of order 4e9 in internal units at the vacuum of the abelian dark Higgs, so the
+  small step left the result dominated by round-off: a change of 1e-14 in the gauge coupling
+  `g`, which is 45 units in the last place of a double, moved the second derivative
+  `d2V1/dphi2` by 1.2e-4 in relative terms, and that reached the counterterms and the
+  potential. A derivative is linear in the species, so each species is now differenced on its
+  own. A species whose mass squared changes by no more than half across the stencil takes 1e-3
+  of the vacuum expectation value of each field direction, with `counterterm_derivative_step`
+  as the lower bound, and every other species keeps `counterterm_derivative_step`. That test is
+  taken over every point the finite-difference stencil evaluates, the corners where two field
+  directions are displaced at once among them, since a species whose mass squared is held up at
+  the vacuum by a cancellation between two directions passes a test along each direction on its
+  own and still has a vanishing mass squared inside the stencil. The same
+  perturbation of `g` now moves `d2V1/dphi2` by 1.2e-10 in relative terms, and varying the
+  larger step by a decade in each direction moves it by less than 1e-8. On the abelian dark
+  Higgs at `g` = 1 and quartic `lambda` = 0.018012121212121212 the second derivative moves
+  from 18744.125 to 18743.9771 in internal units, where 60-digit arithmetic for the same
+  stencil of the same function at the same step reads 18743.9770975, so the correction is
+  7.9e-6 in relative terms and is round-off and not truncation. What this change leaves behind
+  is the Goldstone infrared problem and not a numerical tuning question: at that point the
+  second derivative drifts with the logarithm of the step by 0.0505 per cent per decade, which
+  the Goldstone resummation of the entry below removes.
+  Each field direction takes its step from its own vacuum expectation value, so a model with
+  two vacuum expectation values a factor 200 apart does not difference the smaller one at 20 per
+  cent of its own vacuum expectation value, and the derivative is taken over the whole field
+  space whatever its dimension. The sum runs over the mass eigenvalues rather than over the
+  degrees of freedom, so a model that reports one number of degrees of freedom for all of its
+  species has every species in the sum rather than the first alone. Differencing species by
+  species on its own moves the counterterms of the two abelian dark Higgs models in their last
+  digits: `dmu2` and `dl` move by 3.9e-6 and 5.9e-6 in relative terms for
+  `models/TL_dark_U1_g_parameterization.py` at the point above, and by 1.4e-9 and 2.1e-9 for
+  `models/TL_dark_U1.py`, which at the time of this change still differenced at a step of 0.1 in
+  internal field units, where there is less round-off to remove. The entry below on the Goldstone
+  resummation gives the move a user of 2.2.0 sees, which is larger. The field point carries one component per
+  field direction whatever shape a model keeps its vev in. `models/TL_dark_flipflop.py` has a
+  field space of two dimensions, keeps its vev as a single number, and has a mass function that
+  indexes both directions: `d2V1atvev` raised `IndexError` for that model in 2.1, while
+  `dV1atvev` returned a two-component gradient only because the derivative helper broadcast the
+  one-component field point against its own stencil before the spectrum saw it. Both now return a
+  finite result of two components, the second derivative for the first time. That model computes
+  its own counterterms and calls neither of the two, so none of its numbers move.
+- **`mpmath` is declared as a development dependency.** `tests/test_counterterm_step.py`
+  checks the finite-difference stencil of the counterterm derivatives against the same stencil
+  in 60-digit arithmetic, which needs `mpmath`, and the package was reached only as a
+  dependency of `sympy`. An environment installed from the project metadata alone could not
+  run that test.
+
+- **`V1phys` and `dV1physatvev` raised `AttributeError` on every call.** `V1phys` is the
+  one-loop correction without the Goldstone bosons, and it read the fermion spectrum through
+  the attributes `masses_sq` and `dof`, which the pair that `fermion_massSq` returns does not
+  carry. It now reads that pair the way `V1` does. The attributes have been read since release
+  2.0 and the spectrum has returned the pair for just as long, so both methods have raised on
+  every call since then. `setGoldstoneShift` of the entry below is the first caller of
+  `dV1physatvev`, so until 2.2.0 nothing in the pipeline called either of the two.
+- **The Goldstone bosons are resummed in the zero-temperature one-loop potential of the abelian
+  dark Higgs models.** The tree-level mass of a Goldstone boson vanishes at the vacuum
+  expectation value, where the second derivative of its Coleman-Weinberg term diverges, and the
+  counterterms are fixed from that derivative. The finite-difference step was therefore the
+  regulator, and the counterterms drifted with the logarithm of a numerical parameter: the second
+  derivative `d2V1/dphi2` of the abelian dark Higgs drifts by 0.0505 per cent per decade at gauge
+  coupling `g` = 1 and quartic `lambda` = 0.018012121212121212, and at that gauge coupling the
+  drift runs from 0.0005 per cent per decade at `lambda` = 0.0018 to 49 per cent over the first
+  decade at `lambda` = 0.2, where the Goldstone term dominates the second derivative. At
+  `g` = 0.1 it runs from 0.34 per cent per decade at `lambda` = 0.0018 to 4.2 per cent at
+  `lambda` = 0.03. The new method
+  `setGoldstoneShift` shifts the mass squared of the Goldstone bosons in that term by
+  `(1/phi) dV_1,phys/dphi` at the vacuum expectation value, the first derivative of the one-loop
+  potential without the Goldstone bosons (Elias-Miro, Espinosa and Konstandin, arXiv:1406.2652
+  eqs. 11, 12 and 16; Martin, arXiv:1406.2355 eqs. 4.2 and 4.10). The resummed mass squared does
+  not vanish at the vacuum expectation value, so the derivative is finite there and needs no
+  regulator: the spread of `dmu2` over steps of 1e-4 to 1e-1 in internal field units falls below
+  2e-5 in relative terms at every coupling pair measured, from 0.075 per cent at `g` = 1 and
+  from 28.5 per cent at `g` = 0.1. `models/TL_dark_U1.py` and
+  `models/TL_dark_U1_g_parameterization.py` call the new
+  method, `models/TL_dark_U1.py` drops the local step of 0.1 in internal field units it had set
+  to keep the step large enough that the divergence stayed out of its counterterms, and the two
+  abelian dark Higgs models now return the
+  same counterterms at the same couplings. Every other model is unchanged: the shift is zero
+  unless a model asks for it, the two-Higgs-doublet model takes the analytic counterterm
+  derivatives of `coleman_weinberg_from_curvatures` rather than the finite differences, and
+  `models/TL_dark_flipflop.py` and `models/TL_conformal_dark_u1.py` fix their own counterterms.
+
+  The numbers that move, in internal units, against release 2.1.0. For
+  `models/TL_dark_U1_g_parameterization.py` the counterterm mass squared `dmu2` and the
+  counterterm quartic `dl` move by -0.127 and -0.226 per cent at `g` = 1 and
+  `lambda` = 0.018012121212121212, by -0.363 and -0.611 per cent at `g` = 1 and `lambda` = 0.03,
+  and by -0.0045 and -0.0244 per cent at `g` = 0.52 and `lambda` = 0.0015. For
+  `models/TL_dark_U1.py`, where the dropped step of 0.1 moves the counterterms in the other
+  direction, `dmu2` and `dl` move by -0.077 and -0.151 per cent at the first of those points and
+  by +0.0002 and -0.017 per cent at the third. The largest move measured is at `g_tilde` = 1 and
+  `lambda` = 0.2, where `dmu2` goes from -1619.5 to -3320.3 and `dl` from 5.617e-3 to 3.862e-3,
+  a factor 2.05 and -31 per cent, because that is the point where the Goldstone term dominates
+  the second derivative. `models/templatePotential.py` calls the method too, now that its
+  spectrum has the massless Goldstone the method assumes.
+
+  The shift enters the Coleman-Weinberg term at every field value and not only at the vacuum
+  expectation value, so the zero-temperature one-loop potential of a model that resums changes
+  everywhere, and the traced phases, the critical temperature and the observables downstream
+  change with it. At `g` = 1 and `lambda` = 0.018012121212121212 the one-loop potential at the
+  origin moves by 37 per cent and the potential difference between the origin and the vacuum
+  expectation value at zero temperature by -0.31 per cent for
+  `models/TL_dark_U1_g_parameterization.py` and by -0.20 per cent for `models/TL_dark_U1.py`.
+  The thermal part does not see the shift: `boson_massSq`, `debye_massSq`, the thermal functions
+  and the daisy term keep the mass squared of the spectrum.
+
+  How large the shift is relative to the spectrum depends on the coupling, and for the abelian
+  dark Higgs it is set by the gauge coupling and by the renormalisation scale, which that model
+  puts at the vacuum expectation value. The shift is negative up to `g` = 1.18 at
+  `lambda` = 0.018012121212121212 and positive above, and at `g` = 3 it reaches 2.87e6 in internal units of mass squared, 1593 times the
+  tree-level mass parameter at `lambda` = 0.0018, so the shift is not a correction to the
+  spectrum there and nothing says so. Where the shift is negative, the resummed Goldstone mass
+  squared vanishes above the vacuum expectation value, outside the field range a transition of
+  these models explores. Where it is positive and large enough, the zero moves below the vacuum
+  expectation value: at `g` = 2 and `lambda` = 1 it sits at 0.83 of the vacuum expectation value,
+  where the second derivative of the potential dips by 10 per cent over 4 units of the field. Read the resummation
+  as valid where the shift is small against the masses of the spectrum.
 - A bounce whose final path has a gradient that is not a number is reported as no tunnelling
   rather than as an action. `fullTunneling` measures the ratio of the transverse force to the
   potential gradient on the path it ends with, and that measurement is the one use of the

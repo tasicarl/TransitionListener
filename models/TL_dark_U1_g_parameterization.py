@@ -68,7 +68,9 @@ class specific_potential(generic_potential.generic_potential):
 
         self.mass_spectrum = self._build_mass_spectrum()
         
-        # Calculate counter mass and counter coupling
+        # Calculate counter mass and counter coupling. The Goldstone resummation has to
+        # come first, because the two derivatives below cache their result.
+        self.setGoldstoneShift()
         dV1 = self.dV1atvev()
         d2V1 = self.d2V1atvev()
         self.dmu2 = 3./2. * dV1 / self.v - 1./2. * d2V1
