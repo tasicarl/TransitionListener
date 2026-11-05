@@ -135,6 +135,11 @@ class PercolationState:
     # when the controller stopped at its iteration limit, because the estimate it hands back
     # there was measured on an earlier grid and does not describe the returned profile.
     accuracy_estimate: dict | None = None
+    # Support points spent approaching a boundary at which the bounce stops solving.
+    # Its own allowance, like `rate_refine_points`: by the time the support reaches such a
+    # boundary the rate allowance is long spent, and without a bound of its own the approach
+    # repeats every rebuild. A new field goes last so no positional call site shifts.
+    boundary_refine_points: int = 0
 
 
 def _finalize_percolation_state(

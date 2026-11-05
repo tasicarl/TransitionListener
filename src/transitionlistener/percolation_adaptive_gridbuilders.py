@@ -895,6 +895,97 @@ def _build_dynamiczoomwindow_jump_grid(
     return refined if refined.size > 0 else None
 
 
+def _build_boundary_approach_grid(
+    warm: float,
+    boundary: float,
+    *,
+    max_new_points: int,
+) -> np.ndarray | None:
+    """Sample towards a temperature at which the bounce stops solving.
+
+    An interval whose colder end has no action ends at a boundary, not at a sample: below the
+    boundary the symmetric phase is gone and there is nothing to tunnel out of. The nucleation
+    rate is still rising as the boundary is approached, so the samples that decide the
+    percolation integral lie inside the interval. The points are placed geometrically between
+    the two ends; the comment below says why a ladder that crowds the boundary does not work.
+
+    Measured on the dark U(1) at l = 1e-4, v = 1.2689610031679234e7 GeV, in the model's
+    internal temperature units: the interval runs from the coldest sample carrying an action,
+    T_int = 5.7019, to the boundary at T_int = 5.5531, and the percolation integral needs the
+    rate down to T_int = 5.680, where log10(Gamma/H^4) = 11.5. Eight points over that
+    interval are placed at T_int = 5.6851 down to 5.5694, of which the three warmest solve;
+    the coldest of the three, T_int = 5.6518, is below the temperature the integral needs, and
+    the point then percolates at T_int = 5.6771.
+    """
+    warm = float(warm)
+    boundary = float(boundary)
+    if not (np.isfinite(warm) and np.isfinite(boundary)) or warm <= boundary or boundary <= 0.0:
+        return None
+    span = warm / boundary
+    # The relative tolerance is the one `_temperature_grid` merges near-duplicates with, so an
+    # interval that grid would collapse to a single temperature is refused here instead of
+    # being filled with points the grid then discards.
+    if span - 1.0 <= 1e-10:
+        return None
+    # Spread over the interval rather than crowding the boundary. The bounce stops solving
+    # some way above the nominal boundary, not at it: of the eight points the measured
+    # interval receives, the five coldest return no action, the three warmest do, and those
+    # three are what the integral uses. A ladder that halves the remaining logarithmic
+    # distance to the boundary puts every point within a thousandth of T_int = 5.5531, where
+    # nothing solves, and places none in the part of the interval that does.
+    refined = np.geomspace(warm, boundary, int(max_new_points) + 2, dtype=float)[1:-1]
+    refined = _temperature_grid(refined)
+    return refined if refined.size > 0 else None
+
+
+def build_boundary_approach_candidates(
+    temperatures: np.ndarray,
+    actions: np.ndarray,
+    hubble: np.ndarray,
+    settings,
+    *,
+    max_new_points: int,
+) -> np.ndarray | None:
+    """Points approaching a boundary at which the bounce stops solving.
+
+    An interval whose colder end carries no action ends at such a boundary. The rate was
+    still rising at its warmer end, so the integral may depend entirely on temperatures
+    inside the interval, and nothing else in the controller will sample there: the step-size
+    test needs a rate at both ends, so the interval never registers as unresolved.
+    """
+    if max_new_points <= 0:
+        return None
+    temps = np.asarray(temperatures, dtype=float)
+    log10_rate = _log10_gamma_h4_array(temps, actions, hubble)
+    on_axis = np.isfinite(temps)
+    temps, log10_rate = temps[on_axis], log10_rate[on_axis]
+    if temps.size < 2:
+        return None
+    order = np.argsort(-temps)
+    temps, log10_rate = temps[order], log10_rate[order]
+    floor = _dead_rate_floor(log10_rate)
+    # `np.isnan` on the colder end rather than `not np.isfinite`: `logGamma` returns `+inf`
+    # where the action vanishes and not a number where no action was obtained, and only the
+    # second of the two is a boundary. A colder end carrying `+inf` has an overwhelming rate
+    # already, so the integral needs no extra support above it. The warmer end is required to
+    # be finite for the same reason and to be above the dead-rate floor, which keeps the
+    # approach out of the cold tail, where `+inf` would pass a bare floor comparison.
+    warm_is_live = np.isfinite(log10_rate[:-1]) & (log10_rate[:-1] >= floor)
+    candidates = np.flatnonzero(warm_is_live & np.isnan(log10_rate[1:]))
+    if candidates.size == 0:
+        return None
+    # Liveliest warmer end first, and the next candidate is tried whenever one yields no
+    # points. `_build_boundary_approach_grid` refuses an interval whose colder end is at or
+    # below zero temperature and one narrower than the support grid's near-duplicate
+    # tolerance, and refusing one candidate must not hide another that can be sampled.
+    for index in candidates[np.argsort(-log10_rate[:-1][candidates])]:
+        refined = _build_boundary_approach_grid(
+            float(temps[index]), float(temps[index + 1]), max_new_points=int(max_new_points))
+        if refined is not None:
+            return refined
+    return None
+
+
 def _build_rate_step_grid(
     temperatures: np.ndarray,
     actions: np.ndarray,
@@ -947,6 +1038,19 @@ def _build_rate_step_grid(
     floor = _dead_rate_floor(log10_rate)
     interval_is_live = log10_rate[1:] >= floor
     offending = np.flatnonzero(np.isfinite(steps) & (steps > threshold) & interval_is_live)
+    # An interval whose colder end has no rate at all cannot offend here, because the step
+    # across it is unknown, and that is exactly the interval which matters on a strongly
+    # supercooled point: the bounce stops solving at the cold boundary of the traced phase
+    # while the whole of the nucleation sits just above the boundary. Measured on the dark
+    # U(1) at l = 1e-4, v = 1.2689610031679234e7 GeV, the support ends at T_int = 5.5531 with
+    # no action and its warmer neighbour at T_int = 5.7019 carries log10(Gamma/H^4) = 5.3;
+    # sampling between the two gives 11.5 at T_int = 5.680. Unrefined, the integral stalls
+    # below a true vacuum fraction of 1e-4 against f_perc = 0.28957 and the point is reported
+    # as never percolating, where the published scan percolates at T_int = 5.677.
+    #
+    # Such an interval is left to `build_boundary_approach_candidates`, which carries an
+    # allowance of its own: by the time the support reaches the boundary this function's
+    # allowance is long spent on intervals that cannot change the integral.
     if offending.size == 0:
         return None
     # Refine every offending interval in the same rebuild, worst first, with enough

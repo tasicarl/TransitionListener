@@ -39,6 +39,29 @@ from . import errors
 from .helper_functions import rkqs, IntegrationError
 from .helper_functions import cubicInterpFunction
 
+#: Smallest radial step the bubble wall integration is allowed to take, as a fraction of the
+#: radius it is taken at. A step smaller than ``r`` times the machine epsilon cannot advance
+#: the radius at all, so that is where the integration genuinely cannot proceed; this floor
+#: sits three orders above it and five orders below the smallest step a converging integration
+#: was measured to need, so it ends a stalled integration without ending a working one.
+#:
+#: It replaces a floor of one per cent of the *initial* step, which bore no relation to whether
+#: the integration could make progress. On the dark U(1) model at a quartic coupling ``l`` of
+#: 1e-4 and a vacuum expectation value of 1e10 GeV, where the barrier occupies about one part
+#: in a thousand of the path, the smallest step a converging integration needs wanders between
+#: 1.6e-06 and 9.6e-06 from one temperature to the next while that floor sat at 6.2e-06, so
+#: whether a temperature could be solved at all alternated with the temperature: 5.640 and
+#: 5.650 in internal units were solved and 5.600, 5.620, 5.630, 5.635 and 5.645 were refused.
+#: A refused temperature returned an infinite action, which the percolation integral reads as
+#: no nucleation, so the temperatures where the rate is largest were dropped.
+_RADIAL_STEP_FLOOR_FRACTION = 1.0e-13
+
+#: Most steps the bubble wall integration may take before it is called stalled. The floor above
+#: no longer bounds the work, so this does. A converging integration of the point named above
+#: takes about 10400 steps, and the documented benchmark takes about 5500, so this leaves two
+#: orders of headroom and still ends a runaway in seconds rather than never.
+_RADIAL_STEP_LIMIT = 1_000_000
+
 import sys
 
 #: Smallest slope away from ``phi_absMin`` a shooting trial can be started from. The value is
@@ -612,17 +635,32 @@ class SingleFieldInstanton:
         rmax += r0
 
         convergence_type = None
+        steps = 0
         while True:
             dy, dr, drnext = rkqs(y0, dydr0, r0, dY, dr, epsfrac, epsabs)
             r1 = r0 + dr
             y1 = y0 + dy
             dydr1 = dY(y1,r1)
+            steps += 1
+            # The step that means the integration cannot proceed is the one that cannot
+            # advance the radius, which is set by the radius and not by the step the
+            # integration started from. `drmin` is kept as an absolute floor for a caller
+            # that wants one and for the radii near zero where the relative floor vanishes.
+            step_floor = max(drmin, abs(r0) * _RADIAL_STEP_FLOOR_FRACTION)
 
             # Check for completion
             if (r1 > rmax):
                 raise IntegrationError("r > rmax")
-            elif (dr < drmin):
-                raise IntegrationError("dr < drmin")
+            elif (dr < step_floor):
+                # Which of the two terms the floor came from, since `drmin` can be zero or
+                # far below the radius-relative term and a message naming `drmin` alone
+                # then gives the wrong reason for the refusal.
+                raise IntegrationError(
+                    "dr %.17g below the step floor %.17g, which is the larger of drmin "
+                    "%.17g and the radius %.17g times %.17g"
+                    % (dr, step_floor, drmin, abs(r0), _RADIAL_STEP_FLOOR_FRACTION))
+            elif steps >= _RADIAL_STEP_LIMIT:
+                raise IntegrationError("step count exceeded")
             elif (abs(y1 - np.array([self.phi_metaMin,0])) < 3*epsabs).all():
                 r,y = r1,y1
                 convergence_type = "converged"
@@ -679,8 +717,9 @@ class SingleFieldInstanton:
         R, Phi, dPhi : array_like
             Radii and field values which make up the bubble profile.
         Rerr : float or None
-            The first value of `r` at which ``dr < drmin``, or `None` if
-            ``dr >= drmin`` always.
+            The first value of `r` at which the step fell below the floor, or
+            `None` if it never did. The floor is the larger of `drmin` and the
+            radius times `_RADIAL_STEP_FLOOR_FRACTION`.
 
         Notes
         -----
@@ -702,16 +741,30 @@ class SingleFieldInstanton:
         Rerr = None
 
         i = 1
+        steps = 0
         while i < N:
             dy, dr, drnext = rkqs(y0, dydr0, r0, dY, dr, epsfrac, epsabs)
-            if (dr >= drmin):
+            steps += 1
+            # The same floor the integration itself uses: a step below the radius times
+            # `_RADIAL_STEP_FLOOR_FRACTION` cannot advance the radius, and this loop ends
+            # only when the radius passes the requested points.
+            step_floor = max(drmin, abs(r0) * _RADIAL_STEP_FLOOR_FRACTION)
+            if (dr >= step_floor):
                 r1 = r0 + dr
                 y1 = y0 + dy
             else:
-                y1 = y0 + dy*drmin/dr
-                dr = drnext = drmin
+                y1 = y0 + dy*step_floor/dr
+                dr = drnext = step_floor
                 r1 = r0 + dr
-                if Rerr is not None: Rerr = r1
+                # The first radius the floor had to force, which is what the field reports.
+                if Rerr is None: Rerr = r1
+            if r1 == r0:
+                raise IntegrationError("the radius does not advance")
+            # A radius that advances by the floor alone covers a decade in about
+            # `1/_RADIAL_STEP_FLOOR_FRACTION` steps, which no profile needs, so the same
+            # bound the integration uses ends the saver rather than letting it grind.
+            if steps >= _RADIAL_STEP_LIMIT:
+                raise IntegrationError("step count exceeded")
             dydr1 = dY(y1,r1)
             # Fill the arrays, if necessary
             if (r0 < R[i] <= r1):
@@ -762,9 +815,11 @@ class SingleFieldInstanton:
         npoints : int
             Number of points to return in the profile.
         rmin : float
-            Relative to ``self.rscale``. Sets the smallest starting
-            radius, the starting stepsize, and the smallest allowed stepsize
-            (``0.01*rmin``).
+            Relative to ``self.rscale``. Sets the smallest starting radius and the
+            starting stepsize. It also sets the absolute part of the smallest allowed
+            stepsize, which is the scaled radius ``rmin*self.rscale`` times
+            `_RADIAL_STEP_FLOOR_FRACTION`; the floor actually applied is the larger of
+            that and the same fraction of the radius the integration has reached.
         rmax : float
             Relative ``self.rscale``. Sets the maximum allowed integration
             distance.
@@ -779,8 +834,12 @@ class SingleFieldInstanton:
             Radii and field values which make up the bubble profile. Note that
             `R[0]` can be much bigger than zero for thin-walled bubbles.
         Rerr : float or None
-            The first value of `r` at which ``dr < drmin``, or `None` if
-            ``dr >= drmin`` always.
+            The first value of `r` at which the step fell below the floor, or
+            `None` if it never did. With `rmin` already multiplied by ``self.rscale``,
+            the floor is
+            ``max(rmin*_RADIAL_STEP_FLOOR_FRACTION, abs(r)*_RADIAL_STEP_FLOOR_FRACTION)``,
+            so it tracks the radius the integration has reached rather than the
+            step it started from.
 
         Notes
         -----
@@ -810,7 +869,9 @@ class SingleFieldInstanton:
         # Set r parameters
         rmin *= self.rscale
         dr0 = rmin
-        drmin = 0.01*rmin
+        # Not a share of the initial step: see `_RADIAL_STEP_FLOOR_FRACTION`. This absolute
+        # floor covers the radii near zero, where a floor relative to the radius vanishes.
+        drmin = rmin * _RADIAL_STEP_FLOOR_FRACTION
         rmax *= self.rscale
         # --
         # Set the phi parameters
@@ -1105,8 +1166,17 @@ class SingleFieldInstanton:
             branch_actions = {}
             for side, (b_r0, b_y0, b_rf, b_epsabs, b_dphi0) in bracket_trials.items():
                 b_R = np.linspace(b_r0, b_rf, npoints)
-                branch_profile = self.integrateAndSaveProfile(
-                    b_R, b_y0, dr0, epsfrac, b_epsabs, drmin)
+                try:
+                    branch_profile = self.integrateAndSaveProfile(
+                        b_R, b_y0, dr0, epsfrac, b_epsabs, drmin)
+                except IntegrationError as e:
+                    # The same normalisation the shooting loop above gives its own
+                    # `IntegrationError`: `_find_profile` reads a `TunnelingError` as an
+                    # infinite action, which every caller takes as no tunnelling at this
+                    # temperature, while a bare `IntegrationError` leaves `fullTunneling`
+                    # as an unhandled exception and ends the scan point.
+                    raise errors.TunnelingError(
+                        "Integration failed while saving a bracket profile: " + str(e))
                 # With its own interior, so that the two branches are compared as whole
                 # bounces rather than as the parts of them outside different radii.
                 branch_profile = self._withInteriorPoints(
@@ -1118,8 +1188,12 @@ class SingleFieldInstanton:
 
         # Integrate a second time, this time getting the points along the way
         R = np.linspace(r0, rf, npoints)
-        profile = self.integrateAndSaveProfile(R, y0, dr0,
-                                               epsfrac, epsabs_rf, drmin)
+        try:
+            profile = self.integrateAndSaveProfile(R, y0, dr0,
+                                                   epsfrac, epsabs_rf, drmin)
+        except IntegrationError as e:
+            raise errors.TunnelingError(
+                "Integration failed while saving the profile: " + str(e))
         profile = self._withInteriorPoints(R, profile, delta_phi0_rf, max_interior_pts)
         return profile
 
