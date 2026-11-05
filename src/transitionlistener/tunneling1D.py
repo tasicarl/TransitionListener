@@ -652,7 +652,13 @@ class SingleFieldInstanton:
             if (r1 > rmax):
                 raise IntegrationError("r > rmax")
             elif (dr < step_floor):
-                raise IntegrationError("dr < drmin")
+                # Which of the two terms the floor came from, since `drmin` can be zero or
+                # far below the radius-relative term and a message naming `drmin` alone
+                # then gives the wrong reason for the refusal.
+                raise IntegrationError(
+                    "dr %.17g below the step floor %.17g, which is the larger of drmin "
+                    "%.17g and the radius %.17g times %.17g"
+                    % (dr, step_floor, drmin, abs(r0), _RADIAL_STEP_FLOOR_FRACTION))
             elif steps >= _RADIAL_STEP_LIMIT:
                 raise IntegrationError("step count exceeded")
             elif (abs(y1 - np.array([self.phi_metaMin,0])) < 3*epsabs).all():
@@ -1160,8 +1166,17 @@ class SingleFieldInstanton:
             branch_actions = {}
             for side, (b_r0, b_y0, b_rf, b_epsabs, b_dphi0) in bracket_trials.items():
                 b_R = np.linspace(b_r0, b_rf, npoints)
-                branch_profile = self.integrateAndSaveProfile(
-                    b_R, b_y0, dr0, epsfrac, b_epsabs, drmin)
+                try:
+                    branch_profile = self.integrateAndSaveProfile(
+                        b_R, b_y0, dr0, epsfrac, b_epsabs, drmin)
+                except IntegrationError as e:
+                    # The same normalisation the shooting loop above gives its own
+                    # `IntegrationError`: `_find_profile` reads a `TunnelingError` as an
+                    # infinite action, which every caller takes as no tunnelling at this
+                    # temperature, while a bare `IntegrationError` leaves `fullTunneling`
+                    # as an unhandled exception and ends the scan point.
+                    raise errors.TunnelingError(
+                        "Integration failed while saving a bracket profile: " + str(e))
                 # With its own interior, so that the two branches are compared as whole
                 # bounces rather than as the parts of them outside different radii.
                 branch_profile = self._withInteriorPoints(
@@ -1173,8 +1188,12 @@ class SingleFieldInstanton:
 
         # Integrate a second time, this time getting the points along the way
         R = np.linspace(r0, rf, npoints)
-        profile = self.integrateAndSaveProfile(R, y0, dr0,
-                                               epsfrac, epsabs_rf, drmin)
+        try:
+            profile = self.integrateAndSaveProfile(R, y0, dr0,
+                                                   epsfrac, epsabs_rf, drmin)
+        except IntegrationError as e:
+            raise errors.TunnelingError(
+                "Integration failed while saving the profile: " + str(e))
         profile = self._withInteriorPoints(R, profile, delta_phi0_rf, max_interior_pts)
         return profile
 

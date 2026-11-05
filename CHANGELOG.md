@@ -225,7 +225,14 @@ Each line says what was wrong and when it bit.
   saving of the profile alike, since the floor advances a radius by a fixed fraction of itself
   and so covers a decade in about 1e13 steps. `Rerr`, the radius at which the step first fell
   below the floor, is now recorded; the condition that filled it was inverted, so it had always
-  been reported as `None`.
+  been reported as `None`. A refusal from either guard is reported as an unresolved bounce
+  rather than as an exception: the shooting loop already turned its own `IntegrationError`
+  into a `TunnelingError`, which the caller reads as an infinite action and `trantype` 0, but
+  the two calls that save the profile sit after that loop, so a bare `IntegrationError` left
+  `fullTunneling` and ended the scan point instead of dropping the temperature. The refusal
+  message names the floor that was applied and both terms it is the larger of, since `drmin`
+  can be zero or far below the radius-relative term and naming `drmin` alone gave the wrong
+  reason.
 - A bounce whose final path has a gradient that is not a number is reported as no tunnelling
   rather than as an action. `fullTunneling` measures the ratio of the transverse force to the
   potential gradient on the path it ends with, and that measurement is the one use of the

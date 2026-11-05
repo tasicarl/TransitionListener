@@ -39,6 +39,7 @@ from pathlib import Path
 
 import numpy as np
 
+from transitionlistener import errors
 from transitionlistener import pathDeformation
 from transitionlistener import tunneling1D
 from transitionlistener.helper_functions import IntegrationError, load_potential
@@ -84,6 +85,39 @@ class TheFloorIsMeasuredAgainstTheRadius(unittest.TestCase):
             self.integrate_with_steps(constant, rmax=1000 * step)
         self.assertIn(reached_rmax, str(caught.exception),
                       "the integration did not walk on steps below the old floor")
+
+    def test_findProfile_hands_the_integration_the_radius_relative_floor(self):
+        """The changed public path: what `findProfile` computes and passes down.
+
+        `findProfile` scales `rmin` by `self.rscale` and then sets the absolute floor from it.
+        The old rule made that floor one per cent of the scaled initial radius; the new one
+        makes it that radius times `_RADIAL_STEP_FLOOR_FRACTION`, nine orders smaller, and the
+        loop raises the floor again against the radius it has reached. A test that calls
+        `integrateProfile` with `drmin` of its own cannot see this, because the caller supplies
+        the floor there, so the value is read where `findProfile` sets it.
+        """
+        instanton = self.instanton()
+        rmin = 1.0e-4
+        seen = []
+        real = instanton.integrateProfile
+
+        def spy(r0, y0, dr0, epsfrac, epsabs, drmin, *args, **kwargs):
+            seen.append(drmin)
+            return real(r0, y0, dr0, epsfrac, epsabs, drmin, *args, **kwargs)
+
+        instanton.integrateProfile = spy
+        instanton.findProfile(rmin=rmin, npoints=50)
+        self.assertTrue(seen, "findProfile never ran the integration")
+        scaled = rmin * instanton.rscale
+        expected = scaled * tunneling1D._RADIAL_STEP_FLOOR_FRACTION
+        for floor in set(seen):
+            self.assertAlmostEqual(floor / expected, 1.0, delta=1e-12,
+                                   msg=f"findProfile passed a floor of {floor}, not the scaled "
+                                       f"initial radius {scaled} times "
+                                       f"{tunneling1D._RADIAL_STEP_FLOOR_FRACTION:g}")
+        old_rule = 0.01 * scaled
+        self.assertLess(expected, old_rule * 1e-8,
+                        f"the new floor {expected} is not far below the old {old_rule}")
 
     def test_the_saver_refuses_a_radius_that_cannot_advance(self):
         """`integrateAndSaveProfile` floors its own step and rejects a stalled radius.
@@ -287,6 +321,65 @@ class TheFloorIsMeasuredAgainstTheRadius(unittest.TestCase):
         self.assertEqual(taken["n"], limit,
                          "the integration took %d steps against the advertised limit of %d"
                          % (taken["n"], limit))
+
+
+class TheSaversRefusalIsAnOutcomeAndNotAnException(unittest.TestCase):
+    """What a caller of `fullTunneling` sees when the profile cannot be saved.
+
+    The shooting loop already turns its own `IntegrationError` into a `TunnelingError`, which
+    `_find_profile` reads as an infinite action and `bounceAction` reports as `trantype` 0, no
+    tunnelling at that temperature. The two `integrateAndSaveProfile` calls sit after that
+    loop, so the step count and the non-advancing radius added here had no such normalisation
+    and left `fullTunneling` as a bare `IntegrationError`, which ends the scan point instead of
+    dropping the temperature.
+    """
+
+    @staticmethod
+    def potential():
+        """A two-field double well whose barrier the solver resolves without trouble."""
+
+        def V(X):
+            X = np.asanyarray(X)
+            x, y = X[..., 0], X[..., 1]
+            return 0.25 * x ** 4 - 0.49 * x ** 3 + 0.235 * x ** 2 + 0.5 * y ** 2
+
+        def dV(X):
+            X = np.asanyarray(X)
+            x, y = X[..., 0], X[..., 1]
+            return np.stack([x ** 3 - 1.47 * x ** 2 + 0.47 * x, y], axis=-1)
+
+        return V, dV
+
+    def refuse_the_saver(self, message):
+        """Make every `integrateAndSaveProfile` call raise, leaving the shooting untouched."""
+        original = tunneling1D.SingleFieldInstanton.integrateAndSaveProfile
+
+        def refuse(instanton, *args, **kwargs):
+            raise IntegrationError(message)
+
+        tunneling1D.SingleFieldInstanton.integrateAndSaveProfile = refuse
+        self.addCleanup(setattr, tunneling1D.SingleFieldInstanton,
+                        "integrateAndSaveProfile", original)
+
+    def test_a_step_count_that_ends_the_saver_comes_back_as_an_infinite_action(self):
+        V, dV = self.potential()
+        self.refuse_the_saver("step count exceeded")
+        with self.assertRaises(errors.InfiniteActionError):
+            pathDeformation.fullTunneling([[1.0, 0.0], [0.0, 0.0]], V, dV, verbose=False)
+
+    def test_a_radius_that_cannot_advance_comes_back_the_same_way(self):
+        V, dV = self.potential()
+        self.refuse_the_saver("the radius does not advance")
+        with self.assertRaises(errors.InfiniteActionError):
+            pathDeformation.fullTunneling([[1.0, 0.0], [0.0, 0.0]], V, dV, verbose=False)
+
+    def test_the_same_potential_resolves_when_the_saver_is_left_alone(self):
+        """So that the two above cannot pass on a potential the solver never resolves."""
+        V, dV = self.potential()
+        result = pathDeformation.fullTunneling(
+            [[1.0, 0.0], [0.0, 0.0]], V, dV, verbose=False)
+        self.assertTrue(np.isfinite(float(result.action)),
+                        f"the action of the control case is {result.action}")
 
 
 class TheBounceOfASupercooledPointIsSolved(unittest.TestCase):
