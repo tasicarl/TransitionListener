@@ -215,15 +215,12 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
-- The bubble count above the hottest temperature of the rate history now includes a rate
-  whose logarithmic slope there is exactly zero. The contribution is
-  `exp(ln f) * u_above * (exp(d) - 1) / d` with `d` the slope times the extrapolation range,
-  and at a slope of zero that factor is 1, so the term is the whole rectangle rather than
-  nothing. Excluding it dropped a term the size of the ones being kept: on a history with
-  `ln(Gamma/H^4)` of -1 throughout, the count above the hottest node is 7.096 and the
-  nucleation temperature has no bracket inside the history, which the estimate has to refuse;
-  with the term dropped the count read 0 there and a temperature was reported from a bracket
-  the history does not contain.
+- **The bubble count above the hottest temperature of the rate history includes a rate whose
+  logarithmic slope there is exactly zero**, which is the rectangle and not nothing. Excluding
+  it dropped a term the size of those being kept: on a history with `ln(Gamma/H^4)` of -1
+  throughout the count above the hottest node is 7.096, and the crossing then has no bracket
+  inside the history, which the estimate refuses.
+
 - **The derivatives that fix the counterterms are taken species by species.** The first and
   second derivatives of the zero-temperature one-loop potential at the vacuum expectation value
   were finite differences of the sum over species. The step has to stay small because the
@@ -487,45 +484,19 @@ Each line says what was wrong and when it bit.
 - `Phases.testTmax` documented `ValueError` and raises `WrongHighTPhaseError`, and
   `PotentialError`'s docstring described a tuple convention its constructor does not follow, so
   a reader deciding what to catch would have caught nothing.
-- The integrated nucleation condition was summed from the cold end of the rate history and
-  carried a wall velocity that does not belong in it. `N(T) = 4 pi/3 int_T^Tinit Gamma/H^4
-  (1 - P) dT/T = 1` is the nucleation temperature a strongly supercooled transition reports,
-  because the instantaneous `Gamma/H^4 = 1` has no root on the range the earlier search
-  explores. `N` was accumulated from the cold end and the hot end taken as a difference from
-  the total, and `N` runs over many decades, so the crossing of `N = 1` was lost to the
-  rounding of that total: on the synthetic rate `ln(Gamma/H^4) = 60 - 40 ln(T)`, whose count
-  reaches 1.2e25 at the cold end, the reported temperature was 2.2540 against the closed-form
-  4.2359, and at `ln(Gamma/H^4) = 300 - 40 ln(T)` it was 2.2637 against 1708.87, in both cases
-  a temperature set by the rounding rather than by the rate. The sum now runs from the hot end,
-  where the crossing is, with each cell of the dense grid integrated as the exponential its
-  integrand is rather than as a trapezoid. The cell is formed in the logarithm, as its larger
-  endpoint times a factor below one, so that a cell whose colder endpoint underflows is still
-  counted at the size its warmer endpoint gives; the earlier form clipped the exponent at 700
-  and undercounted such a cell by the factor it was clipped by. A cell with an endpoint of
-  exactly zero, which is what a true-vacuum fraction that rounds to one leaves behind, has no
-  logarithm and is integrated in ordinary space; it used to be dropped as a non-number, worth
-  1.6e-06 of the count where that placement makes it worth the most. The place of the crossing
-  inside its cell is solved in the logarithm as well: the hot endpoint of that cell can be
-  below the smallest normal double, and dividing by it returned a nucleation temperature of
-  exactly zero with no warning. One limit is left: the cell that holds the crossing is centred
-  on the temperature where the integrand is of order one over the cell width, so its endpoints
-  sit either side of that by half the cell's rise, and a rise above 1451 puts the cold endpoint
-  beyond the range of a double. The cell integral is then not finite, it is dropped with the
-  other non-finite cells, and the run reports `WARNING:spline_tnuc_not_reached` rather than a
-  temperature even though the crossing lies inside the history. The steepest cell of the
-  conformal benchmark of the documentation rises by 57.6, so this limit is 25 times beyond any
-  rate measured; passing it needs the count accumulated in the logarithm too. The factor `v_w^3` is gone, since `N` counts the
-  bubbles nucleated in a volume of Hubble radius and not the volume they go on to fill. The
-  rate is interpolated with a cubic spline rather than a monotone interpolant, which is the
-  whole of the move on the conformal benchmark of the documentation, 2.5695 MeV to 2.5700 MeV,
-  the three other changes together accounting for 4 per cent of that move, since the rounding
-  of the total never mattered there: the count reaches only 5.3e4 at the cold end.
-  Where the count already exceeds one bubble at the hottest temperature of the rate history,
-  no temperature in the history brackets the crossing, and the run now reports
-  `WARNING:spline_tnuc_failed` instead of that hottest temperature. The temperature the
-  documentation quotes for the instantaneous condition on that benchmark, 2.75 MeV, is
-  corrected to 2.68 MeV, where the saved rate history changes sign, so the page now reads both
-  temperatures off one history.
+- **The integrated nucleation condition was summed from the cold end and carried a wall
+  velocity that does not belong in it.** `N(T) = 4 pi/3 int_T^Tinit Gamma/H^4 (1 - P) dT/T = 1`
+  is what a strongly supercooled transition reports, since the instantaneous `Gamma/H^4 = 1`
+  has no root on the range searched. Summing from the cold end lost the crossing to the
+  rounding of a total that runs over many decades: on `ln(Gamma/H^4) = 60 - 40 ln(T)` the
+  reported temperature was 2.2540 against the closed-form 4.2359. The sum now runs from the
+  hot end with each cell integrated in the logarithm as the exponential it is, and the factor
+  `v_w^3` is gone, since `N` counts bubbles nucleated in a Hubble volume and not the volume
+  they fill. On the conformal benchmark the nucleation temperature moves from 2.5695 MeV to
+  2.5700 MeV. A cell whose log integrand rises by more than 1451 exceeds the range of a double
+  and the run reports `WARNING:spline_tnuc_not_reached`; the steepest cell measured on a real
+  rate rises by 57.6.
+
 - A path along which the potential gradient vanishes at every point made the path deformation
   divide by zero. The deformation moves each point of the path by the transverse force divided
   by `dV_max`, the largest gradient magnitude along the path, and converges on the ratio

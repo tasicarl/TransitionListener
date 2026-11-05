@@ -34,15 +34,12 @@ Five temperatures come out of a run, and they answer different questions.
        stage solves the integrated form :math:`N(T) = \frac{4\pi}{3}
        \int_T^{T_\mathrm{i}} \frac{\Gamma}{H^4} (1 - P_\mathrm{t})
        \frac{\mathrm{d}T}{T} = 1`, which counts the bubbles that have actually been
-       nucleated in the space still in the symmetric phase. No wall velocity enters, because
-       :math:`N` counts the bubbles in a Hubble volume rather than the volume they fill.
-       The two differ wherever the rate rises steeply: on the rate history saved by the run of
-       the conformal benchmark of :doc:`the_plots`, :math:`\Gamma/H^4` reaches one at 2.68 MeV
-       and :math:`N` reaches one at 2.57 MeV, a difference of 4 per cent on a point whose
-       logarithmic rate changes by 69 per unit :math:`\ln T`. This is the familiar quantity and
-       the weakest of the five: on a strongly supercooled transition it sits far from where the
-       universe actually converts, and where neither condition is met the run reports that
-       rather than patching it.
+       nucleated in the space still in the symmetric phase. The two differ wherever the rate rises steeply: on the conformal
+       benchmark of :doc:`the_plots`, :math:`\Gamma/H^4` reaches one at 2.75 MeV and
+       :math:`N` reaches one at 2.57 MeV. This is the familiar quantity and the weakest of the
+       five: on a strongly supercooled transition it sits far from where the universe actually
+       converts, and where neither condition is met the run reports that rather than patching
+       it.
    * - :math:`T_\mathrm{perc}`
      - Where the true-vacuum fraction reaches :math:`f_\mathrm{perc} = 0.28957`, at which the
        bubbles form a connected network. This is the temperature the strength and the duration
@@ -234,9 +231,7 @@ over the support, which is the assumption behind the local inverse duration.
 ``WARNING:spline_tnuc_unavailable``, ``WARNING:spline_tnuc_not_reached`` and
 ``WARNING:spline_tnuc_failed`` distinguish three ways the nucleation temperature can be
 absent: no spline could be built, the condition was never met on the range explored, or the
-crossing could not be located, which includes a count that already exceeds one bubble at the
-hottest temperature of the rate history, so that no temperature in the history brackets the
-crossing. ``WARNING:false_vacuum_not_shrinking`` says the completion criterion is
+root-finding failed. ``WARNING:false_vacuum_not_shrinking`` says the completion criterion is
 not satisfied at the percolation temperature, so this transition percolates but has not been
 shown to finish.
 
