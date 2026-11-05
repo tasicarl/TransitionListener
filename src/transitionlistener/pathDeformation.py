@@ -48,6 +48,62 @@ from . import tunneling1D
 from . import helper_functions
 from . import errors
 
+
+def _forceToGradientRatio(F_max: float, dV_max: float) -> float:
+    """Return the largest transverse force on a path divided by the largest gradient on it.
+
+    Both deformation classes and :func:`fullTunneling` measure convergence by this ratio, and
+    all three read it from here so that the three cannot answer the same question differently.
+
+    A path along which the gradient vanishes at every point leaves the ratio dividing by
+    zero, and the ratio is reported as 0 there. The deformation has no gradient to measure its forces
+    against and no direction to move the path in, so the path handed to the deformation is the
+    only answer the deformation can give, which is what a converged deformation reports. The
+    alternative, the `inf` or `nan` that the division produces, is read by
+    :func:`Deformation_Spline.deformPath` as a path that has not converged, and the further
+    steps that routine then takes divide by the same zero and fill the path coordinates with
+    `nan`.
+
+    `dV_max` is tested against zero exactly. A gradient that is small but still representable
+    sets a scale and the division by it is well conditioned, so a threshold here would decide
+    for the solver that a gradient it can represent is not worth following. The zero does not
+    need an exactly flat potential: `dV_max` is computed as ``max(sqrt(sum(dV*dV)))``, and the
+    square of a gradient whose components are all below about 2e-162, in the units the
+    gradient is given in, underflows to zero in IEEE double precision.
+
+    A `dV_max` that is `nan` or infinite is a gradient that was not evaluated, and it is
+    reported as `nan` rather than as a number. The division would otherwise hide it: a finite
+    force divided by an infinite gradient is 0, which every caller reads as a converged path,
+    so a path whose gradient is unusable would reach :func:`findAction` and return an action
+    that looks ordinary. :func:`_refuseAGradientWithoutAScale` raises on the same values where
+    a deformation step is about to be taken; here there is no step to refuse, so the caller's
+    own test for a finite ratio is what ends the bounce.
+    """
+    if not np.isfinite(dV_max):
+        return np.nan
+    if dV_max == 0.0:
+        return 0.0
+    return F_max / dV_max
+
+
+def _refuseAGradientWithoutAScale(dV_max: float) -> None:
+    """Refuse a largest-gradient value that cannot set the length of a deformation step.
+
+    A step of the deformation moves each point of the path by the transverse force divided by
+    `dV_max`, so a `dV_max` that is `nan` or infinite makes every coordinate of the path
+    `nan`. Neither value is caught by a test against zero: `nan == 0.0` is False, and so is
+    `inf == 0.0`. Both say that the potential gradient was not evaluated, which is a failed
+    deformation and not a converged one, so this raises instead of reporting a ratio.
+    :func:`_deform_path` keeps the path as it stands when it catches the error, and the
+    bounce is then decided by the action the undeformed path gives.
+    """
+    if not np.isfinite(dV_max):
+        raise errors.DeformationError(
+            "The largest potential gradient along the path came out as %r, so a deformation "
+            "step has no length. The path is left as it is." % (dV_max,)
+        )
+
+
 class Deformation_Spline(object):
     """
     Deform a path in the presence of a potential such that the normal forces
@@ -234,6 +290,15 @@ class Deformation_Spline(object):
             deformation in this step (which might be the case if there are not
             enough basis functions), and if ``checkAfterFit == False``, this
             ratio can be non-zero or large even if there is no change in ``phi``.
+            A path along which the potential gradient vanishes at every point gives this
+            ratio as zero and leaves `phi` untouched, as :func:`_forceToGradientRatio`
+            describes.
+
+        Raises
+        ------
+        errors.DeformationError
+            If the largest potential gradient along the path is `nan` or infinite, so that a
+            step has no length. The path is left as it is.
 
         Notes
         -----
@@ -261,7 +326,15 @@ class Deformation_Spline(object):
         F, dV = self.forces()
         F_max = np.max(np.sqrt(np.sum(F*F,-1)))
         dV_max = np.max(np.sqrt(np.sum(dV*dV,-1)))
-        fRatio1 = F_max / dV_max
+        _refuseAGradientWithoutAScale(dV_max)
+        if dV_max == 0.0:
+            # The potential is flat to rounding along the whole path. There is nothing for the
+            # deformation to follow, and both the ratio and the rescaling below would divide
+            # by zero, so the path stays where it is and the step reports convergence. Nothing
+            # is written to `_phi_prev`, `_F_prev` or `phi_list`: no step was taken, so there
+            # is no previous step for the next call to reverse or for a caller to read.
+            return self._step_rval(lastStep, False, _forceToGradientRatio(F_max, dV_max))
+        fRatio1 = _forceToGradientRatio(F_max, dV_max)
         # Rescale the normal force so that it's relative to L:
         F *= self._L / dV_max
 
@@ -353,7 +426,14 @@ class Deformation_Spline(object):
         -------
         deformation_converged : bool
             True if the routine stopped because it converged (as determined by
-            `fRatioConv`), False otherwise.
+            `fRatioConv`), False otherwise. A path along which the potential gradient
+            vanishes at every point counts as converged and is returned untouched.
+
+        Raises
+        ------
+        errors.DeformationError
+            If the force ratio runs away from convergence, or if the largest potential
+            gradient along the path is `nan` or infinite, so that a step has no length.
         """
         minfRatio = np.inf
         minfRatio_index = 0
@@ -503,11 +583,27 @@ class Deformation_Points(object):
         fRatio : float
             The ratio of the maximum normal force to the maximum potential
             gradient. When the path is a perfect fit, this should go to zero.
+            A path along which the potential gradient vanishes at every point gives this
+            ratio as zero and leaves `phi` untouched, as :func:`_forceToGradientRatio`
+            describes.
+
+        Raises
+        ------
+        errors.DeformationError
+            If the largest potential gradient along the path is `nan` or infinite, so that a
+            step has no length. The path is left as it is.
         """
         F1, dV = self.forces()
         F_max = np.max(np.sqrt(np.sum(F1*F1,-1)))
         dV_max = np.max(np.sqrt(np.sum(dV*dV,-1)))
-        fRatio = F_max / dV_max
+        _refuseAGradientWithoutAScale(dV_max)
+        fRatio = _forceToGradientRatio(F_max, dV_max)
+        if dV_max == 0.0:
+            # As in `Deformation_Spline.step`: there is no direction to move the path in, and
+            # the two half-steps below would move every point by `F1 * inf`. The path stays
+            # where it is and the step reports convergence. The return comes before the two
+            # lists are appended to, so a step that was not taken is not saved as one.
+            return self._step_rval(stepsize, fRatio)
 
         if self.save_all_steps:
             self.phi_list.append(self.phi)
@@ -574,11 +670,24 @@ class Deformation_Points(object):
         -------
         deformation_converged : bool
             True if the routine stopped because it converged (as determined by
-            `fRatioConv`), False otherwise.
+            `fRatioConv`), False otherwise. A path along which the potential gradient
+            vanishes at every point counts as converged and is returned untouched.
+
+        Raises
+        ------
+        errors.DeformationError
+            If the largest potential gradient along the path is `nan` or infinite, so that a
+            step has no length. The path is left as it is.
         """
         minfRatio = np.inf
         Delta_phi = np.sum(np.sqrt((self.phi[0]-self.phi[-1])**2))
         dV_max = np.max(np.sum(self.dV(self.phi)**2, axis=-1))**0.5
+        _refuseAGradientWithoutAScale(dV_max)
+        if dV_max == 0.0:
+            # The potential gradient vanishes along the whole path, so the stepsize below
+            # would be Delta_phi / 0 and there is no direction to step in. The path given to
+            # this object is the answer, which is what `step` reports as well.
+            return True
         step_scale = Delta_phi / (len(self.phi) * dV_max)
         stepsize = startstep * step_scale
         minstep *= step_scale
@@ -1317,7 +1426,11 @@ def _compute_force_ratio(pts, dphi, dV, settings: TunnelingSettings) -> float:
     F, dV_vec = deform_obj.forces()
     F_max = np.max(np.sqrt(np.sum(F * F, -1)))
     dV_max = np.max(np.sqrt(np.sum(dV_vec * dV_vec, -1)))
-    return F_max / dV_max
+    # The same ratio the deformation itself converges on, so the same function computes it.
+    # Without that, a path whose gradient vanishes everywhere was reported to the caller of
+    # `fullTunneling` with a force ratio of `inf` in the same call in which the deformation
+    # had declared the path converged.
+    return _forceToGradientRatio(F_max, dV_max)
 
 
 def fullTunneling(
@@ -1405,7 +1518,8 @@ def fullTunneling(
     fRatio : float
         A ratio of the largest transverse force on the final path relative to
         the largest potential gradient. This would be zero if the solution were
-        perfect.
+        perfect, and is zero as well where the gradient vanishes along the whole path, as
+        :func:`_forceToGradientRatio` describes.
     saved_steps : list
         A list of lists, with each sub-list containing the saved steps for each
         deformation. Only written to if `save_all_steps` is True.
@@ -1493,6 +1607,19 @@ def fullTunneling(
         raise errors.InfiniteActionError
 
     f_ratio = _compute_force_ratio(last_output.pts, last_output.dphi, dV, settings)
+    if not np.isfinite(f_ratio):
+        # The gradient of the final path is not a number, so the potential could not be
+        # evaluated along it and nothing here measures how far the path is from the true one.
+        # Reported as an unresolved bounce rather than as a ratio the caller cannot use:
+        # measured before this guard, a gradient poisoned to `nan` after three evaluations
+        # returned an action of 1340.6 with `trantype` 1, a resolved first-order bounce.
+        # `InfiniteActionError` and not `DeformationError`, because
+        # `_execute_full_tunneling` handles the first and turns it into an infinite action
+        # with `trantype` 0, while the second would escape it as an unhandled exception.
+        if settings.verbose:
+            print("The force ratio of the final path is %r, so the path's gradient could not "
+                  "be evaluated; reporting no tunnelling at this temperature." % f_ratio)
+        raise errors.InfiniteActionError
     rtuple = namedtuple(
         "fullTunneling_rval", "profile1D Phi action fRatio saved_steps"
     )
@@ -2098,7 +2225,8 @@ def bounceSolution(pot, T: float, xstart: np.ndarray, xend: np.ndarray,
     fRatio : float
         A ratio of the largest transverse force on the final path relative to
         the largest potential gradient. This would be zero if the solution were
-        perfect.
+        perfect, and is zero as well where the gradient vanishes along the whole path, as
+        :func:`_forceToGradientRatio` describes.
     saved_steps : list
         A list of lists, with each sub-list containing the saved steps for each
         deformation. Only written to if `save_all_steps` is True.
