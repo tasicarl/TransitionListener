@@ -154,6 +154,70 @@ class TheFloorIsMeasuredAgainstTheRadius(unittest.TestCase):
                 radii, np.array([0.5, 0.0]), 1e-3, 1e-10, np.array([1e-10, 1e-10]), 0.0)
         self.assertIn("does not advance", str(caught.exception))
 
+    def test_the_saver_is_ended_by_the_step_count_when_the_floor_alone_advances_it(self):
+        """The floor keeps the radius moving, so the work it allows has to be bounded.
+
+        With the floor active a rejected step still advances the radius, by the radius
+        times `_RADIAL_STEP_FLOOR_FRACTION`. Covering one decade that way takes about
+        1e13 steps, which no profile needs, so the saver carries the same step count the
+        integration uses. Here the requested radius is a whole unit away while the floor
+        advances 1e-05 per step, so the count is what has to end the loop.
+        """
+        instanton = self.instanton()
+        limit = 50
+        budget = 10 * limit
+        calls = {"n": 0}
+
+        def controller(y, dydt, t, f, dt_try, epsfrac, epsabs, *args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] > budget:
+                raise AssertionError("the saver was not ended by the step count: %d steps"
+                                     % calls["n"])
+            return np.zeros_like(np.asarray(y, dtype=float)), 1e-30, 1e-30
+
+        original_rkqs = tunneling1D.rkqs
+        original_limit = tunneling1D._RADIAL_STEP_LIMIT
+        tunneling1D.rkqs = controller
+        tunneling1D._RADIAL_STEP_LIMIT = limit
+        self.addCleanup(setattr, tunneling1D, "rkqs", original_rkqs)
+        self.addCleanup(setattr, tunneling1D, "_RADIAL_STEP_LIMIT", original_limit)
+        # A radius of 1e8 gives a floor of 1e-05, so reaching 1e8 + 1 needs 1e5 steps.
+        radii = 1e8 + np.array([0.0, 0.5, 1.0])
+        with self.assertRaises(IntegrationError) as caught:
+            instanton.integrateAndSaveProfile(
+                radii, np.array([0.5, 0.0]), 1e-3, 1e-10, np.array([1e-10, 1e-10]), 0.0)
+        self.assertIn("step count exceeded", str(caught.exception))
+        self.assertEqual(calls["n"], limit,
+                         "the saver stopped after %d steps, not at the limit of %d"
+                         % (calls["n"], limit))
+
+    def test_the_saver_reports_the_first_radius_the_floor_had_to_force(self):
+        """`Rerr` is the radius where the step first fell below the floor.
+
+        The field is documented as that radius or `None`, and a profile forced to the
+        floor has to report it, so a caller can tell a profile the controller carried
+        from one the floor carried. The first forced step is the first one, at a radius
+        of 1e8 where the floor is 1e-05, so `Rerr` is 1e8 + 1e-05.
+        """
+        instanton = self.instanton()
+        start = 1e8
+
+        def controller(y, dydt, t, f, dt_try, epsfrac, epsabs, *args, **kwargs):
+            return np.zeros_like(np.asarray(y, dtype=float)), 1e-30, 1e-30
+
+        original = tunneling1D.rkqs
+        tunneling1D.rkqs = controller
+        self.addCleanup(setattr, tunneling1D, "rkqs", original)
+        radii = start + np.array([0.0, 5.0e-5, 1.0e-4])
+        profile = instanton.integrateAndSaveProfile(
+            radii, np.array([0.5, 0.0]), 1e-3, 1e-10, np.array([1e-10, 1e-10]), 0.0)
+        floor = start * tunneling1D._RADIAL_STEP_FLOOR_FRACTION
+        self.assertIsNotNone(profile.Rerr,
+                             "the profile was carried by the floor and reports no radius")
+        self.assertEqual(profile.Rerr, start + floor,
+                         "the reported radius is %r, not the first forced one %r"
+                         % (profile.Rerr, start + floor))
+
     def test_the_floor_is_three_orders_above_the_resolution_of_the_radius(self):
         """Below `r` times the machine epsilon a step cannot advance the radius at all."""
         fraction = tunneling1D._RADIAL_STEP_FLOOR_FRACTION

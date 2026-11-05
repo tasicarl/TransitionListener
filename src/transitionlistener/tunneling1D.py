@@ -735,8 +735,10 @@ class SingleFieldInstanton:
         Rerr = None
 
         i = 1
+        steps = 0
         while i < N:
             dy, dr, drnext = rkqs(y0, dydr0, r0, dY, dr, epsfrac, epsabs)
+            steps += 1
             # The same floor the integration itself uses: a step below the radius times
             # `_RADIAL_STEP_FLOOR_FRACTION` cannot advance the radius, and this loop ends
             # only when the radius passes the requested points.
@@ -748,9 +750,15 @@ class SingleFieldInstanton:
                 y1 = y0 + dy*step_floor/dr
                 dr = drnext = step_floor
                 r1 = r0 + dr
-                if Rerr is not None: Rerr = r1
+                # The first radius the floor had to force, which is what the field reports.
+                if Rerr is None: Rerr = r1
             if r1 == r0:
                 raise IntegrationError("the radius does not advance")
+            # A radius that advances by the floor alone covers a decade in about
+            # `1/_RADIAL_STEP_FLOOR_FRACTION` steps, which no profile needs, so the same
+            # bound the integration uses ends the saver rather than letting it grind.
+            if steps >= _RADIAL_STEP_LIMIT:
+                raise IntegrationError("step count exceeded")
             dydr1 = dY(y1,r1)
             # Fill the arrays, if necessary
             if (r0 < R[i] <= r1):
@@ -801,9 +809,11 @@ class SingleFieldInstanton:
         npoints : int
             Number of points to return in the profile.
         rmin : float
-            Relative to ``self.rscale``. Sets the smallest starting
-            radius, the starting stepsize, and the smallest allowed stepsize
-            (``0.01*rmin``).
+            Relative to ``self.rscale``. Sets the smallest starting radius and the
+            starting stepsize. It also sets the absolute part of the smallest allowed
+            stepsize, which is the scaled radius ``rmin*self.rscale`` times
+            `_RADIAL_STEP_FLOOR_FRACTION`; the floor actually applied is the larger of
+            that and the same fraction of the radius the integration has reached.
         rmax : float
             Relative ``self.rscale``. Sets the maximum allowed integration
             distance.
@@ -819,7 +829,8 @@ class SingleFieldInstanton:
             `R[0]` can be much bigger than zero for thin-walled bubbles.
         Rerr : float or None
             The first value of `r` at which the step fell below the floor, or
-            `None` if it never did. The floor is
+            `None` if it never did. With `rmin` already multiplied by ``self.rscale``,
+            the floor is
             ``max(rmin*_RADIAL_STEP_FLOOR_FRACTION, abs(r)*_RADIAL_STEP_FLOOR_FRACTION)``,
             so it tracks the radius the integration has reached rather than the
             step it started from.

@@ -219,7 +219,11 @@ Each line says what was wrong and when it bit.
   about 3e-04 in relative terms on an AMD EPYC 7453, deterministically on each processor.
   Lowering the floor by a further four orders leaves all seven unchanged, so these are the
   values the integration converges to and not values a floor selected. The work the floor no
-  longer bounds is bounded by a limit on the number of steps.
+  longer bounds is bounded by a limit on the number of steps, in the integration and in the
+  saving of the profile alike, since the floor advances a radius by a fixed fraction of itself
+  and so covers a decade in about 1e13 steps. `Rerr`, the radius at which the step first fell
+  below the floor, is now recorded; the condition that filled it was inverted, so it had always
+  been reported as `None`.
 - The convergence test of the one-dimensional bounce no longer fails on processors other than
   the one it was written on, and no longer rests on a value of the action that the processor
   changes. `test_the_action_converges_as_the_tolerance_is_tightened` pinned the action at the
