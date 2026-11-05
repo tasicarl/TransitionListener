@@ -310,8 +310,8 @@ class TheFermionSpectrumIsThePairTheModelReturns(unittest.TestCase):
 class TheSmoothnessProbeWalksEachDirection(unittest.TestCase):
     """A mass that moves along a coordinate but not along the diagonal takes the small step.
 
-    `species_step` decides a species' step by how much its mass squared changes across the
-    stencil. Probing with every field direction shifted together misses a mass built from a
+    `_derivative_at_vev` decides a species' step by how much its mass squared changes across
+    the stencil. Probing with every field direction shifted together misses a mass built from a
     difference of fields: with ``m^2 = M + k (phi_0 - phi_1)`` at a vev whose two components
     are equal, the diagonal probe leaves the mass exactly where it was, while each coordinate
     stencil moves it by ``2 k h``. Measured on the spectrum below, whose species 0 has
@@ -479,7 +479,8 @@ class TheProbeCoversTheStencilTheDerivativeEvaluates(unittest.TestCase):
 
     EPS = np.array([1.0, 0.5])
 
-    def evaluated(self, helper):
+    @staticmethod
+    def evaluated(helper, eps, Ndim, order):
         """The displacements `helper` hands to its function, read off a recording call."""
         seen = []
 
@@ -488,18 +489,26 @@ class TheProbeCoversTheStencilTheDerivativeEvaluates(unittest.TestCase):
             seen.append(np.reshape(X, (-1, X.shape[-1])))
             return np.zeros(X.shape[:-1])
 
-        helper(record, eps=self.EPS, Ndim=2, order=4)(np.zeros((1, 2)))
+        helper(record, eps=eps, Ndim=Ndim, order=order)(np.zeros((1, Ndim)))
         return np.unique(np.concatenate(seen, axis=0), axis=0)
 
     def test_every_point_the_helpers_evaluate_is_probed(self):
-        probed = {tuple(row) for row in helper_functions.stencil_offsets(self.EPS, 2, 4)}
-        for helper in (helper_functions.gradientFunction, helper_functions.hessianFunction):
-            with self.subTest(helper=helper.__name__):
-                evaluated = self.evaluated(helper)
-                self.assertGreater(len(evaluated), 0, "the helper evaluated nothing at all")
-                missing = [tuple(row) for row in evaluated if tuple(row) not in probed]
-                self.assertEqual(missing, [], f"{helper.__name__} evaluates points the probe "
-                                              f"never visits: {missing}")
+        """Over both derivative orders a configuration allows and one to three field directions."""
+        for Ndim in (1, 2, 3):
+            eps = np.array([1.0, 0.5, 0.25])[:Ndim]
+            for order in (2, 4):
+                probed = {tuple(row) for row in
+                          helper_functions.stencil_offsets(eps, Ndim, order)}
+                for helper in (helper_functions.gradientFunction,
+                               helper_functions.hessianFunction):
+                    with self.subTest(Ndim=Ndim, order=order, helper=helper.__name__):
+                        evaluated = self.evaluated(helper, eps, Ndim, order)
+                        self.assertGreater(len(evaluated), 0,
+                                           "the helper evaluated nothing at all")
+                        missing = [tuple(r) for r in evaluated if tuple(r) not in probed]
+                        self.assertEqual(missing, [],
+                                         f"{helper.__name__} at Ndim {Ndim} and order {order} "
+                                         f"evaluates points the probe never visits: {missing}")
 
     def test_the_undisplaced_point_is_among_them(self):
         """A mass squared that is not finite at the vev is refused through this point.
