@@ -114,10 +114,17 @@ class BoundaryApproachGridTests(unittest.TestCase):
         self.assertIsNone(boundary_grid([0.0, -1500.0, np.nan], [10.0, 8.0, 6.0]))
 
     def test_no_points_without_a_budget(self):
-        # Removing the budget guard is an equivalent mutation: a geometric spread asked for
-        # two points and stripped of its endpoints is already empty, and an empty grid is
-        # reported as no candidate. The test records the behaviour, not a live guard.
+        """A budget of nothing, and a budget below nothing, both come back as no candidate.
+
+        At a budget of zero the guard is not what decides it: a geometric spread asked for two
+        points and stripped of its endpoints is already empty, and an empty grid is reported as
+        no candidate either way. Below -2 it is, because `np.geomspace` is then asked for a
+        negative number of samples and raises `ValueError`. The shipped caller cannot ask for
+        either, since the batch is `max(n_action_increment, 8)`, so this is the contract of the
+        helper for a caller that does.
+        """
         self.assertIsNone(boundary_grid([-2.0, np.nan], [WARM_END, BOUNDARY], max_new_points=0))
+        self.assertIsNone(boundary_grid([-2.0, np.nan], [WARM_END, BOUNDARY], max_new_points=-3))
 
     def test_no_points_across_a_vanishing_interval(self):
         self.assertIsNone(boundary_grid([-2.0, np.nan], [BOUNDARY, BOUNDARY * (1.0 - 1e-14)]))
