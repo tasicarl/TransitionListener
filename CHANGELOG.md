@@ -215,6 +215,21 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
+- **The floor on the radial step of the bubble wall integration is set by the radius rather
+  than by the step the integration started from.** The step below which progress is impossible
+  is the one that cannot advance the radius in double precision, which is the radius times the
+  machine epsilon, and the old floor of one per cent of the initial step said nothing about
+  that. On the dark U(1) at `l` = 1e-4 and `v` = 1e10 GeV the smallest step a converging
+  integration needs wanders between 1.6e-06 and 9.6e-06 from one temperature to the next while
+  that floor sat at 6.2e-06, so whether a temperature could be solved alternated with the
+  temperature, and a refused integration returns an infinite action, which the percolation
+  integral reads as no nucleation. The recovered actions are `S_3/T` of 33.28 to 64.73 over the
+  seven internal temperatures 5.600 to 5.650, smooth and monotone, and unchanged bit for bit
+  with the floor lowered four further orders, which is what the suite asserts rather than the
+  values. A step limit bounds the work the floor no longer bounds, in the integration and in
+  the saving of the profile, and a refusal from either is reported as an unresolved bounce
+  rather than as an exception. `Rerr` records the first radius the floor had to force, which an
+  inverted condition had always left as `None`.
 - **The support refinement now samples the interval that ends where the bounce stops
   solving.** Below the coldest end of a traced phase pair the symmetric phase is gone, so the
   action is not a number there, while the nucleation rate is still rising, which puts the
