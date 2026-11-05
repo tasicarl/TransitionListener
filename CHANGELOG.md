@@ -227,7 +227,11 @@ Each line says what was wrong and when it bit.
   potential. A derivative is linear in the species, so each species is now differenced on its
   own. A species whose mass squared changes by no more than half across the stencil takes 1e-3
   of the vacuum expectation value of each field direction, with `counterterm_derivative_step`
-  as the lower bound, and every other species keeps `counterterm_derivative_step`. The same
+  as the lower bound, and every other species keeps `counterterm_derivative_step`. That test is
+  taken over every point the finite-difference stencil evaluates, the corners where two field
+  directions are displaced at once among them, since a species whose mass squared is held up at
+  the vacuum by a cancellation between two directions passes a test along each direction on its
+  own and still has a vanishing mass squared inside the stencil. The same
   perturbation of `g` now moves `d2V1/dphi2` by 1.2e-10 in relative terms, and varying the
   larger step by a decade in each direction moves it by less than 1e-8. On the abelian dark
   Higgs at `g` = 1 and quartic `lambda` = 0.018012121212121212 the second derivative moves
@@ -325,6 +329,7 @@ Each line says what was wrong and when it bit.
   expectation value: at `g` = 2 and `lambda` = 1 it sits at 0.83 of the vacuum expectation value,
   where the second derivative of the potential dips by 10 per cent over 4 units of the field. Read the resummation
   as valid where the shift is small against the masses of the spectrum.
+  every call since then. Nothing in the pipeline calls either of the two.
 - The second quartic counterterm of the dark flip-flop model now multiplies the fourth power of
   the second field. `models/TL_dark_flipflop.py` multiplied `phi_2 ** 2` where the docstring of
   `Vct` states `dlambda2 / 4 * phi_2 ** 4`. The term shifted the mass of the second field

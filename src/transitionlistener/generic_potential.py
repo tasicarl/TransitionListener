@@ -1383,9 +1383,10 @@ class generic_potential():
         units by default, keeps the model's step. A model that keeps its vev as a single number
         for a field space of more than one dimension has that number broadcast to one component
         per direction, since the mass function of such a model indexes every direction. The test
-        on the mass squared is taken over a
-        displacement of every direction at once, so a species that is steep in one direction keeps
-        the small step in all of them.
+        on the mass squared is taken over every point the derivative helpers evaluate at the
+        larger step, which for :class:`helper_functions.hessianFunction` includes the corners
+        where two directions are displaced at once, and one failing point drops that species to
+        the small step in every direction.
 
         Parameters
         ----------
@@ -1414,31 +1415,72 @@ class generic_potential():
         n_bosons = np.shape(np.atleast_1d(self.boson_massSq(at_vev, 0.0)[0]))[-1]
         n_fermions = np.shape(np.atleast_1d(tuple(self.fermion_massSq(at_vev))[0]))[-1]
 
-        def species_step(mass_sq):
-            change = max(np.abs(mass_sq(at_vev + side * smooth_step) - mass_sq(at_vev)) for side in (-2.0, 2.0))
-            return smooth_step if change <= 0.5 * np.abs(mass_sq(at_vev)) else self.counterterm_derivative_step
+        # The probe visits every point either derivative helper evaluates at the larger step,
+        # the mixed corners of the Hessian among them, and the whole spectrum is read off one
+        # batch of those points, so the probe costs one spectrum evaluation and not one per
+        # species. A per-axis probe accepts a species whose mass squared is held up by a
+        # cancellation between the directions: two directions each moving it by half the mass
+        # squared pass every axis check on their own and take it to zero at the corner where
+        # both move it the same way, and a stencil straddling a vanishing mass squared is the
+        # infrared behaviour this test exists to keep away from.
+        offsets = helper_functions.stencil_offsets(smooth_step, self.Ndim, self.deriv_order)
+        probed = at_vev + offsets
+        def shifted_boson_masses(X):
+            """The boson mass squared the one-loop term is actually built from.
 
+            `V1` adds `goldstone_shift` to every unphysical mode, so the mass squared whose
+            change across the stencil decides the step is the shifted one. Reading the
+            spectrum directly would weigh a Goldstone mass that vanishes at the vacuum and
+            keep the small step for the very species the resummation freed from it.
+            """
+            m2, _, _, physical = self.boson_massSq(X, 0.0)
+            return (np.asarray(m2, dtype=float)
+                    + self.goldstone_shift * (1.0 - np.asarray(physical, dtype=float)))
+
+        reference = np.concatenate([
+            np.ravel(shifted_boson_masses(at_vev)),
+            np.ravel(tuple(self.fermion_massSq(at_vev))[0])])
+        probed_masses = np.concatenate([
+            np.reshape(shifted_boson_masses(probed), (len(offsets), n_bosons)),
+            np.reshape(np.asarray(tuple(self.fermion_massSq(probed))[0], dtype=float),
+                       (len(offsets), n_fermions))], axis=-1)
+        # A refused comparison, so that a species whose mass squared is not a number anywhere on
+        # the stencil keeps the small step rather than passing the test: every comparison against
+        # nan is false, so the accepting form `not (change > bound)` would call such a species
+        # smooth. A mass squared that is not finite at the vev is refused by the same comparison
+        # and needs no separate line of code, since the undisplaced point is one of the points
+        # probed: nan there against a nan reference, and `inf - inf` against an infinite one, are
+        # both nan, and the comparison refuses them. That `stencil_offsets` carries the
+        # undisplaced point is asserted in `tests/test_counterterm_step.py`.
+        is_smooth = np.all(np.abs(probed_masses - reference) <= 0.5 * np.abs(reference), axis=0)
+
+        # Each species' stencil evaluates the whole spectrum and keeps one entry through the
+        # weights, so the spectrum is evaluated once per species per derivative rather than
+        # once, and the stencil points are not cached across species. What that costs, measured
+        # on this branch: of the models that ship, only the two abelian dark Higgs models and
+        # `models/templatePotential.py` take these derivatives at all, with one field direction
+        # and five species, and `models/TL_dark_U1.py` initialises in 3.98 ms of which the
+        # gradient and the Hessian are 1.6 ms together, against 0.23 ms for one common step.
+        # `models/TL_2HDM.py`, the largest spectrum here at 15 species, solves its counterterms
+        # analytically in `counterterms/twohdm.py` and calls neither derivative; called by hand
+        # its Hessian costs 15.0 ms against 0.96 ms, beside an initialisation of 11 s. Once per
+        # scan point, against a bounce of order a minute, neither is worth a cache keyed on the
+        # stencil points, so the per-species steps are kept as they are.
         total = 0.0
         for species in range(n_bosons + n_fermions):
             boson_weights, fermion_weights = np.zeros(n_bosons), np.zeros(n_fermions)
             if species < n_bosons:
                 boson_weights[species] = 1.0
-
-                def mass_sq(X, i=species):
-                    m2, _, _, physical = self.boson_massSq(X, 0.0)
-                    return (np.ravel(m2) + self.goldstone_shift * (1.0 - np.ravel(physical)))[i]
             else:
                 fermion_weights[species - n_bosons] = 1.0
-
-                def mass_sq(X, i=species - n_bosons):
-                    return np.ravel(tuple(self.fermion_massSq(X))[0])[i]
 
             def contribution(X, boson_weights=boson_weights, fermion_weights=fermion_weights):
                 m2, n, c, physical = self.boson_massSq(X, 0.0)
                 fermion_masses, dof = tuple(self.fermion_massSq(X))[:2]
                 return one_loop((m2, n * boson_weights, c, physical), (fermion_masses, dof * fermion_weights))
 
-            total = total + derivative(contribution, eps=species_step(mass_sq), Ndim=self.Ndim,
+            step = smooth_step if is_smooth[species] else self.counterterm_derivative_step
+            total = total + derivative(contribution, eps=step, Ndim=self.Ndim,
                                        order=self.deriv_order)(at_vev)
         # np.squeeze shrinks (1,1) and (1,) to a 0d array, for evaluating Vtot at more than one point at the same time.
         return np.squeeze(total)
