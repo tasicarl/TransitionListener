@@ -1345,12 +1345,17 @@ class generic_potential():
         is_smooth = np.all(np.abs(probed_masses - reference) <= 0.5 * np.abs(reference), axis=0)
 
         # Each species' stencil evaluates the whole spectrum and keeps one entry through the
-        # weights, so the spectrum is evaluated of order `n_bosons + n_fermions` times per
-        # derivative rather than once. Measured on the largest spectrum this package ships,
-        # the 15 species of `models/TL_2HDM.py`: `d2V1atvev` costs 20 ms against 0.4 ms for
-        # one common step, and on `models/TL_dark_U1.py` 0.7 ms against 0.1 ms. Both are once
-        # per scan point, against a point whose bounce costs of order a minute, so the
-        # evaluations are not cached and the per-species steps are kept instead.
+        # weights, so the spectrum is evaluated once per species per derivative rather than
+        # once, and the stencil points are not cached across species. What that costs, measured
+        # on this branch: of the models that ship, only the two abelian dark Higgs models and
+        # `models/templatePotential.py` take these derivatives at all, with one field direction
+        # and five species, and `models/TL_dark_U1.py` initialises in 3.98 ms of which the
+        # gradient and the Hessian are 1.6 ms together, against 0.23 ms for one common step.
+        # `models/TL_2HDM.py`, the largest spectrum here at 15 species, solves its counterterms
+        # analytically in `counterterms/twohdm.py` and calls neither derivative; called by hand
+        # its Hessian costs 15.0 ms against 0.96 ms, beside an initialisation of 11 s. Once per
+        # scan point, against a bounce of order a minute, neither is worth a cache keyed on the
+        # stencil points, so the per-species steps are kept as they are.
         total = 0.0
         for species in range(n_bosons + n_fermions):
             boson_weights, fermion_weights = np.zeros(n_bosons), np.zeros(n_fermions)
