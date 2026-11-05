@@ -245,6 +245,20 @@ Each line says what was wrong and when it bit.
   carry. It now reads that pair the way `V1` does. The attributes have been read since release
   2.0 and the spectrum has returned the pair for just as long, so both methods have raised on
   every call since then. Nothing in the pipeline calls either of the two.
+- The second quartic counterterm of the dark flip-flop model now multiplies the fourth power of
+  the second field. `models/TL_dark_flipflop.py` multiplied `phi_2 ** 2` where the docstring of
+  `Vct` states `dlambda2 / 4 * phi_2 ** 4`. The term shifted the mass of the second field
+  rather than renormalising the quartic self-coupling of that field. No published number moves,
+  and the claim holds for every path into the coupling and not only for the default one.
+  `calcCounterTerms` fixes `dmu1`, `dmu2` and `dlambda1` from the gradient and the Hessian of
+  the one-loop potential at the vacuum of the first field, which is three conditions and leaves
+  none for `dlambda2`, and it assigns `dlambda2 = 0` with no branch, at whatever step of the
+  derivative a caller asks for. `dlambda2` is not one of the model parameters, so a run that
+  passes the name in the parameter block is refused with `InitPotentialError`. The counterterm
+  potential of the muAres benchmark is bitwise what the old expression returned, over field
+  values of up to 3000 internal field units, which is three times the internal field scale of
+  this model. Assigning the attribute on an instantiated potential is the one remaining way to
+  make the term contribute, and for a user who did so the wrong power changed the result.
 - The convergence test of the one-dimensional bounce no longer fails on processors other than
   the one it was written on, and no longer rests on a value of the action that the processor
   changes. `test_the_action_converges_as_the_tolerance_is_tightened` pinned the action at the
