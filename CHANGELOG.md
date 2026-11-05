@@ -215,43 +215,22 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
-- The floor on the radial step of the bubble wall integration is now set by the radius rather
-  than by the step the integration started from. `integrateProfile` integrates outward in the
-  radius with an adaptive step and needs a floor, so that an integration which cannot advance
-  ends instead of spinning. That floor was one per cent of the initial step, which says nothing
-  about whether progress is possible: the step below which progress is impossible is the one
-  that cannot advance the radius in double precision, which is the radius times the machine
-  epsilon. On the dark U(1) model at a quartic coupling `l` of 1e-4 and a vacuum expectation
-  value `v` of 1e10 GeV, where the barrier occupies about one part in a thousand of the path
-  between the minima, the smallest step a converging integration needs wanders between 1.6e-06
-  and 9.6e-06 from one temperature to the next while that floor sat at 6.2e-06, nine orders
-  above the resolution of the radius. Whether a temperature could be solved therefore
-  alternated with the temperature: at internal temperatures 5.640 and 5.650 the bounce was
-  solved, at 5.600, 5.620, 5.630, 5.635 and 5.645 it was refused. A refused integration is
-  reported as an infinite action, which the percolation integral reads as no nucleation, so the
-  temperatures carrying the largest nucleation rate were dropped and the point failed with
-  error 8 for want of a true vacuum fraction, having reached 4.75e-10 of the `f_perc` = 0.28957
-  it needs. The recovered actions are `S_3/T` of 33.28, 45.54, 51.84, 55.03,
-  58.24, 61.48 and 64.73 at those seven temperatures, a smooth and monotone sequence, and the
-  two temperatures that were already solved are unchanged. Those figures are quoted to four
-  digits and were measured on an AMD EPYC 9454: the bounce action of this point is higher by
-  about 3e-04 in relative terms on an AMD EPYC 7453, deterministically on each processor.
-  Lowering the floor by a further four orders leaves all seven unchanged, bit for bit, so these
-  are the values the integration converges to and not values a floor selected; that
-  independence is what the suite asserts, rather than the values themselves, which move with
-  the potential and not with the floor. The work the floor no
-  longer bounds is bounded by a limit on the number of steps, in the integration and in the
-  saving of the profile alike, since the floor advances a radius by a fixed fraction of itself
-  and so covers a decade in about 1e13 steps. `Rerr`, the radius at which the step first fell
-  below the floor, is now recorded; the condition that filled it was inverted, so it had always
-  been reported as `None`. A refusal from either guard is reported as an unresolved bounce
-  rather than as an exception: the shooting loop already turned its own `IntegrationError`
-  into a `TunnelingError`, which the caller reads as an infinite action and `trantype` 0, but
-  the two calls that save the profile sit after that loop, so a bare `IntegrationError` left
-  `fullTunneling` and ended the scan point instead of dropping the temperature. The refusal
-  message names the floor that was applied and both terms it is the larger of, since `drmin`
-  can be zero or far below the radius-relative term and naming `drmin` alone gave the wrong
-  reason.
+- **The floor on the radial step of the bubble wall integration is set by the radius rather
+  than by the step the integration started from.** The step below which progress is impossible
+  is the one that cannot advance the radius in double precision, which is the radius times the
+  machine epsilon, and the old floor of one per cent of the initial step said nothing about
+  that. On the dark U(1) at `l` = 1e-4 and `v` = 1e10 GeV the smallest step a converging
+  integration needs wanders between 1.6e-06 and 9.6e-06 from one temperature to the next while
+  that floor sat at 6.2e-06, so whether a temperature could be solved alternated with the
+  temperature, and a refused integration returns an infinite action, which the percolation
+  integral reads as no nucleation. The recovered actions are `S_3/T` of 33.28 to 64.73 over the
+  seven internal temperatures 5.600 to 5.650, smooth and monotone, and unchanged bit for bit
+  with the floor lowered four further orders, which is what the suite asserts rather than the
+  values. A step limit bounds the work the floor no longer bounds, in the integration and in
+  the saving of the profile, and a refusal from either is reported as an unresolved bounce
+  rather than as an exception. `Rerr` records the first radius the floor had to force, which an
+  inverted condition had always left as `None`.
+
 - **The derivatives that fix the counterterms are taken species by species.** The first and
   second derivatives of the zero-temperature one-loop potential at the vacuum expectation value
   were finite differences of the sum over species. The step has to stay small because the
