@@ -35,7 +35,7 @@ Five temperatures come out of a run, and they answer different questions.
        \int_T^{T_\mathrm{i}} \frac{\Gamma}{H^4} (1 - P_\mathrm{t})
        \frac{\mathrm{d}T}{T} = 1`, which counts the bubbles that have actually been
        nucleated in the space still in the symmetric phase. The two differ wherever the rate rises steeply: on the conformal
-       benchmark of :doc:`the_plots`, :math:`\Gamma/H^4` reaches one at 2.75 MeV and
+       benchmark of :doc:`the_plots`, :math:`\Gamma/H^4` reaches one at 2.68 MeV and
        :math:`N` reaches one at 2.57 MeV. This is the familiar quantity and the weakest of the
        five: on a strongly supercooled transition it sits far from where the universe actually
        converts, and where neither condition is met the run reports that rather than patching
