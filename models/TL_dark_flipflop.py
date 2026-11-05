@@ -210,7 +210,7 @@ class DarkFlipFlop(generic_potential.generic_potential):
         phi2 = X[..., 1]
 
         Vct = - 0.5*self.dmu1*phi1**2 - 0.5*self.dmu2*phi2**2
-        Vct += 0.25*self.dlambda1*phi1**4 + 0.25*self.dlambda2*phi2**2
+        Vct += 0.25*self.dlambda1*phi1**4 + 0.25*self.dlambda2*phi2**4
         Vct += 0.5*self.dlambda12 * phi1**2 * phi2**2
         return Vct
 
