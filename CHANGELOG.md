@@ -335,7 +335,16 @@ Each line says what was wrong and when it bit.
   4.2359, and at `ln(Gamma/H^4) = 300 - 40 ln(T)` it was 2.2637 against 1708.87, in both cases
   a temperature set by the rounding rather than by the rate. The sum now runs from the hot end,
   where the crossing is, with each cell of the dense grid integrated as the exponential its
-  integrand is rather than as a trapezoid. The factor `v_w^3` is gone, since `N` counts the
+  integrand is rather than as a trapezoid. The cell is formed in the logarithm, as its larger
+  endpoint times a factor below one, so that a cell whose colder endpoint underflows is still
+  counted at the size its warmer endpoint gives; the earlier form clipped the exponent at 700
+  and undercounted such a cell by the factor it was clipped by. A cell with an endpoint of
+  exactly zero, which is what a true-vacuum fraction that rounds to one leaves behind, has no
+  logarithm and is integrated in ordinary space; it used to be dropped as a non-number, worth
+  1.6e-06 of the count where that placement makes it worth the most. One limit is left: a
+  single cell spanning more than about 709 in the log integrand exceeds the range of a double,
+  and the run then reports `WARNING:spline_tnuc_not_reached` rather than a temperature. The
+  steepest cell of the conformal benchmark of the documentation spans 57.6. The factor `v_w^3` is gone, since `N` counts the
   bubbles nucleated in a volume of Hubble radius and not the volume they go on to fill. The
   rate is interpolated with a cubic spline rather than a monotone interpolant, which is the
   whole of the move on the conformal benchmark of the documentation, 2.5695 MeV to 2.5700 MeV,

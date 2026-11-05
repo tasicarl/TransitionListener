@@ -2969,15 +2969,31 @@ def estimate_spline_tnuc_from_rate_history(
         # documentation, with a median of 0.158, where the trapezoid is wrong by a factor.
         prefactor = 4.0 * np.pi / 3.0      # the volume of a sphere of Hubble radius 1/H
         step = float(u_dense[1] - u_dense[0])
-        integrand = np.exp(np.minimum(log_integrand[:-1], 700.0))
+        # The cell is integrated in the logarithm, so that a cell whose log integrand rises
+        # by hundreds is still the exponential it is. Writing it as the larger endpoint
+        # times a factor below one keeps every intermediate finite: clipping the exponent
+        # instead undercounts such a cell by the factor it was clipped by, and a cell whose
+        # colder endpoint underflows came out as zero even when the warmer endpoint carries
+        # the whole count.
+        lower = log_integrand[:-1]
+        upper = log_integrand[1:]
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-            growth = np.diff(log_integrand) / step
-            ratio = np.where(
-                np.abs(growth * step) > 1.0e-8,
-                np.expm1(np.minimum(growth * step, 700.0)) / (growth * step),
-                1.0,
-            )
-            cells = integrand * step * ratio
+            # The crossing of one bubble is placed inside its cell from these two, which is
+            # where the count is of order one and the exponential is small enough to hold.
+            integrand = np.exp(np.minimum(lower, 700.0))
+            growth = (upper - lower) / step
+            rise = np.abs(upper - lower)
+            larger = np.maximum(lower, upper)
+            cells = np.exp(larger + np.log(-np.expm1(-rise)) - np.log(rise)) * step
+            # A flat cell is the rectangle, which is the limit of the line above.
+            cells = np.where(rise <= 1.0e-8, np.exp(larger) * step, cells)
+            # An endpoint of zero, which is what a true-vacuum fraction that rounds to one
+            # leaves behind, has no logarithm and no exponential model. The cell is finite
+            # and not zero, so it is integrated in ordinary space, where a linear integrand
+            # is exact.
+            no_logarithm = ~np.isfinite(lower) | ~np.isfinite(upper)
+            cells = np.where(no_logarithm,
+                             0.5 * step * (np.exp(lower) + np.exp(upper)), cells)
         cells[~np.isfinite(cells)] = 0.0
         # The grid may stop just above the crossing, so the contribution above the hottest node is
         # added from the slope of the rate there. The extrapolation is cut off one grid range in
