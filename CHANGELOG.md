@@ -260,6 +260,12 @@ Each line says what was wrong and when it bit.
   one-component field point against its own stencil before the spectrum saw it. Both now return a
   finite result of two components, the second derivative for the first time. That model computes
   its own counterterms and calls neither of the two, so none of its numbers move.
+- **`mpmath` is declared as a development dependency.** `tests/test_counterterm_step.py`
+  checks the finite-difference stencil of the counterterm derivatives against the same stencil
+  in 60-digit arithmetic, which needs `mpmath`, and the package was reached only as a
+  dependency of `sympy`. An environment installed from the project metadata alone could not
+  run that test.
+
 - **`V1phys` and `dV1physatvev` raised `AttributeError` on every call.** `V1phys` is the
   one-loop correction without the Goldstone bosons, and it read the fermion spectrum through
   the attributes `masses_sq` and `dof`, which the pair that `fermion_massSq` returns does not
