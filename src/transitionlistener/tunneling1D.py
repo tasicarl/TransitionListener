@@ -653,7 +653,7 @@ class SingleFieldInstanton:
                 raise IntegrationError("r > rmax")
             elif (dr < step_floor):
                 raise IntegrationError("dr < drmin")
-            elif steps > _RADIAL_STEP_LIMIT:
+            elif steps >= _RADIAL_STEP_LIMIT:
                 raise IntegrationError("step count exceeded")
             elif (abs(y1 - np.array([self.phi_metaMin,0])) < 3*epsabs).all():
                 r,y = r1,y1
@@ -711,8 +711,9 @@ class SingleFieldInstanton:
         R, Phi, dPhi : array_like
             Radii and field values which make up the bubble profile.
         Rerr : float or None
-            The first value of `r` at which ``dr < drmin``, or `None` if
-            ``dr >= drmin`` always.
+            The first value of `r` at which the step fell below the floor, or
+            `None` if it never did. The floor is the larger of `drmin` and the
+            radius times `_RADIAL_STEP_FLOOR_FRACTION`.
 
         Notes
         -----
@@ -736,14 +737,20 @@ class SingleFieldInstanton:
         i = 1
         while i < N:
             dy, dr, drnext = rkqs(y0, dydr0, r0, dY, dr, epsfrac, epsabs)
-            if (dr >= drmin):
+            # The same floor the integration itself uses: a step below the radius times
+            # `_RADIAL_STEP_FLOOR_FRACTION` cannot advance the radius, and this loop ends
+            # only when the radius passes the requested points.
+            step_floor = max(drmin, abs(r0) * _RADIAL_STEP_FLOOR_FRACTION)
+            if (dr >= step_floor):
                 r1 = r0 + dr
                 y1 = y0 + dy
             else:
-                y1 = y0 + dy*drmin/dr
-                dr = drnext = drmin
+                y1 = y0 + dy*step_floor/dr
+                dr = drnext = step_floor
                 r1 = r0 + dr
                 if Rerr is not None: Rerr = r1
+            if r1 == r0:
+                raise IntegrationError("the radius does not advance")
             dydr1 = dY(y1,r1)
             # Fill the arrays, if necessary
             if (r0 < R[i] <= r1):
@@ -811,8 +818,11 @@ class SingleFieldInstanton:
             Radii and field values which make up the bubble profile. Note that
             `R[0]` can be much bigger than zero for thin-walled bubbles.
         Rerr : float or None
-            The first value of `r` at which ``dr < drmin``, or `None` if
-            ``dr >= drmin`` always.
+            The first value of `r` at which the step fell below the floor, or
+            `None` if it never did. The floor is
+            ``max(rmin*_RADIAL_STEP_FLOOR_FRACTION, abs(r)*_RADIAL_STEP_FLOOR_FRACTION)``,
+            so it tracks the radius the integration has reached rather than the
+            step it started from.
 
         Notes
         -----

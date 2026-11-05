@@ -63,22 +63,96 @@ class TheFloorIsMeasuredAgainstTheRadius(unittest.TestCase):
 
         return tunneling1D.SingleFieldInstanton(1.0, 0.0, V, dV)
 
-    def test_a_step_far_below_a_hundredth_of_the_initial_one_is_allowed(self):
-        """The old floor refused any step below 1 per cent of the initial step."""
+    def test_a_step_far_below_a_hundredth_of_the_initial_one_is_accepted(self):
+        """A step the old floor refused is now taken, and the integration walks on it.
+
+        The initial step is 1e-3, so the old floor stood at 1e-05 and a step of 1e-09 was
+        refused outright. Here every step the controller offers is 1e-09, which is four
+        orders below that floor and four orders above the radius times
+        `_RADIAL_STEP_FLOOR_FRACTION` at a radius of order one. The integration therefore
+        has to accept every one of them and walk the radius from 1.0 past `rmax`, which is
+        the only exit left. Under the old floor the first step ends it with ``dr < drmin``.
+        """
+        reached_rmax = "r > rmax"
+        step = 1e-9
+        self.assertLess(step, 0.01 * 1e-3, "the step is not below the old floor")
+        self.assertGreater(step, 1.0 * tunneling1D._RADIAL_STEP_FLOOR_FRACTION * 1e3,
+                           "the step is not clear of the new floor")
+        # `rmax` is a distance from the starting radius, so this is 1000 steps of walking.
+        constant = (step for _ in range(4000))
+        with self.assertRaises(IntegrationError) as caught:
+            self.integrate_with_steps(constant, rmax=1000 * step)
+        self.assertIn(reached_rmax, str(caught.exception),
+                      "the integration did not walk on steps below the old floor")
+
+    def test_the_saver_refuses_a_radius_that_cannot_advance(self):
+        """`integrateAndSaveProfile` floors its own step and rejects a stalled radius.
+
+        The saver has no `rmax` and no step count: its loop ends only when the radius
+        passes the requested output points. A floor far below one unit in the last place of
+        the radius would let it set ``r1 = r0`` for ever, so it carries the same
+        radius-relative floor and refuses a step that leaves the radius where it was.
+        """
         instanton = self.instanton()
-        profile = instanton.findProfile(phitol=1e-10, xtol=1e-10, rmin=1e-4, rmax=1e4)
-        steps = np.diff(np.asarray(profile.R, dtype=float))
-        smallest = float(np.min(np.abs(steps)))
-        initial = 1e-4 * instanton.rscale
-        self.assertTrue(np.isfinite(instanton.findAction(profile)),
-                        "the action of the reference bounce is not finite")
-        self.assertGreater(initial, 0.0)
-        # The fixture does not itself need a step that small, so this records the headroom
-        # the new floor leaves rather than a step the fixture takes.
-        self.assertLess(instanton.rscale * tunneling1D._RADIAL_STEP_FLOOR_FRACTION,
-                        0.01 * initial / 1e6,
-                        f"the new floor is not far below the old one: smallest step taken "
-                        f"{smallest:.6g}, initial step {initial:.6g}")
+        start = 1e8
+        budget = 1000
+        calls = {"n": 0}
+
+        def controller(y, dydt, t, f, dt_try, epsfrac, epsabs, *args, **kwargs):
+            # Far below one unit in the last place at a radius of 1e8, so `r0 + dr == r0`
+            # unless the floor lifts the step.
+            calls["n"] += 1
+            if calls["n"] > budget:
+                raise AssertionError("the saver did not advance the radius: %d steps at "
+                                     "a step of 1e-30 and the requested radii not reached"
+                                     % calls["n"])
+            return np.zeros_like(np.asarray(y, dtype=float)), 1e-30, 1e-30
+
+        original = tunneling1D.rkqs
+        tunneling1D.rkqs = controller
+        self.addCleanup(setattr, tunneling1D, "rkqs", original)
+        # The floor at this radius is 1e8 times 1e-13, which is 1e-05, so eleven steps
+        # carry the radius past the last requested point. Without the floor the step stays
+        # at 1e-30, the radius never changes, and the controller runs out of budget.
+        radii = start + np.array([0.0, 5.0e-5, 1.0e-4])
+        profile = instanton.integrateAndSaveProfile(
+            radii, np.array([0.5, 0.0]), 1e-3, 1e-10, np.array([1e-10, 1e-10]), 0.0)
+        self.assertTrue(np.all(np.isfinite(np.asarray(profile.Phi, dtype=float))),
+                        "the saved profile is not finite")
+        self.assertLess(calls["n"], budget,
+                        "the saver needed more steps than the floor allows")
+
+    def test_the_saver_ends_when_the_floor_itself_cannot_advance_the_radius(self):
+        """With the relative floor switched off, the guard ends the loop instead of spinning.
+
+        The floor is what keeps the saver moving, so the guard behind it can only be
+        reached by removing the floor. That is what this does: with the fraction at zero
+        and no absolute floor, the step stays at 1e-30, `r0 + dr` returns `r0`, and the
+        guard has to end the loop. Without the guard the controller runs out of budget.
+        """
+        instanton = self.instanton()
+        budget = 1000
+        calls = {"n": 0}
+
+        def controller(y, dydt, t, f, dt_try, epsfrac, epsabs, *args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] > budget:
+                raise AssertionError("the saver spun on a radius that does not advance: "
+                                     "%d steps" % calls["n"])
+            return np.zeros_like(np.asarray(y, dtype=float)), 1e-30, 1e-30
+
+        original_rkqs = tunneling1D.rkqs
+        original_fraction = tunneling1D._RADIAL_STEP_FLOOR_FRACTION
+        tunneling1D.rkqs = controller
+        tunneling1D._RADIAL_STEP_FLOOR_FRACTION = 0.0
+        self.addCleanup(setattr, tunneling1D, "rkqs", original_rkqs)
+        self.addCleanup(setattr, tunneling1D, "_RADIAL_STEP_FLOOR_FRACTION",
+                        original_fraction)
+        radii = 1e8 + np.array([0.0, 5.0e-5, 1.0e-4])
+        with self.assertRaises(IntegrationError) as caught:
+            instanton.integrateAndSaveProfile(
+                radii, np.array([0.5, 0.0]), 1e-3, 1e-10, np.array([1e-10, 1e-10]), 0.0)
+        self.assertIn("does not advance", str(caught.exception))
 
     def test_the_floor_is_three_orders_above_the_resolution_of_the_radius(self):
         """Below `r` times the machine epsilon a step cannot advance the radius at all."""
@@ -136,10 +210,19 @@ class TheFloorIsMeasuredAgainstTheRadius(unittest.TestCase):
         # the floor cannot fire, and `rmax` is out of reach within the permitted steps. The
         # sequence runs out shortly after the limit, so a missing count ends in a
         # `StopIteration` rather than in a hang.
-        constant = (1e-6 for _ in range(limit + 10))
+        taken = {"n": 0}
+
+        def counted():
+            for _ in range(limit + 10):
+                taken["n"] += 1
+                yield 1e-6
+
         with self.assertRaises(IntegrationError) as caught:
-            self.integrate_with_steps(constant, rmax=1e30)
+            self.integrate_with_steps(counted(), rmax=1e30)
         self.assertIn("step count", str(caught.exception))
+        self.assertEqual(taken["n"], limit,
+                         "the integration took %d steps against the advertised limit of %d"
+                         % (taken["n"], limit))
 
 
 class TheBounceOfASupercooledPointIsSolved(unittest.TestCase):
@@ -150,18 +233,20 @@ class TheBounceOfASupercooledPointIsSolved(unittest.TestCase):
     #: unchanged when it is lowered by a further four orders, so these are the values the
     #: integration converges to and not values a floor selected.
     #:
-    #: On an AMD EPYC 7453. The same values on an AMD EPYC 9454 are 33.2846471014,
-    #: 51.8423905255, 61.4770798341 and 64.7303585618, lower by 4.848e-04, 3.318e-04,
-    #: 2.864e-04 and 2.738e-04 in relative terms, and bit-identical across six runs on each
-    #: processor. So the value is deterministic per processor and differs between
-    #: processors, and `VALUE_TOLERANCE` has to clear that spread. A first version of this
-    #: test pinned the values to 1e-06 and passed on one processor while failing on the
-    #: other, which is the same defect that `tests/test_1d_tunneling.py` documents for the
-    #: action of its own configuration.
-    MEASURED = {5.600: 33.300790, 5.630: 51.859599, 5.645: 61.494693, 5.650: 64.748089}
+    #: All seven temperatures of the window, measured on an AMD EPYC 9454. The four that
+    #: were recorded first read 33.300790, 51.859599, 61.494693 and 64.748089 on an AMD
+    #: EPYC 7453, higher by 4.848e-04, 3.318e-04, 2.864e-04 and 2.738e-04 in relative
+    #: terms, and bit-identical across six runs on each processor. So the value is
+    #: deterministic per processor and differs between processors, and `VALUE_TOLERANCE`
+    #: has to clear that spread. A first version of this test pinned the values to 1e-06
+    #: and passed on one processor while failing on the other, which is the same defect
+    #: that `tests/test_1d_tunneling.py` documents for the action of its own
+    #: configuration.
+    MEASURED = {5.600: 33.284647, 5.620: 45.538412, 5.630: 51.842391, 5.635: 55.031718,
+                5.640: 58.243756, 5.645: 61.477080, 5.650: 64.730359}
 
     #: Ten times the measured spread between processors. It is loose on purpose: the gate
-    #: this class rests on is that the action is finite at all four temperatures, which five
+    #: this class rests on is that the action is finite at all seven temperatures, which five
     #: of the seven temperatures of the module docstring failed before the fix and which no
     #: processor difference can change. The value comparison is the weaker guard, against a
     #: floor that lets the integration through but truncates it, and a truncated integration
@@ -200,7 +285,7 @@ class TheBounceOfASupercooledPointIsSolved(unittest.TestCase):
         return float(result.action) / temperature
 
     def test_every_temperature_of_the_measured_window_gives_a_finite_action(self):
-        """Five of the seven temperatures came back infinite under the old floor."""
+        """Five of these seven temperatures came back infinite under the old floor."""
         for temperature, expected in sorted(self.MEASURED.items()):
             with self.subTest(T_int=temperature):
                 got = self.action_over_temperature(temperature)
