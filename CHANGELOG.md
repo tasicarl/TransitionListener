@@ -341,10 +341,17 @@ Each line says what was wrong and when it bit.
   and undercounted such a cell by the factor it was clipped by. A cell with an endpoint of
   exactly zero, which is what a true-vacuum fraction that rounds to one leaves behind, has no
   logarithm and is integrated in ordinary space; it used to be dropped as a non-number, worth
-  1.6e-06 of the count where that placement makes it worth the most. One limit is left: a
-  single cell spanning more than about 709 in the log integrand exceeds the range of a double,
-  and the run then reports `WARNING:spline_tnuc_not_reached` rather than a temperature. The
-  steepest cell of the conformal benchmark of the documentation spans 57.6. The factor `v_w^3` is gone, since `N` counts the
+  1.6e-06 of the count where that placement makes it worth the most. The place of the crossing
+  inside its cell is solved in the logarithm as well: the hot endpoint of that cell can be
+  below the smallest normal double, and dividing by it returned a nucleation temperature of
+  exactly zero with no warning. One limit is left: the cell that holds the crossing is centred
+  on the temperature where the integrand is of order one over the cell width, so its endpoints
+  sit either side of that by half the cell's rise, and a rise above 1451 puts the cold endpoint
+  beyond the range of a double. The cell integral is then not finite, it is dropped with the
+  other non-finite cells, and the run reports `WARNING:spline_tnuc_not_reached` rather than a
+  temperature even though the crossing lies inside the history. The steepest cell of the
+  conformal benchmark of the documentation rises by 57.6, so this limit is 25 times beyond any
+  rate measured; passing it needs the count accumulated in the logarithm too. The factor `v_w^3` is gone, since `N` counts the
   bubbles nucleated in a volume of Hubble radius and not the volume they go on to fill. The
   rate is interpolated with a cubic spline rather than a monotone interpolant, which is the
   whole of the move on the conformal benchmark of the documentation, 2.5695 MeV to 2.5700 MeV,

@@ -2978,9 +2978,6 @@ def estimate_spline_tnuc_from_rate_history(
         lower = log_integrand[:-1]
         upper = log_integrand[1:]
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-            # The crossing of one bubble is placed inside its cell from these two, which is
-            # where the count is of order one and the exponential is small enough to hold.
-            integrand = np.exp(np.minimum(lower, 700.0))
             growth = (upper - lower) / step
             rise = np.abs(upper - lower)
             larger = np.maximum(lower, upper)
@@ -3043,9 +3040,37 @@ def estimate_spline_tnuc_from_rate_history(
             # One bubble is already counted at the hottest temperature of the rate history, so the
             # crossing lies above every support point and this history cannot say where it is.
             return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": max_N}
-        missing = (1.0 - float(N_hot_to_cold[idx - 1])) / prefactor / float(integrand[idx - 1])
+        # The place of the crossing inside its cell is solved in the logarithm, for the same
+        # reason the cell integral is. The cell's hot endpoint can be below the smallest
+        # normal double, as it is when the rate jumps by hundreds of e-folds inside one cell;
+        # dividing by it in ordinary space gave an infinite distance and returned a nucleation
+        # temperature of exactly zero with no warning at all.
+        shortfall = (1.0 - float(N_hot_to_cold[idx - 1])) / prefactor
+        start = float(lower[idx - 1])
         exponent = float(growth[idx - 1])
-        below = np.log1p(missing * exponent) / exponent if abs(missing * exponent) > 1.0e-8 else missing
+        if not (shortfall > 0.0) or not np.isfinite(start) or not np.isfinite(exponent):
+            return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": max_N}
+        log_shortfall = math.log(shortfall)
+        if exponent == 0.0:
+            # A flat cell is the rectangle, so the distance is the shortfall over the integrand.
+            log_below = log_shortfall - start
+            below = math.exp(log_below) if log_below < 709.0 else math.inf
+        else:
+            # The logarithm of the dimensionless `shortfall * exponent / exp(start)`, which is
+            # what the exponential model has to reach inside the cell.
+            scale = log_shortfall + math.log(abs(exponent)) - start
+            if exponent > 0.0:
+                # log1p(exp(scale)), which stays finite however large `scale` is.
+                below = float(np.logaddexp(0.0, scale)) / exponent
+            elif scale >= 0.0:
+                # The cell falls towards the cold end and cannot supply the missing count.
+                return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": max_N}
+            else:
+                below = math.log1p(-math.exp(scale)) / exponent
+        if not np.isfinite(below) or below < 0.0:
+            return {"Tnuc": None, "warning": "spline_tnuc_failed", "max_N": max_N}
+        # The crossing lies in this cell, so the distance cannot exceed its width.
+        below = min(below, step)
         u_cross = float(u_dense[-idx]) - below
         return {
             "Tnuc": float(np.exp(u_cross)),

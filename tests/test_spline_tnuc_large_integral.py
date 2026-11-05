@@ -192,3 +192,47 @@ def test_a_count_already_above_one_at_the_hottest_temperature_is_refused(monkeyp
     assert found["warning"] == "spline_tnuc_failed"
     assert found["max_N"] > 1.0
     assert np.isfinite(found["max_N"])
+
+
+def test_a_cell_that_rises_by_more_than_a_thousand_still_places_the_crossing(monkeypatch):
+    """The widest cell the dense grid can hold, as a range regression.
+
+    With ``ln(Gamma/H^4) = c - k ln T`` the cell that holds the crossing is centred on the
+    temperature where the integrand is of order one over the cell width, so its two
+    endpoints sit symmetrically about ``ln(k/(4 pi/3))``. At ``k = 6e5`` per unit ``ln T``
+    the cell rises by 1382 and runs from -679 to +703, within one e-fold of both ends of
+    the range of a double, and the analytic crossing is still recovered exactly. The
+    steepest cell measured on a real rate is 57.6, in the conformal benchmark of the
+    documentation, so this is 24 times beyond anything physical.
+
+    This holds under either form of the within-cell inversion, so it is a range
+    regression and not evidence for the logarithmic one.
+    """
+    k = 6.0e5
+    target = 100.0
+    c = k * math.log(target) - math.log(PREFACTOR / k)
+    T = np.geomspace(1e4, 1.0, 200)
+    monkeypatch.setattr(bd, "logGamma", lambda t, s: c - k * np.log(t))
+    found = bd.estimate_spline_tnuc_from_rate_history(T, *_flat_history(T.size))
+    assert found["warning"] is None
+    assert found["Tnuc"] == pytest.approx(target, rel=1e-10)
+
+
+def test_a_cell_whose_own_integral_overflows_is_refused_and_not_answered(monkeypatch):
+    """The known limit of the dense grid, pinned so that a change to it is noticed.
+
+    One e-fold steeper than the test above, at ``k = 6.3e5``, the cell that holds the
+    crossing rises by 1451 and its cold endpoint passes ``ln`` of the largest double. The
+    cell integral is then not finite, the zeroing of the non-finite cells drops it, and the
+    count never reaches one although the crossing lies inside the history. The estimator
+    refuses rather than answering, which is the behaviour this pins; recovering the
+    crossing in that regime needs the count accumulated in the logarithm as well.
+    """
+    k = 6.3e5
+    target = 100.0
+    c = k * math.log(target) - math.log(PREFACTOR / k)
+    T = np.geomspace(1e4, 1.0, 200)
+    monkeypatch.setattr(bd, "logGamma", lambda t, s: c - k * np.log(t))
+    found = bd.estimate_spline_tnuc_from_rate_history(T, *_flat_history(T.size))
+    assert found["Tnuc"] is None
+    assert found["warning"] == "spline_tnuc_not_reached"
