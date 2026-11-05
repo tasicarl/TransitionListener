@@ -195,6 +195,24 @@ account of every one is in its pull request.
 
 ### Fixed
 
+- **The template model's quadratic term, which put its declared vacuum expectation value
+  nowhere near a minimum of its own potential.** `models/templatePotential.py` is the file a
+  new model is copied from. Its tree potential is `-mu2*phi^2/2 + l*phi^4/4`, whose minimum
+  sits at `phi^2 = mu2/l`, so the vacuum expectation value it declares requires
+  `mu2 = l*v^2`; it set `mu2 = -2*v^2` instead, which at its own defaults is -2.0e+06 against
+  the 1.0e+03 required, and of the wrong sign. Both terms were then positive and the potential
+  rose monotonically out of the origin: `V0` read 0, +2.50e+11, +1.00e+12 and +2.25e+12 in
+  internal units at `phi` of 0, `v`/2, `v` and 3`v`/2, so `self.X0`, which the template sets to
+  `v`, was not a stationary point. The mass of the unphysical mode, `-mu2 + l*phi^2`, came out
+  as 2.001e+06 at the vacuum where a Goldstone mass must vanish, and `m1_GeV`, declared with a
+  default of 125.20 GeV, was read and never used, because `mu2` was what it should have fixed.
+  With `mu2 = l*v^2` the potential has its minimum at `v`, the Goldstone mass is exactly zero,
+  the scalar mass is `2*l*v^2`, and the superfluous input is gone. Two further faults on the
+  same path: the attribute was named `mu2_GeV` and printed as `mu2_GeV2`, and
+  `makePrettyDictionaryPrint` was passed two dictionaries where it takes one, so constructing
+  the template with `verbose=True` raised `AttributeError` and then `TypeError`. The class name
+  was spelled `TemplatePotenital` and is now `TemplatePotential`.
+
 Each line says what was wrong and when it bit.
 
 - **The derivatives that fix the counterterms are taken species by species.** The first and
@@ -283,11 +301,8 @@ Each line says what was wrong and when it bit.
   by +0.0002 and -0.017 per cent at the third. The largest move measured is at `g_tilde` = 1 and
   `lambda` = 0.2, where `dmu2` goes from -1619.5 to -3320.3 and `dl` from 5.617e-3 to 3.862e-3,
   a factor 2.05 and -31 per cent, because that is the point where the Goldstone term dominates
-  the second derivative. `models/templatePotential.py` does not call the method, so none of its
-  numbers move under this entry: the mass squared of the unphysical mode of its spectrum at its
-  own vacuum expectation value is 2.001e6 in internal units, 99.9 per cent of the largest mass
-  squared of that spectrum, so its Coleman-Weinberg term is not infrared divergent there and
-  there is nothing to resum.
+  the second derivative. `models/templatePotential.py` calls the method too, now that its
+  spectrum has the massless Goldstone the method assumes.
 
   The shift enters the Coleman-Weinberg term at every field value and not only at the vacuum
   expectation value, so the zero-temperature one-loop potential of a model that resums changes

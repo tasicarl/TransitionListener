@@ -629,11 +629,45 @@ class OnlyADivergentTermIsResummed(unittest.TestCase):
         self.assertTrue(resumming, "no shipped model resums, so nothing was checked")
         self.assertTrue(massive, "no shipped model has a massive unphysical mode at its vacuum")
 
-    def test_the_template_carries_the_mass_it_states(self):
-        """The comment in `models/templatePotential.py` quotes the number that keeps it out."""
-        _, unphysical, _ = self.spectrum_at_the_vacuum("template")
+    def test_the_template_has_the_massless_goldstone_its_shift_assumes(self):
+        """The precondition of the shift the template calls for.
+
+        `models/templatePotential.py` calls `setGoldstoneShift()`, which is only correct where
+        the unphysical mode is massless at the vacuum. Its tree potential is
+        ``-mu2*phi^2/2 + l*phi^4/4``, so the vev it declares requires ``mu2 = l*v^2``, and the
+        Goldstone mass ``-mu2 + l*v^2`` then vanishes exactly. With ``mu2 = -2*v^2`` it was
+        2.001e6 in internal units, about 2.0e3 times the largest mass squared of the spectrum,
+        and the shift was being applied to a mode that is not infrared divergent.
+        """
+        pot, unphysical, largest = self.spectrum_at_the_vacuum("template")
         self.assertEqual(unphysical.size, 1)
-        self.assertAlmostEqual(float(unphysical[0]) / 2.001e6, 1.0, delta=1e-3)
+        self.assertEqual(float(unphysical[0]), 0.0,
+                         "the template's unphysical mode is not massless at its vacuum, so the "
+                         "shift it calls for does not apply")
+        self.assertAlmostEqual(float(pot.mu2) / (pot.l * pot.v**2), 1.0, delta=1e-12,
+                               msg="mu2 is not l*v^2, so the declared vev is not the minimum "
+                                   "of the tree potential")
+
+    def test_the_template_potential_has_its_minimum_at_the_vev_it_declares(self):
+        """`X0` has to be a minimum of the model's own tree potential.
+
+        With ``mu2 = -2*v^2`` both terms of ``-mu2*phi^2/2 + l*phi^4/4`` were positive, so the
+        potential rose monotonically out of the origin and the declared vev was not a
+        stationary point at all: at the template's defaults V0 read 0, +2.50e+11, +1.00e+12 and
+        +2.25e+12 in internal units at phi of 0, v/2, v and 3v/2.
+        """
+        pot, _, _ = self.spectrum_at_the_vacuum("template")
+        v = float(np.ravel(np.asarray(pot.X0, dtype=float))[0])
+        phi = np.array([[0.0], [0.5 * v], [v], [1.5 * v]])
+        values = np.ravel(np.asarray(pot.V0(phi), dtype=float))
+        self.assertLess(values[2], values[0], "the vev is not below the origin")
+        self.assertLess(values[2], values[1], "the vev is not the minimum")
+        self.assertLess(values[2], values[3], "the vev is not the minimum")
+        # dV0/dphi = -mu2*phi + l*phi^3 vanishes at the vev; the gradient is a finite
+        # difference, so it is compared with the scale mu2*v of the two terms that cancel.
+        slope = float(np.ravel(np.asarray(pot.gradV(np.array([v]), 0.0), dtype=float))[0])
+        self.assertLess(abs(slope) / (pot.mu2 * v), 1e-8,
+                        f"the tree potential has a slope of {slope} at the vev")
 
 
 if __name__ == "__main__":
