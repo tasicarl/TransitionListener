@@ -70,7 +70,17 @@ def _forceToGradientRatio(F_max: float, dV_max: float) -> float:
     need an exactly flat potential: `dV_max` is computed as ``max(sqrt(sum(dV*dV)))``, and the
     square of a gradient whose components are all below about 2e-162, in the units the
     gradient is given in, underflows to zero in IEEE double precision.
+
+    A `dV_max` that is `nan` or infinite is a gradient that was not evaluated, and it is
+    reported as `nan` rather than as a number. The division would otherwise hide it: a finite
+    force divided by an infinite gradient is 0, which every caller reads as a converged path,
+    so a path whose gradient is unusable would reach :func:`findAction` and return an action
+    that looks ordinary. :func:`_refuseAGradientWithoutAScale` raises on the same values where
+    a deformation step is about to be taken; here there is no step to refuse, so the caller's
+    own test for a finite ratio is what ends the bounce.
     """
+    if not np.isfinite(dV_max):
+        return np.nan
     if dV_max == 0.0:
         return 0.0
     return F_max / dV_max

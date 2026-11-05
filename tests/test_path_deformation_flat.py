@@ -190,6 +190,38 @@ def test_a_gradient_that_becomes_a_nan_gives_no_tunnelling():
         % (outdict[0.0]["action"],))
 
 
+@pytest.mark.parametrize("value", [np.inf, -np.inf, np.nan])
+def test_a_gradient_without_a_scale_does_not_come_back_as_a_ratio_of_zero(value):
+    """An infinite gradient divides a finite force to 0, which reads as a converged path.
+
+    The zero case and the unusable case have to be told apart here, because everything
+    downstream tests the ratio for being finite and 0 passes that test. A finite force over
+    an infinite gradient is 0 in IEEE double precision, so without this the one place that
+    computes the ratio outside the deformation's own step would report a path whose gradient
+    was never evaluated as the best path there is.
+    """
+    assert not np.isfinite(pd._forceToGradientRatio(1.0, value))
+    assert not np.isfinite(pd._forceToGradientRatio(0.0, value))
+    # The zero gradient keeps its own answer.
+    assert pd._forceToGradientRatio(1.0, 0.0) == 0.0
+
+
+def test_the_force_ratio_of_a_path_with_an_infinite_gradient_is_not_a_number():
+    """The one route that is not behind the deformation's own refusal.
+
+    `_deform_path` catches the `DeformationError` the step raises and goes on with the path
+    as it stands, so the ratio `fullTunneling` tests at the end is computed here and nowhere
+    else. An infinite gradient divides a finite force to 0 and would be reported as a
+    converged path; the ratio has to be a non-number so that `fullTunneling` ends the bounce.
+    """
+    phi, dphidr = path()
+    settings = pd._build_tunneling_settings(
+        100, pd.tunneling1D.SingleFieldInstanton, None, None,
+        pd.Deformation_Spline, None, None, False, False, None, None)
+    unusable = lambda X: np.full_like(X, np.inf)
+    assert not np.isfinite(pd._compute_force_ratio(phi, dphidr, unusable, settings))
+
+
 def test_the_same_potential_with_a_usable_gradient_still_tunnels():
     """So that the guard above cannot be satisfied by refusing every path."""
     outdict = {}
