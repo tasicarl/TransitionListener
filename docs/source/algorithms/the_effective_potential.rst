@@ -68,6 +68,19 @@ them. They are fixed by requiring that the first and second derivatives of
    Differencing the species one at a time keeps the small step where it regulates something and
    takes 1e-3 of the vacuum expectation value of each field direction for the rest.
 
+.. versionchanged:: 2.2
+   The Goldstone bosons of the abelian dark Higgs models are resummed in
+   the zero-temperature one-loop term. Their mass squared in that term is shifted by
+   :math:`\delta_{\rm GB} = (1/\phi)\, \partial V_{1,\rm phys}/\partial\phi` at the vacuum
+   expectation value, the first derivative of the one-loop term without the Goldstone bosons
+   [EliasMiro2014]_ [Martin2014]_. The resummed mass squared does not vanish at the vacuum
+   expectation value, so the derivatives that fix the counterterms are finite there and the step no
+   longer regulates anything. A model asks for the resummation by calling ``setGoldstoneShift``
+   before those derivatives, and the shift is zero for a model that does not. The shift enters the
+   one-loop term at every field value, so the potential of a model that resums changes everywhere
+   and not only at the vacuum expectation value. ``CHANGELOG.md`` states the size of that change.
+   The thermal part of the potential keeps the mass squared of the spectrum.
+
 .. figure:: ../_static/algorithm_potential_vs_temperature.png
    :width: 100%
 
@@ -202,3 +215,10 @@ References
 
 .. [Parwani1992] R. R. Parwani, *Resummation in a hot scalar field theory*,
    Phys. Rev. D **45** (1992) 4695.
+
+.. [EliasMiro2014] J. Elias-Miro, J. R. Espinosa and T. Konstandin, *Taming infrared divergences
+   in the effective potential*, arXiv:1406.2652. The shift of the Goldstone mass squared is
+   eqs. 11, 12 and 16.
+
+.. [Martin2014] S. P. Martin, *Taming the Goldstone contributions to the effective potential*,
+   Phys. Rev. D **90** (2014) 016013, arXiv:1406.2355. The same shift is eqs. 4.2 and 4.10.

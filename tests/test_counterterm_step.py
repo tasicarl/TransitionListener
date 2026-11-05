@@ -10,6 +10,7 @@ from unittest import mock
 import mpmath as mp
 import numpy as np
 
+from transitionlistener import errors
 from transitionlistener import generic_potential as gp
 from transitionlistener import helper_functions
 from transitionlistener.helper_functions import load_potential
@@ -40,19 +41,32 @@ class CountertermStepTests(unittest.TestCase):
                 self.assertEqual(counterterms(**overrides), reference)
 
     def test_model_may_override_the_step(self):
-        pot = build(ABELIAN)
-        self.assertEqual(pot.counterterm_derivative_step, 1.0e-3)
-        dark_u1 = load_potential(str(REPO / "models/TL_dark_U1.py"), "specific_potential")(
-            {"g_tilde": 2.65, "l": 1.5e-3, "v_GeV": 1e7}, verbose=False)
-        self.assertEqual(dark_u1.counterterm_derivative_step, 0.1)
+        """A step set on the model class has to reach the stencil, not only the attribute.
+
+        No model that ships with TransitionListener overrides the step any more, so the override
+        is checked on the class of the abelian dark Higgs with the Goldstone resummation switched
+        off, which is the case in which the step still changes the result.
+        """
+        self.assertEqual(build(ABELIAN).counterterm_derivative_step, 1.0e-3)
+        second_derivative = {}
+        for step in (1.0e-3, 0.1):
+            pot = RoundingOfTheCounterterms.model()
+            pot.counterterm_derivative_step = step
+            del pot._d2V1atvev
+            second_derivative[step], handed_out = record_steps(pot)
+            self.assertIn(step, flat_steps(handed_out),
+                          "the step of the model never reached the stencil")
+        self.assertGreater(abs(float(second_derivative[0.1]) - float(second_derivative[1.0e-3])), 15.0)
 
 
 class RoundingOfTheCounterterms(unittest.TestCase):
     """The finite difference at the vev of a sum of order 1e9 is free of rounding, and the step still regulates."""
 
     @staticmethod
-    def model(g=1.0, **attributes):
+    def model(g=1.0, resummed=False, **attributes):
         cls = load_potential(str(REPO / "models/TL_dark_U1_g_parameterization.py"), "specific_potential")
+        if not resummed:
+            attributes["setGoldstoneShift"] = lambda self: None
         original = {name: getattr(cls, name) for name in attributes}
         for name, value in attributes.items():
             setattr(cls, name, value)
@@ -96,6 +110,18 @@ class RoundingOfTheCounterterms(unittest.TestCase):
                 err_msg="the spectrum written out here is not the spectrum of the model any more")
         exact = (-V1(v - 2 * h) + 16 * V1(v - h) - 30 * V1(v) + 16 * V1(v + h) - V1(v + 2 * h)) / (12 * h**2)
         self.assertAlmostEqual(float(pot.d2V1atvev()) / float(exact), 1.0, delta=1e-9)
+
+    def test_a_fermion_counts_once(self):
+        """A fermion against the closed form of its second derivative, on top of the same bosons."""
+        pot = self.model()
+        without = float(pot.d2V1atvev())
+        yukawa, dof = 0.3, 12.0
+        pot.fermion_massSq = lambda X: ((yukawa * np.asarray(X)[..., :1])**2, np.array([dof]))
+        del pot._d2V1atvev
+        phi, Q2 = 1000.0, pot.renormScaleSq
+        log = np.log(yukawa**2 * phi**2 / Q2)
+        expected = -dof * yukawa**4 * phi**2 * (12.0 * (log - 1.5) + 14.0) / (64.0 * np.pi**2)
+        self.assertAlmostEqual((float(pot.d2V1atvev()) - without) / expected, 1.0, delta=1e-9)
 
     def test_the_step_still_regulates_the_goldstone_boson(self):
         small, large = self.model(), self.model(counterterm_derivative_step=0.1)
@@ -146,12 +172,23 @@ def two_field_potential(spectrum=separable_spectrum, vev=VEV, **overrides):
         v=vev, Ndim=np.size(vev), deriv_order=4, renormScaleSq=Q_SQ,
         counterterm_derivative_step=gp.generic_potential.counterterm_derivative_step,
         _SMOOTH_STEP_FRACTION=gp.generic_potential._SMOOTH_STEP_FRACTION,
+        goldstone_shift=gp.generic_potential.goldstone_shift,
         boson_massSq=spectrum,
         fermion_massSq=lambda X: (np.zeros(np.shape(X)[:-1] + (0,)), np.zeros(0)))
     for name, value in overrides.items():
         setattr(pot, name, value)
     pot.V1 = types.MethodType(gp.generic_potential.V1, pot)
     return pot
+
+
+def flat_steps(steps):
+    """The steps `record_steps` collected, as one float each.
+
+    A step is a float when it is `counterterm_derivative_step` and one entry per field direction
+    when it is the smooth step, and a test that asks which species took which step has to compare
+    the two against each other.
+    """
+    return [float(np.ravel(np.asarray(step, dtype=float))[0]) for step in steps]
 
 
 def record_steps(pot, derivative=helper_functions.hessianFunction):
@@ -259,6 +296,45 @@ class EverySpeciesIsInTheSum(unittest.TestCase):
         np.testing.assert_allclose(by_species, np.squeeze(whole), rtol=1e-10, atol=1e-6)
 
 
+class TheShiftInTheSpeciesSum(unittest.TestCase):
+    """`goldstone_shift` on the fixture above, so that the attribute it declares carries a value.
+
+    The fixture mirrors the class default of `goldstone_shift`, which is zero, so every other test
+    of the two-field potential runs with no shift and cannot tell `V1` reading the attribute from
+    `V1` ignoring it. The spectrum of the fixture has one unphysical species whose mass squared
+    vanishes at the vev, so a shift there is the whole of its mass squared and the Hessian of its
+    one-loop term has a closed form.
+    """
+
+    SHIFT = 5.0e3   #: shift of the unphysical species, internal units of mass squared
+
+    def hessian(self, shift, step=gp.generic_potential.counterterm_derivative_step):
+        """The Hessian at the vev of the unphysical species alone, at the given shift and step."""
+        pot = two_field_potential(
+            spectrum=lambda X, T: separable_spectrum(X, T, dof=np.array([0.0, 1.0, 0.0])),
+            goldstone_shift=shift, counterterm_derivative_step=step)
+        return gp.generic_potential._derivative_at_vev(
+            pot, pot.V1, helper_functions.hessianFunction)
+
+    def test_the_unphysical_species_is_differenced_at_the_shifted_mass(self):
+        # m2(phi) = QUARTIC * (phi^2 - VEV[0]^2) + shift, so at the vev m2 = shift,
+        # dm2/dphi = 2 * QUARTIC * VEV[0] and d2m2/dphi2 = 2 * QUARTIC. With
+        # f = m2^2 * (log|m2/Q^2| - c), the second derivative of f at the vev is
+        # d2m2 * m2 * (2 * (log|m2/Q^2| - c) + 1) + (dm2)^2 * (2 * (log|m2/Q^2| - c) + 3).
+        log = np.log(abs(self.SHIFT / Q_SQ)) - SEPARABLE_C[1]
+        d_m2, d2_m2 = 2.0 * QUARTIC * VEV[0], 2.0 * QUARTIC
+        expected = (d2_m2 * self.SHIFT * (2.0 * log + 1.0) + d_m2**2 * (2.0 * log + 3.0)) / (64.0 * np.pi**2)
+        self.assertAlmostEqual(float(self.hessian(self.SHIFT)[0, 0]) / expected, 1.0, delta=1e-9)
+
+    def test_the_shift_takes_the_step_out_of_that_entry(self):
+        """Without a shift the entry is whatever the step says, with a shift it is a number."""
+        with_shift = [float(self.hessian(self.SHIFT, step)[0, 0]) for step in (1.0e-4, 1.0e-3, 1.0e-2)]
+        without = [float(self.hessian(0.0, step)[0, 0]) for step in (1.0e-4, 1.0e-3, 1.0e-2)]
+        self.assertAlmostEqual(with_shift[0] / with_shift[2], 1.0, delta=1e-9)
+        # Measured spread over those two decades without the shift: 0.278 in relative terms.
+        self.assertGreater(abs(without[0] / without[2] - 1.0), 0.1)
+
+
 class TheStepAtAVanishingVev(unittest.TestCase):
     """A vev of zero cannot be allowed to produce a step of zero."""
 
@@ -336,6 +412,7 @@ class TheSmoothnessProbeWalksEachDirection(unittest.TestCase):
             v=self.VEV, Ndim=2, deriv_order=4, renormScaleSq=1.0e6,
             counterterm_derivative_step=gp.generic_potential.counterterm_derivative_step,
             _SMOOTH_STEP_FRACTION=gp.generic_potential._SMOOTH_STEP_FRACTION,
+            goldstone_shift=gp.generic_potential.goldstone_shift,
             boson_massSq=self.spectrum,
             fermion_massSq=lambda X: (np.zeros(np.shape(X)[:-1] + (0,)), np.zeros(0)))
         pot.V1 = types.MethodType(gp.generic_potential.V1, pot)
@@ -410,6 +487,254 @@ class AModelThatKeepsOneNumberForTwoFieldDirections(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(gradient)), f"the gradient is {gradient}")
 
 
+class GoldstoneResummation(unittest.TestCase):
+    """The shift of arXiv:1406.2652 in the Coleman-Weinberg term of a model with counterterms at the vev."""
+
+    model = staticmethod(lambda **k: RoundingOfTheCounterterms.model(resummed=True, **k))
+
+    def test_the_shift_is_the_physical_derivative_of_the_one_loop_potential(self):
+        pot = self.model()
+        phi, Q2, lam, g = 1000.0, pot.renormScaleSq, pot.l, pot.g
+        _, dof, constants, _ = pot.boson_massSq(np.array([[phi]]), 0.0)
+        dof, constants = np.ravel(dof), np.ravel(constants)
+        species = [(dof[0], 2.0 * lam * phi**2, 6.0 * lam * phi, constants[0]),
+                   (dof[2], g**2 * phi**2, 2.0 * g**2 * phi, constants[2]),
+                   (dof[3], g**2 * phi**2, 2.0 * g**2 * phi, constants[3])]
+        slope = sum(n * m2 * dm2 * (2.0 * (np.log(m2 / Q2) - c) + 1.0) for n, m2, dm2, c in species)
+        self.assertAlmostEqual(pot.goldstone_shift / (slope / (64.0 * np.pi**2) / phi), 1.0, delta=1e-9)
+
+    def test_the_step_no_longer_regulates(self):
+        """At both gauge couplings, including the one where the Goldstone boson keeps the small step.
+
+        Which of the two steps the Goldstone boson takes after the resummation depends on the
+        point, so a test at one coupling alone would not cover the claim that the step has stopped
+        being the regulator.
+        """
+        for g in (1.0, 0.1):
+            with self.subTest(g=g):
+                values = [float(self.model(g=g, counterterm_derivative_step=step).dmu2)
+                          for step in (1e-5, 1e-3, 1e-1)]
+                self.assertAlmostEqual(values[0] / values[2], 1.0, delta=1e-4)
+                self.assertAlmostEqual(values[1] / values[2], 1.0, delta=1e-4)
+
+    def test_which_step_the_goldstone_boson_takes_after_the_resummation(self):
+        """The two cases the docstring of `counterterm_derivative_step` names, as a measurement.
+
+        The resummed Goldstone mass squared at the vev is the shift. At g = 1 it is large enough
+        that the mass squared changes by less than half across the stencil and the Goldstone boson
+        takes the smooth step, at g = 0.1 it is not.
+        """
+        for g, small_steps in ((1.0, 0), (0.1, 1)):
+            with self.subTest(g=g):
+                pot = self.model(g=g)
+                del pot._d2V1atvev
+                _, steps = record_steps(pot)
+                self.assertEqual(flat_steps(steps).count(1.0e-3), small_steps)
+                self.assertEqual(flat_steps(steps).count(1.0), len(steps) - small_steps)
+
+    def test_the_thermal_part_of_the_potential_does_not_see_the_shift(self):
+        """The contract is the thermal part, not the shape of `boson_massSq`.
+
+        The shift enters `V1`, which `Vtot` adds at every temperature, so a test that only reads
+        `boson_massSq` would pass however the thermal terms were written. Each of the thermal terms
+        is therefore evaluated twice, once at the shift of the model and once at ten times it, and
+        has to return the same number, while `V1` has to return a different one.
+        """
+        pot = self.model()
+        X, T = np.array([[300.0]]), np.array(120.0)
+        bosons0, bosonsT = pot.boson_massSq(X, 0.0), pot.boson_massSq(X, T)
+        fermions = pot.fermion_massSq(X)
+        self.assertNotEqual(pot.goldstone_shift, 0.0)
+        self.assertAlmostEqual(np.ravel(bosons0[0])[1], -pot.mu2 + pot.l * 300.0**2, delta=1e-9,
+                               msg="boson_massSq must return the mass squared of the spectrum")
+
+        def thermal():
+            return (float(np.squeeze(pot.V1T(bosons0, fermions, T))),
+                    float(np.squeeze(pot.V1T(bosonsT, fermions, T))),
+                    float(np.squeeze(pot.Vdaisy(bosons0, bosonsT, T, Pi=pot.debye_massSq(X, T)))),
+                    tuple(np.ravel(np.asarray(pot.debye_massSq(X, T), dtype=float)).tolist()),
+                    tuple(np.ravel(np.asarray(bosons0[0], dtype=float)).tolist()))
+
+        reference, one_loop = thermal(), float(np.squeeze(pot.V1(bosons0, fermions)))
+        pot.goldstone_shift = 10.0 * pot.goldstone_shift
+        self.assertEqual(thermal(), reference)
+        self.assertNotAlmostEqual(float(np.squeeze(pot.V1(bosons0, fermions))) / one_loop, 1.0,
+                                  delta=1e-6, msg="the shift has to reach V1")
+
+    def test_the_shift_reaches_the_unphysical_species_and_no_other(self):
+        """`V1` moves by the change of the unphysical species alone, in closed form."""
+        pot = self.model()
+        X = np.array([[300.0]])
+        bosons, fermions = pot.boson_massSq(X, 0.0), pot.fermion_massSq(X)
+        m2, dof, constants = (np.ravel(np.asarray(a, dtype=float)) for a in bosons[:3])
+        physical = np.ravel(np.asarray(bosons[3]))
+        self.assertEqual(list(physical), [True, False, True, True])
+        shift, Q2 = pot.goldstone_shift, pot.renormScaleSq
+
+        def term(mass_sq, n, c):
+            return n * mass_sq**2 * (np.log(np.abs(mass_sq / Q2) + 1e-100) - c) / (64.0 * np.pi**2)
+
+        expected = term(m2[1] + shift, dof[1], constants[1]) - term(m2[1], dof[1], constants[1])
+        pot.goldstone_shift = 0.0
+        unresummed = float(np.squeeze(pot.V1(bosons, fermions)))
+        pot.goldstone_shift = shift
+        resummed = float(np.squeeze(pot.V1(bosons, fermions)))
+        self.assertAlmostEqual((resummed - unresummed) / expected, 1.0, delta=1e-12)
+
+    def test_a_second_call_returns_the_same_shift(self):
+        pot = self.model()
+        first = pot.goldstone_shift
+        for name in ("_dV1atvev", "_d2V1atvev"):
+            delattr(pot, name)
+        pot.setGoldstoneShift()
+        self.assertEqual(pot.goldstone_shift, first)
+
+    def test_a_call_after_the_counterterm_derivatives_raises(self):
+        """The two derivatives cache their result, so a late call would leave the counterterms unresummed."""
+        pot = self.model()
+        for cached in ("_dV1atvev", "_d2V1atvev"):
+            with self.subTest(cached=cached):
+                keep = {name: getattr(pot, name) for name in ("_dV1atvev", "_d2V1atvev")}
+                for name in keep:
+                    delattr(pot, name)
+                setattr(pot, cached, keep[cached])
+                with self.assertRaises(errors.InitPotentialError) as raised:
+                    pot.setGoldstoneShift()
+                self.assertIn(cached.lstrip("_"), str(raised.exception))
+                for name, value in keep.items():
+                    setattr(pot, name, value)
+
+    def test_a_non_finite_shift_raises(self):
+        """A non-finite shift would make the one-loop potential non-finite at every field value."""
+        for value in (np.nan, np.inf, -np.inf):
+            with self.subTest(value=value):
+                pot = self.model()
+                for name in ("_dV1atvev", "_d2V1atvev"):
+                    delattr(pot, name)
+                pot._dV1physatvev = np.float64(value)
+                with self.assertRaises(errors.InitPotentialError):
+                    pot.setGoldstoneShift()
+
+    def test_more_than_one_field_direction_raises(self):
+        """One shift cannot stand for the Goldstone direction of a larger field space."""
+        pot = self.model()
+        for name in ("_dV1atvev", "_d2V1atvev", "_dV1physatvev"):
+            delattr(pot, name)
+        pot.Ndim, pot.v = 2, np.array([1000.0, 5.0])
+        with self.assertRaises(errors.InitPotentialError):
+            pot.setGoldstoneShift()
+
+    def test_the_vev_and_the_scalar_mass_are_those_of_the_tree_level(self):
+        pot = self.model()
+        vev, T = np.array([1000.0]), 1e-6
+        self.assertLess(abs(float(np.ravel(pot.gradV(vev, T))[0])), 1e-6 * pot.mDH**2 * 1000.0)
+        self.assertAlmostEqual(float(np.ravel(pot.d2V(vev, T))[0]) / pot.mDH**2, 1.0, delta=1e-3)
+
+
+class OnlyADivergentTermIsResummed(unittest.TestCase):
+    """A model resums only where the term it shifts is the infrared divergent one.
+
+    `V1` adds `goldstone_shift` to the mass squared of every species the spectrum marks
+    unphysical, at every field value, so a model that calls `setGoldstoneShift` changes its
+    zero-temperature one-loop potential everywhere. The reason to accept that change is that the
+    Coleman-Weinberg term of a massless mode is infrared divergent at the vacuum expectation
+    value and the finite-difference step of the counterterm derivatives is otherwise its
+    regulator. A model whose unphysical mode carries a mass there has no such term, and shifting
+    it moves the potential for nothing. The test therefore reads the mass squared of every
+    unphysical species of every shipped model at its own zero-temperature vacuum and requires
+    that a model which resums has none that is massive.
+
+    `boson_massSq` carries no shift, so the mass squared read here is the unresummed one. The
+    converse does not hold and is not asserted: the two-Higgs-doublet models have massless
+    Goldstone bosons at their vacuum and do not resum, because they take the analytic
+    counterterm derivatives of `coleman_weinberg_from_curvatures` instead of finite differences.
+    """
+
+    @staticmethod
+    def spectrum_at_the_vacuum(name):
+        import contextlib
+        import io as _io
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from test_potential_broadcasting import build as build_model
+        with contextlib.redirect_stdout(_io.StringIO()):
+            pot = build_model(name)
+        X = np.atleast_1d(np.asarray(pot.X0, dtype=float)).ravel()[:pot.Ndim]
+        m2, _, _, physical = pot.boson_massSq(X, 0.0)
+        m2 = np.ravel(np.asarray(m2, dtype=float))
+        physical = np.ravel(np.asarray(physical)).astype(bool)
+        return pot, m2[~physical], float(np.max(np.abs(m2)))
+
+    def test_a_model_that_resums_has_no_massive_unphysical_mode(self):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from test_potential_broadcasting import MODELS
+        resumming, massive = [], []
+        for name in MODELS:
+            with self.subTest(model=name):
+                pot, unphysical, scale = self.spectrum_at_the_vacuum(name)
+                self.assertGreater(scale, 0.0, "the spectrum is massless at the vacuum")
+                relative = np.abs(unphysical) / scale
+                if pot.goldstone_shift:
+                    resumming.append(name)
+                    self.assertGreater(unphysical.size, 0,
+                                       f"{name} resums, and its spectrum marks no species "
+                                       "unphysical, so the shift reaches nothing")
+                    self.assertLess(
+                        float(np.max(relative)), 1e-12,
+                        f"{name} shifts the mass squared of an unphysical mode that is not "
+                        f"massless at its vacuum: the largest unphysical mass squared there is "
+                        f"{float(np.max(np.abs(unphysical))):.6e} in internal units, "
+                        f"{float(np.max(relative)):.3f} of the largest mass squared of the "
+                        "spectrum, so its Coleman-Weinberg term is not infrared divergent and "
+                        "the shift moves the potential everywhere for nothing")
+                elif unphysical.size and float(np.max(relative)) > 1e-12:
+                    massive.append(name)
+        # Neither list may be empty, or the loop above would assert nothing: the first keeps a
+        # model whose shift is read, the second a model whose unphysical mode is massive, which
+        # is the case the assertion is about.
+        self.assertTrue(resumming, "no shipped model resums, so nothing was checked")
+        self.assertTrue(massive, "no shipped model has a massive unphysical mode at its vacuum")
+
+    def test_the_template_has_the_massless_goldstone_its_shift_assumes(self):
+        """The precondition of the shift the template calls for.
+
+        `models/templatePotential.py` calls `setGoldstoneShift()`, which is only correct where
+        the unphysical mode is massless at the vacuum. Its tree potential is
+        ``-mu2*phi^2/2 + l*phi^4/4``, so the vev it declares requires ``mu2 = l*v^2``, and the
+        Goldstone mass ``-mu2 + l*v^2`` then vanishes exactly. With ``mu2 = -2*v^2`` it was
+        2.001e6 in internal units, about 2.0e3 times the largest mass squared of the spectrum,
+        and the shift was being applied to a mode that is not infrared divergent.
+        """
+        pot, unphysical, largest = self.spectrum_at_the_vacuum("template")
+        self.assertEqual(unphysical.size, 1)
+        self.assertEqual(float(unphysical[0]), 0.0,
+                         "the template's unphysical mode is not massless at its vacuum, so the "
+                         "shift it calls for does not apply")
+        self.assertAlmostEqual(float(pot.mu2) / (pot.l * pot.v**2), 1.0, delta=1e-12,
+                               msg="mu2 is not l*v^2, so the declared vev is not the minimum "
+                                   "of the tree potential")
+
+    def test_the_template_potential_has_its_minimum_at_the_vev_it_declares(self):
+        """`X0` has to be a minimum of the model's own tree potential.
+
+        With ``mu2 = -2*v^2`` both terms of ``-mu2*phi^2/2 + l*phi^4/4`` were positive, so the
+        potential rose monotonically out of the origin and the declared vev was not a
+        stationary point at all: at the template's defaults V0 read 0, +2.50e+11, +1.00e+12 and
+        +2.25e+12 in internal units at phi of 0, v/2, v and 3v/2.
+        """
+        pot, _, _ = self.spectrum_at_the_vacuum("template")
+        v = float(np.ravel(np.asarray(pot.X0, dtype=float))[0])
+        phi = np.array([[0.0], [0.5 * v], [v], [1.5 * v]])
+        values = np.ravel(np.asarray(pot.V0(phi), dtype=float))
+        self.assertLess(values[2], values[0], "the vev is not below the origin")
+        self.assertLess(values[2], values[1], "the vev is not the minimum")
+        self.assertLess(values[2], values[3], "the vev is not the minimum")
+        # dV0/dphi = -mu2*phi + l*phi^3 vanishes at the vev; the gradient is a finite
+        # difference, so it is compared with the scale mu2*v of the two terms that cancel.
+        slope = float(np.ravel(np.asarray(pot.gradV(np.array([v]), 0.0), dtype=float))[0])
+        self.assertLess(abs(slope) / (pot.mu2 * v), 1e-8,
+                        f"the tree potential has a slope of {slope} at the vev")
 class ASpeciesHeldUpByACancellationBetweenTwoDirections(unittest.TestCase):
     """The Hessian displaces two directions at once, and the probe has to visit those corners.
 
