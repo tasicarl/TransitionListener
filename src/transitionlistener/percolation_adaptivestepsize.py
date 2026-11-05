@@ -124,17 +124,21 @@ def _boundary_approach_is_exhausted(state: PercolationState, settings) -> bool:
 def _boundary_approach_capacity(state: PercolationState, settings, extra_budget: int):
     """The support budget a boundary approach may use, or ``None`` to refuse it.
 
-    Kept out of the two `_apply_candidate_grid` closures so that the decision can be reached
-    by a test. Inside a closure neither half of it could be exercised: a change that consults
-    `_boundary_approach_is_exhausted` and discards the answer, and a change that grants
-    capacity from `n_action_max` instead of from the batch, both left the suite green.
+    Kept out of the two `_apply_candidate_grid` closures so that the decision can be read
+    without a percolation run. The closures themselves are covered too, each rebuilt over its
+    own code object in `tests/test_boundary_approach_refinement.py`: while this function was
+    the only part reached, two changes left the suite green, a closure that consulted
+    `_boundary_approach_is_exhausted` and discarded the answer, and a deleted counter
+    increment, which let every rebuild run past the allowance.
 
     The capacity is the batch the builder asked for and not `n_action_max`, which is a
     different setting and may be smaller. `n_action_increment` is a runtime option with
-    nothing tying it to `n_action_max`: at an increment of 200 and a maximum of 60 the
-    capacity was 120, so the 200-point geometric grid arrived truncated, the counter recorded
-    120, and the two-approach allowance of 400 points went on four truncated approaches that
-    never installed the grid the builder designed.
+    nothing tying it to `n_action_max`: at an increment of 200 and a maximum of 60 the batch
+    is 200 points and the allowance 400, while granting `n_action_max` left the support update
+    a cap of 120 points without a cached action, counted over the whole support. The 200-point
+    geometric grid then arrived truncated whatever the support already held, and the allowance
+    went on approaches that never installed the grid the builder designed. The capacity here
+    is 200, which raises that cap to 260 and installs the whole grid.
     """
     if _boundary_approach_is_exhausted(state, settings):
         return None
