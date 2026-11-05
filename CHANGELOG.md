@@ -196,6 +196,16 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
+- A bounce whose final path has a gradient that is not a number is reported as no tunnelling
+  rather than as an action. `fullTunneling` measures the ratio of the transverse force to the
+  potential gradient on the path it ends with, and that measurement is the one use of the
+  ratio that the deformation's own refusal does not cover, because `_deform_path` catches the
+  refusal and continues with the path as it stands. Measured on a two-field double well whose
+  gradient returns `nan` from its fourth evaluation on: `bounceAction` returned an action of
+  1340.6042599160708 with `trantype` 1, a resolved first-order bounce built on a path whose
+  gradient could not be evaluated. It now returns an infinite action with `trantype` 0, which
+  every caller already reads as no tunnelling at that temperature. The same potential with a
+  usable gradient returns the same action as before.
 - The second quartic counterterm of the dark flip-flop model now multiplies the fourth power of
   the second field. `models/TL_dark_flipflop.py` multiplied `phi_2 ** 2` where the docstring of
   `Vct` states `dlambda2 / 4 * phi_2 ** 4`. The term shifted the mass of the second field
@@ -329,6 +339,28 @@ Each line says what was wrong and when it bit.
 - `Phases.testTmax` documented `ValueError` and raises `WrongHighTPhaseError`, and
   `PotentialError`'s docstring described a tuple convention its constructor does not follow, so
   a reader deciding what to catch would have caught nothing.
+- A path along which the potential gradient vanishes at every point made the path deformation
+  divide by zero. The deformation moves each point of the path by the transverse force divided
+  by `dV_max`, the largest gradient magnitude along the path, and converges on the ratio
+  `F_max / dV_max`, so a `dV_max` of zero left both of them dividing by zero and filled the
+  path coordinates with `nan`. The least-squares fit of the next iteration then raised
+  `numpy.linalg.LinAlgError`. Nothing on the bounce path turns that error into an action or an
+  error code: `_execute_full_tunneling` re-raises it, and `bounceAction`,
+  `bounceActionOverImages` and `calcAction` do not catch it, so a temperature the solver cannot
+  resolve left the bounce solver as a numpy error rather than as an outcome for that
+  temperature. Such a `dV_max` does not need a flat potential: it is computed as
+  `max(sqrt(sum(dV*dV)))`, whose square underflows to zero for a gradient below about 2e-162 in
+  the units `dV` is given in. The deformation now ends on such a path and
+  returns it as it stands, which is what a converged deformation reports, and a bounce the
+  solver cannot resolve there comes back as `trantype` 0 with an infinite action, read by every
+  caller as no tunnelling at that temperature. The same division is in three places, both
+  deformation classes and `fullTunneling`'s own measurement of the force ratio, and all three
+  now read the ratio from one function; the force ratio reported beside a converged flat path
+  was `inf`. A `dV_max` that is `nan` or infinite is refused as a failed deformation instead,
+  since a test against zero catches neither: a gradient of either kind made the spline
+  deformation fill the path with `nan` and spend its full 500 steps on it, and a gradient that
+  is not a number made the step-size loop of `Deformation_Points` run without end, because
+  `stepsize <= minstep` is false for `nan`.
 
 ## [2.1.0] - 2026-07-28
 
