@@ -17,16 +17,11 @@ from transitionlistener.particles import MassSpectrum, Scalar, Goldstone, GaugeB
 
 
 # Rename the class to match your implemented model
-class TemplatePotenital(generic_potential):
+class TemplatePotential(generic_potential):
     """Template potential"""
 
     # Specify the 
     model_parameters = {
-        "m1_GeV": {
-            "default": 125.20,
-            "plotname": r"$m_1$ [GeV]",
-            "min": 0,
-            "max": np.inf},
         "g": {
             "default": 0.5,
             "plotname": r"$g$",
@@ -61,7 +56,6 @@ class TemplatePotenital(generic_potential):
 
         # read input and set (default) values
         self.mp = self.set_modelparams(input_dict)
-        self.m1_GeV = self.mp["m1_GeV"]["value"]
         self.v_GeV = self.mp["v_GeV"]["value"]
         self.y = self.mp["y"]["value"]
         self.l = self.mp["l"]["value"]
@@ -72,9 +66,14 @@ class TemplatePotenital(generic_potential):
         self.conversionFactor = self.computeConversionFactor(self.v_stable, self.v_GeV)
         self.daisy = "ArnoldEspinosa"  # or: "Parwani" or "off"
 
-        # Set any parameters derived from the input
-        self.mu2 = -2 * self.v**2
-        self.mu2_GeV = - 2 * self.v_GeV**2
+        # Set any parameters derived from the input. The tree-level potential below is
+        # -mu2*phi^2/2 + l*phi^4/4, whose minimum sits at phi^2 = mu2/l, so the vev this
+        # model declares requires mu2 = l*v^2. The scalar and Goldstone masses follow:
+        # m_phi^2 = -mu2 + 3*l*v^2 = 2*l*v^2 and m_varphi^2 = -mu2 + l*v^2 = 0.
+        self.mu2 = self.l * self.v**2
+        self.mu2_GeV2 = self.l * self.v_GeV**2
+        self.mphi = np.sqrt(2. * self.l) * self.v
+        self.mphi_GeV = self.mphi * self.conversionFactor
 
         # Set the T = 0 minima, this has to have the shape (1, Ndim)
         self.X0 = np.array([self.v])
@@ -88,6 +87,10 @@ class TemplatePotenital(generic_potential):
         self.renormScale_GeV = np.sqrt(self.renormScaleSq) * self.conversionFactor
 
         # Impose the renormalization conditions on the potential.
+        # The tree-level Goldstone mass of this model vanishes at the vev, where the second
+        # derivative of its one-loop term diverges, so that term is resummed. The call has
+        # to come before the two derivatives below, which cache their result.
+        self.setGoldstoneShift()
         dV1 = self.dV1atvev()
         d2V1 = self.d2V1atvev()
         self.dmu2 = 3./2. * dV1 / self.v - 1./2. * d2V1
@@ -116,21 +119,18 @@ class TemplatePotenital(generic_potential):
         self.derived_param_plot_names = [config.all_observables[name] for name in self.derived_param_names]
 
         if self.verbose:
-            input_dict = dict(
-                vev_GeV=self.v_GeV,
-                vev_iu=self.v,
-                quartic_coupling=self.l,
-                gauge_coupling=self.g,
-                y=self.y,
-                conversion_factor_GeV_per_iu=self.conversionFactor
-                )
+            # The printer builds the table of input parameters from `self.mp` itself and
+            # takes only the derived ones.
             derived_dict = dict(
+                vev_iu=self.v,
+                conversion_factor_GeV_per_iu=self.conversionFactor,
+                scalar_mass_GeV=self.mphi_GeV,
                 mu2_GeV2=self.mu2_GeV2,
                 dmu2_GeV2=self.dmu2_GeV2,
                 dl=self.dl,
                 renormScale_GeV=self.renormScale_GeV,
                 renormScaleSq=self.renormScaleSq)
-            self.makePrettyDictionaryPrint(input_dict, derived_dict)
+            self.makePrettyDictionaryPrint(derived_dict)
 
     def setConfigParameters(self) -> None:
         """Change the default config parameters for tracing, hydrodynamics, and GW
