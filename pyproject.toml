@@ -51,6 +51,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest",
+    "mpmath",
     "sphinx",
     "build",
     "twine",
