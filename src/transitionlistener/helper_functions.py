@@ -756,6 +756,46 @@ class hessianFunction(object):
         return y
 
 
+def stencil_offsets(eps, Ndim: int, order: int = 4) -> np.ndarray:
+    """The displacements a finite-difference stencil evaluates, read off the stencils themselves.
+
+    :class:`hessianFunction` displaces two coordinates at once for every off-diagonal entry, so
+    at fourth order it evaluates all 16 corners ``(a eps_i, b eps_j)`` with
+    ``a, b`` in ``(-2, -1, 1, 2)`` for each pair of directions, besides the five points
+    ``(-2, -1, 0, 1, 2) eps_i`` of each diagonal entry. :class:`gradientFunction` displaces one
+    coordinate at a time, over the four points ``(-2, -1, 1, 2) eps_i``, which the Hessian's
+    diagonal contains. The union of both is returned, so a step accepted on these points is
+    accepted on every point either helper evaluates.
+
+    The offsets are taken from the ``dx`` the two classes build in their own constructors rather
+    than written out again here, so that a change to either stencil carries over. Neither
+    constructor calls the function it is handed, which is why a function that refuses to be
+    called can be passed.
+
+    Parameters
+    ----------
+    eps : float or array_like
+        The finite-difference step, either one number or one per field direction.
+    Ndim : int
+        Number of field directions.
+    order : 2 or 4
+        The order of the stencils, as handed to the two classes.
+
+    Returns
+    -------
+    np.ndarray
+        The unique displacements, of shape ``(n_points, Ndim)``, sorted.
+    """
+    def never_called(X):
+        raise AssertionError("stencil_offsets reads the stencil; it does not evaluate it")
+
+    hessian = hessianFunction(never_called, eps=eps, Ndim=Ndim, order=order)
+    gradient = gradientFunction(never_called, eps=eps, Ndim=Ndim, order=order)
+    blocks = [np.reshape(block, (-1, Ndim)) for row in hessian.dx for block in row]
+    blocks.append(np.reshape(np.asarray(gradient.dx, dtype=float), (-1, Ndim)))
+    return np.unique(np.concatenate(blocks, axis=0), axis=0)
+
+
 """
 Two-point interpolation
 ~~~~~~~~~~~~~~~~~~~~~~~

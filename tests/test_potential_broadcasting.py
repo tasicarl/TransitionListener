@@ -36,7 +36,7 @@ MODELS = {
     "flipflop": ("models/TL_dark_flipflop.py", "DarkFlipFlop", dict(
         lambda0=0.005098, lambda1=0.002144, lambda12=0.003078,
         v_GeV=3.728330741601088, y=0.972319, gamma=0.7532)),
-    "template": ("models/templatePotential.py", "TemplatePotenital", {}),
+    "template": ("models/templatePotential.py", "TemplatePotential", {}),
     # The BSMPT variants override the radiation degrees of freedom (paper figs. 15-16).
     "2HDM_BSMPT": ("models/TL_2HDM_BSMPT.py", "R2HDM", dict(
         lambda1=0.28894, lambda2=0.26237, lambda3=5.73, lambda4=-2.17494, lambda5=-2.2417,
