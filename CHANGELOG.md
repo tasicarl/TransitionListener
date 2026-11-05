@@ -329,7 +329,6 @@ Each line says what was wrong and when it bit.
   expectation value: at `g` = 2 and `lambda` = 1 it sits at 0.83 of the vacuum expectation value,
   where the second derivative of the potential dips by 10 per cent over 4 units of the field. Read the resummation
   as valid where the shift is small against the masses of the spectrum.
-  every call since then. Nothing in the pipeline calls either of the two.
 - The second quartic counterterm of the dark flip-flop model now multiplies the fourth power of
   the second field. `models/TL_dark_flipflop.py` multiplied `phi_2 ** 2` where the docstring of
   `Vct` states `dlambda2 / 4 * phi_2 ** 4`. The term shifted the mass of the second field
