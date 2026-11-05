@@ -184,21 +184,30 @@ class generic_potential():
         May be overridden by subclasses; defaults to 1000.0 in internal units.
     """
 
-    #: Finite-difference step, in internal field units, for the derivatives of
-    #: the zero-temperature one-loop potential at the vev that fix the
-    #: counterterms (``dV1atvev``, ``d2V1atvev``, ``dV1physatvev``). It is kept
-    #: separate from the phase-tracing accuracy ``x_eps`` on purpose: tightening a
-    #: tracing tolerance must not change the potential. For the abelian dark
-    #: Higgs, with ``|V_CW|`` of order 1e9 at the vev, steps below 1e-3 are dominated
-    #: by round-off (1e-4 shifts the second derivative by up to 1.4 %). Above it
-    #: the second derivative drifts with the logarithm of the step, by 0.05 % to
-    #: 0.5 % per decade: the tree-level Goldstone mass vanishes at the vacuum, so
-    #: its Coleman-Weinberg term is infrared divergent there and the step acts as
-    #: the regulator. The physical cure is the resummation of the Goldstone
-    #: contributions, m_G^2 -> m_G^2 + (1/phi) dV_1,phys/dphi (arXiv:1406.2652,
-    #: arXiv:1406.2355). 1e-3 is the step these counterterms have always been
-    #: computed with in the default setup. Models may override it.
+    #: Finite-difference step, in internal field units, for the derivatives of the
+    #: zero-temperature one-loop potential at the vev that fix the counterterms
+    #: (``dV1atvev``, ``d2V1atvev``, ``dV1physatvev``). In
+    #: :meth:`_derivative_at_vev` it is the step of every species whose mass squared
+    #: changes by more than half across the stencil, the Goldstone boson among them, and
+    #: the lower bound on the step of all the others. It is kept separate from the
+    #: phase-tracing accuracy ``x_eps`` on purpose: tightening a tracing tolerance must
+    #: not change the potential. For the abelian dark Higgs at gauge coupling g = 1 and
+    #: quartic lambda = 0.018012121212121212 the second derivative d2V1/dphi2 at the vev
+    #: drifts with the logarithm of this step, by 0.0505 per cent per decade over steps of
+    #: 1e-4 to 1e-1 in internal field units: the tree-level Goldstone mass vanishes at the
+    #: vacuum, so the Coleman-Weinberg term of the Goldstone boson is infrared divergent
+    #: there and the step acts as the regulator. How large the drift is depends on the
+    #: point. Over five coupling pairs of that model it ran from 0.0005 per cent per decade
+    #: at lambda = 0.0018 to 49 per cent over the first decade at lambda = 0.2, where the
+    #: Goldstone term dominates d2V1/dphi2. The physical cure is the resummation of the
+    #: Goldstone contributions, m_G^2 -> m_G^2 + (1/phi) dV_1,phys/dphi (arXiv:1406.2652,
+    #: arXiv:1406.2355). 1e-3 is the step these counterterms have always been computed
+    #: with in the default setup. Models may override it.
     counterterm_derivative_step: float = 1.0e-3
+    #: Step for a species whose mass squared is smooth at the vev, as a fraction of the
+    #: vev of each field direction and bounded below by ``counterterm_derivative_step``.
+    #: See :meth:`_derivative_at_vev`.
+    _SMOOTH_STEP_FRACTION: float = 1.0e-3
 
     def __init__(self, *args, **dargs) -> None:
         """Prepare configuration objects and delegate to :meth:`init` for setup."""
@@ -627,9 +636,8 @@ class generic_potential():
         m2, n, c, phys = bosons
         y = np.sum(n * m2 * m2 * phys * (np.log(np.abs(m2 / self.renormScaleSq) + 1e-100) - c), axis=-1)
 
-        m2 = fermions.masses_sq
-        if m2.size != 0:
-            n = fermions.dof
+        m2, n = fermions[0], fermions[1]
+        if np.size(m2) != 0:
             c = 3. / 2.
             y -= np.sum(n * m2 * m2 * (np.log(np.abs(m2 / self.renormScaleSq) + 1e-100) - c), axis=-1)
 
@@ -1253,6 +1261,120 @@ class generic_potential():
         T = np.asanyarray(T)[..., np.newaxis, np.newaxis]
         return f(X, T, False)
 
+    def _derivative_at_vev(self, one_loop, derivative):
+        """Return the derivative of a one-loop potential at the vev, summed species by species.
+
+        The sum over species is of order 4e9 in internal units at the vev of the abelian dark
+        Higgs, so differencing that sum with the small step that regulates the Goldstone boson is
+        mostly round-off: a change of 1e-14 in the gauge coupling g moved d2V1/dphi2 by 1.2e-4 in
+        relative terms. A derivative is linear in the species, so each species is differenced on
+        its own instead. A species whose mass squared changes by no more than half across the
+        stencil takes ``_SMOOTH_STEP_FRACTION`` of the vev, bounded below by
+        `counterterm_derivative_step`. Varying that fraction by a decade in each direction moves
+        d2V1/dphi2 of the abelian dark Higgs by less than 1e-8 in relative terms, which is the
+        measurement behind calling the larger step free of both round-off and truncation. Every
+        other species keeps `counterterm_derivative_step`. The Goldstone boson is the species that
+        keeps it in the abelian dark Higgs, and the Coleman-Weinberg term of the Goldstone boson
+        is of order 1e-4 in internal units across that step, so differencing that term carries no
+        round-off worth the name.
+
+        The step is chosen per field direction, since a direction whose vev is small needs a small
+        step, and the lower bound means that a direction whose vev is below
+        ``counterterm_derivative_step / _SMOOTH_STEP_FRACTION``, which is 1.0 in internal field
+        units by default, keeps the model's step. A model that keeps its vev as a single number
+        for a field space of more than one dimension has that number broadcast to one component
+        per direction, since the mass function of such a model indexes every direction. The test
+        on the mass squared is taken over every point the derivative helpers evaluate at the
+        larger step, which for :class:`helper_functions.hessianFunction` includes the corners
+        where two directions are displaced at once, and one failing point drops that species to
+        the small step in every direction.
+
+        Parameters
+        ----------
+        one_loop : callable
+            :meth:`V1` or :meth:`V1phys`, taking the boson and the fermion spectrum.
+        derivative : type
+            :class:`helper_functions.gradientFunction` or
+            :class:`helper_functions.hessianFunction`.
+
+        Returns
+        -------
+        np.ndarray
+            The gradient or the Hessian of `one_loop` at the vev.
+        """
+        # One value of the vev per field direction. A model may store the vev as a single number
+        # while its field space has more than one dimension, and the mass function of such a model
+        # indexes every direction, so the point the spectrum is evaluated at has to carry
+        # `self.Ndim` components whatever shape `self.v` has.
+        vev = np.broadcast_to(np.asarray(self.v, dtype=float), (self.Ndim,))
+        at_vev = np.array([vev])
+        smooth_step = np.maximum(self.counterterm_derivative_step,
+                                 self._SMOOTH_STEP_FRACTION * np.abs(vev))
+        # Counted from the mass arrays and not from the degrees of freedom, which a model is free
+        # to return as one number for all species. Counting those would drop every species but the
+        # first from the sum, and the sum would be wrong without saying so.
+        n_bosons = np.shape(np.atleast_1d(self.boson_massSq(at_vev, 0.0)[0]))[-1]
+        n_fermions = np.shape(np.atleast_1d(tuple(self.fermion_massSq(at_vev))[0]))[-1]
+
+        # The probe visits every point either derivative helper evaluates at the larger step,
+        # the mixed corners of the Hessian among them, and the whole spectrum is read off one
+        # batch of those points, so the probe costs one spectrum evaluation and not one per
+        # species. A per-axis probe accepts a species whose mass squared is held up by a
+        # cancellation between the directions: two directions each moving it by half the mass
+        # squared pass every axis check on their own and take it to zero at the corner where
+        # both move it the same way, and a stencil straddling a vanishing mass squared is the
+        # infrared behaviour this test exists to keep away from.
+        offsets = helper_functions.stencil_offsets(smooth_step, self.Ndim, self.deriv_order)
+        probed = at_vev + offsets
+        reference = np.concatenate([
+            np.ravel(self.boson_massSq(at_vev, 0.0)[0]),
+            np.ravel(tuple(self.fermion_massSq(at_vev))[0])])
+        probed_masses = np.concatenate([
+            np.reshape(np.asarray(self.boson_massSq(probed, 0.0)[0], dtype=float),
+                       (len(offsets), n_bosons)),
+            np.reshape(np.asarray(tuple(self.fermion_massSq(probed))[0], dtype=float),
+                       (len(offsets), n_fermions))], axis=-1)
+        # A refused comparison, so that a species whose mass squared is not a number anywhere on
+        # the stencil keeps the small step rather than passing the test: every comparison against
+        # nan is false, so the accepting form `not (change > bound)` would call such a species
+        # smooth. A mass squared that is not finite at the vev is refused by the same comparison
+        # and needs no separate line of code, since the undisplaced point is one of the points
+        # probed: nan there against a nan reference, and `inf - inf` against an infinite one, are
+        # both nan, and the comparison refuses them. That `stencil_offsets` carries the
+        # undisplaced point is asserted in `tests/test_counterterm_step.py`.
+        is_smooth = np.all(np.abs(probed_masses - reference) <= 0.5 * np.abs(reference), axis=0)
+
+        # Each species' stencil evaluates the whole spectrum and keeps one entry through the
+        # weights, so the spectrum is evaluated once per species per derivative rather than
+        # once, and the stencil points are not cached across species. What that costs, measured
+        # on this branch: of the models that ship, only the two abelian dark Higgs models and
+        # `models/templatePotential.py` take these derivatives at all, with one field direction
+        # and five species, and `models/TL_dark_U1.py` initialises in 3.98 ms of which the
+        # gradient and the Hessian are 1.6 ms together, against 0.23 ms for one common step.
+        # `models/TL_2HDM.py`, the largest spectrum here at 15 species, solves its counterterms
+        # analytically in `counterterms/twohdm.py` and calls neither derivative; called by hand
+        # its Hessian costs 15.0 ms against 0.96 ms, beside an initialisation of 11 s. Once per
+        # scan point, against a bounce of order a minute, neither is worth a cache keyed on the
+        # stencil points, so the per-species steps are kept as they are.
+        total = 0.0
+        for species in range(n_bosons + n_fermions):
+            boson_weights, fermion_weights = np.zeros(n_bosons), np.zeros(n_fermions)
+            if species < n_bosons:
+                boson_weights[species] = 1.0
+            else:
+                fermion_weights[species - n_bosons] = 1.0
+
+            def contribution(X, boson_weights=boson_weights, fermion_weights=fermion_weights):
+                m2, n, c, physical = self.boson_massSq(X, 0.0)
+                fermion_masses, dof = tuple(self.fermion_massSq(X))[:2]
+                return one_loop((m2, n * boson_weights, c, physical), (fermion_masses, dof * fermion_weights))
+
+            step = smooth_step if is_smooth[species] else self.counterterm_derivative_step
+            total = total + derivative(contribution, eps=step, Ndim=self.Ndim,
+                                       order=self.deriv_order)(at_vev)
+        # np.squeeze shrinks (1,1) and (1,) to a 0d array, for evaluating Vtot at more than one point at the same time.
+        return np.squeeze(total)
+
     def dV1atvev(self):
         """
         Find the first derivative of the one loop zero temperature potential,
@@ -1260,9 +1382,13 @@ class generic_potential():
         counter term lagrangian
 
         This uses :func:`helper_functions.gradientFunction` to calculate the
-        gradient using finite differences, with differences
-        given by `self.counterterm_derivative_step`, which is independent of
-        the phase-tracing accuracy `self.x_eps`. The result is cached the first
+        gradient using finite differences, through
+        :meth:`_derivative_at_vev`, which differences each species of the
+        spectrum on its own. The step is `self.counterterm_derivative_step` for a
+        species whose mass squared changes by more than half across the stencil and
+        `self._SMOOTH_STEP_FRACTION` of the vev of each field direction, bounded below
+        by that same step, for all the others. Neither step depends on the
+        phase-tracing accuracy `self.x_eps`. The result is cached the first
         time this function is called, so subsequently changing the step will
         not have an effect.
         
@@ -1271,31 +1397,18 @@ class generic_potential():
         np.ndarray
             The gradient of the one-loop zero-temperature potential at the vev.
             
-        .. todo:: 
-            Currently, this function assumes that the vev is a point in
-            one-dimensional field space. Generalize to arbitrary number of
-            dimensions.
+        .. note::
+            The step of each field direction is taken from the vev of that
+            direction, so the derivative is taken over the whole field space of
+            `self.Ndim` dimensions. Solving the counterterms from the derivative is
+            left to the model.
         """
 
         try:
             res = self._dV1atvev
 
         except BaseException:
-            # vev means here an arbitrary point in field space
-            def V_coleman_weinberg(X):
-                bosonsvev0 = self.boson_massSq(X, 0.0)
-                fermionsvev = self.fermion_massSq(X)
-                return self.V1(bosonsvev0, fermionsvev)
-
-            dV1 = helper_functions.gradientFunction(
-                V_coleman_weinberg, eps=self.counterterm_derivative_step, Ndim=self.Ndim,
-                order=self.deriv_order)
-
-            # Use np.squeeze to shrink array sizes from (1,1) and (1,) to a 0d
-            # array... otherways problems when evaluating Vtot at more than one
-            # point in field space at the same time in the code.
-
-            self._dV1atvev = np.squeeze(dV1(np.array([self.v])))
+            self._dV1atvev = self._derivative_at_vev(self.V1, helper_functions.gradientFunction)
             res = self._dV1atvev
         return res
 
@@ -1306,9 +1419,13 @@ class generic_potential():
         counter term lagrangian
 
         This uses :func:`helper_functions.gradientFunction` to calculate the
-        gradient using finite differences, with differences
-        given by `self.counterterm_derivative_step`, which is independent of
-        the phase-tracing accuracy `self.x_eps`. The result is cached the first
+        gradient using finite differences, through
+        :meth:`_derivative_at_vev`, which differences each species of the
+        spectrum on its own. The step is `self.counterterm_derivative_step` for a
+        species whose mass squared changes by more than half across the stencil and
+        `self._SMOOTH_STEP_FRACTION` of the vev of each field direction, bounded below
+        by that same step, for all the others. Neither step depends on the
+        phase-tracing accuracy `self.x_eps`. The result is cached the first
         time this function is called, so subsequently changing the step will
         not have an effect.
         
@@ -1318,29 +1435,17 @@ class generic_potential():
             The gradient of the one-loop zero-temperature potential without
             goldstone bosons at the vev.
 
-        .. todo::
-            Currently, this function assumes that the vev is a point in
-            one-dimensional field space. Generalize to arbitrary number of
-            dimensions.
+        .. note::
+            The step of each field direction is taken from the vev of that
+            direction, so the derivative is taken over the whole field space of
+            `self.Ndim` dimensions. Solving the counterterms from the derivative is
+            left to the model.
         """
 
         try:
             res = self._dV1physatvev
         except BaseException:
-            # vev means here an arbitrary point in field space
-            def V_coleman_weinberg(X):
-                bosonsvev0 = self.boson_massSq(X, 0.0)
-                fermionsvev = self.fermion_massSq(X)
-                return self.V1phys(bosonsvev0, fermionsvev)
-            dV1 = helper_functions.gradientFunction(
-                V_coleman_weinberg, eps=self.counterterm_derivative_step, Ndim=self.Ndim,
-                order=self.deriv_order)
-           
-            # Use np.squeeze to shrink array sizes from (1,1) and (1,) to a 0d
-            # array... otherways problems when evaluating Vtot at more than one
-            # point in field space at the same time in the code.
-
-            self._dV1physatvev = np.squeeze(dV1(np.array([self.v])))
+            self._dV1physatvev = self._derivative_at_vev(self.V1phys, helper_functions.gradientFunction)
             res = self._dV1physatvev
         return res
 
@@ -1554,10 +1659,14 @@ class generic_potential():
         evaluated at the vev. Used in the function Vct to calculate the
         counter term lagrangian
 
-        This uses :func:`helper_functions.gradientFunction` to calculate the
-        gradient using finite differences, with differences
-        given by `self.counterterm_derivative_step`, which is independent of
-        the phase-tracing accuracy `self.x_eps`. The result is cached the first
+        This uses :func:`helper_functions.hessianFunction` to calculate the
+        Hessian using finite differences, through
+        :meth:`_derivative_at_vev`, which differences each species of the
+        spectrum on its own. The step is `self.counterterm_derivative_step` for a
+        species whose mass squared changes by more than half across the stencil and
+        `self._SMOOTH_STEP_FRACTION` of the vev of each field direction, bounded below
+        by that same step, for all the others. Neither step depends on the
+        phase-tracing accuracy `self.x_eps`. The result is cached the first
         time this function is called, so subsequently changing the step will
         not have an effect.
         
@@ -1566,29 +1675,17 @@ class generic_potential():
         np.ndarray
             The Hessian of the one-loop zero-temperature potential at the vev.
             
-        .. todo::
-            Currently, this function assumes that the vev is a point in
-            one-dimensional field space. Generalize to arbitrary number of
-            dimensions.
+        .. note::
+            The step of each field direction is taken from the vev of that
+            direction, so the derivative is taken over the whole field space of
+            `self.Ndim` dimensions. Solving the counterterms from the derivative is
+            left to the model.
         """
 
         try:
             res = self._d2V1atvev
         except BaseException:
-            # vev means here an arbitrary point in field space
-            def V_coleman_weinberg(X):
-                bosonsvev0 = self.boson_massSq(X, 0.0)
-                fermionsvev = self.fermion_massSq(X)
-                return self.V1(bosonsvev0, fermionsvev)
-
-            d2V1 = helper_functions.hessianFunction(
-                V_coleman_weinberg, eps=self.counterterm_derivative_step, Ndim=self.Ndim,
-                order=self.deriv_order)
-
-            # Use np.squeeze to shrink array sizes from (1,1) and (1,) to a 0d
-            # array... otherways problems when evaluating Vtot at more than one
-            # point in field space at the same time in the code.
-            self._d2V1atvev = np.squeeze(d2V1(np.array([self.v])))
+            self._d2V1atvev = self._derivative_at_vev(self.V1, helper_functions.hessianFunction)
             res = self._d2V1atvev
         return res
 

@@ -153,8 +153,9 @@ account of every one is in its pull request.
   counterterms took their step from `x_eps`, so tightening a tracing tolerance changed the
   potential. They now take `counterterm_derivative_step`, whose default 1e-3 is the step they
   have always used in the default setup. On the abelian dark Higgs, where the Coleman-Weinberg
-  term at the vacuum is of order 1e9 in internal units, steps below 1e-3 are dominated by
-  round-off: 1e-4 shifts the second derivative by up to 1.4 per cent.
+  term at the vacuum is of order 1e9 in internal units, differencing the sum over species at
+  steps below 1e-3 was dominated by round-off, which is what the entry below on differencing
+  the species one at a time removes.
 
 - **An unstable action slope is retried at a tighter path deformation.** `calc_betaH_S3` fits
   the slope of `S_3/T` near the percolation temperature twice, over the support samples and
@@ -196,6 +197,60 @@ account of every one is in its pull request.
 
 Each line says what was wrong and when it bit.
 
+- **The derivatives that fix the counterterms are taken species by species.** The first and
+  second derivatives of the zero-temperature one-loop potential at the vacuum expectation value
+  were finite differences of the sum over species. The step has to stay small because the
+  tree-level Goldstone mass vanishes at the vacuum, so the Coleman-Weinberg term of the
+  Goldstone boson is infrared divergent there and the step is what regulates it. The sum over
+  species is of order 4e9 in internal units at the vacuum of the abelian dark Higgs, so the
+  small step left the result dominated by round-off: a change of 1e-14 in the gauge coupling
+  `g`, which is 45 units in the last place of a double, moved the second derivative
+  `d2V1/dphi2` by 1.2e-4 in relative terms, and that reached the counterterms and the
+  potential. A derivative is linear in the species, so each species is now differenced on its
+  own. A species whose mass squared changes by no more than half across the stencil takes 1e-3
+  of the vacuum expectation value of each field direction, with `counterterm_derivative_step`
+  as the lower bound, and every other species keeps `counterterm_derivative_step`. That test is
+  taken over every point the finite-difference stencil evaluates, the corners where two field
+  directions are displaced at once among them, since a species whose mass squared is held up at
+  the vacuum by a cancellation between two directions passes a test along each direction on its
+  own and still has a vanishing mass squared inside the stencil. The same
+  perturbation of `g` now moves `d2V1/dphi2` by 1.2e-10 in relative terms, and varying the
+  larger step by a decade in each direction moves it by less than 1e-8. On the abelian dark
+  Higgs at `g` = 1 and quartic `lambda` = 0.018012121212121212 the second derivative moves
+  from 18744.125 to 18743.9771 in internal units, where 60-digit arithmetic for the same
+  stencil of the same function at the same step reads 18743.9770975, so the correction is
+  7.9e-6 in relative terms and is round-off and not truncation. The step dependence that is
+  left is the Goldstone infrared problem and not a numerical tuning question: at that point
+  the second derivative drifts with the logarithm of the step by 0.0505 per cent per decade.
+  Each field direction takes its step from its own vacuum expectation value, so a model with
+  two vacuum expectation values a factor 200 apart does not difference the smaller one at 20 per
+  cent of its own vacuum expectation value, and the derivative is taken over the whole field
+  space whatever its dimension. The sum runs over the mass eigenvalues rather than over the
+  degrees of freedom, so a model that reports one number of degrees of freedom for all of its
+  species has every species in the sum rather than the first alone. The counterterms of the two
+  abelian dark Higgs models move in their last digits. `dmu2` and `dl` move by 3.9e-6 and 5.9e-6
+  in relative terms for `models/TL_dark_U1_g_parameterization.py` at the point above, and by
+  1.4e-9 and 2.1e-9 for `models/TL_dark_U1.py`, which differences at a step of 0.1 in internal
+  field units, where there is less round-off to remove. The field point carries one component per
+  field direction whatever shape a model keeps its vev in. `models/TL_dark_flipflop.py` has a
+  field space of two dimensions, keeps its vev as a single number, and has a mass function that
+  indexes both directions: `d2V1atvev` raised `IndexError` for that model in 2.1, while
+  `dV1atvev` returned a two-component gradient only because the derivative helper broadcast the
+  one-component field point against its own stencil before the spectrum saw it. Both now return a
+  finite result of two components, the second derivative for the first time. That model computes
+  its own counterterms and calls neither of the two, so none of its numbers move.
+- **`mpmath` is declared as a development dependency.** `tests/test_counterterm_step.py`
+  checks the finite-difference stencil of the counterterm derivatives against the same stencil
+  in 60-digit arithmetic, which needs `mpmath`, and the package was reached only as a
+  dependency of `sympy`. An environment installed from the project metadata alone could not
+  run that test.
+
+- **`V1phys` and `dV1physatvev` raised `AttributeError` on every call.** `V1phys` is the
+  one-loop correction without the Goldstone bosons, and it read the fermion spectrum through
+  the attributes `masses_sq` and `dof`, which the pair that `fermion_massSq` returns does not
+  carry. It now reads that pair the way `V1` does. The attributes have been read since release
+  2.0 and the spectrum has returned the pair for just as long, so both methods have raised on
+  every call since then. Nothing in the pipeline calls either of the two.
 - A bounce whose final path has a gradient that is not a number is reported as no tunnelling
   rather than as an action. `fullTunneling` measures the ratio of the transverse force to the
   potential gradient on the path it ends with, and that measurement is the one use of the

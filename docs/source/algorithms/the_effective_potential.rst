@@ -59,6 +59,14 @@ them. They are fixed by requiring that the first and second derivatives of
    The derivatives that fix the counterterms used to take their step from the tolerance of the
    phase tracer, so tightening an unrelated accuracy setting changed the potential itself. They
    now take their own step, whose default is the value that was in effect in the default setup.
+   Each species of the spectrum is also differenced on its own rather than after the sum over
+   species. The tree-level Goldstone mass vanishes at the vacuum, so the one-loop term of the
+   Goldstone boson is infrared divergent there and the step is what regulates it, while the sum
+   over all species is of order 4e9 in internal units at the vacuum of the abelian dark Higgs.
+   A step small enough for the Goldstone boson therefore left the last digits of the second
+   derivative of that sum set by round-off, which reached the counterterms and the potential.
+   Differencing the species one at a time keeps the small step where it regulates something and
+   takes 1e-3 of the vacuum expectation value of each field direction for the rest.
 
 .. figure:: ../_static/algorithm_potential_vs_temperature.png
    :width: 100%
@@ -172,7 +180,9 @@ Settings
      - The renormalisation scale squared in the one-loop correction.
    * - ``counterterm_derivative_step``
      - 1e-3
-     - Step used for the derivatives that fix the counterterms.
+     - Step for the derivatives that fix the counterterms. It is the step of a species whose
+       mass squared changes by more than half across it and the lower bound on the step of
+       the rest.
    * - ``entropy_definition``
      - setting
      - Which entropy the expansion history and the sound speed are built from. The two
