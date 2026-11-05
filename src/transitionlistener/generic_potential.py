@@ -1337,11 +1337,11 @@ class generic_potential():
         # A refused comparison, so that a species whose mass squared is not a number anywhere on
         # the stencil keeps the small step rather than passing the test: every comparison against
         # nan is false, so the accepting form `not (change > bound)` would call such a species
-        # smooth. A mass squared that is not finite at the vev is covered by the same comparison
-        # and needs no test of its own, since the undisplaced point is one of the points probed:
-        # nan there against a nan reference and `inf - inf` against an infinite one are both nan,
-        # and the comparison refuses them. `stencil_offsets` carrying that point is asserted in
-        # `tests/test_counterterm_step.py`.
+        # smooth. A mass squared that is not finite at the vev is refused by the same comparison
+        # and needs no separate line of code, since the undisplaced point is one of the points
+        # probed: nan there against a nan reference, and `inf - inf` against an infinite one, are
+        # both nan, and the comparison refuses them. That `stencil_offsets` carries the
+        # undisplaced point is asserted in `tests/test_counterterm_step.py`.
         is_smooth = np.all(np.abs(probed_masses - reference) <= 0.5 * np.abs(reference), axis=0)
 
         # Each species' stencil evaluates the whole spectrum and keeps one entry through the
