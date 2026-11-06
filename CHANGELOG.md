@@ -52,8 +52,9 @@ account of every one is in its pull request.
 
 - **Two settings that were fixed numbers.** `betaH_S3_fit_rescue`, with the run-time override
   `percolation_betaH_S3_fit_rescue`, switches off the refit of an unstable action slope; and
-  `counterterm_derivative_step`, default 1e-3 in internal field units, sets the finite-difference
-  step of the zero-temperature one-loop derivatives that fix the counterterms.
+  `counterterm_derivative_step`, default 1e-3 in internal field units, sets the
+  finite-difference step of the zero-temperature one-loop derivatives that fix the
+  counterterms.
 
 - **`Treh_DS_GeV`, the reheating temperature of the transitioning sector**, beside
   `Treh_SM_GeV`, which is now the Standard Model bath's. The model attribute `SM_bath` names
@@ -65,38 +66,34 @@ account of every one is in its pull request.
 
 - **The bounce can be computed on every image of the false vacuum, behind
   `TracingConf.pair_transition_over_images`, which defaults to `False`.** Where the effective
-  potential is invariant under a group, each minimum stands for a set of images of one
-  physical state, and which image the phase tracing landed on is settled by the sign of a
-  numerical step. `bounceActionOverImages` offers every image to the solver and keeps the
-  smallest action. The default is off because the canonical-image fix below repairs the defect
-  where it arises: over the forty couplings of the 2HDM `lambda3` line from 5.50 to 5.87,
-  turning the setting on changes no observable at any coupling and raises the median runtime
-  of a coupling from 408 s to 529 s. It is kept so the check can be run on a new model or a
-  new symmetry group.
+  potential is invariant under a group, each minimum stands for a set of images of one physical
+  state, and which image the phase tracing landed on is settled by the sign of a numerical
+  step. `bounceActionOverImages` offers every image to the solver and keeps the smallest action.
+  The default is off because the canonical-image fix below repairs the defect where it arises:
+  over the forty couplings of the 2HDM `lambda3` line from 5.50 to 5.87 the setting changes no
+  observable and raises the median runtime of a coupling from 408 s to 529 s. It is kept so the
+  check can be run on a new model or symmetry group.
 
 ### Changed
-
 - **The pulsar timing data ships with the code, and the reference likelihoods are recomputed
-  (moves results).** Eight free-spectrum products ship under `tab_data/pta_free_spectra` and
-  are chosen with the `gw_pta_free_spectrum` key instead of being downloaded while the run is
-  going, the default is the 2026 Hellings-Downs re-run `ng15_hd_v2` rather than the 2023
-  uncorrelated set every column used to rest on, and each reference log-likelihood was
-  recomputed on the product its label is scored on, which moves the IPTA DR2 reference from
-  -105.66903 to -105.88365, lowers every IPTA2 significance built on it by up to 0.66, and
-  makes `plots.add_violins` draw the product the likelihood used rather than the 2023
-  Gaussian-process set. A sampler reports a lower bound on the maximum, so the released
-  value cannot be ruled out and the gap of 0.215 is not explained; the value shipped is the
-  reproducible one, and IPTA DR2 significances rest on it provisionally.
+  (moves results).** Eight free-spectrum products ship under `tab_data/pta_free_spectra`,
+  chosen with the `gw_pta_free_spectrum` key rather than downloaded during a run, and the
+  default is the 2026 Hellings-Downs re-run `ng15_hd_v2` instead of the 2023 uncorrelated set
+  every column rested on. Each reference log-likelihood was recomputed on the product its label
+  is scored on, which moves the IPTA DR2 reference from -105.66903 to -105.88365 and lowers
+  every IPTA2 significance built on it by up to 0.66. A sampler reports a lower bound on the
+  maximum, so the released value is not ruled out and the gap of 0.215 is unexplained; IPTA DR2
+  significances rest on the reproducible value provisionally.
 
-- **One entropy for the expansion history.** The scale factor came from the counted degrees of
-  freedom and the sound speed from the effective potential, which are two forms of the same
-  relation. Both now come from the entropy `entropy_definition` selects, taken along the traced
-  phase. Every adaptive run with the default `time_temperature_mode = "sound_speed"` changes.
-  On the shipped example point, the conformal dark U(1) at g = 0.7 and v = 0.1 GeV, the shifts
-  are at most 0.07 per cent. Over 95 points on four lines the median shift is 0.09 per cent in
-  the percolation temperature `Tperc` and 2.4 per cent in the mean bubble separation on the
-  2HDM line, reaching 3.9 per cent. A published number should say which `entropy_definition`
-  produced it.
+- **One entropy for the expansion history (moves results).** The scale factor came from the
+  counted degrees of freedom and the sound speed from the effective potential, which are two
+  forms of the same relation. Both now come from the entropy `entropy_definition` selects,
+  taken along the traced phase, so every adaptive run with the default `time_temperature_mode
+  = "sound_speed"` changes. On the shipped example point, the conformal dark U(1) at g = 0.7
+  and v = 0.1 GeV, the shifts are at most 0.07 per cent; over 95 points on four lines the
+  median is 0.09 per cent in the percolation temperature and 2.4 per cent in the mean bubble
+  separation on the 2HDM line, reaching 3.9 per cent. A published number should say which
+  `entropy_definition` produced it.
 
 - **The pseudo-trace transition strengths divide both phases by the broken-phase sound speed**,
   as in arXiv:2004.06995 eq. (2.13). Each phase was divided by its own, which left whatever the
@@ -105,23 +102,23 @@ account of every one is in its pull request.
   temperature `Treh`, the inverse duration `beta/H` and the peak frequency do not, the
   amplitude does.
 
-- **The spectrum is redshifted from the right temperature.** `Treh_SM_GeV` is the Standard
-  Model bath's temperature at reheating rather than the transitioning sector's, and
-  `g_eff_tot_reh` and `h_eff_tot_reh` are evaluated there instead of at `Tperc`. Spectra and
-  signal-to-noise ratios change by a fraction of a per cent where the degrees of freedom barely
-  move between the two temperatures, and by up to a factor 1.36 in peak frequency and 0.75 in
-  amplitude on the strongly supercooled conformal dark U(1) line, where `Tperc` is 40 keV and
-  `Treh` 10.6 MeV.
+- **The spectrum is redshifted from the right temperature (moves results).** `Treh_SM_GeV` is
+  the Standard Model bath's temperature at reheating rather than the transitioning sector's,
+  and `g_eff_tot_reh` and `h_eff_tot_reh` are evaluated there instead of at `Tperc`. Spectra
+  and signal-to-noise ratios change by a fraction of a per cent where the degrees of freedom
+  barely move between the two temperatures, and by up to a factor 1.36 in peak frequency and
+  0.75 in amplitude on the strongly supercooled conformal dark U(1) line, where `Tperc` is 40
+  keV and `Treh` 10.6 MeV.
 
-- **Standard Model fields declared inside a potential are counted.** The 2HDM models put the W
-  and Z bosons, the top quark, the Higgs and others in the potential and flag them, and they
-  were counted nowhere, so the effective number of entropy degrees of freedom at reheating
-  `g_eff_tot_reh` came out near 69 instead of near 98. The 2HDM spectra move by about +6 per
-  cent in peak frequency and -10 per cent in amplitude. Models with no Standard Model fields in
-  the potential are unaffected.
+- **Standard Model fields declared inside a potential are counted (moves results).** The 2HDM
+  models put the W and Z bosons, the top quark, the Higgs and others in the potential and flag
+  them, and they were counted nowhere, so the effective number of entropy degrees of freedom
+  at reheating `g_eff_tot_reh` came out near 69 instead of near 98. The 2HDM spectra move by
+  about +6 per cent in peak frequency and -10 per cent in amplitude. Models with no Standard
+  Model fields in the potential are unaffected.
 
-- **Today's entropy degrees of freedom are 3.9309** (arXiv:1803.01038) and were 3.91. All
-  amplitudes rise by 0.7 per cent.
+- **Today's entropy degrees of freedom are 3.9309 (moves results)** (arXiv:1803.01038) and
+  were 3.91. All amplitudes rise by 0.7 per cent.
 
 - **The hybrid wall-velocity limit is found by searching its range** instead of returning the
   search bound where the matching residual has not crossed zero. A wall that should run away
@@ -149,27 +146,26 @@ account of every one is in its pull request.
   error and so depends on the field value. It was a fixed fraction of the temperature.
 
 - **The counterterm derivative step no longer follows the phase-tracing tolerance.** The
-  zero-temperature one-loop derivatives at the vacuum expectation value that fix the
-  counterterms took their step from `x_eps`, so tightening a tracing tolerance changed the
-  potential. They now take `counterterm_derivative_step`, whose default 1e-3 is the step they
-  have always used in the default setup. On the abelian dark Higgs, where the Coleman-Weinberg
-  term at the vacuum is of order 1e9 in internal units, differencing the sum over species at
-  steps below 1e-3 was dominated by round-off, which is what the entry below on differencing
-  the species one at a time removes.
+  zero-temperature one-loop derivatives at the vacuum that fix the counterterms took their step
+  from `x_eps`, so tightening a tracing tolerance changed the potential. They now take
+  `counterterm_derivative_step`, whose default 1e-3 is the step they have always used in the
+  default setup. On the abelian dark Higgs, where the Coleman-Weinberg term at the vacuum is of
+  order 1e9 in internal units, differencing the sum over species below 1e-3 was dominated by
+  round-off.
 
 - **An unstable action slope is retried at a tighter path deformation.** `calc_betaH_S3` fits
   the slope of `S_3/T` near the percolation temperature twice, over the support samples and
-  over a subset; where the two disagreed by more than `betaH_S3_fit_rel_tol` the result was
-  reported through `WARNING:betaH_S3_fit_unstable` and left alone. At the default deformation
-  the actions are the reason: on a 2HDM benchmark `S_3/T` scatters by 0.5 about a straight line
-  across the fitting window against a physical variation of 0.2, so the slope and its sign are
-  undetermined. The slope is now refitted on a stencil of its own with the deformation
-  tightened, which turns -27.3 into +66.5 on that benchmark, against +67.0 to +67.3 from
-  fitting resolved actions.
+  over a subset, and where the two disagreed by more than `betaH_S3_fit_rel_tol` the result was
+  reported through `WARNING:betaH_S3_fit_unstable` and left alone. The actions are the reason:
+  on a 2HDM benchmark `S_3/T` scatters by 0.5 about a straight line across the fitting window
+  against a physical variation of 0.2, so the slope and its sign are undetermined. The slope is
+  now refitted on a stencil of its own with the deformation tightened, which turns -27.3 into
+  +66.5 there, against +67.0 to +67.3 from fitting resolved actions.
 
-- **`percolation_maxit` is 20 and was 10.** Every point rejected for an unresolved percolation
-  probability had unspent action budget. About 2 per cent more action solves, and a fixed step
-  size run that previously stopped at iteration 10 can return a different `Tperc`.
+- **`percolation_maxit` is 20 and was 10 (moves results).** Every point rejected for an
+  unresolved percolation probability had unspent action budget. About 2 per cent more action
+  solves, and a fixed step size run that previously stopped at iteration 10 can return a
+  different `Tperc`.
 
 - **A rescued action is recomputed with real margin** over whatever the run configured, rather
   than clamped to a target the model may already declare, which made the rescue recompute an
@@ -188,7 +184,7 @@ account of every one is in its pull request.
   cold-side running maximum. And a retried action starts from the straight line between the
   minima, as every other temperature does.
 
-- **Internal, with no effect on results.** The error codes a point can return, the tests, and
+- The error codes a point can return, the tests, and
   the documentation of `logGamma` and of two docstrings that rendered wrongly in the published
   pages. A rejected profile now says which resource ran out, and the diagnostic plot of the
   degrees of freedom draws what it claims to.
@@ -198,105 +194,51 @@ account of every one is in its pull request.
 - **The template model's quadratic term, which put its declared vacuum expectation value
   nowhere near a minimum of its own potential.** `models/templatePotential.py` is the file a
   new model is copied from. Its tree potential is `-mu2*phi^2/2 + l*phi^4/4`, whose minimum
-  sits at `phi^2 = mu2/l`, so the vacuum expectation value it declares requires
-  `mu2 = l*v^2`; it set `mu2 = -2*v^2` instead, which at its own defaults is -2.0e+06 against
-  the 1.0e+03 required, and of the wrong sign. Both terms were then positive and the potential
-  rose monotonically out of the origin: `V0` read 0, +2.50e+11, +1.00e+12 and +2.25e+12 in
-  internal units at `phi` of 0, `v`/2, `v` and 3`v`/2, so `self.X0`, which the template sets to
-  `v`, was not a stationary point. The mass of the unphysical mode, `-mu2 + l*phi^2`, came out
-  as 2.001e+06 at the vacuum where a Goldstone mass must vanish, and `m1_GeV`, declared with a
-  default of 125.20 GeV, was read and never used, because `mu2` was what it should have fixed.
-  With `mu2 = l*v^2` the potential has its minimum at `v`, the Goldstone mass is exactly zero,
-  the scalar mass is `2*l*v^2`, and the superfluous input is gone. Two further faults on the
-  same path: the attribute was named `mu2_GeV` and printed as `mu2_GeV2`, and
-  `makePrettyDictionaryPrint` was passed two dictionaries where it takes one, so constructing
-  the template with `verbose=True` raised `AttributeError` and then `TypeError`. The class name
-  was spelled `TemplatePotenital` and is now `TemplatePotential`.
+  sits at `phi^2 = mu2/l`, so the vacuum expectation value it declares requires `mu2 = l*v^2`;
+  it set `mu2 = -2*v^2`, which at its own defaults is -2.0e+06 against the 1.0e+03 required and
+  of the wrong sign. Both terms were then positive and the potential rose monotonically out of
+  the origin, so `self.X0` was not a stationary point, the unphysical mode had a mass squared of
+  2.001e+06 where a Goldstone mass must vanish, and `m1_GeV` was read and never used. With
+  `mu2 = l*v^2` the minimum is at `v`, the Goldstone mass is zero, the scalar mass is `2*l*v^2`
+  and the superfluous input is gone. Constructing the template with `verbose=True` also raised
+  `AttributeError` and then `TypeError`, and the class name was spelled `TemplatePotenital`.
 
-Each line says what was wrong and when it bit.
+- **The derivatives that fix the counterterms are taken species by species (moves results).**
+  The first and second derivatives of the zero-temperature one-loop potential at the vacuum
+  were finite differences of the sum over species, and the step has to stay small because the
+  tree-level Goldstone mass vanishes there, which makes its Coleman-Weinberg term infrared
+  divergent and the step its regulator. The sum is of order 4e9 in internal units at the
+  vacuum of the abelian dark Higgs, so the small step left the result dominated by round-off:
+  a change of 1e-14 in the gauge coupling `g`, 45 units in the last place of a double, moved
+  `d2V1/dphi2` by 1.2e-4 in relative terms and reached the counterterms. A derivative is
+  linear in the species, so each is now differenced on its own, at 1e-3 of the vacuum
+  expectation value of its field direction where its mass squared changes by no more than half
+  across the stencil and at `counterterm_derivative_step` otherwise, tested at every stencil
+  point including the corners where two directions move at once. The same perturbation of `g`
+  now moves `d2V1/dphi2` by 1.2e-10. At `g` = 1 and `lambda` = 0.018012121212121212 the second
+  derivative moves from 18744.125 to 18743.9771, against 18743.9770975 in 60-digit arithmetic,
+  so the correction is round-off and not truncation. `d2V1atvev` also raised `IndexError` for
+  `models/TL_dark_flipflop.py`, whose field space has two dimensions and whose vev is a single
+  number, and now returns two finite components.
 
-- **The bubble count above the hottest temperature of the rate history includes a rate whose
-  logarithmic slope there is exactly zero**, which is the rectangle and not nothing. Excluding
-  it dropped a term the size of those being kept: on a history with `ln(Gamma/H^4)` of -1
-  throughout the count above the hottest node is 7.096, and the crossing then has no bracket
-  inside the history, which the estimate refuses.
-- **The floor on the radial step of the bubble wall integration is set by the radius rather
-  than by the step the integration started from.** The step below which progress is impossible
-  is the one that cannot advance the radius in double precision, which is the radius times the
-  machine epsilon, and the old floor of one per cent of the initial step said nothing about
-  that. On the dark U(1) at `l` = 1e-4 and `v` = 1e10 GeV the smallest step a converging
-  integration needs wanders between 1.6e-06 and 9.6e-06 from one temperature to the next while
-  that floor sat at 6.2e-06, so whether a temperature could be solved alternated with the
-  temperature, and a refused integration returns an infinite action, which the percolation
-  integral reads as no nucleation. The recovered actions are `S_3/T` of 33.28 to 64.73 over the
-  seven internal temperatures 5.600 to 5.650, smooth and monotone, and unchanged bit for bit
-  with the floor lowered four further orders, which is what the suite asserts rather than the
-  values. A step limit bounds the work the floor no longer bounds, in the integration and in
-  the saving of the profile, and a refusal from either is reported as an unresolved bounce
-  rather than as an exception. `Rerr` records the first radius the floor had to force, which an
-  inverted condition had always left as `None`.
-- **The support refinement now samples the interval that ends where the bounce stops
-  solving.** Below the coldest end of a traced phase pair the symmetric phase is gone, so the
-  action is not a number there, while the nucleation rate is still rising, which puts the
-  support points that decide the percolation integral inside that last interval. The step-size
-  test needs a rate at both ends of an interval, so an interval with a rate at its warm end
-  only never registered as unresolved. On the 900-point grid of figure 13 (dark U(1), `l` from
-  1e-4 to 1e-2, `v` from 1e6 to 1e10 GeV, `g_tilde` = 2.69, `benchmark` precision) 63 points
-  failed with error 8; 45 now complete, no point that completed before changed, and of the 18
-  that still fail 15 keep error 8 and 3 stop at error 15. The refinement carries its own
-  allowance of two approaches of `max(n_action_increment, 8)` points per scan point, without
-  which twelve approaches on one point took that grid from 45 minutes to 12 hours 45.
-
-- **The derivatives that fix the counterterms are taken species by species.** The first and
-  second derivatives of the zero-temperature one-loop potential at the vacuum expectation value
-  were finite differences of the sum over species. The step has to stay small because the
-  tree-level Goldstone mass vanishes at the vacuum, so the Coleman-Weinberg term of the
-  Goldstone boson is infrared divergent there and the step is what regulates it. The sum over
-  species is of order 4e9 in internal units at the vacuum of the abelian dark Higgs, so the
-  small step left the result dominated by round-off: a change of 1e-14 in the gauge coupling
-  `g`, which is 45 units in the last place of a double, moved the second derivative
-  `d2V1/dphi2` by 1.2e-4 in relative terms, and that reached the counterterms and the
-  potential. A derivative is linear in the species, so each species is now differenced on its
-  own. A species whose mass squared changes by no more than half across the stencil takes 1e-3
-  of the vacuum expectation value of each field direction, with `counterterm_derivative_step`
-  as the lower bound, and every other species keeps `counterterm_derivative_step`. That test is
-  taken over every point the finite-difference stencil evaluates, the corners where two field
-  directions are displaced at once among them, since a species whose mass squared is held up at
-  the vacuum by a cancellation between two directions passes a test along each direction on its
-  own and still has a vanishing mass squared inside the stencil. The same
-  perturbation of `g` now moves `d2V1/dphi2` by 1.2e-10 in relative terms, and varying the
-  larger step by a decade in each direction moves it by less than 1e-8. On the abelian dark
-  Higgs at `g` = 1 and quartic `lambda` = 0.018012121212121212 the second derivative moves
-  from 18744.125 to 18743.9771 in internal units, where 60-digit arithmetic for the same
-  stencil of the same function at the same step reads 18743.9770975, so the correction is
-  7.9e-6 in relative terms and is round-off and not truncation. What this change leaves behind
-  is the Goldstone infrared problem and not a numerical tuning question: at that point the
-  second derivative drifts with the logarithm of the step by 0.0505 per cent per decade, which
-  the Goldstone resummation of the entry below removes.
-  Each field direction takes its step from its own vacuum expectation value, so a model with
-  two vacuum expectation values a factor 200 apart does not difference the smaller one at 20 per
-  cent of its own vacuum expectation value, and the derivative is taken over the whole field
-  space whatever its dimension. The sum runs over the mass eigenvalues rather than over the
-  degrees of freedom, so a model that reports one number of degrees of freedom for all of its
-  species has every species in the sum rather than the first alone. Differencing species by
-  species on its own moves the counterterms of the two abelian dark Higgs models in their last
-  digits: `dmu2` and `dl` move by 3.9e-6 and 5.9e-6 in relative terms for
-  `models/TL_dark_U1_g_parameterization.py` at the point above, and by 1.4e-9 and 2.1e-9 for
-  `models/TL_dark_U1.py`, which at the time of this change still differenced at a step of 0.1 in
-  internal field units, where there is less round-off to remove. The entry below on the Goldstone
-  resummation gives the move a user of 2.2.0 sees, which is larger. The field point carries one component per
-  field direction whatever shape a model keeps its vev in. `models/TL_dark_flipflop.py` has a
-  field space of two dimensions, keeps its vev as a single number, and has a mass function that
-  indexes both directions: `d2V1atvev` raised `IndexError` for that model in 2.1, while
-  `dV1atvev` returned a two-component gradient only because the derivative helper broadcast the
-  one-component field point against its own stencil before the spectrum saw it. Both now return a
-  finite result of two components, the second derivative for the first time. That model computes
-  its own counterterms and calls neither of the two, so none of its numbers move.
-- **`mpmath` is declared as a development dependency.** `tests/test_counterterm_step.py`
-  checks the finite-difference stencil of the counterterm derivatives against the same stencil
-  in 60-digit arithmetic, which needs `mpmath`, and the package was reached only as a
-  dependency of `sympy`. An environment installed from the project metadata alone could not
-  run that test.
+- **The Goldstone bosons are resummed in the zero-temperature one-loop potential of the
+  abelian dark Higgs models (moves results).** The tree-level Goldstone mass vanishes at the
+  vacuum, where the second derivative of its Coleman-Weinberg term diverges and the
+  counterterms are fixed from that derivative, so the finite-difference step was the regulator
+  and the counterterms drifted with the logarithm of a numerical parameter: `d2V1/dphi2`
+  drifts by 0.0505 per cent per decade at `g` = 1 and `lambda` = 0.018012121212121212, and by
+  49 per cent over the first decade at `lambda` = 0.2. `setGoldstoneShift` shifts the
+  Goldstone mass squared in that term by `(1/phi) dV_1,phys/dphi` at the vacuum (Elias-Miro,
+  Espinosa and Konstandin, arXiv:1406.2652 eqs. 11, 12 and 16; Martin, arXiv:1406.2355 eqs.
+  4.2 and 4.10). The resummed mass does not vanish there, so the spread of `dmu2` over steps
+  of 1e-4 to 1e-1 in internal field units falls below 2e-5 in relative terms at every coupling
+  pair measured. The shift enters at every field value, so the traced phases and the
+  observables downstream move: the largest measured is at `g_tilde` = 1 and `lambda` = 0.2,
+  where `dmu2` goes from -1619.5 to -3320.3 and `dl` from 5.617e-3 to 3.862e-3. Only the two
+  abelian dark Higgs models and the template ask for the shift; the thermal part of the
+  potential does not see it. Read the resummation as valid where the shift is small against
+  the masses of the spectrum: at `g` = 3 it reaches 2.87e6 in internal units of mass squared,
+  1593 times the tree-level mass parameter.
 
 - **`V1phys` and `dV1physatvev` raised `AttributeError` on every call.** `V1phys` is the
   one-loop correction without the Goldstone bosons, and it read the fermion spectrum through
@@ -305,211 +247,134 @@ Each line says what was wrong and when it bit.
   2.0 and the spectrum has returned the pair for just as long, so both methods have raised on
   every call since then. `setGoldstoneShift` of the entry below is the first caller of
   `dV1physatvev`, so until 2.2.0 nothing in the pipeline called either of the two.
-- **The Goldstone bosons are resummed in the zero-temperature one-loop potential of the abelian
-  dark Higgs models.** The tree-level mass of a Goldstone boson vanishes at the vacuum
-  expectation value, where the second derivative of its Coleman-Weinberg term diverges, and the
-  counterterms are fixed from that derivative. The finite-difference step was therefore the
-  regulator, and the counterterms drifted with the logarithm of a numerical parameter: the second
-  derivative `d2V1/dphi2` of the abelian dark Higgs drifts by 0.0505 per cent per decade at gauge
-  coupling `g` = 1 and quartic `lambda` = 0.018012121212121212, and at that gauge coupling the
-  drift runs from 0.0005 per cent per decade at `lambda` = 0.0018 to 49 per cent over the first
-  decade at `lambda` = 0.2, where the Goldstone term dominates the second derivative. At
-  `g` = 0.1 it runs from 0.34 per cent per decade at `lambda` = 0.0018 to 4.2 per cent at
-  `lambda` = 0.03. The new method
-  `setGoldstoneShift` shifts the mass squared of the Goldstone bosons in that term by
-  `(1/phi) dV_1,phys/dphi` at the vacuum expectation value, the first derivative of the one-loop
-  potential without the Goldstone bosons (Elias-Miro, Espinosa and Konstandin, arXiv:1406.2652
-  eqs. 11, 12 and 16; Martin, arXiv:1406.2355 eqs. 4.2 and 4.10). The resummed mass squared does
-  not vanish at the vacuum expectation value, so the derivative is finite there and needs no
-  regulator: the spread of `dmu2` over steps of 1e-4 to 1e-1 in internal field units falls below
-  2e-5 in relative terms at every coupling pair measured, from 0.075 per cent at `g` = 1 and
-  from 28.5 per cent at `g` = 0.1. `models/TL_dark_U1.py` and
-  `models/TL_dark_U1_g_parameterization.py` call the new
-  method, `models/TL_dark_U1.py` drops the local step of 0.1 in internal field units it had set
-  to keep the step large enough that the divergence stayed out of its counterterms, and the two
-  abelian dark Higgs models now return the
-  same counterterms at the same couplings. Every other model is unchanged: the shift is zero
-  unless a model asks for it, the two-Higgs-doublet model takes the analytic counterterm
-  derivatives of `coleman_weinberg_from_curvatures` rather than the finite differences, and
-  `models/TL_dark_flipflop.py` and `models/TL_conformal_dark_u1.py` fix their own counterterms.
 
-  The numbers that move, in internal units, against release 2.1.0. For
-  `models/TL_dark_U1_g_parameterization.py` the counterterm mass squared `dmu2` and the
-  counterterm quartic `dl` move by -0.127 and -0.226 per cent at `g` = 1 and
-  `lambda` = 0.018012121212121212, by -0.363 and -0.611 per cent at `g` = 1 and `lambda` = 0.03,
-  and by -0.0045 and -0.0244 per cent at `g` = 0.52 and `lambda` = 0.0015. For
-  `models/TL_dark_U1.py`, where the dropped step of 0.1 moves the counterterms in the other
-  direction, `dmu2` and `dl` move by -0.077 and -0.151 per cent at the first of those points and
-  by +0.0002 and -0.017 per cent at the third. The largest move measured is at `g_tilde` = 1 and
-  `lambda` = 0.2, where `dmu2` goes from -1619.5 to -3320.3 and `dl` from 5.617e-3 to 3.862e-3,
-  a factor 2.05 and -31 per cent, because that is the point where the Goldstone term dominates
-  the second derivative. `models/templatePotential.py` calls the method too, now that its
-  spectrum has the massless Goldstone the method assumes.
+- **The second quartic counterterm of the dark flip-flop model multiplies the fourth power of
+  the second field.** `models/TL_dark_flipflop.py` multiplied `phi_2 ** 2` where the docstring
+  of `Vct` states `dlambda2 / 4 * phi_2 ** 4`, so the term shifted the mass of the second field
+  instead of renormalising its quartic self-coupling. No published number moves:
+  `calcCounterTerms` fixes `dmu1`, `dmu2` and `dlambda1` from the gradient and the Hessian at
+  the vacuum of the first field, which is three conditions and leaves none for `dlambda2`, and
+  assigns `dlambda2 = 0` unconditionally, so the counterterm potential of the muAres benchmark
+  is bitwise what the old expression gave. Assigning the attribute by hand on an instantiated
+  potential is the one way to make the term contribute, and for anyone who did, the wrong power
+  changed the result.
 
-  The shift enters the Coleman-Weinberg term at every field value and not only at the vacuum
-  expectation value, so the zero-temperature one-loop potential of a model that resums changes
-  everywhere, and the traced phases, the critical temperature and the observables downstream
-  change with it. At `g` = 1 and `lambda` = 0.018012121212121212 the one-loop potential at the
-  origin moves by 37 per cent and the potential difference between the origin and the vacuum
-  expectation value at zero temperature by -0.31 per cent for
-  `models/TL_dark_U1_g_parameterization.py` and by -0.20 per cent for `models/TL_dark_U1.py`.
-  The thermal part does not see the shift: `boson_massSq`, `debye_massSq`, the thermal functions
-  and the daisy term keep the mass squared of the spectrum.
+- The transverse photon mass in `models/TL_2HDM.py` was wrong.
 
-  How large the shift is relative to the spectrum depends on the coupling, and for the abelian
-  dark Higgs it is set by the gauge coupling and by the renormalisation scale, which that model
-  puts at the vacuum expectation value. The shift is negative up to `g` = 1.18 at
-  `lambda` = 0.018012121212121212 and positive above, and at `g` = 3 it reaches 2.87e6 in internal units of mass squared, 1593 times the
-  tree-level mass parameter at `lambda` = 0.0018, so the shift is not a correction to the
-  spectrum there and nothing says so. Where the shift is negative, the resummed Goldstone mass
-  squared vanishes above the vacuum expectation value, outside the field range a transition of
-  these models explores. Where it is positive and large enough, the zero moves below the vacuum
-  expectation value: at `g` = 2 and `lambda` = 1 it sits at 0.83 of the vacuum expectation value,
-  where the second derivative of the potential dips by 10 per cent over 4 units of the field. Read the resummation
-  as valid where the shift is small against the masses of the spectrum.
-- A bounce whose final path has a gradient that is not a number is reported as no tunnelling
-  rather than as an action. `fullTunneling` measures the ratio of the transverse force to the
-  potential gradient on the path it ends with, and that measurement is the one use of the
-  ratio that the deformation's own refusal does not cover, because `_deform_path` catches the
-  refusal and continues with the path as it stands. Measured on a two-field double well whose
-  gradient returns `nan` from its fourth evaluation on: `bounceAction` returned an action of
-  1340.6042599160708 with `trantype` 1, a resolved first-order bounce built on a path whose
-  gradient could not be evaluated. It now returns an infinite action with `trantype` 0, which
-  every caller already reads as no tunnelling at that temperature. The same potential with a
-  usable gradient returns the same action as before.
-- The second quartic counterterm of the dark flip-flop model now multiplies the fourth power of
-  the second field. `models/TL_dark_flipflop.py` multiplied `phi_2 ** 2` where the docstring of
-  `Vct` states `dlambda2 / 4 * phi_2 ** 4`. The term shifted the mass of the second field
-  rather than renormalising the quartic self-coupling of that field. No published number moves,
-  and the claim holds for every path into the coupling and not only for the default one.
-  `calcCounterTerms` fixes `dmu1`, `dmu2` and `dlambda1` from the gradient and the Hessian of
-  the one-loop potential at the vacuum of the first field, which is three conditions and leaves
-  none for `dlambda2`, and it assigns `dlambda2 = 0` with no branch, at whatever step of the
-  derivative a caller asks for. `dlambda2` is not one of the model parameters, so a run that
-  passes the name in the parameter block is refused with `InitPotentialError`. The counterterm
-  potential of the muAres benchmark is bitwise what the old expression returned, over field
-  values of up to 3000 internal field units, which is three times the internal field scale of
-  this model. Assigning the attribute on an instantiated potential is the one remaining way to
-  make the term contribute, and for a user who did so the wrong power changed the result.
-- The convergence test of the one-dimensional bounce no longer fails on processors other than
-  the one it was written on, and no longer rests on a value of the action that the processor
-  changes. `test_the_action_converges_as_the_tolerance_is_tightened` pinned the action at the
-  configured tolerance, `phitol = xtol = 1e-10`, to within 3e-05 of a single measurement. The
-  same code and library build give 2388.1790354 on an AMD EPYC 7453 and 2388.1789926 on an AMD
-  EPYC 9454, 4.27e-05 apart, so the test passed on the first and failed on the second. Widening
-  the window is not enough on its own: the action under the bisection stopping rule the
-  assertion was written to reject, an absolute `xtol` window, falls inside every window that
-  holds both processors, because its range across the two overlaps the shipped rule's range.
-  The test now states the convergence as a ratio of two measured moves of the action and the
-  stopping rule as the number of profile integrations the bisection runs, which is the same
-  integer on both processors, 36 against the absolute window's 33. A 4e-05 window on the action
-  is kept for the rule those two assertions cannot see, the field scale `epsabs` is measured
-  against, and rejects that rule on both processors with a margin of 3.5.
-- A broken-phase temperature below the symmetric one now fails the point with an error code.
-  The transition releases energy and happens below the critical temperature, so the broken
-  phase is reheated and `T_bro > T_sym` holds by construction, whatever accuracy the solver
-  works to. The old guard raised a bare `ValueError`, which carries no code, so the CLI
-  reported an unclassified failure, code -1. It is now an assertion of that ordering whose
-  only slack is the floating-point grid: a relative shortfall below 1e-9 is clamped with a
-  `RuntimeWarning`, and anything larger is refused as a `PercolationError`, code 10, naming
-  both phases and the relative latent heat at `T_sym`. The threshold is measured: over 2313
-  step-3 support points on the 2HDM `lambda3` line the worst negative latent heat among
-  correctly ordered points is -5.91e-14, while the one reversed point, `lambda4` =
-  -2.0807692307692305, carries -1.264e-04, which the default `acc_tperc` would have admitted
-  silently. A non-finite temperature now raises rather than being returned, and the rule,
-  previously in three copies, lives in one shared function.
-- No failing point is reported as error -1 any more, and every one carries its cause. An
-  exception without an `errorcode` now reports `UnexpectedError`, code 999, with its original
-  type named. `errormsg` is a registered result column that no failing path filled, the
-  per-point handler leaving it empty and the random-scan worker blanking it after reading it;
-  both now carry it. A scan writes the cause beside its numeric columns in `errormsg.txt`, one
-  row per failed point with its grid position, for both formats, since neither the float arrays
-  nor the hdf5 datasets hold a string column. The file is absent when no point failed, and one
-  left by an earlier run over the same output path is removed rather than read as describing
-  the new results. Each field stays one row: whitespace runs collapse to a space, and on the
-  random-scan path commas become semicolons, because that table is comma-separated and quotes
-  nothing.
+- The daisy term was evaluated in a form that threw away its significant digits.
+
+- The degrees of freedom of the fields of the potential, the Standard Model fields among them,
+  and the decoupled radiation baths were each counted wrongly or not at all.
+
+- The conformal dark U(1) model splined the potential along the bounce path in a way that lost
+  accuracy where it mattered.
+
+- **A broken-phase temperature below the symmetric one fails the point with an error code.**
+  The transition releases energy and happens below the critical temperature, so `T_bro > T_sym`
+  holds by construction whatever accuracy the solver works to. The old guard raised a bare
+  `ValueError`, which carries no code, so the command line reported an unclassified failure,
+  code -1. It is now an assertion of that ordering whose only slack is the floating-point grid:
+  a relative shortfall below 1e-9 is clamped with a `RuntimeWarning`, and anything larger is
+  refused as a `PercolationError`, code 10, naming both phases and the relative latent heat at
+  `T_sym`. The threshold is measured: over 2313 step-3 support points of the 2HDM `lambda3`
+  line the worst negative latent heat among correctly ordered points is -5.91e-14, while the
+  one reversed point, `lambda4` = -2.0807692307692305, carries -1.264e-04, which the default
+  `acc_tperc` would have admitted silently.
+
 - The transition could be built between two images of the same minimum, so the bounce was
   computed along a path the field does not take. On the 2HDM at `lambda3` = 5.868 that gave
   `S_3/T` = 336.6 against 152.6 and 153.3 at the neighbouring couplings, and the point returned
   no percolation.
+
 - The canonical image of a traced phase was decided by the sign of a field component the tracer
   does not resolve: two nodes 2e-09 GeV apart were put on images 492 GeV apart. And a phase that
   needed no transformation at all could be mirrored, because the search for the transformation
   took the first of several equal distances, and at the origin every element of the group ties
   with the identity.
+
 - A phase that is its own mirror image was duplicated, and the duplicate entered the transition
   graph.
+
 - The tracer followed a point after it had stopped being a minimum. On the 2HDM at
   `lambda3` = 5.813 that left 7 of 61 nodes of the high-temperature phase at the origin between
   T = 8.5 and 39.0 GeV, where the smallest curvature reaches -377.8 GeV^2, and the bounce was
   computed from there.
+
 - A phase could leave the range of its own traced minima between two traced points, because the
   interpolating cubic overshoots.
-- A bounce whose two bracketing trials disagreed on the action returned the last trial's number
-  anyway. It is reported as unresolved now, which is what it was.
-- The shooting bisection converged on an absolute tolerance in its own variable, so it could
-  stall without converging, and a trial with no usable slope was taken as a verdict.
-- The bounce profile was integrated and judged to have arrived on a scale unrelated to the
-  bounce's own.
-- The bounce action died where the barrier is small compared with the path, which is the
-  strongly supercooled corner. On the conformal dark U(1) ladder the lowest percolating coupling
-  moves from g = 0.54 to g = 0.42, twelve couplings gain a percolation, and `Tperc` is unchanged
-  to between 1.8e-06 and 2.4e-04 per cent where the old code resolved it. This is the largest
-  single change in the release.
-- The percolation estimate took a root of its criterion that need not be the hottest one, and
-  returned 1.97e-12 GeV where the answer was 61.5 GeV.
+
 - The check that the transition chain ended in the zero-temperature minimum refused chains
   that had. It compared field values component by component, which gives the smaller field
   component a tolerance tighter in proportion while the tracer's error is the same absolute size
   in both: on the 2HDM at `lambda3` = 5.8672 the endpoint sits 2.7e-06 of the field scale from
   the minimum, with the potential agreeing to eight digits, and it was refused on the smaller
   component alone. The check now compares the depth of the potential at the two points.
-- The adaptive percolation controller spent its budget below the transition and refused to
-  repair a jump it then rejected the profile for: eight faults, found by instrumenting a
-  40-point 2HDM edge line on which 31 of 40 points resolved.
-- Energy densities and the potential did not broadcast over an array of temperatures, a figure
-  saved to a path without an extension lost the default format, the summed spectrum lost its
-  hatching, and a spectrum plot given only an axis could not find its figure.
-- The percolation integral was evaluated twice on coarse support grids.
-- The bubble nucleation rate was allowed to grow above the temperatures whose action supported
-  it.
-- Two temperatures were compared against an absolute floor of one rather than against their own
-  size, which swallowed every refinement point for a transition below one in the model's
-  internal units.
-- The daisy term was evaluated in a form that threw away its significant digits.
-- The wall velocity took its sound speed from the potential alone, not from the thermal part
-  too, and a sound speed at or above one was replaced rather than refused.
-- The scale factor of the percolation integral, the expansion history of the mean bubble
-  separation, and the time-temperature factor of `(beta/H)_S3` each used a thermodynamics that
-  did not match the one the rest of the integral assumed.
-- The reheating temperature was read off a quantity that carried scatter, since 2.1.0, and
-  `Tperc` in the adaptive solver was not taken from the solver's own event.
-- The degrees of freedom of the fields of the potential, the Standard Model fields among them,
-  and the decoupled radiation baths were each counted wrongly or not at all.
-- The transverse photon mass in `models/TL_2HDM.py` was wrong.
-- The break frequencies of the summed spectrum were redshifted by the wrong power.
-- The conformal dark U(1) model splined the potential along the bounce path in a way that lost
-  accuracy where it mattered.
-- A point that timed out came back carrying numbers rather than a timeout, and a timeout raised
-  inside the initial-condition search was read as a wall too thin.
-- A degenerate third-step profile reached percolation with nothing evolved.
-- A broken phase with no thermal pressure, and the symmetric phase at extreme supercooling,
-  were both mishandled.
-- The profile plot drew the false vacuum on the image the phase tracing produced rather than on
-  the image the bounce was computed on.
-- `examples/bp_lisa.yaml` named a model file that is not in the repository, so the shipped
-  benchmark point could not be run.
-- A failure of the potential whose tag the bounce code does not handle raised `IndexError`
-  rather than reaching the caller as `UnexpectedError`, because the message was read from an
-  index of `args` that `PotentialError` never fills. The second copy of the same translation,
-  in `bounceAction`, reported no tag at all.
-- The tachyonic-mass message divided the squared boson masses by the internal field scale,
-  which is neither a mass nor a squared mass and changes with a model's choice of scale, and
-  printed every mode without saying which one was tachyonic.
-- `Phases.testTmax` documented `ValueError` and raises `WrongHighTPhaseError`, and
-  `PotentialError`'s docstring described a tuple convention its constructor does not follow, so
-  a reader deciding what to catch would have caught nothing.
+
+- **The floor on the radial step of the bubble wall integration is set by the radius rather
+  than by the step the integration started from (moves results).** The step below which
+  progress is impossible is the one that cannot advance the radius in double precision, which
+  is the radius times the machine epsilon, and the old floor of one per cent of the initial
+  step said nothing about that. On the dark U(1) at `l` = 1e-4 and `v` = 1e10 GeV the smallest
+  step a converging integration needs wanders between 1.6e-06 and 9.6e-06 from one temperature
+  to the next while that floor sat at 6.2e-06, so whether a temperature could be solved
+  alternated with the temperature, and a refused integration returns an infinite action, which
+  the percolation integral reads as no nucleation. The recovered actions are `S_3/T` of 33.28
+  to 64.73 over the seven internal temperatures 5.600 to 5.650, smooth and monotone, and
+  unchanged bit for bit with the floor lowered four further orders, which is what the suite
+  asserts rather than the values. A step limit bounds the work the floor no longer bounds, in
+  the integration and in the saving of the profile, and a refusal from either is reported as
+  an unresolved bounce rather than as an exception. `Rerr` records the first radius the floor
+  had to force, which an inverted condition had always left as `None`.
+
+- **A path along which the potential gradient vanishes at every point made the path deformation
+  divide by zero.** The deformation moves each point by the transverse force over `dV_max`, the
+  largest gradient magnitude along the path, and converges on `F_max / dV_max`, so a `dV_max`
+  of zero filled the path coordinates with `nan` and the next least-squares fit raised
+  `numpy.linalg.LinAlgError`. Nothing on the bounce path turns that into an action or an error
+  code, so the temperature left the solver as a numpy error rather than as an outcome. It needs
+  no flat potential: `dV_max` is `max(sqrt(sum(dV*dV)))`, whose square underflows to zero for a
+  gradient below about 2e-162 in the units of `dV`. The deformation now ends on such a path and
+  returns it, and the bounce comes back as `trantype` 0 with an infinite action, which every
+  caller reads as no tunnelling there. A `dV_max` that is `nan` or infinite is refused instead,
+  since a test against zero catches neither: such a gradient made the spline deformation spend
+  all 500 steps on a path of `nan`, and made the step-size loop of `Deformation_Points` run
+  without end, because `stepsize <= minstep` is false for `nan`.
+
+- **A bounce whose final path has a gradient that is not a number is reported as no tunnelling
+  rather than as an action.** `fullTunneling` measures the ratio of the transverse force to the
+  potential gradient on the path it ends with, and that is the one use of the ratio the
+  deformation's own refusal does not cover, because `_deform_path` catches the refusal and
+  continues with the path as it stands. Measured on a two-field double well whose gradient
+  returns `nan` from its fourth evaluation on, `bounceAction` returned an action of
+  1340.6042599160708 with `trantype` 1, a resolved first-order bounce built on a path whose
+  gradient could not be evaluated. It now returns an infinite action with `trantype` 0. The
+  same potential with a usable gradient returns the same action as before.
+
+- **The convergence test of the one-dimensional bounce no longer fails on processors other than
+  the one it was written on.** `test_the_action_converges_as_the_tolerance_is_tightened` pinned
+  the action at the configured `phitol = xtol = 1e-10` to within 3e-05 of one measurement, and
+  the same code gives 2388.1790354 on an AMD EPYC 7453 against 2388.1789926 on an AMD EPYC
+  9454, 4.27e-05 apart, so it passed on one and failed on the other. Widening the window does
+  not help, because the stopping rule the assertion exists to reject falls inside every window
+  that holds both processors. The test now states convergence as a ratio of two measured moves
+  of the action, and the stopping rule as the number of profile integrations the bisection runs,
+  36 against the absolute window's 33, which is the same integer on both processors.
+
+- A bounce whose two bracketing trials disagreed on the action returned the last trial's number
+  anyway. It is reported as unresolved now, which is what it was.
+
+- The shooting bisection converged on an absolute tolerance in its own variable, so it could
+  stall without converging, and a trial with no usable slope was taken as a verdict.
+
+- The bounce profile was integrated and judged to have arrived on a scale unrelated to the
+  bounce's own.
+
+- **The bounce action is computed where the barrier is small compared with the path (moves
+  results).** That is the strongly supercooled corner, and the action died there. On the
+  conformal dark U(1) ladder the lowest percolating coupling moves from g = 0.54 to g = 0.42,
+  twelve couplings gain a percolation, and `Tperc` is unchanged to between 1.8e-06 and 2.4e-04
+  per cent where the old code resolved it. This is the largest single change in the release.
+
 - **The integrated nucleation condition was summed from the cold end and carried a wall
   velocity that does not belong in it.** `N(T) = 4 pi/3 int_T^Tinit Gamma/H^4 (1 - P) dT/T = 1`
   is what a strongly supercooled transition reports, since the instantaneous `Gamma/H^4 = 1`
@@ -523,28 +388,98 @@ Each line says what was wrong and when it bit.
   and the run reports `WARNING:spline_tnuc_not_reached`; the steepest cell measured on a real
   rate rises by 57.6.
 
-- A path along which the potential gradient vanishes at every point made the path deformation
-  divide by zero. The deformation moves each point of the path by the transverse force divided
-  by `dV_max`, the largest gradient magnitude along the path, and converges on the ratio
-  `F_max / dV_max`, so a `dV_max` of zero left both of them dividing by zero and filled the
-  path coordinates with `nan`. The least-squares fit of the next iteration then raised
-  `numpy.linalg.LinAlgError`. Nothing on the bounce path turns that error into an action or an
-  error code: `_execute_full_tunneling` re-raises it, and `bounceAction`,
-  `bounceActionOverImages` and `calcAction` do not catch it, so a temperature the solver cannot
-  resolve left the bounce solver as a numpy error rather than as an outcome for that
-  temperature. Such a `dV_max` does not need a flat potential: it is computed as
-  `max(sqrt(sum(dV*dV)))`, whose square underflows to zero for a gradient below about 2e-162 in
-  the units `dV` is given in. The deformation now ends on such a path and
-  returns it as it stands, which is what a converged deformation reports, and a bounce the
-  solver cannot resolve there comes back as `trantype` 0 with an infinite action, read by every
-  caller as no tunnelling at that temperature. The same division is in three places, both
-  deformation classes and `fullTunneling`'s own measurement of the force ratio, and all three
-  now read the ratio from one function; the force ratio reported beside a converged flat path
-  was `inf`. A `dV_max` that is `nan` or infinite is refused as a failed deformation instead,
-  since a test against zero catches neither: a gradient of either kind made the spline
-  deformation fill the path with `nan` and spend its full 500 steps on it, and a gradient that
-  is not a number made the step-size loop of `Deformation_Points` run without end, because
-  `stepsize <= minstep` is false for `nan`.
+- **The support refinement now samples the interval that ends where the bounce stops
+  solving.** Below the coldest end of a traced phase pair the symmetric phase is gone, so the
+  action is not a number there, while the nucleation rate is still rising, which puts the
+  support points that decide the percolation integral inside that last interval. The step-size
+  test needs a rate at both ends of an interval, so an interval with a rate at its warm end
+  only never registered as unresolved. On the 900-point grid of figure 13 (dark U(1), `l` from
+  1e-4 to 1e-2, `v` from 1e6 to 1e10 GeV, `g_tilde` = 2.69, `benchmark` precision) 63 points
+  failed with error 8; 45 now complete, no point that completed before changed, and of the 18
+  that still fail 15 keep error 8 and 3 stop at error 15. The refinement carries its own
+  allowance of two approaches of `max(n_action_increment, 8)` points per scan point, without
+  which twelve approaches on one point took that grid from 45 minutes to 12 hours 45.
+
+- **The bubble count above the hottest temperature of the rate history includes a rate whose
+  logarithmic slope there is exactly zero**, which is the rectangle and not nothing. Excluding
+  it dropped a term the size of those being kept: on a history with `ln(Gamma/H^4)` of -1
+  throughout the count above the hottest node is 7.096, and the crossing then has no bracket
+  inside the history, which the estimate refuses.
+
+- The percolation estimate took a root of its criterion that need not be the hottest one, and
+  returned 1.97e-12 GeV where the answer was 61.5 GeV.
+
+- The adaptive percolation controller spent its budget below the transition and refused to
+  repair a jump it then rejected the profile for: eight faults, found by instrumenting a
+  40-point 2HDM edge line on which 31 of 40 points resolved.
+
+- The percolation integral was evaluated twice on coarse support grids.
+
+- The bubble nucleation rate was allowed to grow above the temperatures whose action supported
+  it.
+
+- Two temperatures were compared against an absolute floor of one rather than against their own
+  size, which swallowed every refinement point for a transition below one in the model's
+  internal units.
+
+- A degenerate third-step profile reached percolation with nothing evolved.
+
+- The scale factor of the percolation integral, the expansion history of the mean bubble
+  separation, and the time-temperature factor of `(beta/H)_S3` each used a thermodynamics that
+  did not match the one the rest of the integral assumed.
+
+- The reheating temperature was read off a quantity that carried scatter, since 2.1.0, and
+  `Tperc` in the adaptive solver was not taken from the solver's own event.
+
+- The break frequencies of the summed spectrum were redshifted by the wrong power.
+
+- The wall velocity took its sound speed from the potential alone, not from the thermal part
+  too, and a sound speed at or above one was replaced rather than refused.
+
+- A broken phase with no thermal pressure, and the symmetric phase at extreme supercooling,
+  were both mishandled.
+
+- **No failing point is reported as error -1 any more, and every one carries its cause.** An
+  exception without an `errorcode` now reports `UnexpectedError`, code 999, naming its original
+  type. `errormsg` is a registered result column that no failing path filled, the per-point
+  handler leaving it empty and the random-scan worker blanking it after reading it; both now
+  carry it. A scan writes the cause beside its numeric columns in `errormsg.txt`, one row per
+  failed point with its grid position, for both formats, since neither the float arrays nor the
+  hdf5 datasets hold a string column. The file is absent when no point failed, and one left by
+  an earlier run over the same output path is removed rather than read as describing the new
+  results.
+
+- A point that timed out came back carrying numbers rather than a timeout, and a timeout raised
+  inside the initial-condition search was read as a wall too thin.
+
+- A failure of the potential whose tag the bounce code does not handle raised `IndexError`
+  rather than reaching the caller as `UnexpectedError`, because the message was read from an
+  index of `args` that `PotentialError` never fills. The second copy of the same translation,
+  in `bounceAction`, reported no tag at all.
+
+- The tachyonic-mass message divided the squared boson masses by the internal field scale,
+  which is neither a mass nor a squared mass and changes with a model's choice of scale, and
+  printed every mode without saying which one was tachyonic.
+
+- `Phases.testTmax` documented `ValueError` and raises `WrongHighTPhaseError`, and
+  `PotentialError`'s docstring described a tuple convention its constructor does not follow, so
+  a reader deciding what to catch would have caught nothing.
+
+- The profile plot drew the false vacuum on the image the phase tracing produced rather than on
+  the image the bounce was computed on.
+
+- `examples/bp_lisa.yaml` named a model file that is not in the repository, so the shipped
+  benchmark point could not be run.
+
+- Energy densities and the potential did not broadcast over an array of temperatures, a figure
+  saved to a path without an extension lost the default format, the summed spectrum lost its
+  hatching, and a spectrum plot given only an axis could not find its figure.
+
+- **`mpmath` is declared as a development dependency.** `tests/test_counterterm_step.py`
+  checks the finite-difference stencil of the counterterm derivatives against the same stencil
+  in 60-digit arithmetic, which needs `mpmath`, and the package was reached only as a
+  dependency of `sympy`. An environment installed from the project metadata alone could not
+  run that test.
 
 ## [2.1.0] - 2026-07-28
 
