@@ -112,6 +112,18 @@ the false vacuum at rest, and the trial has converged.
    of the potential, while the width of the barrier is set by the temperature, and on a strongly
    supercooled transition the two differ by orders of magnitude.
 
+.. versionchanged:: 2.2
+   The smallest radial step the integration may take is set by the radius it has reached and no
+   longer by the step it started from. The step below which progress is impossible is the one
+   that cannot advance the radius in double precision, which is the radius times the machine
+   epsilon. A floor fixed to the initial step says nothing about that, and on a strongly
+   supercooled transition it refused temperatures whose bounce the integration can resolve. A
+   refused integration returns an infinite action, which the percolation integral reads as no
+   nucleation, so such a refusal removes the temperatures carrying the largest rate. The work
+   the floor no longer bounds is bounded by a limit on the number of steps, in the integration
+   and in the saving of the profile alike, and a refusal from either is reported as an
+   unresolved bounce rather than as an exception.
+
 In several field directions
 ---------------------------
 
