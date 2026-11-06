@@ -189,6 +189,17 @@ each has its own signature:
 - Extending the range adds small batches beyond the cold end, with the new boundary chosen
   from how much the last extension gained.
 
+.. versionchanged:: 2.2
+   The interval that ends where the bounce stops solving is sampled as well. The coldest end of
+   a traced phase pair is a boundary rather than a sample: below it the symmetric phase is gone
+   and the action is not a number there, while the rate is still rising as it is approached, so
+   the support points that decide the integral lie inside that last interval. The step-size test
+   needs a rate at both ends of an interval, so an interval carrying a rate at its warm end only
+   never registered as unresolved and nothing placed points in it. The refinement has an
+   allowance of its own, two approaches of ``max(n_action_increment, 8)`` support points for
+   each scan point, because the rate allowance is spent by the time the support reaches the
+   boundary and without a bound the approach repeats on every rebuild.
+
 Acceptance
 ~~~~~~~~~~
 
