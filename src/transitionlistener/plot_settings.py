@@ -36,7 +36,11 @@ def save_figure(fig, path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.stem}.partial{path.suffix}")
     try:
-        fig.savefig(tmp, format=fmt)
+        # Figures carrying the logo mix a bitmap into otherwise vector output, and the
+        # save dpi decides how many pixels of it are embedded. At the matplotlib
+        # default of a hundred the inset is about forty pixels across and its
+        # lettering is visibly ragged in print.
+        fig.savefig(tmp, format=fmt, dpi=600)
         os.replace(tmp, path)
     finally:
         if tmp.exists():
@@ -147,8 +151,11 @@ def add_TL_logo(loc : str, magnification : float = 1, ax : plt.Axes = None,
         inset.set_aspect("equal", anchor="SW")
         
     
+    # The logo is a 2048 px bitmap drawn into an inset a few hundred points wide, so it is
+    # always downsampled. With interpolation='none' matplotlib point-samples it and the
+    # edges of the lettering come out ragged; 'antialiased' filters it on the way down.
     if small_logo:
-        inset.imshow(load_small_logo(), interpolation='none')
+        inset.imshow(load_small_logo(), interpolation='antialiased')
     else:
-        inset.imshow(load_large_logo(), interpolation='none')
+        inset.imshow(load_large_logo(), interpolation='antialiased')
     inset.axis('off')
