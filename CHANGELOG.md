@@ -5,7 +5,7 @@ All notable changes between releases of TransitionListener.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.2.0] - 2026-11-08
 
 Release 2.2.0 is a correctness release. Numbers from 2.1.0 move: the expansion history,
 the pseudo-trace transition strengths, the redshift of the spectrum and the counting of
