@@ -251,9 +251,10 @@ References
    cosmological first-order phase transitions*, JCAP **06** (2010) 028,
    `arXiv:1004.4187 <https://arxiv.org/abs/1004.4187>`_.
 
-.. [Ai:2023see] W.-Y. Ai, B. Laurent and J. van de Vis, *The bubble wall velocity in local thermal
-   equilibrium*, `arXiv:2303.10171 <https://arxiv.org/abs/2303.10171>`_.
+.. [Ai:2023see] W.-Y. Ai, B. Laurent and J. van de Vis, *Model-independent bubble wall
+   velocities in local thermal equilibrium*, JCAP **07** (2023) 002,
+   `arXiv:2303.10171 <https://arxiv.org/abs/2303.10171>`_.
 
 .. [Ellis:2019oqb] J. Ellis, M. Lewicki, J. M. No and V. Vaskonen, *Gravitational wave
-   energy budget in strongly supercooled phase transitions*,
+   energy budget in strongly supercooled phase transitions*, JCAP **06** (2019) 024,
    `arXiv:1903.09642 <https://arxiv.org/abs/1903.09642>`_.

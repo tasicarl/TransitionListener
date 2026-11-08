@@ -201,7 +201,7 @@ References
    Phys. Rev. D **45** (1992) 4695.
 
 .. [Elias-Miro:2014pca] J. Elias-Miro, J. R. Espinosa and T. Konstandin, *Taming infrared divergences
-   in the effective potential*, arXiv:1406.2652. The shift of the Goldstone mass squared is
+   in the effective potential*, JHEP **08** (2014) 034, arXiv:1406.2652. The shift of the Goldstone mass squared is
    eqs. 11, 12 and 16.
 
 .. [Martin:2014bca] S. P. Martin, *Taming the Goldstone contributions to the effective potential*,
