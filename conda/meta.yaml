@@ -7,7 +7,7 @@ package:
 
 source:
   url: https://pypi.org/packages/source/T/TransitionListener/transitionlistener-{{ version }}.tar.gz
-  sha256: e8670d2ef72e988b6834ad8476b51ec09c488713a716a05846ec835c8ab8d708
+  sha256: cb397968fde6aae14c7e1e9997f9aaac1b12107571ff60b8b1d0dc4bf55930d9
 
 build:
   entry_points:
