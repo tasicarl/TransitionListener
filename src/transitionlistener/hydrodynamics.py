@@ -54,24 +54,48 @@ def kappa_sw(alpha : float, vw: float, cs: float) -> float:
     float
         The sound-wave efficiency factor.
     """
+    if alpha == 0.0:
+        # Every one of kA, kB, kC and kD is zero at zero strength, so all three regimes
+        # below are 0/0 there. The fit falls off linearly towards it, by a measured factor
+        # of ten per decade from alpha = 1e-4 to 1e-16 at every wall velocity and sound
+        # speed tried, so zero is the value the expressions approach. This is reached from
+        # the configuration: with bw_collisions = "full" the strength handed to this fit
+        # is alpha (1 - kappa_BW) = 0.
+        return 0.0
+
     # Intermediate kappas, Jouguet velocity
     kA = vw**(6/5) * 6.9 * alpha / (1.36 - 0.037 * np.sqrt(alpha) + alpha)
     kB = alpha**(2/5) / (0.017 + (0.997 + alpha)**(2/5))
     kC = np.sqrt(alpha) / (0.135 + np.sqrt(0.98 + alpha))
     kD = alpha / (0.73 + 0.083 * np.sqrt(alpha) + alpha)
     dK = -0.9 * np.log(np.sqrt(alpha) / (1 + np.sqrt(alpha)))
-    vJ = (cs + np.sqrt(alpha**2 + 2 * alpha / 3)) / (1 + alpha)
+    # vJ - 1 is carried in its own variable, because it is a difference of two nearly equal
+    # numbers and forming it from a rounded vJ destroys it. Writing the root as
+    # sqrt(alpha) sqrt(alpha + 2/3) keeps alpha**2 from overflowing a double above
+    # alpha = 1.3e154, and taking
+    #     sqrt(alpha**2 + 2 alpha / 3) - alpha = (2 alpha / 3) / (sqrt(...) + alpha)
+    # removes the cancellation, so the sign of vJ - 1 stays that of cs - 2/3 at every
+    # strength instead of turning over wherever the rounding happens to go the other way.
+    root = np.sqrt(alpha) * np.sqrt(alpha + 2.0 / 3.0)
+    root_minus_alpha = (2.0 / 3.0) * alpha / (root + alpha) if alpha > 0 else 0.0
+    vJ_minus_one = (cs - 1.0 + root_minus_alpha) / (1 + alpha)
+    vJ = (cs + root) / (1 + alpha)
     lK = kC - kB - (vJ - cs) * dK
 
     if vw <= cs:  # Choose regime
         num = (cs**(11/5) * kA * kB)
         denom = ((cs**(11/5) - vw**(11/5)) * kB + vw * cs**(6/5) * kA)
         return num / denom
-    elif vw < vJ:
+    elif vw - 1.0 < vJ_minus_one:  # the test vw < vJ, without the cancellation
         return kB + (vw - cs) * dK + ((vw - cs)**3 / (vJ - cs)**3) * lK
     else:
-        num = (vJ - 1)**3 * vJ**(5/2) * vw**(-5/2) * kC * kD
-        denom = ((vJ - 1)**3 - (vw - 1)**3) * vJ**(5/2) * kC + (vw - 1)**3 * kD
+        # The same quotient as before with its common factor (vJ - 1)**3 cancelled.
+        # Written out, it is 0/0 whenever both differences round to zero, and it also
+        # loses the cube of a very small vJ - 1 to underflow; here the only surviving
+        # trace of the two is their ratio, which is zero for a wall at the speed of light.
+        ratio = 0.0 if vw == 1.0 else ((vw - 1.0) / vJ_minus_one)**3
+        num = vJ**(5/2) * vw**(-5/2) * kC * kD
+        denom = (1.0 - ratio) * vJ**(5/2) * kC + ratio * kD
         return num / denom
 
 
