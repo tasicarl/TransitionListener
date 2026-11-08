@@ -27,7 +27,7 @@ with respect to temperature yields
    = - \left(\frac{\partial^2 V}{\partial\phi_i\,\partial\phi_j}\right)^{-1}
        \frac{\partial}{\partial T}\frac{\partial V}{\partial\phi_j},
 
-so the minimum is followed by integrating this [WainwrightPhases]_, with a Newton step at each temperature to
+so the minimum is followed by integrating this [Wainwright:2011kj]_, with a Newton step at each temperature to
 remove the error that accumulates. The step in temperature is chosen from the change in the
 field it produces, so that the tracer takes small steps where the minimum moves quickly and
 large ones where it does not.
@@ -108,12 +108,3 @@ Refusals
    offered to the nucleation solver and a step where a candidate was offered and the solve did
    not succeed were reported the same way, so a scan could not tell a numerical failure from a
    transition that genuinely does not proceed.
-
-References
-----------
-
-.. [WainwrightPhases] C. L. Wainwright, *CosmoTransitions: computing cosmological phase
-   transition temperatures and bubble profiles with multiple fields*,
-   Comput. Phys. Commun. **183** (2012) 2006, `arXiv:1109.4189
-   <https://arxiv.org/abs/1109.4189>`_. The tracing and transition-finding scheme this
-   implementation extends.

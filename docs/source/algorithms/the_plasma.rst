@@ -33,7 +33,7 @@ Counting the fields of the potential
 ------------------------------------
 
 In the Landau gauge the modes of the potential are not the physical particles
-[ArnoldEspinosaPlasma]_. Each gauge boson
+[Arnold:1992rz]_. Each gauge boson
 contributes two transverse modes and one longitudinal mode, each broken generator adds a
 Goldstone mode, and each gauge boson is accompanied by a ghost that removes one bosonic degree
 of freedom. The gauge-dependent pieces cancel between themselves, as they must, and what is
@@ -132,10 +132,3 @@ field value and not at a temperature alone.
 
 A longer account, including the thermal functions and the resummation, is in
 :doc:`the_effective_potential`.
-
-References
-----------
-
-.. [ArnoldEspinosaPlasma] P. Arnold and O. Espinosa, *The effective potential and first order
-   phase transitions: beyond leading-order*, Phys. Rev. D **47** (1993) 3546. The resummation
-   whose counting of the longitudinal modes this bookkeeping has to match.

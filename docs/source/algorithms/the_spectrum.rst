@@ -9,7 +9,7 @@ frequency at which it peaks follow from four numbers computed earlier: the stren
 after the released energy has been shared out, and the wall velocity :math:`v_\mathrm{w}`.
 
 This page describes the spectrum as the code builds it. The templates follow the report of the
-LISA Cosmology Working Group [LISACosWG2024]_, and the equation numbers quoted below are that
+LISA Cosmology Working Group [Caprini:2024hue]_, and the equation numbers quoted below are that
 report's.
 
 The spectrum is built in :py:mod:`transitionlistener.gwfopt` and compared with the
@@ -48,7 +48,7 @@ the factor :math:`\alpha/(1+\alpha)` is the released energy as a fraction of the
 :math:`\kappa_i` is the efficiency with which it reaches that source, computed in
 :doc:`hydrodynamics`. For the sound waves and the turbulence
 :math:`\varepsilon = 0.6`, which accounts for the efficiency of producing bulk motion relative
-to the single-bubble case as found in the Higgsless simulations of [Jinno2022]_. For the
+to the single-bubble case as found in the Higgsless simulations of [Jinno:2022mie]_. For the
 scalar field :math:`\varepsilon = 1`.
 
 Redshift to today
@@ -313,10 +313,10 @@ verdict empty rather than filling them from another product's best fit.
 References
 ----------
 
-.. [LISACosWG2024] C. Caprini et al. (LISA Cosmology Working Group), *Gravitational waves from
+.. [Caprini:2024hue] C. Caprini et al. (LISA Cosmology Working Group), *Gravitational waves from
    first-order phase transitions in LISA: reconstruction pipeline and physics interpretation*,
    JCAP **10** (2024) 020, `arXiv:2403.03723 <https://arxiv.org/abs/2403.03723>`_.
 
-.. [Jinno2022] R. Jinno, T. Konstandin, H. Rubira and I. Stomberg, *Higgsless simulations of
+.. [Jinno:2022mie] R. Jinno, T. Konstandin, H. Rubira and I. Stomberg, *Higgsless simulations of
    cosmological phase transitions and gravitational waves*, JCAP **02** (2023) 011,
    `arXiv:2209.04369 <https://arxiv.org/abs/2209.04369>`_.

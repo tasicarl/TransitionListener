@@ -26,7 +26,7 @@ the enthalpy, :math:`w_\mathrm{sym}` its value in the symmetric phase,
 :math:`c_\mathrm{s,bro}` is the sound speed of the broken phase, and :math:`\Delta` is the
 difference between the symmetric and the broken phase.
 
-:math:`\bar\theta` is the pseudo-trace anomaly of [Giese2020]_, which carries
+:math:`\bar\theta` is the pseudo-trace anomaly of [Giese:2020rtr]_, which carries
 :math:`1/c_\mathrm{s}^2` where the bag equation of state has the factor 3 in front of the
 pressure. The bag trace anomaly :math:`\theta = (e-3p)/4` is the same quantity up to that
 factor only for a plasma whose sound speed is :math:`1/\sqrt{3}`, and the sound speed of a
@@ -165,7 +165,7 @@ solver turns that into a shooting problem in
 
    is what the shooting drives to zero.
 
-A root of that residual is the wall velocity. The implementation follows [vandeVis2023]_.
+A root of that residual is the wall velocity. The implementation follows [Ai:2023see]_.
 
 .. figure:: ../_static/algorithm_fluid_profiles.png
    :width: 100%
@@ -219,11 +219,11 @@ The efficiency factors
 ----------------------
 
 What fraction of the released energy reaches each source is given by fits to hydrodynamic
-simulations [Espinosa2010]_. The sound-wave efficiency :math:`\kappa_\mathrm{sw}` is
+simulations [Espinosa:2010hh]_. The sound-wave efficiency :math:`\kappa_\mathrm{sw}` is
 interpolated between four limiting regimes, chosen by the wall velocity relative to the sound
 speed and the Jouguet velocity, each with its own closed form in :math:`\alpha`. The
 turbulent efficiency is a fixed fraction of it, set by ``epsilon_turbulence``. The
-bubble-collision efficiency [EllisLewicki2019]_ depends on the ratios of the strengths
+bubble-collision efficiency [Ellis:2019oqb]_ depends on the ratios of the strengths
 discussed above, which is why they must share a normalisation, and what is left after the
 collisions have taken their share, :math:`\alpha(1-\kappa_\phi)`, is what the sound-wave fit
 is evaluated at.
@@ -243,17 +243,17 @@ while the coefficients of the four closed forms are the ones fitted at that valu
 References
 ----------
 
-.. [Giese2020] F. Giese, T. Konstandin and J. van de Vis, *Model-independent energy budget of
+.. [Giese:2020rtr] F. Giese, T. Konstandin and J. van de Vis, *Model-independent energy budget of
    cosmological first-order phase transitions*, JCAP **07** (2020) 057,
    `arXiv:2004.06995 <https://arxiv.org/abs/2004.06995>`_.
 
-.. [Espinosa2010] J. R. Espinosa, T. Konstandin, J. M. No and G. Servant, *Energy budget of
+.. [Espinosa:2010hh] J. R. Espinosa, T. Konstandin, J. M. No and G. Servant, *Energy budget of
    cosmological first-order phase transitions*, JCAP **06** (2010) 028,
    `arXiv:1004.4187 <https://arxiv.org/abs/1004.4187>`_.
 
-.. [vandeVis2023] W.-Y. Ai, B. Laurent and J. van de Vis, *The bubble wall velocity in local thermal
+.. [Ai:2023see] W.-Y. Ai, B. Laurent and J. van de Vis, *The bubble wall velocity in local thermal
    equilibrium*, `arXiv:2303.10171 <https://arxiv.org/abs/2303.10171>`_.
 
-.. [EllisLewicki2019] J. Ellis, M. Lewicki, J. M. No and V. Vaskonen, *Gravitational wave
+.. [Ellis:2019oqb] J. Ellis, M. Lewicki, J. M. No and V. Vaskonen, *Gravitational wave
    energy budget in strongly supercooled phase transitions*,
    `arXiv:1903.09642 <https://arxiv.org/abs/1903.09642>`_.

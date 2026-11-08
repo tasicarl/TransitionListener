@@ -27,7 +27,7 @@ vacuum and masses in place, :math:`V_\mathrm{T}` the one-loop thermal correction
 :math:`V_\mathrm{rad}` the field-independent radiation, which does not move the minima but does
 set the energy density and so the expansion rate.
 
-The one-loop correction at zero temperature [ColemanWeinberg1973]_, in the modified minimal
+The one-loop correction at zero temperature [Coleman:1973jx]_, in the modified minimal
 subtraction scheme, is
 
 .. math::
@@ -42,7 +42,7 @@ field-dependent mass squared, and :math:`\mu` the renormalisation scale. The con
 it is :math:`3/2` for the scalars, the Goldstone modes and the fermions, and :math:`5/6` for
 the gauge bosons, counting their three polarisations together in the Landau gauge. Each
 species carries its own value, set in the mass spectrum of the model. The thermal part is
-the standard one-loop integral [DolanJackiw1974]_, evaluated from splined forms of the bosonic and fermionic
+the standard one-loop integral [Dolan:1973qd]_, evaluated from splined forms of the bosonic and fermionic
 thermal functions, which take the mass over temperature squared as their argument so that a
 negative mass squared can be handled as the real part of the defining integral.
 
@@ -56,30 +56,13 @@ them. They are fixed by requiring that the first and second derivatives of
 :math:`V_1 + V_\mathrm{ct}` vanish at the zero-temperature vacuum.
 
 .. versionchanged:: 2.2
-   The derivatives that fix the counterterms used to take their step from the tolerance of the
-   phase tracer, so tightening an unrelated accuracy setting changed the potential itself. They
-   now take their own step, whose default is the value that was in effect in the default setup.
-   Each species of the spectrum is also differenced on its own rather than after the sum over
-   species. The tree-level Goldstone mass vanishes at the vacuum, so the one-loop term of the
-   Goldstone boson is infrared divergent there and the step is what regulates it, while the sum
-   over all species is of order 4e9 in internal units at the vacuum of the abelian dark Higgs.
-   A step small enough for the Goldstone boson therefore left the last digits of the second
-   derivative of that sum set by round-off, which reached the counterterms and the potential.
-   Differencing the species one at a time keeps the small step where it regulates something and
-   takes 1e-3 of the vacuum expectation value of each field direction for the rest.
-
-.. versionchanged:: 2.2
-   The Goldstone bosons of the abelian dark Higgs models are resummed in
-   the zero-temperature one-loop term. Their mass squared in that term is shifted by
-   :math:`\delta_{\rm GB} = (1/\phi)\, \partial V_{1,\rm phys}/\partial\phi` at the vacuum
-   expectation value, the first derivative of the one-loop term without the Goldstone bosons
-   [EliasMiro2014]_ [Martin2014]_. The resummed mass squared does not vanish at the vacuum
-   expectation value, so the derivatives that fix the counterterms are finite there and the step no
-   longer regulates anything. A model asks for the resummation by calling ``setGoldstoneShift``
-   before those derivatives, and the shift is zero for a model that does not. The shift enters the
-   one-loop term at every field value, so the potential of a model that resums changes everywhere
-   and not only at the vacuum expectation value. ``CHANGELOG.md`` states the size of that change.
-   The thermal part of the potential keeps the mass squared of the spectrum.
+   The Goldstone bosons are resummed in the zero-temperature one-loop term
+   [Elias-Miro:2014pca]_ [Martin:2014bca]_, so their mass squared no longer vanishes at the
+   vacuum. A model asks for the resummation by calling ``setGoldstoneShift``. The derivatives
+   that fix the counterterms take a step of their own, no longer the phase tracer's tolerance,
+   and difference each species separately. Both change the potential of a model that resums, at
+   every field value and not only at the vacuum. ``CHANGELOG.md`` states the size of that
+   change.
 
 .. figure:: ../_static/algorithm_potential_vs_temperature.png
    :width: 100%
@@ -133,10 +116,10 @@ are offered, selected per model:
    * - ``ArnoldEspinosa``
      - The resummation is added as a separate cubic potential term, built from the difference
        between the thermally corrected and the uncorrected masses, and applied to the
-       longitudinal modes [ArnoldEspinosa1993]_.
+       longitudinal modes [Arnold:1992rz]_.
    * - ``Parwani``
      - The thermal masses are substituted into the one-loop thermal integral directly, so that
-       all modes are resummed [Parwani1992]_.
+       all modes are resummed [Parwani:1991gq]_.
    * - ``off``
      - No resummation, which is correct only where no mode is light against the temperature.
 
@@ -204,21 +187,22 @@ Settings
 References
 ----------
 
-.. [ColemanWeinberg1973] S. Coleman and E. Weinberg, *Radiative corrections as the origin of
+.. [Coleman:1973jx] S. Coleman and E. Weinberg, *Radiative corrections as the origin of
    spontaneous symmetry breaking*, Phys. Rev. D **7** (1973) 1888.
 
-.. [DolanJackiw1974] L. Dolan and R. Jackiw, *Symmetry behavior at finite temperature*,
+.. [Dolan:1973qd] L. Dolan and R. Jackiw, *Symmetry behavior at finite temperature*,
    Phys. Rev. D **9** (1974) 3320. The one-loop thermal correction.
 
-.. [ArnoldEspinosa1993] P. Arnold and O. Espinosa, *The effective potential and first order
-   phase transitions: beyond leading-order*, Phys. Rev. D **47** (1993) 3546.
+.. [Arnold:1992rz] P. Arnold and O. Espinosa, *The effective potential and first order
+   phase transitions: beyond leading-order*, Phys. Rev. D **47** (1993) 3546. Its counting of
+   the longitudinal modes is the one the bookkeeping of :doc:`the_plasma` matches.
 
-.. [Parwani1992] R. R. Parwani, *Resummation in a hot scalar field theory*,
+.. [Parwani:1991gq] R. R. Parwani, *Resummation in a hot scalar field theory*,
    Phys. Rev. D **45** (1992) 4695.
 
-.. [EliasMiro2014] J. Elias-Miro, J. R. Espinosa and T. Konstandin, *Taming infrared divergences
+.. [Elias-Miro:2014pca] J. Elias-Miro, J. R. Espinosa and T. Konstandin, *Taming infrared divergences
    in the effective potential*, arXiv:1406.2652. The shift of the Goldstone mass squared is
    eqs. 11, 12 and 16.
 
-.. [Martin2014] S. P. Martin, *Taming the Goldstone contributions to the effective potential*,
+.. [Martin:2014bca] S. P. Martin, *Taming the Goldstone contributions to the effective potential*,
    Phys. Rev. D **90** (2014) 016013, arXiv:1406.2355. The same shift is eqs. 4.2 and 4.10.
