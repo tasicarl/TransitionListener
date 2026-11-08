@@ -175,10 +175,7 @@ Settings
      - The renormalisation scale squared in the one-loop correction.
    * - ``counterterm_derivative_step``
      - 1e-3
-     - Step for the derivatives that fix the counterterms. Each species of the spectrum is
-       differenced on its own. A species whose mass squared changes by more than half of its
-       value across the step takes this step. Every other species takes 1e-3 of the vacuum
-       expectation value, or this step where that is the larger of the two.
+     - Step for the derivatives that fix the counterterms.
    * - ``entropy_definition``
      - setting
      - Which entropy the expansion history and the sound speed are built from. The two
