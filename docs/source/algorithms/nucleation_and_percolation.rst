@@ -52,8 +52,8 @@ sound speed is not that of radiation the same chain carries :math:`a(T)` and
 
 The percolation temperature is where :math:`P` reaches the fixed fraction
 :math:`f_\mathrm{perc} = 0.28957` at which the bubbles form a connected network
-[GuthWeinberg1981]_. The nucleation temperature, the more familiar quantity, is where one
-bubble has nucleated per Hubble volume [Enqvist1992]_ [Turner1992]_. Neither is a property
+[Guth:1981uk]_. The nucleation temperature, the more familiar quantity, is where one
+bubble has nucleated per Hubble volume [Enqvist:1991xw]_ [Turner:1992tz]_. Neither is a property
 of the potential alone: both depend on the expansion rate, which in turn depends on how much of
 the universe has already converted.
 
@@ -190,15 +190,9 @@ each has its own signature:
   from how much the last extension gained.
 
 .. versionchanged:: 2.2
-   The interval that ends where the bounce stops solving is sampled as well. The coldest end of
-   a traced phase pair is a boundary rather than a sample: below it the symmetric phase is gone
-   and the action is not a number there, while the rate is still rising as it is approached, so
-   the support points that decide the integral lie inside that last interval. The step-size test
-   needs a rate at both ends of an interval, so an interval carrying a rate at its warm end only
-   never registered as unresolved and nothing placed points in it. The refinement has an
-   allowance of its own, two approaches of ``max(n_action_increment, 8)`` support points for
-   each scan point, because the rate allowance is spent by the time the support reaches the
-   boundary and without a bound the approach repeats on every rebuild.
+   The last interval before the coldest end of a traced phase pair is sampled as well. The rate
+   is still rising as that boundary is approached, so the support points that decide the
+   integral lie inside it, and it was never refined. The refinement has an allowance of its own.
 
 Acceptance
 ~~~~~~~~~~
@@ -318,7 +312,7 @@ it and the growth of the bubbles eats it. The transition finishes only where the
    \frac{1}{\mathcal{V}}\frac{\mathrm{d}\mathcal{V}}{\mathrm{d}t}
    = 3H\left(1 + c_\mathrm{s}^2\, T\,\frac{\mathrm{d}I}{\mathrm{d}T}\right) < 0 ,
 
-which is the criterion of [Turner1992]_ in the form of [EllisLewickiNo2018]_, written for the
+which is the criterion of [Turner:1992tz]_ in the form of [Ellis:2018mja]_, written for the
 time-temperature relation :math:`\mathrm{d}T/\mathrm{d}t = -3 c_\mathrm{s}^2 H T` rather than the radiation one. A
 transition that percolates but never satisfies this is reported as stalled, not as complete.
 
@@ -412,17 +406,17 @@ Refusals
 References
 ----------
 
-.. [GuthWeinberg1981] A. H. Guth and E. J. Weinberg, *Cosmological consequences of a first
+.. [Guth:1981uk] A. H. Guth and E. J. Weinberg, *Cosmological consequences of a first
    order phase transition in the SU(5) grand unified model*, Phys. Rev. D **23** (1981) 876.
    The percolation criterion.
 
-.. [Enqvist1992] K. Enqvist, J. Ignatius, K. Kajantie and K. Rummukainen, *Nucleation and
+.. [Enqvist:1991xw] K. Enqvist, J. Ignatius, K. Kajantie and K. Rummukainen, *Nucleation and
    bubble growth in a first order cosmological electroweak phase transition*,
    Phys. Rev. D **45** (1992) 3415.
 
-.. [Turner1992] M. S. Turner, E. J. Weinberg and L. M. Widrow, *Bubble nucleation in first
+.. [Turner:1992tz] M. S. Turner, E. J. Weinberg and L. M. Widrow, *Bubble nucleation in first
    order inflation and other cosmological phase transitions*, Phys. Rev. D **46** (1992) 2384.
 
-.. [EllisLewickiNo2018] J. Ellis, M. Lewicki and J. M. No, *On the maximal strength of a
+.. [Ellis:2018mja] J. Ellis, M. Lewicki and J. M. No, *On the maximal strength of a
    first-order electroweak phase transition and its gravitational wave signal*, JCAP **04**
    (2019) 003, `arXiv:1809.08242 <https://arxiv.org/abs/1809.08242>`_.

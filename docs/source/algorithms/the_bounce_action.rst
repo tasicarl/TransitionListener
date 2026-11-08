@@ -52,7 +52,7 @@ Finding the bounce
 ------------------
 
 With one field, or along one direction in field space, the bounce is found by shooting, the
-method of [Coleman1977]_ in the numerical implementation of [Wainwright2011]_.
+method of [Coleman:1977py]_ in the numerical implementation of [Wainwright:2011kj]_.
 
 The equation above is a boundary-value problem, and it is turned into a sequence of
 initial-value problems. A field value at the centre of the bubble is chosen and the equation
@@ -113,23 +113,17 @@ the false vacuum at rest, and the trial has converged.
    supercooled transition the two differ by orders of magnitude.
 
 .. versionchanged:: 2.2
-   The smallest radial step the integration may take is set by the radius it has reached and no
-   longer by the step it started from. The step below which progress is impossible is the one
-   that cannot advance the radius in double precision, which is the radius times the machine
-   epsilon. A floor fixed to the initial step says nothing about that, and on a strongly
-   supercooled transition it refused temperatures whose bounce the integration can resolve. A
-   refused integration returns an infinite action, which the percolation integral reads as no
-   nucleation, so such a refusal removes the temperatures carrying the largest rate. The work
-   the floor no longer bounds is bounded by a limit on the number of steps, in the integration
-   and in the saving of the profile alike, and a refusal from either is reported as an
-   unresolved bounce rather than as an exception.
+   The smallest radial step the integration may take is the radius times the machine epsilon,
+   no longer a fraction of the step it started from. The old floor refused temperatures whose
+   bounce the integration can resolve, and on a strongly supercooled transition those carry the
+   largest rate. A limit on the number of steps bounds the work instead.
 
 In several field directions
 ---------------------------
 
 With more than one scalar the bubble is still a function of one radius, but the field traces a
 curve through field space, and that curve is not known in advance. The solution is the method
-of [Wainwright2011]_: guess a path, solve the one-dimensional problem along it, then
+of [Wainwright:2011kj]_: guess a path, solve the one-dimensional problem along it, then
 move the path so that it becomes a solution of the full equations, and repeat.
 
 What "move the path" means is fixed by the part of the equation of motion that the
@@ -226,13 +220,14 @@ these together. They are described in :doc:`../usage`.
 References
 ----------
 
-.. [Coleman1977] S. Coleman, *Fate of the false vacuum: semiclassical theory*,
+.. [Coleman:1977py] S. Coleman, *Fate of the false vacuum: semiclassical theory*,
    Phys. Rev. D **15** (1977) 2929; C. G. Callan and S. Coleman,
    *Fate of the false vacuum II: first quantum corrections*, Phys. Rev. D **16** (1977) 1762.
    The thermal, three-dimensional case is due to A. D. Linde, *Decay of the false vacuum at
    finite temperature*, Nucl. Phys. B **216** (1983) 421.
 
-.. [Wainwright2011] C. L. Wainwright, *CosmoTransitions: computing cosmological phase
+.. [Wainwright:2011kj] C. L. Wainwright, *CosmoTransitions: computing cosmological phase
    transition temperatures and bubble profiles with multiple fields*,
    Comput. Phys. Commun. **183** (2012) 2006, `arXiv:1109.4189
-   <https://arxiv.org/abs/1109.4189>`_. TransitionListener's bounce solver extends this one.
+   <https://arxiv.org/abs/1109.4189>`_. TransitionListener's bounce solver extends this one,
+   as does the phase tracing of :doc:`phases_and_transitions`.
