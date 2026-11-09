@@ -24,6 +24,7 @@ from collections import namedtuple
 from typing import TYPE_CHECKING, Callable, Iterable
 
 from transitionlistener import generic_potential
+from transitionlistener import helper_functions
 from transitionlistener.errors import WrongHighTPhaseError
 
 from . import console, print
@@ -198,6 +199,34 @@ class PhaseInfo:
         rebuild the interpolation. The temperatures, the key and the links are kept."""
         self.X = np.asarray(X, dtype=float)
         self.dXdT = np.asarray(dXdT, dtype=float)
+        self.interpolator = self._build_interpolator(self.T, self.X)
+
+    def extendTrace(self, T: np.ndarray, X: np.ndarray, dXdT: np.ndarray) -> None:
+        """Add traced nodes to this phase and rebuild the interpolation.
+
+        The key and the links are kept, as in :meth:`replaceTrace`. The nodes are merged into
+        the existing trace and sorted, so they may lie on either side of it. A temperature the
+        trace already carries is refused rather than duplicated: two nodes at one temperature
+        make the interpolant's spacing zero.
+        """
+        T_new = np.atleast_1d(np.asarray(T, dtype=float))
+        X_new = np.atleast_2d(np.asarray(X, dtype=float))
+        dXdT_new = np.atleast_2d(np.asarray(dXdT, dtype=float))
+        if not (T_new.size == len(X_new) == len(dXdT_new)):
+            raise ValueError(
+                "extendTrace needs one field vector and one slope per temperature, got "
+                f"{T_new.size} temperatures, {len(X_new)} field vectors and "
+                f"{len(dXdT_new)} slopes.")
+        if np.intersect1d(T_new, self.T).size:
+            raise ValueError(
+                "extendTrace was given a temperature the trace already carries.")
+        T_all = np.concatenate([np.asarray(self.T, dtype=float), T_new])
+        X_all = np.concatenate([np.atleast_2d(np.asarray(self.X, dtype=float)), X_new])
+        dXdT_all = np.concatenate(
+            [np.atleast_2d(np.asarray(self.dXdT, dtype=float)), dXdT_new])
+        order = np.argsort(T_all)
+        self.T, self.X, self.dXdT = T_all[order], X_all[order], dXdT_all[order]
+        self.Tmin, self.Tmax = float(self.T[0]), float(self.T[-1])
         self.interpolator = self._build_interpolator(self.T, self.X)
 
     def addLinkFrom(self, other_phase) -> None:
@@ -1160,6 +1189,143 @@ def symmetrizeInvariantPhases(phases: dict[int | str, PhaseInfo],
     return projected
 
 
+def curvatureVerdictWithStepScaling(V: Callable, X: np.ndarray, T: float, Ndim: int,
+                                    eps: float) -> str:
+    """Is the potential's curvature at ``X`` a minimum, a flat direction, or a saddle?
+
+    The Hessian here is a finite difference of step ``eps``, and at a point where the
+    potential has no quadratic term the difference returns the step squared times the quartic:
+    a small number whose sign carries no information. Thresholding it decides nothing, which is
+    why ``traceMultiMin`` accepts its endpoint on the slope alone and says so. The quantity
+    that does decide is how the number moves when the step moves, since an artefact of the
+    difference scales with ``eps**2`` and a curvature does not.
+
+    Measured on the conformal dark U(1) at ``g = 0.7``, in internal units: at ``T = 1e-6`` the
+    origin's smallest eigenvalue reads -6.771e-08, -1.693e-08, -4.232e-09, -1.058e-09 and
+    -2.645e-10 as ``eps`` halves from 4e-3 to 2.5e-4, a factor of four per halving, while the
+    broken phase's endpoint holds +9160 across the same steps.
+
+    Returns
+    -------
+    str
+        ``"minimum"`` where the smallest eigenvalue is positive at both steps, ``"saddle"``
+        where it is negative at both and does not shrink when the step shrinks, and ``"flat"``
+        otherwise: a negative number that falls appreciably when the step halves, or one whose
+        sign changes between the two steps, is round-off about zero rather than a curvature.
+    """
+    def smallest(step: float) -> float:
+        hess = helper_functions.hessianFunction(
+            lambda Y: V(Y, T), eps=step, Ndim=int(Ndim), order=4)
+        return float(linalg.eigvalsh(np.atleast_2d(np.squeeze(hess(np.atleast_1d(X)))))[0])
+
+    coarse, fine = smallest(float(eps)), smallest(0.5 * float(eps))
+    if coarse > 0.0 and fine > 0.0:
+        return "minimum"
+    if coarse >= 0.0 or fine >= 0.0:
+        # One step says minimum and the other does not, so the value is round-off about zero.
+        return "flat"
+    # Both negative. A difference artefact shrinks with the step and a curvature does not, so
+    # the discriminator is the fall, not its exponent: which power of the step appears depends
+    # on the term that produces it and on the order of the stencil. A quartic cancels in the
+    # fourth-order stencil exactly, the three-halves power of the daisy term halves with the
+    # step, and the logarithms of the one-loop potential were measured to quarter. Any of
+    # those is a flat direction; a curvature holds its value.
+    ratio = abs(coarse) / abs(fine)
+    return "flat" if ratio >= 1.5 else "saddle"
+
+
+def extendProjectedPhaseRanges(phases: dict[int | str, PhaseInfo],
+                               projected: list,
+                               V: Callable,
+                               Ndim: int,
+                               x_eps: float,
+                               tLow: float,
+                               tHigh: float,
+                               n_steps: int = 40,
+                               verbose: bool = False,
+                               conversionFactor: float = 1.0) -> dict:
+    """Give a phase projected onto the fixed subspace back the temperatures its drift cost it.
+
+    ``symmetrizeInvariantPhases`` puts a phase that is its own mirror image onto the fixed
+    subspace of the symmetry, because the trace drifts off a minimum the thermal masses alone
+    hold in place. It repairs the field values and keeps the temperatures the drifting trace
+    reached, so the range is still the one the drift ended at while the field is now exact. The
+    range is then read as the phase's own: ``bubbledynamics`` takes the overlap of the two
+    phases as the floor of the percolation search, and a symmetric phase that stops above the
+    percolation temperature makes the search report the transition as too strongly supercooled
+    to percolate.
+
+    Measured on the conformal dark U(1) at ``g = 0.48363636``, ``v = 0.14 GeV``, ``y = 0.01``:
+    the sign of the drift is set by round-off, ``phi`` at the hot end coming out as
+    +2.42e-12 GeV on one machine and -2.18e-12 GeV on another, and the traced ``Tmin`` of that
+    phase as 2.35e-13 GeV against 2.14e-06 GeV. The second run fails with a percolation error
+    at 2.14e-06 GeV; extending the range as this does returns ``Tperc = 6.376e-07 GeV``,
+    ``alpha = 6.333e+16`` and ``beta/H_S3 = 12.32``, the first run's answer to six digits.
+
+    On the fixed subspace there is no drift left to stop the trace, so the range is extended
+    while the point is still a minimum, by the step-scaling test in
+    :func:`curvatureVerdictWithStepScaling`, and stopped where it becomes a saddle. Only a
+    phase whose projected field value is the same at every traced temperature is extended: the
+    value is then the fixed point of the symmetry and the extension has nothing to interpolate.
+    A fixed subspace of more than one point, where the minimum inside it moves with the
+    temperature, is left alone.
+
+    Returns
+    -------
+    dict
+        The new ``(Tmin, Tmax)`` of each phase that was extended, keyed as the phases are.
+    """
+    extended: dict = {}
+    for key in projected:
+        phase = phases.get(key)
+        if phase is None:
+            continue
+        X = np.atleast_2d(np.asarray(phase.X, dtype=float))
+        if X.shape[0] < 1:
+            continue
+        fixed_point = X[0]
+        if not np.array_equal(X, np.tile(fixed_point, (X.shape[0], 1))):
+            # The minimum moves inside the fixed subspace; its range is its own.
+            continue
+        added_T: list[float] = []
+        for end, limit in (("cold", float(tLow)), ("hot", float(tHigh))):
+            start = float(phase.Tmin) if end == "cold" else float(phase.Tmax)
+            if end == "cold" and limit >= start * (1.0 - 1.0e-12):
+                continue
+            if end == "hot" and limit <= start * (1.0 + 1.0e-12):
+                continue
+            # Geometric in temperature, as the percolation support is: the span is decades.
+            walk = np.geomspace(start, limit, int(n_steps) + 1)[1:]
+            for T_try in walk:
+                verdict = curvatureVerdictWithStepScaling(
+                    V, fixed_point, float(T_try), Ndim, x_eps)
+                if verdict == "saddle":
+                    if verbose:
+                        console.print(
+                            f"Projected phase {key} stops being a minimum at T = "
+                            f"{float(T_try) * conversionFactor:2.5g} GeV; its {end} end is "
+                            "not extended further.", style="bold yellow")
+                    break
+                added_T.append(float(T_try))
+        if not added_T:
+            continue
+        T_add = np.asarray(sorted(set(added_T)), dtype=float)
+        T_add = T_add[~np.isin(T_add, np.asarray(phase.T, dtype=float))]
+        if T_add.size == 0:
+            continue
+        X_add = np.tile(fixed_point, (T_add.size, 1))
+        before = (float(phase.Tmin), float(phase.Tmax))
+        phase.extendTrace(T_add, X_add, np.zeros_like(X_add))
+        extended[key] = (float(phase.Tmin), float(phase.Tmax))
+        if verbose:
+            console.print(
+                f"Extended projected phase {key} from "
+                f"[{before[0] * conversionFactor:2.5g}, {before[1] * conversionFactor:2.5g}] "
+                f"to [{phase.Tmin * conversionFactor:2.5g}, "
+                f"{phase.Tmax * conversionFactor:2.5g}] GeV.", style="bold green")
+    return extended
+
+
 def _removeRedundantPhase(phases: dict[int | str, PhaseInfo],
                           removed_phase: PhaseInfo,
                           redundant_with_phase: PhaseInfo):
@@ -1762,6 +1928,14 @@ class Phases:
             console.print(
                 f"Projected {len(projected)} phase(s) onto the fixed subspace of the symmetry: "
                 f"{projected}.", style="bold green")
+
+        # A projected phase still carries the temperatures the drifting trace reached, and
+        # those are read as the phase's own range. On the fixed subspace there is no drift
+        # left to stop the trace, so the range is extended as far as the point is still a
+        # minimum.
+        extendProjectedPhaseRanges(
+            phases, projected, V_, pot.Ndim, self.x_eps, tstart, tstop,
+            verbose=verbose, conversionFactor=self.conversionFactor)
 
         if verbose:
             console.print("After removing redundant phases, {:} phases remain.".format(len(phases)),
