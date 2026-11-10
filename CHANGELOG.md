@@ -7,70 +7,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Polishing pass on the figures of the v2.2 paper. Three defects are fixed in the library and two
-settings of the plotting code are changed. The two solver
-fixes move numbers on the classically conformal U(1) model and were measured not to reach the
-two-Higgs-doublet and dark flip-flop benchmarks at all.
-
 ### Fixed
 
-- **The potential samples along the bounce path are judged by whether they can represent the
-  barrier, not merely by whether they see it.** `SplinePath` samples the potential on a uniform
-  grid along the path and replaces it with one clustered towards the path ends when the uniform
-  grid is too coarse. A single count, `_V_SAMPLE_MIN_IN_BARRIER = 2`, answered two questions:
-  whether the uniform grid is accurate enough to keep, and whether a re-placed grid is worth
-  using. Two samples inside the barrier are enough to see it and not to represent it, since two
-  adjacent samples mean the grid spacing equals the whole barrier width; there the uniform grid
-  puts the bounce action 0.56 per cent high, which at `S3/T = 162` is 0.9 e-folds in the
-  nucleation rate. The barrier narrows as the universe cools, so the switch fires once in every
-  percolation history and steps `S3(T)` wherever it lands. Keeping the uniform grid now requires
-  8 samples inside the barrier and a separate threshold of 2 admits the clustered replacement.
-  Against direct evaluation of the potential on the conformal U(1) model the reheating
-  temperature now agrees to 0.010 per cent at the coupling where the old threshold was 0.46 per
-  cent off; across eleven couplings the scan is 29 times smoother and 17 per cent cheaper, and
-  the affected points move by up to 13 per cent in transition strength. Barriers carrying more
-  than 7 samples are untouched.
+- **The bounce action no longer steps where the barrier becomes narrower than the potential
+  samples along the path.** One threshold decided both whether the uniform sample grid is
+  accurate enough to keep and whether a re-placed grid is worth using; the first now requires
+  8 samples inside the barrier and the second 2. Against direct evaluation of the potential the
+  reheating temperature agrees to 0.010 per cent where it was 0.46 per cent off, and affected
+  points move by up to 13 per cent in transition strength. Barriers spanning a generic part of
+  the path are untouched.
 
-- **A phase projected onto a symmetry's fixed subspace keeps the temperatures the projection
-  cost it.** Near a minimum held in place only by thermal masses, as in the symmetric phase of a
-  classically conformal model, the potential is flat to within the tracing tolerance and the
-  trace drifts off the minimum. `symmetrizeInvariantPhases` repaired the field values and kept
-  the temperature array the drifting trace had reached, so the phase's range stayed truncated
-  wherever the drift stopped the trace, and whether a point percolated could turn on round-off
-  at the 1e-12 level in the field. On the fixed subspace no drift is left to stop the trace, so
-  the range is extended as far as the point is still a minimum, with the verdict taken from how
-  the finite-difference curvature responds to a change of step rather than from its value: a
-  difference artefact falls with the step and a curvature holds. On the conformal U(1) line one
-  coupling that had failed now completes, and every coupling both scans resolved is unchanged,
-  the largest relative change being 0 in percolation temperature, transition strength, inverse
-  duration and sound-wave efficiency, and 6.6e-12 in the reheating temperature.
+- **A phase projected onto a symmetry's fixed subspace keeps its full temperature range.** The
+  projection repaired the field values but kept the temperatures the drifting trace had reached,
+  so whether a point percolated could turn on round-off. The range is now extended while the
+  point is still a minimum. One coupling that had failed completes; resolved points are
+  unchanged to 6.6e-12.
 
-- **The sound-wave efficiency stays finite where the Jouguet velocity rounds to one.** `kappa_sw`
-  used the differences `vJ - 1` and `vw - 1`, which are differences of nearly equal numbers, so
-  forming them from a rounded `vJ` destroyed them: the detonation branch became 0/0 whenever
-  both rounded to zero, and the cube of a small `vJ - 1` underflowed. The difference is now
-  carried in its own variable, the root is written as `sqrt(alpha) sqrt(alpha + 2/3)` so that
-  `alpha**2` cannot overflow a double above `alpha = 1.3e154`, and the cancellation is removed
-  algebraically, so the sign of `vJ - 1` follows `cs - 2/3` at every strength. At zero strength
-  all three regimes are 0/0 and the fit now returns zero, the value the expressions approach:
-  it falls off by a factor of ten per decade from `alpha = 1e-4` down to `1e-16` at every wall
-  velocity and sound speed tried. Zero strength is reached from the configuration, since
-  `bw_collisions: "full"` hands this fit `alpha (1 - kappa_BW)`.
+- **The sound-wave efficiency stays finite at extreme transition strength.** `vJ - 1` is carried
+  without cancellation and without overflow, so the regime of the fit is chosen correctly up to
+  the top of the double range, and zero strength returns zero instead of 0/0.
 
 ### Changed
 
-- **Logarithmic axis ticks in the line plots carry minor ticks only where the major labels are
-  one decade apart.** On an axis spanning twenty-five decades the labels were placed every five
-  decades and a minor tick was still added per decade, so the panel carried fourteen overlapping
-  labels. The transition-strength panel of the line-scan figure now carries six labels and no
-  minor ticks.
-
-- **The logo bitmap is embedded at full resolution** rather than resampled to the device.
-  `interpolation='none'` hands the 2048 by 2048 bitmap to the vector backends unresampled, so
-  the file carries all of its pixels and the reader scales them. Measured on a 3.5 by 2.6 inch
-  figure with the logo in a 27 per cent inset, the embedded image is 2048 by 2048 at any dpi
-  with `'none'`, against 55 by 55 at dpi 100 and 325 by 325 at dpi 600 with `'antialiased'` or
-  `'nearest'`.
+- Logarithmic axis ticks in the line plots drop the minor ticks where the major labels are more
+  than one decade apart, and the logo bitmap is embedded unresampled.
 
 ## [2.2.0] - 2026-11-08
 
