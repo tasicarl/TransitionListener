@@ -142,6 +142,24 @@ class ExtendProjectedPhaseRangeTests(unittest.TestCase):
                            "stops being a minimum")
         self.assertLess(phases[1].Tmin, 20.0, "no temperature was added at all")
 
+    def test_the_extension_stops_where_the_potential_stops_being_finite(self):
+        """A temperature with no finite curvature is not walked through."""
+        T_floor = 5.0
+        finite = _thermal_mass_potential(1.0e-6)
+
+        def V(x, t):
+            if float(t) < T_floor:
+                x = np.atleast_2d(np.asarray(x, dtype=float))
+                return np.full(x.shape[0], np.nan)
+            return finite(x, t)
+
+        phases = {1: _origin_phase(np.geomspace(20.0, 100.0, 20))}
+        extendProjectedPhaseRanges(phases, [1], V, 1, 1e-3, 1.0e-3, 100.0)
+        self.assertGreater(phases[1].Tmin, T_floor,
+                           "the phase was extended through temperatures where the potential "
+                           "has no finite curvature")
+        self.assertLess(phases[1].Tmin, 20.0, "no temperature was added at all")
+
     def test_a_phase_whose_minimum_moves_is_left_alone(self):
         """A fixed subspace of more than one point: the range is the phase's own."""
         T = np.geomspace(2.0, 100.0, 20)
@@ -206,3 +224,92 @@ class ExtendTraceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExtendTraceRefusesWhatItCannotInterpolate(unittest.TestCase):
+    """A refused extension must leave the phase exactly as it was."""
+
+    def make_phase(self):
+        return PhaseInfo(T=np.array([10.0, 11.0, 12.0]),
+                         X=np.array([[1.0], [2.0], [3.0]]),
+                         dXdT=np.array([[0.1], [0.1], [0.1]]), key=0)
+
+    def test_a_temperature_given_twice_in_one_call_is_refused(self):
+        phase = self.make_phase()
+        with self.assertRaises(ValueError):
+            phase.extendTrace(np.array([5.0, 5.0]), np.array([[0.5], [0.5]]),
+                              np.zeros((2, 1)))
+
+    def test_the_phase_is_untouched_by_a_refused_call(self):
+        phase = self.make_phase()
+        interpolator = phase.interpolator
+        with self.assertRaises(ValueError):
+            phase.extendTrace(np.array([5.0, 5.0]), np.array([[0.5], [0.5]]),
+                              np.zeros((2, 1)))
+        np.testing.assert_array_equal(phase.T, np.array([10.0, 11.0, 12.0]))
+        np.testing.assert_array_equal(phase.X, np.array([[1.0], [2.0], [3.0]]))
+        self.assertEqual((phase.Tmin, phase.Tmax), (10.0, 12.0))
+        self.assertIs(phase.interpolator, interpolator)
+        self.assertEqual(len(phase.T), len(phase.X))
+
+    def test_the_temperatures_still_describe_the_interpolator_afterwards(self):
+        phase = self.make_phase()
+        with self.assertRaises(ValueError):
+            phase.extendTrace(np.array([5.0, 5.0]), np.array([[0.5], [0.5]]),
+                              np.zeros((2, 1)))
+        self.assertTrue(np.all(np.diff(phase.T) > 0.0))
+        np.testing.assert_allclose(phase.valAt(11.0), phase.X[1], atol=0, rtol=1e-12)
+
+    def test_the_refusal_names_the_duplicate_rather_than_the_interpolator(self):
+        # Without the explicit check the interpolator still refuses the trace, but the message
+        # is about a sequence rather than about the argument the caller got wrong.
+        phase = self.make_phase()
+        with self.assertRaisesRegex(ValueError, "same temperature twice"):
+            phase.extendTrace(np.array([5.0, 5.0]), np.array([[0.5], [0.5]]),
+                              np.zeros((2, 1)))
+
+    def test_a_trace_the_interpolator_refuses_for_any_other_reason_changes_nothing(self):
+        # nan passes both argument checks and is refused only by the interpolator, so this is
+        # the case that the order of building and assigning has to carry on its own.
+        phase = self.make_phase()
+        interpolator = phase.interpolator
+        with self.assertRaises(ValueError):
+            phase.extendTrace(np.array([np.nan]), np.array([[0.5]]), np.zeros((1, 1)))
+        np.testing.assert_array_equal(phase.T, np.array([10.0, 11.0, 12.0]))
+        np.testing.assert_array_equal(phase.X, np.array([[1.0], [2.0], [3.0]]))
+        self.assertEqual((phase.Tmin, phase.Tmax), (10.0, 12.0))
+        self.assertIs(phase.interpolator, interpolator)
+
+    def test_a_distinct_pair_is_still_accepted(self):
+        phase = self.make_phase()
+        phase.extendTrace(np.array([5.0, 6.0]), np.array([[0.5], [0.6]]), np.zeros((2, 1)))
+        np.testing.assert_array_equal(phase.T, np.array([5.0, 6.0, 10.0, 11.0, 12.0]))
+        self.assertEqual((phase.Tmin, phase.Tmax), (5.0, 12.0))
+
+
+class TheCurvatureVerdictSurvivesANonFinitePotential(unittest.TestCase):
+    """A point where the potential is not finite supports no verdict, and must not raise."""
+
+    @staticmethod
+    def constant(value):
+        def V(x, t):
+            x = np.atleast_2d(np.asarray(x, dtype=float))
+            return np.full(x.shape[0], value)
+        return V
+
+    def test_a_nan_potential_gives_unknown(self):
+        verdict = curvatureVerdictWithStepScaling(
+            self.constant(np.nan), np.array([0.0]), 1.0, 1, 1e-3)
+        self.assertEqual(verdict, "unknown")
+
+    def test_an_infinite_potential_gives_unknown(self):
+        verdict = curvatureVerdictWithStepScaling(
+            self.constant(np.inf), np.array([0.0]), 1.0, 1, 1e-3)
+        self.assertEqual(verdict, "unknown")
+
+    def test_a_finite_potential_still_gives_a_real_verdict(self):
+        def V(x, t):
+            x = np.atleast_2d(np.asarray(x, dtype=float))
+            return np.sum(x ** 2, axis=-1)
+        self.assertEqual(
+            curvatureVerdictWithStepScaling(V, np.array([0.0]), 1.0, 1, 1e-3), "minimum")

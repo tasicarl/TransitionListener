@@ -206,8 +206,9 @@ class PhaseInfo:
 
         The key and the links are kept, as in :meth:`replaceTrace`. The nodes are merged into
         the existing trace and sorted, so they may lie on either side of it. A temperature the
-        trace already carries is refused rather than duplicated: two nodes at one temperature
-        make the interpolant's spacing zero.
+        trace already carries is refused rather than duplicated, and so is one given twice in
+        the same call: two nodes at one temperature make the interpolant's spacing zero. A
+        refused call leaves the phase untouched.
         """
         T_new = np.atleast_1d(np.asarray(T, dtype=float))
         X_new = np.atleast_2d(np.asarray(X, dtype=float))
@@ -217,6 +218,9 @@ class PhaseInfo:
                 "extendTrace needs one field vector and one slope per temperature, got "
                 f"{T_new.size} temperatures, {len(X_new)} field vectors and "
                 f"{len(dXdT_new)} slopes.")
+        if np.unique(T_new).size != T_new.size:
+            raise ValueError(
+                "extendTrace was given the same temperature twice.")
         if np.intersect1d(T_new, self.T).size:
             raise ValueError(
                 "extendTrace was given a temperature the trace already carries.")
@@ -225,9 +229,13 @@ class PhaseInfo:
         dXdT_all = np.concatenate(
             [np.atleast_2d(np.asarray(self.dXdT, dtype=float)), dXdT_new])
         order = np.argsort(T_all)
-        self.T, self.X, self.dXdT = T_all[order], X_all[order], dXdT_all[order]
+        T_all, X_all, dXdT_all = T_all[order], X_all[order], dXdT_all[order]
+        # Built before anything is assigned, so a trace the interpolator refuses leaves the
+        # phase as it was instead of carrying arrays its own interpolator does not describe.
+        interpolator = self._build_interpolator(T_all, X_all)
+        self.T, self.X, self.dXdT = T_all, X_all, dXdT_all
         self.Tmin, self.Tmax = float(self.T[0]), float(self.T[-1])
-        self.interpolator = self._build_interpolator(self.T, self.X)
+        self.interpolator = interpolator
 
     def addLinkFrom(self, other_phase) -> None:
         """Add a link from `other_phase` to this phase, checking to see if there
@@ -1204,16 +1212,28 @@ def curvatureVerdictWithStepScaling(V: Callable, X: np.ndarray, T: float, Ndim: 
     -------
     str
         ``"minimum"`` where the smallest eigenvalue is positive at both steps, ``"saddle"``
-        where it is negative at both and does not shrink when the step shrinks, and ``"flat"``
-        otherwise: a negative number that falls appreciably when the step halves, or one whose
-        sign changes between the two steps, is round-off about zero rather than a curvature.
+        where it is negative at both and does not shrink when the step shrinks, ``"flat"``
+        otherwise, and ``"unknown"`` where the potential is not finite at one of the probes:
+        a negative number that falls appreciably when the step halves, or one whose sign
+        changes between the two steps, is round-off about zero rather than a curvature, and a
+        point with no finite Hessian supports no verdict at all. The caller is to treat
+        ``"unknown"`` as conservatively as ``"saddle"``, since nothing here establishes that
+        the point is a minimum.
     """
     def smallest(step: float) -> float:
         hess = helper_functions.hessianFunction(
             lambda Y: V(Y, T), eps=step, Ndim=int(Ndim), order=4)
-        return float(linalg.eigvalsh(np.atleast_2d(np.squeeze(hess(np.atleast_1d(X)))))[0])
+        matrix = np.atleast_2d(np.squeeze(hess(np.atleast_1d(X))))
+        if not np.all(np.isfinite(matrix)):
+            # The potential is not finite at one of the probes, so there is no curvature to
+            # read here. `eigvalsh` refuses such a matrix outright; nan says so without
+            # raising, and every comparison below is false for it.
+            return float("nan")
+        return float(linalg.eigvalsh(matrix)[0])
 
     coarse, fine = smallest(float(eps)), smallest(0.5 * float(eps))
+    if not (np.isfinite(coarse) and np.isfinite(fine)):
+        return "unknown"
     if coarse > 0.0 and fine > 0.0:
         return "minimum"
     if coarse >= 0.0 or fine >= 0.0:
@@ -1291,10 +1311,12 @@ def extendProjectedPhaseRanges(phases: dict[int | str, PhaseInfo],
             for T_try in walk:
                 verdict = curvatureVerdictWithStepScaling(
                     V, fixed_point, float(T_try), Ndim, x_eps)
-                if verdict == "saddle":
+                if verdict in ("saddle", "unknown"):
                     if verbose:
+                        reason = ("stops being a minimum" if verdict == "saddle"
+                                  else "has no finite curvature")
                         console.print(
-                            f"Projected phase {key} stops being a minimum at T = "
+                            f"Projected phase {key} {reason} at T = "
                             f"{float(T_try) * conversionFactor:2.5g} GeV; its {end} end is "
                             "not extended further.", style="bold yellow")
                     break
