@@ -1200,11 +1200,6 @@ def curvatureVerdictWithStepScaling(V: Callable, X: np.ndarray, T: float, Ndim: 
     that does decide is how the number moves when the step moves, since an artefact of the
     difference scales with ``eps**2`` and a curvature does not.
 
-    Measured on the conformal dark U(1) at ``g = 0.7``, in internal units: at ``T = 1e-6`` the
-    origin's smallest eigenvalue reads -6.771e-08, -1.693e-08, -4.232e-09, -1.058e-09 and
-    -2.645e-10 as ``eps`` halves from 4e-3 to 2.5e-4, a factor of four per halving, while the
-    broken phase's endpoint holds +9160 across the same steps.
-
     Returns
     -------
     str
@@ -1255,12 +1250,9 @@ def extendProjectedPhaseRanges(phases: dict[int | str, PhaseInfo],
     percolation temperature makes the search report the transition as too strongly supercooled
     to percolate.
 
-    Measured on the conformal dark U(1) at ``g = 0.48363636``, ``v = 0.14 GeV``, ``y = 0.01``:
-    the sign of the drift is set by round-off, ``phi`` at the hot end coming out as
-    +2.42e-12 GeV on one machine and -2.18e-12 GeV on another, and the traced ``Tmin`` of that
-    phase as 2.35e-13 GeV against 2.14e-06 GeV. The second run fails with a percolation error
-    at 2.14e-06 GeV; extending the range as this does returns ``Tperc = 6.376e-07 GeV``,
-    ``alpha = 6.333e+16`` and ``beta/H_S3 = 12.32``, the first run's answer to six digits.
+    The drift is set by round-off, so where it stops the trace is not a property of the model
+    but of the arithmetic, and the same point can percolate in one run and be reported as too
+    strongly supercooled in another.
 
     On the fixed subspace there is no drift left to stop the trace, so the range is extended
     while the point is still a minimum, by the step-scaling test in

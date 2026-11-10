@@ -86,9 +86,8 @@ def _style_log10_y_axis(ax: plt.Axes) -> int:
     """Display y-axis values (stored in log10 space) as powers of ten.
 
     Returns the decade step the ticks were placed on. One tick per decade is right for the
-    few decades most observables cover, and unreadable for a quantity that covers many: a
-    conformal line scan reaching alpha = 5e25 spans twenty-six decades, which is
-    twenty-seven labels stacked into a column. The step then widens to the first value that
+    few decades most observables cover, and unreadable for a quantity that covers tens of
+    them, where the labels stack into a column. The step then widens to the first value that
     brings the count under ``_LOG_MAX_MAJOR_TICKS``, and the ticks sit on multiples of it so
     that 10^0 is among them.
     """

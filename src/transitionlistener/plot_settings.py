@@ -151,13 +151,9 @@ def add_TL_logo(loc : str, magnification : float = 1, ax : plt.Axes = None,
         inset.set_aspect("equal", anchor="SW")
         
     
-    # `interpolation='none'` is what keeps the logo sharp, and it is not a no-op: for the
-    # vector backends it hands the bitmap to the PDF unresampled, so the file carries all
-    # 2048 pixels and the reader scales them. Every other setting, 'antialiased' and
-    # 'nearest' alike, resamples to the device resolution of the save, which throws the
-    # pixels away: measured on a 3.5 x 2.6 inch figure with the square logo in a 27 %
-    # inset, the embedded image comes out 2048 x 2048 with 'none' at any dpi, and
-    # 55 x 55 at dpi 100 or 325 x 325 at dpi 600 with either of the others.
+    # `interpolation='none'` hands the bitmap to the vector backends unresampled, so the file
+    # carries every pixel of it and the reader scales them. The other settings resample to the
+    # device resolution of the save, which throws most of the pixels away.
     if small_logo:
         inset.imshow(load_small_logo(), interpolation='none')
     else:
