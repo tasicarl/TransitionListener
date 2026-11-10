@@ -5,6 +5,33 @@ All notable changes between releases of TransitionListener.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.2.1] - 2026-11-10
+
+### Fixed
+
+- **The bounce action no longer steps where the barrier becomes narrower than the potential
+  samples along the path.** One threshold decided both whether the uniform sample grid is
+  accurate enough to keep and whether a re-placed grid is worth using; the first now requires
+  8 samples inside the barrier and the second 2. Against direct evaluation of the potential the
+  reheating temperature agrees to 0.010 per cent where it was 0.46 per cent off, and affected
+  points move by up to 13 per cent in transition strength. Barriers spanning a generic part of
+  the path are untouched.
+
+- **A phase projected onto a symmetry's fixed subspace keeps its full temperature range.** The
+  projection repaired the field values but kept the temperatures the drifting trace had reached,
+  so whether a point percolated could turn on round-off. The range is now extended while the
+  point is still a minimum. One coupling that had failed completes; resolved points are
+  unchanged to 6.6e-12.
+
+- **The sound-wave efficiency stays finite at extreme transition strength.** `vJ - 1` is carried
+  without cancellation and without overflow, so the regime of the fit is chosen correctly up to
+  the top of the double range, and zero strength returns zero instead of 0/0.
+
+### Changed
+
+- Logarithmic axis ticks in the line plots drop the minor ticks where the major labels are more
+  than one decade apart, and the logo bitmap is embedded unresampled.
+
 ## [2.2.0] - 2026-11-08
 
 Release 2.2.0 is a correctness release. Numbers from 2.1.0 move: the expansion history,

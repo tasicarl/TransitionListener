@@ -1,4 +1,4 @@
-{% set version = "2.2.0" %}
+{% set version = "2.2.1" %}
 {% set python_min = "3.10" %}
 
 package:
@@ -7,6 +7,8 @@ package:
 
 source:
   url: https://pypi.org/packages/source/T/TransitionListener/transitionlistener-{{ version }}.tar.gz
+  # Checksum of the published source archive. It can only be taken once the version
+  # above is on PyPI, so a version bump leaves it stale until it is recorded.
   sha256: cb397968fde6aae14c7e1e9997f9aaac1b12107571ff60b8b1d0dc4bf55930d9
 
 build:
