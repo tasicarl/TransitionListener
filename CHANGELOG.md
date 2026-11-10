@@ -29,6 +29,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The oldest supported Python is 3.11.** conda-forge builds `noarch` packages against its
+  current `python_min`, which has moved to 3.11, so the conda package stopped matching the 3.10
+  floor the project declared. `requires-python`, the version classifiers, the conda recipe and
+  both workflows now state 3.11, and `tests/test_the_python_floor_is_one_number.py` keeps the
+  five statements of it equal.
+
 - Logarithmic axis ticks in the line plots drop the minor ticks where the major labels are more
   than one decade apart, and the logo bitmap is embedded unresampled.
 

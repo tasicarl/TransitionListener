@@ -3,7 +3,7 @@
 # repository: after each PyPI release its bot opens a pull request there that bumps the version
 # and records the checksum of the published archive, so no checksum is carried here.
 {% set version = "2.2.1" %}
-{% set python_min = "3.10" %}
+{% set python_min = "3.11" %}
 
 package:
   name: transitionlistener
