@@ -151,11 +151,15 @@ def add_TL_logo(loc : str, magnification : float = 1, ax : plt.Axes = None,
         inset.set_aspect("equal", anchor="SW")
         
     
-    # The logo is a 2048 px bitmap drawn into an inset a few hundred points wide, so it is
-    # always downsampled. With interpolation='none' matplotlib point-samples it and the
-    # edges of the lettering come out ragged; 'antialiased' filters it on the way down.
+    # `interpolation='none'` is what keeps the logo sharp, and it is not a no-op: for the
+    # vector backends it hands the bitmap to the PDF unresampled, so the file carries all
+    # 2048 pixels and the reader scales them. Every other setting, 'antialiased' and
+    # 'nearest' alike, resamples to the device resolution of the save, which throws the
+    # pixels away: measured on a 3.5 x 2.6 inch figure with the square logo in a 27 %
+    # inset, the embedded image comes out 2048 x 2048 with 'none' at any dpi, and
+    # 55 x 55 at dpi 100 or 325 x 325 at dpi 600 with either of the others.
     if small_logo:
-        inset.imshow(load_small_logo(), interpolation='antialiased')
+        inset.imshow(load_small_logo(), interpolation='none')
     else:
-        inset.imshow(load_large_logo(), interpolation='antialiased')
+        inset.imshow(load_large_logo(), interpolation='none')
     inset.axis('off')
