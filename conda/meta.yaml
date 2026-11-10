@@ -1,5 +1,9 @@
-{% set version = "2.2.0" %}
-{% set python_min = "3.10" %}
+# Reference copy of the conda-forge recipe, kept in step with the declared version.
+# The recipe that is actually built is the one in the conda-forge/transitionlistener-feedstock
+# repository: after each PyPI release its bot opens a pull request there that bumps the version
+# and records the checksum of the published archive, so no checksum is carried here.
+{% set version = "2.2.1" %}
+{% set python_min = "3.11" %}
 
 package:
   name: transitionlistener
@@ -7,7 +11,6 @@ package:
 
 source:
   url: https://pypi.org/packages/source/T/TransitionListener/transitionlistener-{{ version }}.tar.gz
-  sha256: cb397968fde6aae14c7e1e9997f9aaac1b12107571ff60b8b1d0dc4bf55930d9
 
 build:
   entry_points:

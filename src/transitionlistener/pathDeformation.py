@@ -810,12 +810,11 @@ def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> f
     was used for that, and it starts from ``x0 = 0`` with an initial simplex step of 2.5e-4
     whatever the problem looks like. That step is in units of the knot index, so in field units
     it is 2.5e-4 times the spacing between the first two knots, and for a path whose ends are
-    far apart it is large. On the conformal U(1) at g = 0.54 with the minima 1000 field units
-    apart, the two-knot initial path has a knot spacing of the whole path and the extension
-    settled a full knot out, at field -1000. That potential is even in the field, so the
-    extended path ran from 1000 to -1000 and connected two degenerate minima; the solver
-    compared its ends, found them equal, reported "stable, not metastable", and the action came
-    back infinite.
+    far apart it is large. On a two-knot initial path the knot spacing is the whole path, and
+    the extension settled a full knot out. Where the potential is even in the field, the
+    extended path then ran from one minimum to its mirror image and connected two degenerate
+    minima; the solver compared its ends, found them equal, reported "stable, not metastable",
+    and the action came back infinite.
 
     So the search walks outward instead of starting with a step of its own choosing, and two
     things bound it. ``floor`` is the potential at the opposite end of the path, passed when
@@ -823,16 +822,12 @@ def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> f
     an extension that would take it to or below the other end destroys the problem being
     solved, and the walk stops there. That is what separates the mirror minimum above, exactly
     degenerate with the broken minimum and refused, from a real minimum a little way past the
-    end, which is kept: on the 2HDM benchmark at T = 36.56 the potential at the end is
-    -2.4347e+07, there is a genuine minimum 11.01 knots out at -2.4348e+07, and the broken
-    minimum is far below at -6.79e+07, so the extension is allowed and the action stays at the
-    converged 143.69.
+    end, which is kept because it leaves the metastable end above the broken minimum.
 
     The other bound is the rounding of ``V`` itself. Near a path end the potential can be flat
-    to machine precision over many decades of ``x``: at that same 2HDM end consecutive probes
-    differ by rounding alone, about 5e-9, for ``x`` below 1e-4 knots. Taking the first such rise
-    for a minimum stopped the search at x = 4e-10 and lost the real one at 11.01, which moved
-    the action to 119.21 against the converged 143.69. A rise only counts when it clears that
+    to machine precision over many decades of ``x``, where consecutive probes differ by rounding
+    alone. Taking the first such rise for a minimum stops the search within rounding distance of
+    the end and loses the real minimum further out, so a rise only counts when it clears that
     noise.
 
     """
@@ -937,14 +932,30 @@ def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> f
 #: potential spline can resolve.
 _V_SAMPLE_END_FLOOR = 1e-10
 
-#: How many samples must fall inside the barrier for the uniform grid to be kept. Below this
-#: the grid is effectively blind to the barrier and the samples are re-placed; see
-#: `_barrier_is_resolved`.
-_V_SAMPLE_MIN_IN_BARRIER = 2
+#: How many samples must fall inside the barrier for the uniform grid to be kept.
+#:
+#: Two is enough for the grid to *see* the barrier and not enough to represent it: two adjacent
+#: samples inside it mean the spacing equals its whole width, the regime where the error
+#: against spacing recorded in `_clustered_V_samples` puts the uniform grid's action about 1e-2
+#: high. That error falls to about 1e-3 at three samples and about 1e-4 at eight, where the
+#: action is as smooth in temperature as the solver itself; sixteen and thirty-two change
+#: nothing further. A barrier spanning a generic part of the path holds hundreds of samples and
+#: is unaffected by this threshold.
+_V_SAMPLE_MIN_IN_BARRIER = 8
+
+#: How many samples must fall inside the barrier for a re-placed grid to be used in place of
+#: the uniform one. This is a different question from the one above and takes a different
+#: answer: there the uniform grid is kept only where it is accurate, here the replacement is
+#: accepted wherever it is better than being blind. Holding the replacement to the stricter
+#: number would reject a grid carrying two to seven samples and fall back to a uniform grid
+#: carrying none, which is worse. The re-placed grid is dense only towards the path ends and
+#: thins out towards mid-path, so this threshold is what stops a mid-path barrier being handed
+#: to a grid that misses it as well.
+_V_SAMPLE_MIN_IN_BARRIER_REPLACEMENT = 2
 
 #: Fewest samples for which re-placing them is worth doing. The re-placed grid spans spacing
-#: ratios of about 1e-9, and an interpolating cubic spline needs enough knots to carry that:
-#: with `fullTunneling`'s own default of 100 samples the action came back as 1.3e+11.
+#: ratios of about 1e-9, and an interpolating cubic spline needs enough knots to carry that;
+#: with a grid of a hundred samples the action comes back wrong by many orders of magnitude.
 _V_SAMPLE_MIN_FOR_CLUSTERING = 1000
 
 #: How far past each path end the re-placed samples reach, counted in samples at the local
@@ -964,7 +975,8 @@ def _uniform_V_samples(L: float, n_samples: int) -> np.ndarray:
     return np.concatenate([-x_ext[::-1], x, L + x_ext])
 
 
-def _barrier_is_resolved(x: np.ndarray, y: np.ndarray, L: float) -> bool:
+def _barrier_is_resolved(x: np.ndarray, y: np.ndarray, L: float,
+                         minimum: int | None = None) -> bool:
     """Do enough of the sampled values fall inside the barrier to represent it?
 
     The barrier is the region between the two minima where the potential rises above the
@@ -972,14 +984,30 @@ def _barrier_is_resolved(x: np.ndarray, y: np.ndarray, L: float) -> bool:
     carry it, and it needs no second evaluation of the potential, since the values are already
     in hand.
 
-    The counts the threshold is set from: on the conformal U(1) at g = 0.54 with 10000 samples,
-    1 sample inside the barrier at an internal temperature of 0.1 and none at 0.01 or below; on
-    the 2HDM benchmark, whose barrier spans a generic part of the path, 400 to 760 at every
-    temperature; and with ``fullTunneling``'s own default of 100 samples on that conformal path,
-    2. The threshold sits below that last one deliberately. A grid of 100 knots cannot carry
-    the re-placed spacing, so the sample count is checked as well, and the two together mean a
-    path is only re-sampled when its grid is blind to the barrier and has the knots to do
-    better.
+    The number of samples on the path is checked as well, because a grid of too few knots
+    cannot carry the re-placed spacing. The two conditions together mean a path is re-sampled
+    only when its grid cannot represent the barrier and has the knots to do better.
+
+    Parameters
+    ----------
+    x, y : np.ndarray
+        The sample positions along the path and the potential at them.
+    L : float
+        The path length. Samples outside ``[0, L]`` are the overhang and are not counted.
+    minimum : int, optional
+        How many samples inside the barrier are required. ``None`` uses
+        `_V_SAMPLE_MIN_IN_BARRIER`, which is the question "is this grid accurate enough to
+        keep?". The caller judging a re-placed grid passes
+        `_V_SAMPLE_MIN_IN_BARRIER_REPLACEMENT` instead, which is the different question "is
+        this grid better than being blind?"; holding the replacement to the stricter number
+        would send a barrier it could carry back to a grid with no samples in it at all.
+
+    Returns
+    -------
+    bool
+        True where the grid is to be kept, False where the samples are to be re-placed. A grid
+        that cannot be judged, because it has too few samples in the path or carries a
+        non-finite value, is kept: nothing is changed on a judgement that cannot be made.
 
     """
     inside = (x >= 0.0) & (x <= L)
@@ -992,7 +1020,8 @@ def _barrier_is_resolved(x: np.ndarray, y: np.ndarray, L: float) -> bool:
     if not np.all(np.isfinite(ys)):
         return True                     # a judgement cannot be made, so nothing is changed
     level = max(float(ys[0]), float(ys[-1]))
-    return int(np.count_nonzero(ys[1:-1] > level)) >= _V_SAMPLE_MIN_IN_BARRIER
+    threshold = _V_SAMPLE_MIN_IN_BARRIER if minimum is None else int(minimum)
+    return int(np.count_nonzero(ys[1:-1] > level)) >= threshold
 
 
 def _clustered_V_samples(L: float, n_samples: int) -> np.ndarray:
@@ -1001,23 +1030,22 @@ def _clustered_V_samples(L: float, n_samples: int) -> np.ndarray:
     Both the spacing of the uniform samples and how far they reach past the ends are fixed
     fractions of the path length, while the barrier is a feature whose width is set by the
     temperature. In a strongly supercooled model it is a vanishing fraction of the path, so the
-    uniform grid misses it and the action is wrong: on the conformal U(1) at g = 0.54, too high
-    by 1.1e-2 relative where the spacing is 0.86 barrier widths, 6.6e-2 at 1.67 and 65 % at
-    4.3.
+    uniform grid misses it and the action is wrong, too high by 1.1e-2 relative where the spacing
+    is 0.86 barrier widths, by 6.6e-2 at 1.67 and by 65 % at 4.3.
 
     So the samples approach the ends geometrically, which is where the barrier goes as the
     temperature falls: the barrier top moves towards the metastable minimum, and so does the
     escape point. The overhang has to shrink with them. Leaving it at 0.2 L is what dominates
     the error once the grid is clustered, because one cubic spline through the whole range is
-    bent, just inside the end, towards a value some 24 orders of magnitude above the barrier it
+    bent, just inside the end, towards a value many orders of magnitude above the barrier it
     has to resolve. With the overhang counted in samples at the local spacing instead, the
-    action at an internal temperature of 1e-4 goes from 98.40 to 79.97724 against a true
-    79.97725, and at 1e-5 from 583.8 to 69.468 against 69.465.
+    action matches direct evaluation of the potential to five digits where leaving it fixed is
+    wrong by a factor of a few.
 
     This grid is used only where the uniform one cannot see the barrier at all. It is not a
     better grid in general: its spacing ratios reach 1e-9, which an interpolating cubic spline
-    does not take well on a potential with the 2HDM's curvature, where it returns an infinite
-    action at temperatures the uniform grid resolves.
+    does not take well on a potential whose barrier spans a generic part of the path, where it
+    returns an infinite action at temperatures the uniform grid resolves.
 
     """
     n_uniform = max(2, n_samples // 2)
@@ -1170,7 +1198,8 @@ class SplinePath(object):
                 # as by the original. The values are already in hand, so the same count decides
                 # whether to keep it; a grid that does not resolve the barrier either is not
                 # worth the spacing ratios it costs, and the uniform grid is kept instead.
-                if _barrier_is_resolved(x_clustered, y_clustered, self.L):
+                if _barrier_is_resolved(x_clustered, y_clustered, self.L,
+                                        minimum=_V_SAMPLE_MIN_IN_BARRIER_REPLACEMENT):
                     x, y = x_clustered, y_clustered
                     if verbose:
                         print("The potential samples did not resolve the barrier; re-placed "

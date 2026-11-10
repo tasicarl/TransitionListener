@@ -75,25 +75,51 @@ def _pow10_tick_formatter(value: float, _pos: float) -> str:
     return rf"$10^{{{value:.1f}}}$"
 
 
-def _style_log10_y_axis(ax: plt.Axes) -> None:
-    """Display y-axis values (stored in log10 space) as powers of ten."""
+#: Decade steps a log10 axis may use, in the order they are tried.
+_LOG_DECADE_STEPS = (1, 2, 5, 10, 20, 25, 50, 100)
+
+#: Most major ticks a log10 axis is given before the step is widened.
+_LOG_MAX_MAJOR_TICKS = 9
+
+
+def _style_log10_y_axis(ax: plt.Axes) -> int:
+    """Display y-axis values (stored in log10 space) as powers of ten.
+
+    Returns the decade step the ticks were placed on. One tick per decade is right for the
+    few decades most observables cover, and unreadable for a quantity that covers tens of
+    them, where the labels stack into a column. The step then widens to the first value that
+    brings the count under ``_LOG_MAX_MAJOR_TICKS``, and the ticks sit on multiples of it so
+    that 10^0 is among them.
+    """
     y0, y1 = ax.get_ylim()
     if not (np.isfinite(y0) and np.isfinite(y1)):
-        return
+        return 1
     lo, hi = (y0, y1) if y0 <= y1 else (y1, y0)
 
     major_start = int(np.floor(lo))
     major_end = int(np.ceil(hi))
-    major = np.arange(major_start, major_end + 1, dtype=float)
+    step = _LOG_DECADE_STEPS[-1]
+    for candidate in _LOG_DECADE_STEPS:
+        first = int(np.ceil(major_start / candidate)) * candidate
+        if len(range(first, major_end + 1, candidate)) <= _LOG_MAX_MAJOR_TICKS:
+            step = candidate
+            break
+    first = int(np.ceil(major_start / step)) * step
+    major = np.arange(first, major_end + 1, step, dtype=float)
     if major.size == 0:
         major = np.array([np.round(0.5 * (lo + hi))], dtype=float)
 
     minor: list[float] = []
-    for exp in range(major_start - 1, major_end + 1):
-        for digit in range(2, 10):
-            val = exp + np.log10(digit)
-            if lo <= val <= hi:
-                minor.append(val)
+    if step == 1:
+        for exp in range(major_start - 1, major_end + 1):
+            for digit in range(2, 10):
+                val = exp + np.log10(digit)
+                if lo <= val <= hi:
+                    minor.append(val)
+    # No minor ticks where the labels are more than one decade apart. A minor tick
+    # subdivides the interval between two labels, which is meaningful when they are one
+    # decade apart and is clutter when they are five: on a scan reaching alpha = 5e25 it put
+    # twenty-two unlabelled marks between six labels.
 
     ax.yaxis.set_major_locator(FixedLocator(major))
     if minor:
@@ -101,6 +127,7 @@ def _style_log10_y_axis(ax: plt.Axes) -> None:
     ax.yaxis.set_major_formatter(FuncFormatter(_pow10_tick_formatter))
     ax.tick_params(axis="y", which="major", length=3.5)
     ax.tick_params(axis="y", which="minor", length=2.0)
+    return step
 
 
 def _show_every_second_major_ylabel(ax: plt.Axes) -> None:
@@ -555,9 +582,11 @@ class plot1dData(GW_Sensitivity_Data):
             if pname in lin_overview_params:
                 pass
             else:
-                _style_log10_y_axis(ax)
-            if str(pname) == "alpha":
-                _show_every_second_major_ylabel(ax)
+                step = _style_log10_y_axis(ax)
+                # Thinning the labels again on top of a widened step would leave the panel
+                # with two or three of them.
+                if str(pname) == "alpha" and step == 1:
+                    _show_every_second_major_ylabel(ax)
 
 
         # Plot SNR

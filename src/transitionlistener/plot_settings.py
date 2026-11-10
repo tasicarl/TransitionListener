@@ -36,7 +36,11 @@ def save_figure(fig, path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.stem}.partial{path.suffix}")
     try:
-        fig.savefig(tmp, format=fmt)
+        # Figures carrying the logo mix a bitmap into otherwise vector output, and the
+        # save dpi decides how many pixels of it are embedded. At the matplotlib
+        # default of a hundred the inset is about forty pixels across and its
+        # lettering is visibly ragged in print.
+        fig.savefig(tmp, format=fmt, dpi=600)
         os.replace(tmp, path)
     finally:
         if tmp.exists():
@@ -147,6 +151,9 @@ def add_TL_logo(loc : str, magnification : float = 1, ax : plt.Axes = None,
         inset.set_aspect("equal", anchor="SW")
         
     
+    # `interpolation='none'` hands the bitmap to the vector backends unresampled, so the file
+    # carries every pixel of it and the reader scales them. The other settings resample to the
+    # device resolution of the save, which throws most of the pixels away.
     if small_logo:
         inset.imshow(load_small_logo(), interpolation='none')
     else:

@@ -30,7 +30,7 @@ jobs:
             channels:
               - conda-forge
           create-args: >
-            python=3.10
+            python=3.11
             ptarcade
             ultranest
             tqdm

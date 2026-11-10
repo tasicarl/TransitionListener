@@ -80,6 +80,84 @@ class CountingTheSamplesInsideTheBarrier(unittest.TestCase):
             self.assertIs(pd._barrier_is_resolved(x, y, L), expected,
                           f"{count} samples inside the barrier was judged {not expected}")
 
+    def test_a_barrier_as_wide_as_the_spacing_is_not_resolved(self):
+        """The case that put a step in a line scan.
+
+        On the conformal U(1) at g = 0.52089 with 10000 samples the barrier is 1.0001e-04 of
+        the path length and the uniform spacing is 1.000 times it, so exactly two adjacent
+        samples fall inside. The grid can see the barrier and cannot represent it: the action
+        came out 5.564e-03 above the re-placed grid's. Keeping the uniform grid there is the
+        defect, so two samples must not count as resolved.
+        """
+        L, n = 1000.0, 10001
+        spacing = L / (n - 1)
+        x = pd._uniform_V_samples(L, n)
+        y = np.where((x > L / 2) & (x < L / 2 + 2.5 * spacing), 1.0, 0.0)
+        inside = int(np.count_nonzero(y[(x >= 0) & (x <= L)][1:-1] > 0.0))
+        self.assertEqual(inside, 2, f"the construction gave {inside} samples, not 2")
+        self.assertFalse(pd._barrier_is_resolved(x, y, L),
+                         "a barrier only as wide as the sample spacing was called resolved")
+
+    def test_every_count_below_the_threshold_is_refused(self):
+        """Not just one fewer: the whole range the conformal model lands in."""
+        L, n = 1000.0, 10001
+        spacing = L / (n - 1)
+        x = pd._uniform_V_samples(L, n)
+        counts = range(2, pd._V_SAMPLE_MIN_IN_BARRIER)
+        self.assertTrue(
+            len(counts) >= 1,
+            f"the threshold is {pd._V_SAMPLE_MIN_IN_BARRIER}, so this test checks nothing: "
+            f"two samples inside a barrier is the case that put a step in a line scan and it "
+            f"has to be refused")
+        for count in counts:
+            y = np.where((x > L / 2) & (x < L / 2 + (count + 0.5) * spacing), 1.0, 0.0)
+            inside = int(np.count_nonzero(y[(x >= 0) & (x <= L)][1:-1] > 0.0))
+            self.assertEqual(inside, count, f"the construction gave {inside}, not {count}")
+            self.assertFalse(pd._barrier_is_resolved(x, y, L),
+                             f"{count} samples inside the barrier was called resolved")
+
+    def test_the_replacement_is_judged_more_leniently_than_the_grid_it_replaces(self):
+        """The two thresholds answer different questions and must not be collapsed.
+
+        The uniform grid is kept only where it is accurate, which is the stricter number. The
+        replacement is accepted wherever it beats being blind, which is the looser one. Holding
+        the replacement to the stricter number rejects a grid carrying two to seven samples and
+        falls back to a uniform grid carrying none, which is worse than the case being fixed.
+        """
+        self.assertLessEqual(
+            pd._V_SAMPLE_MIN_IN_BARRIER_REPLACEMENT, pd._V_SAMPLE_MIN_IN_BARRIER,
+            "the replacement is being held to a stricter count than the grid it replaces, so a "
+            "barrier the replacement would carry is sent back to a grid that is blind to it")
+
+    def test_the_replacement_threshold_still_refuses_a_grid_that_misses_the_barrier(self):
+        """The looser number is not zero: a mid-path barrier must not be handed to the
+        clustered grid, which halves the uniform samples to pay for its end clustering and is
+        the coarser of the two around the middle of the path.
+        """
+        L, n = 1.0, 10000
+        width = 1.0001e-4
+        clustered = pd._clustered_V_samples(L, n)
+        middle = int(np.count_nonzero((clustered > 0.5 * L) & (clustered < 0.5 * L + width)))
+        self.assertLess(middle, pd._V_SAMPLE_MIN_IN_BARRIER_REPLACEMENT,
+                        f"the clustered grid puts {middle} samples in a mid-path barrier "
+                        f"{width:g} wide, so the replacement threshold of "
+                        f"{pd._V_SAMPLE_MIN_IN_BARRIER_REPLACEMENT} would accept it there")
+
+    def test_a_barrier_spanning_a_generic_part_of_the_path_is_kept(self):
+        """The 2HDM regime must not be dragged onto the re-placed grid.
+
+        Its barrier carries 400 to 760 samples at every temperature, and the re-placed grid
+        returns an infinite action on that potential, so a threshold that captured it would
+        break the benchmark rather than smooth it.
+        """
+        L, n = 240.0, 1000
+        x = pd._uniform_V_samples(L, n)
+        y = np.where((x > 0.3 * L) & (x < 0.7 * L), 1.0e7, 0.0)
+        inside = int(np.count_nonzero(y[(x >= 0) & (x <= L)][1:-1] > 0.0))
+        self.assertGreater(inside, 100, f"the construction gave only {inside} samples")
+        self.assertTrue(pd._barrier_is_resolved(x, y, L),
+                        "a barrier spanning 40 % of the path was sent to the re-placed grid")
+
     def test_a_potential_that_cannot_be_judged_is_left_alone(self):
         """Non-finite samples are not grounds for re-placing them."""
         L, n = 240.0, 1000
@@ -190,9 +268,11 @@ class SplinePathChoosesTheGrid(unittest.TestCase):
         V = self._potential(L, 0.5, 0.02, 5.0e2)
         x = pd._clustered_V_samples(L, n)
         y = V(x[:, np.newaxis])
-        self.assertTrue(pd._barrier_is_resolved(x, y, L),
-                        "the clustered grid does not resolve the barrier either, so this "
-                        "fixture cannot show that the branch is taken")
+        self.assertTrue(
+            pd._barrier_is_resolved(
+                x, y, L, minimum=pd._V_SAMPLE_MIN_IN_BARRIER_REPLACEMENT),
+            "the clustered grid does not resolve the barrier either, so this "
+            "fixture cannot show that the branch is taken")
         path = pd.SplinePath(np.array([[0.0], [L]]), V, V_spline_samples=n, extend_to_minima=False)
         top = max(float(path.V(t)) for t in np.linspace(0.3, 0.7, 401))
         self.assertGreater(top, 2.0e2,

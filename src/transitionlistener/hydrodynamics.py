@@ -35,6 +35,36 @@ from rich import print
 from rich.panel import Panel
 
 
+def jouguetRootExcess(alpha: float) -> float:
+    """``sqrt(alpha**2 + 2 alpha / 3) - alpha``, without cancellation and without overflow.
+
+    The difference decides the sign of ``vJ - 1`` and therefore which regime of the
+    sound-wave efficiency fit applies, so it has to keep its accuracy over the whole range of
+    the transition strength. Below ``alpha = 1`` the root is large against ``alpha`` and the
+    subtraction is harmless. Above it the two terms cancel, and the difference is taken as
+
+        (2/3) / (sqrt(1 + 2 / (3 alpha)) + 1),
+
+    which carries no factor of ``alpha`` at all, so it neither overflows nor underflows and
+    tends to its limit 1/3 as the strength grows.
+
+    Parameters
+    ----------
+    alpha : float
+        The transition strength, non-negative.
+
+    Returns
+    -------
+    float
+        The excess of the root over ``alpha``, between 0 and 1/3.
+    """
+    if alpha <= 0.0:
+        return 0.0
+    if alpha <= 1.0:
+        return np.sqrt(alpha) * np.sqrt(alpha + 2.0 / 3.0) - alpha
+    return (2.0 / 3.0) / (np.sqrt(1.0 + 2.0 / (3.0 * alpha)) + 1.0)
+
+
 def kappa_sw(alpha : float, vw: float, cs: float) -> float:
     """Approximate the sound-wave efficiency factor using fit formulas from
     1004.4187 by Jose R. Espinosa, Thomas Konstandin, Jose M. No & 
@@ -54,24 +84,40 @@ def kappa_sw(alpha : float, vw: float, cs: float) -> float:
     float
         The sound-wave efficiency factor.
     """
+    if alpha == 0.0:
+        # Every one of kA, kB, kC and kD is zero at zero strength, so all three regimes
+        # below are 0/0 there. The fit falls off linearly towards it, so zero is the value
+        # the expressions approach. Zero strength reaches this fit whenever the friction
+        # absorbs all of it.
+        return 0.0
+
     # Intermediate kappas, Jouguet velocity
     kA = vw**(6/5) * 6.9 * alpha / (1.36 - 0.037 * np.sqrt(alpha) + alpha)
     kB = alpha**(2/5) / (0.017 + (0.997 + alpha)**(2/5))
     kC = np.sqrt(alpha) / (0.135 + np.sqrt(0.98 + alpha))
     kD = alpha / (0.73 + 0.083 * np.sqrt(alpha) + alpha)
     dK = -0.9 * np.log(np.sqrt(alpha) / (1 + np.sqrt(alpha)))
-    vJ = (cs + np.sqrt(alpha**2 + 2 * alpha / 3)) / (1 + alpha)
+    # vJ - 1 is carried in its own variable: it is a difference of two nearly equal numbers,
+    # and forming it from a rounded vJ destroys it, which decides the branch below.
+    root = np.sqrt(alpha) * np.sqrt(alpha + 2.0 / 3.0)
+    vJ_minus_one = (cs - 1.0 + jouguetRootExcess(alpha)) / (1 + alpha)
+    vJ = (cs + root) / (1 + alpha)
     lK = kC - kB - (vJ - cs) * dK
 
     if vw <= cs:  # Choose regime
         num = (cs**(11/5) * kA * kB)
         denom = ((cs**(11/5) - vw**(11/5)) * kB + vw * cs**(6/5) * kA)
         return num / denom
-    elif vw < vJ:
+    elif vw - 1.0 < vJ_minus_one:  # the test vw < vJ, without the cancellation
         return kB + (vw - cs) * dK + ((vw - cs)**3 / (vJ - cs)**3) * lK
     else:
-        num = (vJ - 1)**3 * vJ**(5/2) * vw**(-5/2) * kC * kD
-        denom = ((vJ - 1)**3 - (vw - 1)**3) * vJ**(5/2) * kC + (vw - 1)**3 * kD
+        # The same quotient as before with its common factor (vJ - 1)**3 cancelled.
+        # Written out, it is 0/0 whenever both differences round to zero, and it also
+        # loses the cube of a very small vJ - 1 to underflow; here the only surviving
+        # trace of the two is their ratio, which is zero for a wall at the speed of light.
+        ratio = 0.0 if vw == 1.0 else ((vw - 1.0) / vJ_minus_one)**3
+        num = vJ**(5/2) * vw**(-5/2) * kC * kD
+        denom = (1.0 - ratio) * vJ**(5/2) * kC + ratio * kD
         return num / denom
 
 
