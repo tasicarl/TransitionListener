@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from numpy.random import choice as _choice
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import (FixedLocator, FixedFormatter)
@@ -1855,7 +1854,7 @@ def _violin_array_label(product: str | None) -> str:
 
 
 def add_violins(ax : plt.Axes, violincolor : str = DESYdunkelrot, nfreq : int = 14,
-                product : str | None = None):
+                product : str | None = None, seed : int | None = 0):
     """Add stylistic violin markers to highlight PTA frequency bins.
     
     Parameters
@@ -1870,6 +1869,11 @@ def add_violins(ax : plt.Axes, violincolor : str = DESYdunkelrot, nfreq : int = 
         Which shipped free-spectrum product to draw, a key of
         :data:`observability.PTA_FREE_SPECTRA`. ``None`` takes the default, which is the
         one the PTA likelihoods use.
+    seed : int, optional
+        Seed of the generator that draws the samples the violins are shaped from. The
+        default makes the markers the same on every call, so that a figure rebuilt from
+        unchanged inputs is unchanged. ``None`` draws from fresh entropy instead, which
+        shows how much of a marker's shape is sampling noise.
     """
     # The same product the PTA likelihoods are evaluated against. Until v2.2 these two
     # disagreed: the likelihood used whichever data set PTArcade downloaded, the 2023
@@ -1881,6 +1885,7 @@ def add_violins(ax : plt.Axes, violincolor : str = DESYdunkelrot, nfreq : int = 
         return np.log10(8 * np.pi**4 / cn.H100_Hz**2 * 10**(2 * log10_rho) * f**5 * T)
 
     N_violin = int(1e5)
+    rng = np.random.default_rng(seed)
     density = np.load(directory / 'density.npy')
     freqs = np.load(directory / 'freqs.npy')
     log10rhogrid = np.load(directory / 'log10rhogrid.npy')
@@ -1888,7 +1893,7 @@ def add_violins(ax : plt.Axes, violincolor : str = DESYdunkelrot, nfreq : int = 
     for i in range(nfreq):
         samplebin = np.array(
             log10_h2O(
-                _choice(
+                rng.choice(
                     a=log10rhogrid,
                     p=np.exp(density[0,i,:])/np.sum(np.exp(density[0,i,:])),
                     size=N_violin
