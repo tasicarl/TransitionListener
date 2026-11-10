@@ -35,6 +35,36 @@ from rich import print
 from rich.panel import Panel
 
 
+def jouguetRootExcess(alpha: float) -> float:
+    """``sqrt(alpha**2 + 2 alpha / 3) - alpha``, without cancellation and without overflow.
+
+    The difference decides the sign of ``vJ - 1`` and therefore which regime of the
+    sound-wave efficiency fit applies, so it has to keep its accuracy over the whole range of
+    the transition strength. Below ``alpha = 1`` the root is large against ``alpha`` and the
+    subtraction is harmless. Above it the two terms cancel, and the difference is taken as
+
+        (2/3) / (sqrt(1 + 2 / (3 alpha)) + 1),
+
+    which carries no factor of ``alpha`` at all, so it neither overflows nor underflows and
+    tends to its limit 1/3 as the strength grows.
+
+    Parameters
+    ----------
+    alpha : float
+        The transition strength, non-negative.
+
+    Returns
+    -------
+    float
+        The excess of the root over ``alpha``, between 0 and 1/3.
+    """
+    if alpha <= 0.0:
+        return 0.0
+    if alpha <= 1.0:
+        return np.sqrt(alpha) * np.sqrt(alpha + 2.0 / 3.0) - alpha
+    return (2.0 / 3.0) / (np.sqrt(1.0 + 2.0 / (3.0 * alpha)) + 1.0)
+
+
 def kappa_sw(alpha : float, vw: float, cs: float) -> float:
     """Approximate the sound-wave efficiency factor using fit formulas from
     1004.4187 by Jose R. Espinosa, Thomas Konstandin, Jose M. No & 
@@ -56,11 +86,9 @@ def kappa_sw(alpha : float, vw: float, cs: float) -> float:
     """
     if alpha == 0.0:
         # Every one of kA, kB, kC and kD is zero at zero strength, so all three regimes
-        # below are 0/0 there. The fit falls off linearly towards it, by a measured factor
-        # of ten per decade from alpha = 1e-4 to 1e-16 at every wall velocity and sound
-        # speed tried, so zero is the value the expressions approach. This is reached from
-        # the configuration: with bw_collisions = "full" the strength handed to this fit
-        # is alpha (1 - kappa_BW) = 0.
+        # below are 0/0 there. The fit falls off linearly towards it, so zero is the value
+        # the expressions approach. Zero strength reaches this fit whenever the friction
+        # absorbs all of it.
         return 0.0
 
     # Intermediate kappas, Jouguet velocity
@@ -69,16 +97,10 @@ def kappa_sw(alpha : float, vw: float, cs: float) -> float:
     kC = np.sqrt(alpha) / (0.135 + np.sqrt(0.98 + alpha))
     kD = alpha / (0.73 + 0.083 * np.sqrt(alpha) + alpha)
     dK = -0.9 * np.log(np.sqrt(alpha) / (1 + np.sqrt(alpha)))
-    # vJ - 1 is carried in its own variable, because it is a difference of two nearly equal
-    # numbers and forming it from a rounded vJ destroys it. Writing the root as
-    # sqrt(alpha) sqrt(alpha + 2/3) keeps alpha**2 from overflowing a double above
-    # alpha = 1.3e154, and taking
-    #     sqrt(alpha**2 + 2 alpha / 3) - alpha = (2 alpha / 3) / (sqrt(...) + alpha)
-    # removes the cancellation, so the sign of vJ - 1 stays that of cs - 2/3 at every
-    # strength instead of turning over wherever the rounding happens to go the other way.
+    # vJ - 1 is carried in its own variable: it is a difference of two nearly equal numbers,
+    # and forming it from a rounded vJ destroys it, which decides the branch below.
     root = np.sqrt(alpha) * np.sqrt(alpha + 2.0 / 3.0)
-    root_minus_alpha = (2.0 / 3.0) * alpha / (root + alpha) if alpha > 0 else 0.0
-    vJ_minus_one = (cs - 1.0 + root_minus_alpha) / (1 + alpha)
+    vJ_minus_one = (cs - 1.0 + jouguetRootExcess(alpha)) / (1 + alpha)
     vJ = (cs + root) / (1 + alpha)
     lK = kC - kB - (vJ - cs) * dK
 
