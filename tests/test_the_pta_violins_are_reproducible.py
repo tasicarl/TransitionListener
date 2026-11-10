@@ -1,10 +1,9 @@
 """The violin markers must be the same on every call.
 
 The markers are shaped from 100000 samples drawn from the free spectrum of one frequency
-bin. The draw used the global NumPy state and no seed, so two builds of the same figure from
-the same inputs produced different marker outlines: a rebuild of the benchmark-spectrum
-figure differed from the committed one in a few hundred pixels, all of them inside the violin
-region, with nothing else on the page changed.
+bin. Two builds of one figure from the same inputs must give the same marker outlines, and
+a build must leave the global NumPy random state as it found it, so that a caller's own
+sequence of random numbers is unaffected.
 
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
@@ -57,6 +56,25 @@ class ThePTAViolinsAreReproducibleTests(unittest.TestCase):
         for i, (a, b) in enumerate(zip(first, second)):
             with self.subTest(violin=i):
                 np.testing.assert_array_equal(a, b)
+
+    def test_the_call_leaves_the_global_random_state_untouched(self):
+        """A caller's own sequence of random numbers must survive the call.
+
+        Drawing the samples through the module-level generator after seeding it would
+        give reproducible violins and still reset the state the caller draws from.
+        """
+        before = np.random.get_state()
+        try:
+            np.random.seed(7)
+            state_before_call = np.random.get_state()
+            _violin_outlines()
+            state_after_call = np.random.get_state()
+
+            self.assertEqual(state_before_call[0], state_after_call[0])
+            np.testing.assert_array_equal(state_before_call[1], state_after_call[1])
+            self.assertEqual(state_before_call[2:], state_after_call[2:])
+        finally:
+            np.random.set_state(before)
 
     def test_another_seed_draws_another_sample(self):
         """The default is one choice of seed, not a violin that ignores its samples."""
