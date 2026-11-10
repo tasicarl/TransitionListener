@@ -117,11 +117,10 @@ def _style_log10_y_axis(ax: plt.Axes) -> int:
                 val = exp + np.log10(digit)
                 if lo <= val <= hi:
                     minor.append(val)
-    else:
-        # One minor tick per decade, so the reader can still count decades between labels.
-        for exp in range(major_start, major_end + 1):
-            if exp % step and lo <= exp <= hi:
-                minor.append(float(exp))
+    # No minor ticks where the labels are more than one decade apart. A minor tick
+    # subdivides the interval between two labels, which is meaningful when they are one
+    # decade apart and is clutter when they are five: on a scan reaching alpha = 5e25 it put
+    # twenty-two unlabelled marks between six labels.
 
     ax.yaxis.set_major_locator(FixedLocator(major))
     if minor:
