@@ -8,7 +8,7 @@ Scan:
   SinglePoint
 
 Parameters:
-  lambda0: 0.005098
+  lambda0: 0.00508696
   lambda1: 0.002144
   lambda12: 0.003078
   v_GeV: 3.728330741601088

@@ -5,6 +5,65 @@ All notable changes between releases of TransitionListener.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+This branch accompanies the study of the theoretical uncertainties in the nanohertz gravitational-wave signal of a
+classically conformal dark U(1) (arXiv:XXXX.XXXXX). It adds the nucleation rate of the three-dimensional effective
+theory at next-to-leading order, runs such a point about thirty times faster with compiled code, and turns the modelling
+choices of the gravitational-wave spectrum into configuration switches, so that each source of uncertainty can be
+varied on its own. Every figure and number of the paper is recomputed by the scripts in `paper/reproduce`.
+
+### Highlights
+
+- **Nucleation rate of the 3D effective theory at NLO.** Models with a 3D potential (the conformal U(1) with and
+  without fermions, `TL_conformal_u1_*_3d`) compute the rate from the dimensionally reduced theory, including the
+  fluctuation determinants and the dimension-six operator. Shipped tables of the NLO correction
+  (`transitionlistener.eft_rate.nlo_tables`, command `tl-nlo-table`) make this as fast as a leading-order run. Each run
+  reports whether the 3D theory is valid at its percolation temperature. Example: `examples/example_point_3d.yaml`.
+- **Speed.** The inner loops (bounce shooting, percolation integral, phase tracing, fluctuation determinants) run in
+  numba, now a required dependency. One-field models and multi-field models written with
+  `generic_potential.compiled_model` get compiled potentials. A 3D-rate point of the conformal U(1) takes 0.5 s
+  instead of 16 s.
+- **Gravitational-wave modelling choices as switches.** Source template, kinetic efficiency, sound-wave lifetime,
+  suppression by the cosmic expansion, causal tail and the percolation fraction are set per run (`gw_<name>` in the
+  input). The defaults give the spectrum of v2.2: the template of the LISA Cosmology Working Group (arXiv:2403.03723)
+  without the suppression by the expansion, with f_perc = 0.29.
+
+### Added
+
+- Validity diagnostics of the 3D theory (`DIAG:eft3d_*`, `WARNING:eft3d_outside_validity`).
+- A shipped table of the leading-order 3D bounce (`transitionlistener.eft_rate.abelian_lo_bounce_table`, command `tl-bounce-table`).
+- The observable `betaH_Gamma`, the growth rate of the nucleation rate at percolation, and
+  `GWConf.expansion_speed` to use it in the expansion factors of arXiv:2511.15687.
+- `tunneling_params["compiled_integrator"]` (off by default): a compiled 4D bounce integrator.
+
+### Changed
+
+- The modules of the three-dimensional rate are in the subpackage `transitionlistener.eft_rate`: `one_field_rate_3d`, `abelian_higgs_3d`, `abelian_determinants`, `abelian_lo_bounce_table`, `nlo_tables`,
+  `validity` and `rg`; the compiled potentials are `compiled.onefield_potential` and `compiled.multifield_potential`.
+  `tl-nlo-table` takes a model file and its parameters (`--model-file`, `--param name=value`) instead of a model name.
+- The four-dimensional rate mode is called `"S3overT_4D"`.
+- The conformal U(1) models are named by their fermions: `TL_conformal_u1_fermions` and
+  `TL_conformal_u1_no_fermions` (renames files; configuration files must name the new files).
+- Multi-field models converge the path deformation to `fRatioConv = 3e-3` instead of 1e-2 (moves results; alpha by
+  up to 1.3 % in the 2HDM).
+- The sound-wave and turbulence templates receive the bubble separation in the convention of their fits,
+  `(8 pi)^(1/3) max(v_w, c_s)/(beta/H)`, to match the definitions in arXiv:2403.03723 (eq. 2.4) and arXiv:1910.13125
+  (moves results: peak frequencies rise by a factor 1.5).
+- The PTA packages are imported on first use, and the 2HDM counterterms no longer need SymPy at run time.
+
+### Fixed
+
+- Four errors of the adaptive percolation solver made T_p, T_reh and (beta/H)_RH jump between neighbouring parameter
+  points, depending on the temperatures at which the solver happened to evaluate the action: the rate between those
+  temperatures was interpolated with a shape-preserving spline that flattens its peak, the last iteration could return
+  the history before reheating, the hot end of the temperature range was accepted inside the nucleation region, and
+  the reheating was converted to first order only (moves results).
+- The saved bounce profile resolves the wall, which removes a scatter of S3/T in models with a long tail.
+- `gwConf.use_mean_bubble_separation` (input key `gw_use_mean_bubble_separation`) had no effect. False now takes
+  (beta/H)_S3, the slope of the action, as the speed of the spectrum in every factor.
+- A trace of one point at a singular Hessian no longer crashes `traceMultiMin`.
+
 ## [2.2.1] - 2026-11-10
 
 ### Fixed
@@ -56,8 +115,8 @@ account of every one is in its pull request.
   targets, which are advisory, so this is the only record of whether they were honoured; a
   profile whose mean bubble separation `R*H` missed its 1 per cent target was previously
   indistinguishable from one that met it, with a 90th-percentile spread of 27.6 per cent.
-  `WARNING:v_wall_no_solution` and `DIAG:v_wall_branch` say whether the wall-velocity search
-  found no solution and which branch it chose.
+  `WARNING:v_wall_no_solution` says whether the wall-velocity search found no solution, and
+  `WARNING:v_wall_branch_ambiguous` whether the branch was chosen rather than determined.
 
 - **Six diagnostics of how a point was reached**, as distinct from what the point is:
   whether an action was recomputed at a tighter path deformation
@@ -108,6 +167,7 @@ account of every one is in its pull request.
   check can be run on a new model or symmetry group.
 
 ### Changed
+
 - **The pulsar timing data ships with the code, and the reference likelihoods are recomputed
   (moves results).** Eight free-spectrum products ship under `tab_data/pta_free_spectra`,
   chosen with the `gw_pta_free_spectrum` key rather than downloaded during a run, and the

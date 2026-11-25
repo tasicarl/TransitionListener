@@ -45,7 +45,7 @@ class NucleationIsDeadTests(unittest.TestCase):
         """Controls: the transition window, its cold edge, and a supercooled scale."""
         self.assertFalse(gridbuilders._nucleation_is_dead(31.6, 31.6 * 167.0))
         self.assertFalse(gridbuilders._nucleation_is_dead(24.44, 24.44 * 200.0))
-        # conformal dark U(1) at g = 0.54 still nucleates at Tperc/v = 2.8e-04
+        # conformal U(1) with fermions at g = 0.54 still nucleates at Tperc/v = 2.8e-04
         self.assertFalse(gridbuilders._nucleation_is_dead(3.92e-05, 3.92e-05 * 150.0))
 
     def test_an_unusable_action_is_unknown_rather_than_dead(self):

@@ -1,0 +1,26 @@
+|delta S_tot| g 0.44-0.5: 7.15-9.84
+Delta S g 0.44-0.5: -1.03--0.85
+x3 at T_p g 0.45-0.5: 0.314-0.344
+x3 |delta S| g 0.44-0.5: 2.21-3.39
+exponent S_p g 0.42-0.8: 112.93-163.40
+g 0.45: (b/H)_G 7.759 (b/H)_R 9.641 (b/H)_S 11.900, S-G 4.14, S-R 2.26, T_p 2.747 keV
+T_p at g 0.5: 0.0002103 GeV
+|entry mu4 T_p| g 0.44-0.5: 0.37-0.47
+|entry mu4 betaH_R| g 0.44-0.5: 0.01-0.10
+|entry mu3 T_p| g 0.44-0.5: 2.00-4.71
+|entry mu3 betaH_R| g 0.44-0.5: 0.34-0.93
+|entry dim6 T_p| g 0.44-0.5: 1.25-1.57
+|entry dim6 betaH_R| g 0.44-0.5: 0.01-0.29
+|entry hord T_p| g 0.44-0.5: 22.05-37.23
+|entry hord betaH_R| g 0.44-0.5: 1.01-5.47
+|entry pref T_p| g 0.44-0.5: 13.41-32.38
+|entry pref betaH_R| g 0.44-0.5: 1.84-5.80
+|entry lo T_p| g 0.44-0.5: 45.31-65.43
+|entry lo betaH_R| g 0.44-0.5: 2.09-11.99
+|LO change of (b/H)_R| g 0.42-0.8: 2.09-13.88
+exponent shift of prefactor x10: 2.303
+LO -> NLO: Delta (b/H)_R / (b/H)_R over relative shift of exponent g 0.44-0.5
+  ratio: -1.86--0.32
+  LO change of (b/H)_R by g: [(0.44, -10.57), (0.445, -10.21), (0.45, -9.95), (0.455, -9.74), (0.46, -9.58), (0.465, -9.46), (0.47, -9.35), (0.475, -9.02), (0.48, -6.93), (0.485, -2.52), (0.49, -2.09), (0.495, -7.45), (0.5, -11.99)]
+TL g 0.45-0.8: max |dT_p| 0.01 %, max |d(b/H)_R| 0.36 %
+TL g 0.42-0.44: max |dT_p| 0.04 %, max |d(b/H)_R| 0.19 %

@@ -47,6 +47,7 @@ from collections import namedtuple
 from . import tunneling1D
 from . import helper_functions
 from . import errors
+from .compiled import deformation
 
 
 def _forceToGradientRatio(F_max: float, dV_max: float) -> float:
@@ -184,13 +185,15 @@ class Deformation_Spline(object):
                        [1.]*(kb-1))
         self._X,self._dX,self._d2X = helper_functions.Nbspld2(t0, self._t, kb)
         self._t = self._t[:,np.newaxis]  # Shape (n, 1)
+        # The fit of every step is a least-squares problem with this one matrix.
+        self._X_inverse = np.linalg.pinv(self._X, rcond=np.finfo(float).eps*max(self._X.shape))
         # subtract off the linear component.
         phi0, phi1 = phi[:1], phi[-1:]  # These are shape (1,N)
         phi_lin = phi0 + (phi1-phi0)*self._t
-        self._beta, residues, rank, s = np.linalg.lstsq(self._X, phi - phi_lin, rcond=None)
+        self._beta = deformation.fit(self._X_inverse, phi - phi_lin)[0]
 
         # save the points for future use.
-        self.phi = np.asanyarray(phi)  # shape (n,N)
+        self.phi = phi  # shape (n,N)
         self.v2 = np.asanyarray(dphidr)[:,np.newaxis]**2  # shape (n,1)
         self.dV = dV
         self.F_list = []
@@ -215,26 +218,8 @@ class Deformation_Spline(object):
         -------
         F_norm, dV : array_like
         """
-        X, dX, d2X = self._X, self._dX, self._d2X
-        beta = self._beta
-        # First find phi, dphi, and d2phi. Note that dphi needs to get a
-        # linear component added in, while d2phi does not.
-        phi = self.phi
-        dphi = np.sum(beta[np.newaxis,:,:]*dX[:,:,np.newaxis], axis=1) \
-            + (self.phi[-1]-self.phi[1])[np.newaxis,:]
-        d2phi = np.sum(beta[np.newaxis,:,:]*d2X[:,:,np.newaxis], axis=1)
-        # Compute dphi/ds, where s is the path length instead of the path
-        # parameter t. This is just the direction along the path.
-        dphi_sq = np.sum(dphi*dphi, axis=-1)[:,np.newaxis]
-        dphids = dphi/np.sqrt(dphi_sq)
-        # Then find the acceleration along the path, i.e. d2phi/ds2:
-        d2phids2 = (d2phi - dphi * np.sum(dphi*d2phi, axis=-1)[:,np.newaxis] /
-                    dphi_sq)/dphi_sq
-        # Now we have the path at the points t, as well as its derivatives with
-        # respect to its path length. We still need the normal force on the path.
-        dV = self.dV(phi)
-        dV_perp = dV - np.sum(dV*dphids, axis=-1)[:,np.newaxis]*dphids
-        F_norm = d2phids2 * self.v2 - dV_perp
+        dV = self.dV(self.phi)
+        F_norm = deformation.normal_force(self._beta, self._dX, self._d2X, self.phi, dV, self.v2)
         if (self.fix_start):
             F_norm[0] = 0.0
         if (self.fix_end):
@@ -324,8 +309,8 @@ class Deformation_Spline(object):
         """
         # Find out the direction of the deformation.
         F, dV = self.forces()
-        F_max = np.max(np.sqrt(np.sum(F*F,-1)))
-        dV_max = np.max(np.sqrt(np.sum(dV*dV,-1)))
+        F_max = deformation.largest_norm(F)
+        dV_max = deformation.largest_norm(dV)
         _refuseAGradientWithoutAScale(dV_max)
         if dV_max == 0.0:
             # The potential is flat to rounding along the whole path. There is nothing for the
@@ -344,8 +329,7 @@ class Deformation_Spline(object):
         assert(maxstep > minstep)
         step_reversed = False
         if reverseCheck < 1 and self._F_prev is not None:
-            FdotFlast = np.sum(F*self._F_prev, axis=1)
-            if np.sum(FdotFlast < 0) > len(FdotFlast)*reverseCheck:
+            if deformation.reversed_points(F, self._F_prev) > len(F)*reverseCheck:
                 # we want to reverse the last step
                 if stepsize > minstep:
                     step_reversed = True
@@ -367,20 +351,12 @@ class Deformation_Spline(object):
             self.phi_list.append(phi)
             self.F_list.append(F)
 
-        # Now make the step. It's important to not use += so we do not mutate
-        # the value stored in self.phi_list.
-        phi = phi+F*stepsize
-
-        # fit to the spline
-        phi_lin = phi[:1] + (phi[-1:]-phi[:1])*self._t
-        phi -= phi_lin
-        self._beta, residues, rank, s = np.linalg.lstsq(self._X, phi, rcond=None)
-        phi = np.sum(self._beta[np.newaxis,:,:]*self._X[:,:,np.newaxis], axis=1)
-        phi += phi_lin
-        self.phi = phi
-
-        Ffit = (phi-self._phi_prev)/stepsize
-        fRatio2 = np.max(np.sqrt(np.sum(Ffit*Ffit,-1)))/self._L
+        # Now make the step and fit it to the spline. The kernel leaves phi as it is, the value stored in
+        # self.phi_list.
+        self.phi, self._beta, fRatio2, finite = deformation.spline_step(
+            phi, F, stepsize, self._t, self._X, self._X_inverse, self._L)
+        if not finite:
+            raise np.linalg.LinAlgError("The deformed path is not finite.")
 
         if verbose:
             print("step: %i; stepsize: %0.2e; fRatio1 %0.2e; fRatio2: %0.2e"
@@ -390,7 +366,7 @@ class Deformation_Spline(object):
         return self._step_rval(stepsize, step_reversed, fRatio)
 
     def deformPath(self, startstep : float=2e-3, fRatioConv: float=.02,
-                   converge_0: float=5., fRatioIncrease: float=5.,
+                   converge_0: float=1.5, fRatioIncrease: float=5.,
                    maxiter: int=500, verbose: bool=False, callback=None,
                    step_params={}) -> bool:
         """
@@ -629,7 +605,7 @@ class Deformation_Points(object):
         return self._step_rval(stepsize, fRatio)
 
     def deformPath(self, startstep=.1, minstep=1e-6, step_increase=1.5,
-                   fRatioConv=.02, converge_0=5., fRatioIncrease=20.,
+                   fRatioConv=.02, converge_0=1.5, fRatioIncrease=20.,
                    maxiter=500, verbose=0, callback=None, step_params={}):
         """
         Deform the path many individual steps, stopping either when the
@@ -798,6 +774,8 @@ def _pathDeriv(phi):
     return dphi
 
 
+_ARC_NODES, _ARC_WEIGHTS = np.polynomial.legendre.leggauss(5)
+
 #: The path extension cannot be longer than this many knots: beyond it the spline
 #: refuses the path, in the size guard inside ``SplinePath.__init__``.
 _MAX_EXTENSION_KNOTS = 20000
@@ -901,29 +879,21 @@ def _extension_minimum(V, p0, dp0, sign: float, floor: float | None = None) -> f
     here = float(probes[0])
     if not np.isfinite(here):
         return 0.0
-    best_x, best_v, previous_x = 0.0, here, 0.0
-    for x, current in zip(ladder[1:], probes[1:]):
-        current = float(current)
-        if not np.isfinite(current):
-            break
-        noise = 8.0 * np.finfo(float).eps * max(abs(current), abs(best_v), np.finfo(float).tiny)
-        if current > best_v + noise:
-            if best_x == 0.0:
-                return 0.0                      # the end is already a minimum
-            found = optimize.minimize_scalar(
-                value, bounds=(previous_x, float(x)), method="bounded",
-                options={"xatol": 1e-10},
-            )
-            at = float(found.x) if found.success else best_x
-            if not clears_the_floor(at):
-                return 0.0      # extending there would leave no metastable end to tunnel from
-            return signed(at)
-        if current < best_v:
-            previous_x, best_x, best_v = best_x, float(x), current
+    rise, previous_x, best_x = deformation.first_rise(ladder[:probes.size], probes)
+    if rise >= 0:
+        if best_x == 0.0:
+            return 0.0                      # the end is already a minimum
+        found = optimize.minimize_scalar(
+            value, bounds=(previous_x, float(ladder[rise])), method="bounded",
+            options={"xatol": 1e-10},
+        )
+        at = float(found.x) if found.success else best_x
+        if not clears_the_floor(at):
+            return 0.0      # extending there would leave no metastable end to tunnel from
+        return signed(at)
     # The walk ended without passing a minimum: it ran into a wall, hit the floor, or is still
     # falling at the far end of the ladder. In none of those cases is there a minimum to extend
-    # to within reach, so the end is left where it is, which is what the old search did too on
-    # a potential that keeps falling.
+    # to within reach, so the end is left where it is.
     return 0.0
 
 
@@ -1172,11 +1142,10 @@ class SplinePath(object):
         self._path_tck = interpolate.splprep(pts.T, u=pdist, s=0, k=k)[0]
         # 4. Re-evaluate the distance to each point.
         if reeval_distances:
-            def dpdx(_, x):
-                dp = np.array(interpolate.splev(x, self._path_tck, der=1))
-                return np.sqrt(np.sum(dp*dp))
-            pdist = integrate.odeint(dpdx, 0., pdist,
-                                     rtol=0, atol=pdist[-1]*1e-8)[:,0]
+            t, coefficients, degree = self._path_tck
+            speed = [interpolate.PPoly.from_spline((t, c, degree)).derivative() for c in coefficients]
+            pdist = deformation.arc_length(speed[0].x, np.stack([piece.c for piece in speed], axis=-1), pdist,
+                                           _ARC_NODES, _ARC_WEIGHTS)
             self.L = pdist[-1]
             self._path_tck = interpolate.splprep(pts.T, u=pdist, s=0, k=k)[0]
         # Now make the potential spline.
@@ -1472,7 +1441,7 @@ def fullTunneling(
     callback=None,
     callback_data=None,
     V_spline_samples=100,
-    tunneling_class=tunneling1D.SingleFieldInstanton,
+    tunneling_class=None,
     tunneling_init_params=None,
     tunneling_findProfile_params=None,
     deformation_class=Deformation_Spline,
@@ -1553,6 +1522,10 @@ def fullTunneling(
         A list of lists, with each sub-list containing the saved steps for each
         deformation. Only written to if `save_all_steps` is True.
     """
+    if tunneling_class is None:
+        tunneling_class = (tunneling1D.SingleFieldInstanton if V_spline_samples is None
+                           else tunneling1D.SplinePathInstanton)
+
     settings = _build_tunneling_settings(
         V_spline_samples,
         tunneling_class,
@@ -1993,6 +1966,27 @@ def imagesToPairOver(pot) -> list:
     return group
 
 
+def modelAction(pot, T: float, action: float, instanton=None) -> float:
+    """The action the model supplies for the solver's `action`, through ``pot.actionNuc``.
+
+    The one way the nucleation and percolation routes ask for it. An object that carries no
+    such hook, such as the bare potential a unit test hands in, keeps the solver's action.
+    """
+    hook = getattr(pot, "actionNuc", None)
+    return action if hook is None else hook(T, action, instanton=instanton)
+
+
+def bounceFreeParams(pot) -> dict:
+    """The keyword for :func:`bounceAction` that spares the bounce, if the model has no use for it.
+
+    Empty for a model that reads the bounce, and for an object without the hook, such as the
+    bare potential a unit test hands in.
+    """
+    hook = getattr(pot, "bounceFreeAction", None)
+    action = None if hook is None else hook()
+    return {} if action is None else {"bounce_free_action": action}
+
+
 def bounceActionOverImages(
     T: float,
     V: Callable[[np.ndarray, float], np.ndarray],
@@ -2107,6 +2101,7 @@ def bounceAction(
     tdict: dict,
     verbose: bool = False,
     conversionFactor: float = 1.0,
+    bounce_free_action: Callable[[float], float] | None = None,
     **fullTunneling_params,
 ) -> dict:
     """
@@ -2135,6 +2130,9 @@ def bounceAction(
     conversionFactor : float, optional
         Factor to convert the temperature from internal units to GeV when
         printing messages.
+    bounce_free_action : callable, optional
+        The action as a function of the temperature, from a model that does not need the
+        bounce (:func:`bounceFreeParams`). The path is still validated, the solver is not run.
     fullTunneling_params : dict, optional
         Extra parameters to pass to :func:`fullTunneling`. The function accepts
         them via ``**fullTunneling_params`` and forwards the dictionary.
@@ -2180,6 +2178,17 @@ def bounceAction(
                 "not handle, %r, saying: %s. The handled types are 'no barrier' and "
                 "'stable, not metastable'." % (err.error_type, err.args[0] if err.args else "")
             ) from err
+        outdict[T] = tdict
+        return outdict
+
+    # A model whose rate does not read the bounce (generic_potential.bounceFreeAction) supplies
+    # the action, and the solver does not run. `action_4d` says so, as nan, to the callers that
+    # would otherwise hand the action to the model a second time.
+    if bounce_free_action is not None:
+        tdict['action'] = bounce_free_action(T)
+        tdict['action_4d'] = float("nan")
+        tdict['trantype'] = 1
+        tdict['instanton'] = None
         outdict[T] = tdict
         return outdict
 

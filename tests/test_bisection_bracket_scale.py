@@ -39,7 +39,7 @@ import unittest
 
 import numpy as np
 
-import models.TL_conformal_dark_u1 as conformal_u1
+import models.TL_conformal_u1_fermions as conformal_u1_fermions
 from transitionlistener import pathDeformation
 from transitionlistener import tunneling1D
 
@@ -78,7 +78,7 @@ def x_of_every_trial(pot, T_int, xtol=None, cap=None):
     seen = []
     pending = {}
     real_ic = tunneling1D.SingleFieldInstanton.initialConditions
-    real_ip = tunneling1D.SingleFieldInstanton.integrateProfile
+    real_ip = tunneling1D.CompiledInstanton.integrateProfile
 
     def ic_spy(self, delta_phi0, *a, **k):
         delta_phi = float(np.squeeze(self.phi_metaMin - self.phi_absMin))
@@ -94,7 +94,10 @@ def x_of_every_trial(pot, T_int, xtol=None, cap=None):
         return real_ip(self, r0, y0, *a, **k)
 
     tunneling1D.SingleFieldInstanton.initialConditions = ic_spy
-    tunneling1D.SingleFieldInstanton.integrateProfile = ip_spy
+    tunneling1D.CompiledInstanton.integrateProfile = ip_spy
+    # the Python loop, which tests/test_compiled_bisection.py holds equal to the compiled one
+    real_trials = tunneling1D.SplinePathInstanton._ordinary_trials
+    tunneling1D.SplinePathInstanton._ordinary_trials = tunneling1D.SingleFieldInstanton._ordinary_trials
     try:
         pathDeformation.bounceAction(
             T_int, lambda X, T: pot.Vtot(X, T), lambda X, T: pot.gradV(X, T), {},
@@ -103,14 +106,15 @@ def x_of_every_trial(pot, T_int, xtol=None, cap=None):
             verbose=False, conversionFactor=pot.conversionFactor, **params)
     finally:
         tunneling1D.SingleFieldInstanton.initialConditions = real_ic
-        tunneling1D.SingleFieldInstanton.integrateProfile = real_ip
+        tunneling1D.CompiledInstanton.integrateProfile = real_ip
+        tunneling1D.SplinePathInstanton._ordinary_trials = real_trials
     return seen
 
 
 class TheBracketClosesToAFractionOfX(unittest.TestCase):
     """The last two trials must differ by a fraction of `x`, not by an absolute window.
 
-    Measured on the shipped conformal dark U(1) at g = 0.46, y = 0.1, v_GeV = 1.0, internal
+    Measured on the shipped conformal U(1) with fermions at g = 0.46, y = 0.1, v_GeV = 1.0, internal
     T = 1e-7, through `pathDeformation.bounceAction` with the model's own configured tunnelling
     parameters, which is the entry a scan takes.
     """
@@ -118,7 +122,7 @@ class TheBracketClosesToAFractionOfX(unittest.TestCase):
     T_INT = 1e-7
 
     def test_the_last_two_trials_differ_by_a_fraction_of_x(self):
-        pot = conformal_u1.specific_potential(
+        pot = conformal_u1_fermions.specific_potential(
             {"g": 0.46, "y": 0.1, "v_GeV": 1.0}, verbose=False)
         xs = x_of_every_trial(pot, self.T_INT)
         self.assertGreater(len(xs), 2, f"only {len(xs)} trials: the bisection did not run")
@@ -138,9 +142,11 @@ class TheBracketClosesToAFractionOfX(unittest.TestCase):
         # exactly 0 at this configuration. It is there for a configuration that stops one
         # halving earlier. With the stopping line put back to `(xmax-xmin) < xtol` the gap is
         # 6.84e-11 against an allowed 1.92e-19, which is what makes this assertion bite.
+        # Two trials a few units in the last place apart read the same here: x ~ 4e-10 is recovered from
+        # exp(-x) ~ 1, whose spacing is 2.2e-16.
         width = abs(xs[-1] - xs[-2])
         self.assertLessEqual(
-            width, 4.0 * xtol * xs[-1],
+            width, max(4.0 * xtol * xs[-1], 4.0 * np.finfo(float).eps),
             msg=f"the bisection stopped with the last two trials {width:.6g} apart, which is "
                 f"{width / xs[-1]:.3g} of x = {xs[-1]:.6g}, against xtol = {xtol:g}")
 
@@ -150,7 +156,7 @@ class TheWindowIsNeverWiderThanTheAbsoluteOne(unittest.TestCase):
 
     `xtol * max(|x|, |xmin|)` is tighter than the absolute `xtol` only while that factor stays
     below one. Above one it is the looser of the two, and `x` passes one on a model shipped with
-    the code: on the conformal dark U(1) at g = 0.7, y = 0.24, v_GeV = 1.0 the accepted trial
+    the code: on the conformal U(1) with fermions at g = 0.7, y = 0.24, v_GeV = 1.0 the accepted trial
     sits at `x` = 0.98 at T = 95 and 2.02 at T = 135. Without the cap the bisection there
     stopped with the last two trials 1.0114 to 1.1598 times `xtol` apart, at the five
     temperatures from T = 125 to 135. The ``min(..., 1)`` costs one further trial, 37 against
@@ -172,7 +178,7 @@ class TheWindowIsNeverWiderThanTheAbsoluteOne(unittest.TestCase):
     T_INT = 130.0
 
     def test_the_last_two_trials_are_never_more_than_xtol_apart(self):
-        pot = conformal_u1.specific_potential(
+        pot = conformal_u1_fermions.specific_potential(
             {"g": 0.7, "y": 0.24, "v_GeV": 1.0}, verbose=False)
         xs = x_of_every_trial(pot, self.T_INT)
         self.assertGreater(len(xs), 2, f"only {len(xs)} trials: the bisection did not run")
@@ -208,7 +214,7 @@ class TheLoopStopsWhenTheBracketReachesMachineResolution(unittest.TestCase):
     ``xtol`` = 1e-16 without the guard, this configuration and the supercooled one both pass
     400 trials with the last six `x` identical.
 
-    Measured here on the conformal dark U(1) at g = 0.7, y = 0.24, v_GeV = 1.0, internal
+    Measured here on the conformal U(1) with fermions at g = 0.7, y = 0.24, v_GeV = 1.0, internal
     T = 15, where `x` at the accepted trial is 0.0857. That `x` is below one, so the relative
     threshold is 8.6e-18 against a spacing of 1.4e-17 while the absolute `xtol` of 1e-16 is
     above the spacing: the stall belongs to the relative window and not to the solver it
@@ -220,7 +226,7 @@ class TheLoopStopsWhenTheBracketReachesMachineResolution(unittest.TestCase):
     CAP = 200
 
     def test_a_tolerance_below_the_floating_point_spacing_still_terminates(self):
-        pot = conformal_u1.specific_potential(
+        pot = conformal_u1_fermions.specific_potential(
             {"g": 0.7, "y": 0.24, "v_GeV": 1.0}, verbose=False)
         try:
             xs = x_of_every_trial(pot, self.T_INT, xtol=self.XTOL, cap=self.CAP)

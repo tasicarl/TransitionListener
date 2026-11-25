@@ -129,9 +129,11 @@ class ACleanInstallHasWhatTheCodeImportsTests(unittest.TestCase):
             + "; ".join(f"{m} ({sorted(f)[0]})" for m, f in sorted(missing.items())))
 
     def test_the_shipped_models_declare_everything_they_reach(self):
-        """A model is shipped, so what it reaches has to be installed too."""
+        """A model is shipped, so what it reaches has to be installed too. A module beside it in
+        models/ (the matching relations a 3D model imports) is shipped with it, not installed."""
         declared = _declared()
-        found = _third_party_imports([ROOT / "models"])
+        local = {p.stem.lower() for p in (ROOT / "models").glob("*.py")}
+        found = {m: f for m, f in _third_party_imports([ROOT / "models"]).items() if m not in local}
         guarded, _ = _imports_by_guard([ROOT / "src", ROOT / "models"])
         missing = {m: f for m, f in found.items()
                    if m not in declared and m not in guarded}
@@ -143,47 +145,6 @@ class ACleanInstallHasWhatTheCodeImportsTests(unittest.TestCase):
     def test_sympy_is_declared_because_the_2hdm_model_needs_it(self):
         """Named on its own, because this is the one that was missing."""
         self.assertIn("sympy", _declared())
-
-    def test_a_cached_run_still_needs_sympy(self):
-        """SymPy is needed to use the 2HDM, not only to import it.
-
-        The shipped tensors are cached as strings and parsed back with SymPy, so a run that
-        regenerates nothing still calls into it. Counted rather than asserted in the
-        abstract: a stand-in for `_require_sympy` records how often the model reaches it
-        while the potential is built from the cache.
-        """
-        import contextlib
-        import importlib.util
-        import io as _io
-
-        from transitionlistener.counterterms import tensors
-        from transitionlistener.counterterms.twohdm_solver import GENERATED_TENSOR_FILE
-
-        # The cached file is tracked (added in b5a763b) and present on a fresh checkout, so
-        # `_load_dataset` takes its cached branch. Were it missing, the loader would generate
-        # the tensors instead and this would count the calls of the generator, which proves
-        # nothing about a cached run. Stated rather than assumed, so the test fails loudly
-        # instead of measuring the wrong branch.
-        self.assertTrue(GENERATED_TENSOR_FILE.exists(),
-                        "no cached tensors at %s, so this would measure the generator"
-                        % GENERATED_TENSOR_FILE)
-
-        calls = []
-        real = tensors._require_sympy
-        spec = importlib.util.spec_from_file_location("TL_2HDM", ROOT / "models" / "TL_2HDM.py")
-        model = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(model)
-        try:
-            tensors._require_sympy = lambda: (calls.append(1), real())[1]
-            with contextlib.redirect_stdout(_io.StringIO()):
-                model.R2HDM(dict(lambda1=0.006, lambda2=0.25, lambda3=8.27, lambda4=-2.55,
-                                 lambda5=0.76, m12_sq_GeV2=14186.7, tan_beta=17.7,
-                                 yukawa_type=1, v_GeV=246.21965079413735), verbose=False)
-        finally:
-            tensors._require_sympy = real
-        self.assertGreater(len(calls), 0,
-                           "the cached path never reached SymPy, so the dependency claim "
-                           "in this file is wrong")
 
     def test_the_pta_stack_is_imported_behind_a_guard(self):
         """The one optional dependency the package has stays optional.
@@ -203,24 +164,6 @@ class ACleanInstallHasWhatTheCodeImportsTests(unittest.TestCase):
             encoding="utf-8")
         self.assertRegex(src, r"except Exception as exc:",
                          "observability imports the PTA stack without catching the failure")
-
-    def test_the_2hdm_reaches_sympy_through_the_solver_module(self):
-        """The module the dependency comment names is the one the model loads.
-
-        A static check of both files, not a run: it reads the imports of `models/TL_2HDM.py`
-        and of the solver it names. That the import really goes that way at run time is
-        measured by the test below, which loads the model and counts the SymPy calls.
-        """
-        model = ast.parse((ROOT / "models" / "TL_2HDM.py").read_text(encoding="utf-8"))
-        reached = {node.module for node in ast.walk(model)
-                   if isinstance(node, ast.ImportFrom) and node.module}
-        self.assertIn("transitionlistener.counterterms.twohdm_solver", reached)
-
-        solver = ast.parse((ROOT / "src" / "transitionlistener" / "counterterms"
-                            / "twohdm_solver.py").read_text(encoding="utf-8"))
-        at_module_level = [node for node in solver.body if isinstance(node, ast.Import)]
-        self.assertIn("sympy", {alias.name for node in at_module_level
-                                for alias in node.names})
 
 
 if __name__ == "__main__":

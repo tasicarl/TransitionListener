@@ -81,7 +81,7 @@ __all__ = [
 
 
 def __getattr__(name):
-    """Proxy selected legacy module-level state to :mod:`transitionlistener.interface.state`."""
+    """Proxy selected module-level state to :mod:`transitionlistener.interface.state`."""
     if name in {"DEBUGMODE", "TIMEOUT", "model", "errorlogger", "resultlogger", "config"}:
         return getattr(_state, name)
     raise AttributeError(f"module 'transitionlistener.interface' has no attribute '{name}'")

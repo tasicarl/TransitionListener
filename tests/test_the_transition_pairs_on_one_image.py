@@ -111,7 +111,7 @@ class TheImagesAreEnumeratedNearestFirst(unittest.TestCase):
 
         The separation has to be measured against a scale of the problem, which is the
         length of the path the bounce traverses, `|x_false - x_true|`, and not as an
-        absolute distance: the 2HDM's fields are in GeV, while the conformal dark U(1)
+        absolute distance: the 2HDM's fields are in GeV, while the conformal U(1) with fermions
         example shipped with the code works in internal units 1e4 times smaller, and an
         absolute threshold would mean something different in each. Measuring it against the
         false vacuum's own length would be worse still, since for a false vacuum at the
@@ -165,7 +165,7 @@ class TheImagesAreEnumeratedNearestFirst(unittest.TestCase):
         The phase tracing leaves a false vacuum that belongs at a fixed point of the group a
         little off it rather than on it, and the group then maps that residual onto its
         reflection. Those two points are the same state, and computing a bounce on each is the
-        same path solved twice: measured on commit 065ef81 with `models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml` at
+        same path solved twice: measured with `models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml` at
         `lambda3 = 5.6518` the second bounce took 49 per cent of all the time spent on bounces
         and the two actions agreed to 3.0e-05, a factor 1600 inside the solver's own bracket
         tolerance. The separations below are the ones measured there.
@@ -1055,7 +1055,7 @@ class TheNucleationTemperatureSearchPairsOnOneImageToo(unittest.TestCase):
 
         The bounce used to be computed between two images because the phase tracing could put
         the two phases on different ones, and that is now repaired in `phases.py` where it
-        arises. Measured on commit 065ef81 with `models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml` at `lambda3 = 5.868`,
+        arises. Measured with `models/TL_2HDM.py` class `R2HDM` at shipped settings, with the benchmark parameters of `examples/bp_lisa.yaml` at `lambda3 = 5.868`,
         the coupling the pairing was added for: at none of the 66 temperatures whose two images
         are genuinely apart did the image the tracing did not produce carry the smaller action,
         while the second bounce took 66 per cent of the time spent on bounces.

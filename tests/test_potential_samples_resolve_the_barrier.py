@@ -6,7 +6,7 @@ between the two minima, while the barrier is a feature whose width is set by the
 a strongly supercooled model the barrier is a vanishing fraction of the path, so no sample lands
 inside it and the spline interpolates straight over it.
 
-Measured on `TL_conformal_dark_u1` at g = 0.54, where the minima are 1000 internal field units
+Measured on `TL_conformal_u1_fermions` at g = 0.54, where the minima are 1000 internal field units
 apart and the spacing is therefore 0.1: the barrier top is at 0.118 at T_int = 0.1 and at
 9.3e-5 at T_int = 1e-4, and the action came back infinite from T_int = 1e-2 down.
 

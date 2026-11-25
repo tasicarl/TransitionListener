@@ -94,7 +94,7 @@ class Fermion:
 class MassSpectrum:
     """Container describing the particle content and mass functions of a model.
 
-    The class keeps the legacy ``CosmoTransitions``-style tuple interface used
+    The class keeps the ``CosmoTransitions``-style tuple interface used
     throughout TransitionListener.  It stores particle metadata such as degrees
     of freedom and renormalisation constants alongside callables returning the
     field- and temperature-dependent mass eigenvalues.
@@ -315,7 +315,7 @@ class BosonSector:
     thermal_masses_sq: Optional[np.ndarray] = None
 
     def as_tuple(self) -> Tuple[np.ndarray, ...]:
-        """Return the legacy tuple representation used by older callers."""
+        """Return the tuple representation."""
         return (
             self.masses_sq,
             self.dof,
@@ -346,7 +346,7 @@ class FermionSector:
     particles: Sequence[BaseParticle]
 
     def as_tuple(self) -> Tuple[np.ndarray, ...]:
-        """Return the legacy tuple representation used by older callers."""
+        """Return the tuple representation."""
         return (self.masses_sq, self.dof, self.is_bsm)
 
     @property

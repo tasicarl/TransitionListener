@@ -257,7 +257,8 @@ class PlotExecutor:
         console.print(f"[bold green]Create the gw_spectrum plot[/bold green]")
         self._executed.add("gw_spectrum")
         try:
-            plots.plotGWSpectrum(strongest, showplot=False, foldername=self._outpath, legendfontsize=5)
+            plots.plotGWSpectrum(strongest, showplot=False, foldername=self._outpath, legendfontsize=5,
+                                 config=getattr(ctx.get("pot"), "config", None))
         except Exception as err:
             console.print(f"[bold yellow]Skipping gw_spectrum plot: {err}[/bold yellow]")
             return
@@ -583,6 +584,9 @@ def single(conf, verbose: bool = False):
     plot_executor = PlotExecutor(conf, input_params, plot_plan, outpath, verbose=verbose)
 
     potential = load_potential(conf.modelfile, conf.potential_name)
+    if getattr(conf, "nucleation", None):     # the optional Nucleation block, as for the scans
+        from .config_loader import _with_nucleation_settings
+        potential = _with_nucleation_settings(potential, conf.nucleation)
     errorlogger = Logger(outpath + "error.log")
     resultlogger = Logger(outpath + "result.log")
 

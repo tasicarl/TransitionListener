@@ -38,6 +38,7 @@ requirements:
     - pandas
     - rich
     - scipy
+    - numba
     - tqdm
     - ultranest
 

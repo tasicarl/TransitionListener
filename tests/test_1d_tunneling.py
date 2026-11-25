@@ -1,6 +1,6 @@
 import unittest
 
-import models.TL_conformal_dark_u1 as potential
+import models.TL_conformal_u1_fermions as potential
 from transitionlistener.phases import Phases
 from transitionlistener import pathDeformation, tunneling1D
 
@@ -87,16 +87,20 @@ class test1DPotential(unittest.TestCase):
         # trials. The count is taken by wrapping the method on the class, because
         # `fullTunneling` builds the `SingleFieldInstanton` itself and no instance is reachable
         # from here. The original is put back whatever the test does.
+        # Every class that defines its own `integrateProfile` is wrapped: the compiled instanton
+        # overrides the method, and the solver may build either.
         integrations = {"n": 0}
-        unwrapped = tunneling1D.SingleFieldInstanton.integrateProfile
+        for cls in vars(tunneling1D).values():
+            if not (isinstance(cls, type) and "integrateProfile" in vars(cls)):
+                continue
+            unwrapped = vars(cls)["integrateProfile"]
 
-        def counting_integrateProfile(instanton, *args, **kwargs):
-            integrations["n"] += 1
-            return unwrapped(instanton, *args, **kwargs)
+            def counting_integrateProfile(instanton, *args, _unwrapped=unwrapped, **kwargs):
+                integrations["n"] += 1
+                return _unwrapped(instanton, *args, **kwargs)
 
-        tunneling1D.SingleFieldInstanton.integrateProfile = counting_integrateProfile
-        self.addCleanup(
-            setattr, tunneling1D.SingleFieldInstanton, "integrateProfile", unwrapped)
+            cls.integrateProfile = counting_integrateProfile
+            self.addCleanup(setattr, cls, "integrateProfile", unwrapped)
 
         actions = {}
         trials = {}
@@ -105,7 +109,10 @@ class test1DPotential(unittest.TestCase):
             tobj = pathDeformation.fullTunneling(
                 [[1000], [0.0]], lambda x: pot.Vtot(x, T), lambda x: pot.gradV(x, T),
                 callback_data=T,
-                tunneling_findProfile_params={"phitol": tol, "xtol": tol})
+                tunneling_findProfile_params={"phitol": tol, "xtol": tol},
+                # the instanton whose bisection runs trial by trial in Python, so that the count
+                # below sees every trial; the compiled default is checked at the end
+                tunneling_class=tunneling1D.SingleFieldInstanton)
             actions[tol] = float(tobj.action)
             trials[tol] = integrations["n"]
         settled = (max(actions[t] for t in (1e-10, 1e-12, 1e-14))
@@ -173,6 +180,14 @@ class test1DPotential(unittest.TestCase):
             msg=f"at the configured phitol = xtol = 1e-10 the action is {actions[1e-10]}, "
                 f"which is not what this code gives; a gap-scaled epsabs gives 2388.1788728 "
                 f"and a gap-scaled epsabs with an absolute bisection window 2388.1788707")
+
+        # The default instanton runs the same bisection, with the same relative stopping rule, in
+        # compiled code that does not count its trials. Its action has to sit in the same window:
+        # measured 2388.1790010, 1.3e-05 from the centre.
+        compiled = pathDeformation.fullTunneling(
+            [[1000], [0.0]], lambda x: pot.Vtot(x, T), lambda x: pot.gradV(x, T),
+            callback_data=T, tunneling_findProfile_params={"phitol": 1e-10, "xtol": 1e-10})
+        self.assertAlmostEqual(float(compiled.action), 2388.1790140, delta=4e-5)
 
 
 if __name__ == "__main__":

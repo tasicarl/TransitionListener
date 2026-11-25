@@ -12,8 +12,7 @@ can also walk thousands of knots out and trip the 20000-knot cap with a `SplineE
 
 Measured on the conformal U(1) at g = 0.54 with v_GeV = 1000: the path runs from the origin to
 phi = 1000, so the step is 0.25 in field units, while the barrier top sits at 0.124 at
-T_int = 0.1. The action was infinite there and finite at T_int = 0.149, which is the cutoff
-reported from the dimred daisy work.
+T_int = 0.1. The action was infinite there and finite at T_int = 0.149.
 
 The cases below are the unit search itself and a two-field potential with the same geometry.
 """

@@ -27,7 +27,7 @@ MODELS = {
     "2HDM": ("models/TL_2HDM.py", "R2HDM", dict(
         lambda1=0.006, lambda2=0.25, lambda3=8.27, lambda4=-2.55, lambda5=0.76,
         m12_sq_GeV2=14186.7, tan_beta=17.7, yukawa_type=1, v_GeV=246.21965079413735)),
-    "conformal_U1": ("models/TL_conformal_dark_u1.py", "specific_potential",
+    "conformal_U1": ("models/TL_conformal_u1_fermions.py", "specific_potential",
                      dict(g=0.7, v_GeV=0.1, y=0.01)),
     "dark_U1": ("models/TL_dark_U1.py", "specific_potential",
                 dict(g_tilde=2.65, l=1.5e-3, v_GeV=1e7)),

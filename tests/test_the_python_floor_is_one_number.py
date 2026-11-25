@@ -54,10 +54,12 @@ class TestThePythonFloorIsOneNumber(unittest.TestCase):
             "the test matrix of .github/workflows/ci.yml":
                 _search(ROOT / ".github" / "workflows" / "ci.yml",
                         r'^\s*python-version: \["([^"]+)"'),
-            "the documentation environment of .github/workflows/docs.yml":
-                _search(ROOT / ".github" / "workflows" / "docs.yml",
-                        r'^\s*python=([0-9]+\.[0-9]+)\s*$'),
         }
+        # the development repository builds no documentation, so it has no docs workflow
+        docs = ROOT / ".github" / "workflows" / "docs.yml"
+        if docs.exists():
+            found["the documentation environment of .github/workflows/docs.yml"] = _search(
+                docs, r'^\s*python=([0-9]+\.[0-9]+)\s*$')
         for where, value in found.items():
             with self.subTest(where=where):
                 self.assertEqual(value, self.declared,

@@ -75,8 +75,9 @@ the fraction converted during the step, is a discretisation of
 with :math:`S` and :math:`E` the entropy and energy density of the broken phase and
 :math:`e_\mathrm{s}` that of the symmetric one. The first term is the cooling the expansion
 alone would produce and the second is the heating. The integration starts where the
-true-vacuum fraction first becomes non-negligible, with the instantaneous-reheating condition as its
-initial value, and the reheating temperature is its value at the end of the transition.
+true-vacuum fraction first reaches :math:`10^{-6}`, with the instantaneous-reheating condition as its
+initial value, and the reheating temperature is the value of :math:`T_\mathrm{b}` when the
+symmetric phase is at the percolation temperature.
 
 .. versionchanged:: 2.2
    The equation is integrated with an error-controlled integrator rather than read off the
@@ -104,11 +105,20 @@ The local one is the logarithmic derivative of the rate at the percolation tempe
 
 .. math::
    \left(\frac{\beta}{H}\right)_{S_3}
-   = T\,\frac{\mathrm{d}}{\mathrm{d}T}\left(\frac{S_3}{T}\right)
+   = 3 c_\mathrm{s}^2\,T\,\frac{\mathrm{d}}{\mathrm{d}T}\left(\frac{S_3}{T}\right)
    \;\Bigg|_{T_\mathrm{perc}} ,
 
-read off the action at one temperature. It is the inverse duration of the exponential
+read off the action at one temperature. The factor :math:`3 c_\mathrm{s}^2`, with the sound
+speed of the symmetric phase from the entropy of the expansion history, turns the
+temperature derivative into a time derivative, since
+:math:`\mathrm{d}T/\mathrm{d}t = -3 c_\mathrm{s}^2 H T`. It is one in the bag limit, where the
+expression is the familiar one. This is the inverse duration of the exponential
 approximation to the rate, and it is the quantity most of the literature means.
+
+A third output, ``betaH_Gamma``, is the growth rate of the whole rate,
+:math:`3 c_\mathrm{s}^2\,(-\mathrm{d}\ln\Gamma/\mathrm{d}\ln T)` at the percolation
+temperature, which includes the prefactor of :math:`\Gamma`. Only the adaptive backend
+computes it.
 
 The integral one is read off the mean separation between the bubbles,
 
@@ -179,7 +189,8 @@ The three states are worth telling apart. A false warning beside finite uncertai
 every target that could be measured was met. A false warning beside an infinite separation
 uncertainty means that one was never measured rather than met, which happens whenever there is
 no previous estimate to difference against. A false warning beside ``nan`` means no verdict was
-formed at all, which is what the fixed-step backend writes, since it has no such controller.
+formed at all. The fixed-step backend writes that, since it has no such controller, and so
+does the adaptive one when it stops at its limit of support updates.
 
 The wall velocity
 ~~~~~~~~~~~~~~~~~
@@ -233,7 +244,9 @@ over the support, which is the assumption behind the local inverse duration.
 absent: no spline could be built, the condition was never met on the range explored, or the
 root-finding failed. ``WARNING:false_vacuum_not_shrinking`` says the completion criterion is
 not satisfied at the percolation temperature, so this transition percolates but has not been
-shown to finish.
+shown to finish. ``WARNING:too_weak_to_compute_perc`` says the bag-model strength
+``alpha_theta`` at the percolation temperature is below ``percolation_weak_threshold``
+(:math:`10^{-4}` by default).
 
 The phases
 ~~~~~~~~~~

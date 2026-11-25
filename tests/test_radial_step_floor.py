@@ -352,14 +352,15 @@ class TheSaversRefusalIsAnOutcomeAndNotAnException(unittest.TestCase):
 
     def refuse_the_saver(self, message):
         """Make every `integrateAndSaveProfile` call raise, leaving the shooting untouched."""
-        original = tunneling1D.SingleFieldInstanton.integrateAndSaveProfile
-
         def refuse(instanton, *args, **kwargs):
             raise IntegrationError(message)
 
-        tunneling1D.SingleFieldInstanton.integrateAndSaveProfile = refuse
-        self.addCleanup(setattr, tunneling1D.SingleFieldInstanton,
-                        "integrateAndSaveProfile", original)
+        # every class that defines its own saver: the compiled instanton overrides it
+        for cls in vars(tunneling1D).values():
+            if isinstance(cls, type) and "integrateAndSaveProfile" in vars(cls):
+                self.addCleanup(setattr, cls, "integrateAndSaveProfile",
+                                vars(cls)["integrateAndSaveProfile"])
+                cls.integrateAndSaveProfile = refuse
 
     def test_a_step_count_that_ends_the_saver_comes_back_as_an_infinite_action(self):
         V, dV = self.potential()

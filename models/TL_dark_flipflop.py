@@ -19,7 +19,35 @@ from transitionlistener import helper_functions
 from transitionlistener import constants as cn
 from transitionlistener.particles import MassSpectrum, Scalar, Fermion
 from transitionlistener.errors import InitPotentialError
+from transitionlistener.compiled.multifield_potential import bosons_at, fermions_at, tree_at
 
+
+
+# The model is these three functions, which numba compiles; V0, Vct and the mass functions of DarkFlipFlop call them.
+def compiled_tree(x, p):
+    """V0 + Vct. p: lambda0, gamma, lambda1, lambda12, v2, y, dmu1, dmu2, dlambda1, dlambda2, dlambda12."""
+    phi1, phi2 = x[0], x[1]
+    r = p[0] * (phi1**2 + p[1]**2 * phi2**2 - p[4])**2 / 4 - 0.5 * p[2] * p[4] * phi1**2 + 0.5 * p[3] * phi1**2 * phi2**2
+    return (r - 0.5 * p[6] * phi1**2 - 0.5 * p[7] * phi2**2 + 0.25 * p[8] * phi1**4 + 0.25 * p[9] * phi2**4
+            + 0.5 * p[10] * phi1**2 * phi2**2)
+
+
+def compiled_bosons(x, T, p, m2):
+    phi1, phi2 = x[0], x[1]
+    lambda0, gamma, lambda12 = p[0], p[1], p[3]
+    common = phi1**2 + gamma**2 * phi2**2 - p[4]
+    a = 2 * lambda0 * phi1**2 + lambda0 * common - p[2] * p[4] + lambda12 * phi2**2
+    b = 2 * gamma**4 * lambda0 * phi2**2 + lambda0 * gamma**2 * common + lambda12 * phi1**2
+    a += (p[5]**2 + 2 * ((3 + gamma**2) * lambda0 + lambda12)) / 24.0 * T**2
+    b += (gamma**2 * lambda0 + 3 * gamma**4 * lambda0 + lambda12) / 12.0 * T**2
+    c = 2 * gamma**2 * lambda0 * phi1 * phi2 + 2 * lambda12 * phi1 * phi2
+    root = np.sqrt(0.25 * (a - b)**2 + c**2)
+    m2[0] = 0.5 * (a + b) + root
+    m2[1] = 0.5 * (a + b) - root
+
+
+def compiled_fermions(x, p, m2):
+    m2[0] = 0.5 * p[5]**2 * x[0]**2
 
 
 class DarkFlipFlop(generic_potential.generic_potential):
@@ -188,31 +216,18 @@ class DarkFlipFlop(generic_potential.generic_potential):
         return Z2_1 or Z2_2
 
     def V0(self, X):
-        """Evaluate the tree-level potential for the scalar doublet."""
-        X = np.asanyarray(X)
-        phi1 = X[..., 0]
-        phi2 = X[..., 1]
-        r = .25*self.lambda0*(phi1**2 + self.gamma**2 * phi2**2 - self.v2)**2
-        r += -.5 * self.lambda1 * self.v2 * phi1**2
-        r += .5 * self.lambda12 * phi1**2 * phi2**2
-        return r
+        """Evaluate the tree-level potential."""
+        return tree_at(compiled_tree, X, self._numbers()[:6] + (0.0,) * 5)
 
     def Vct(self, X):
         r"""The counter terms in the MS bar scheme.
 
         .. math::
-            `V_{ct} =  - \frac{\delta\mu_1^2}{2} \phi_1^{2} - \frac{\delta\mu_2^2}{2} \phi_{2}^{2} +
-                       \frac{\delta\lambda_{1}}{4}\phi_{1}^{4}  +
-                       \frac{\delta\lambda_{2}}{4}\phi_{2}^4 + \frac{\delta\lambda_{12}}{2}\phi_{1}^2\phi_2^2`
+            V_{ct} = - \frac{\delta\mu_1^2}{2} \phi_1^{2} - \frac{\delta\mu_2^2}{2} \phi_{2}^{2} +
+                     \frac{\delta\lambda_{1}}{4}\phi_{1}^{4} + \frac{\delta\lambda_{2}}{4}\phi_{2}^{4} +
+                     \frac{\delta\lambda_{12}}{2}\phi_{1}^2\phi_{2}^2
         """
-        X = np.asarray(X)
-        phi1 = X[..., 0]
-        phi2 = X[..., 1]
-
-        Vct = - 0.5*self.dmu1*phi1**2 - 0.5*self.dmu2*phi2**2
-        Vct += 0.25*self.dlambda1*phi1**4 + 0.25*self.dlambda2*phi2**4
-        Vct += 0.5*self.dlambda12 * phi1**2 * phi2**2
-        return Vct
+        return tree_at(compiled_tree, X, (0.0,) * 6 + self._numbers()[6:])
 
     def _build_mass_spectrum(self) -> MassSpectrum:
 
@@ -220,49 +235,26 @@ class DarkFlipFlop(generic_potential.generic_potential):
         scalar2 = Scalar(name="m_h2", latex_name=r"$m_{h_2}$", dof=1, is_SM=False)
 
         def boson_mass_function(X, T):
-            X = np.asarray(X)
-            phi1 = X[..., 0]
-            phi2 = X[..., 1]
-            T_arr = np.asarray(T, dtype=float)
-            T2 = T_arr * T_arr
-            if T2.ndim == 0:
-                T2 = T2 + np.zeros_like(phi1)
-
-            a = 2 * self.lambda0 * phi1**2
-            a += self.lambda0 * (phi1**2 + self.gamma**2 * phi2**2 - self.v2)
-            a += -self.lambda1 * self.v2 + self.lambda12 * phi2**2
-
-            b = 2 * self.gamma**4 * self.lambda0 * phi2**2
-            b += self.lambda0 * self.gamma**2 * (phi1**2 + self.gamma**2 * phi2**2 - self.v2)
-            b += self.lambda12 * phi1**2
-
-            coeff1 = (self.y**2 + 2 * ((3 + self.gamma**2) * self.lambda0 + self.lambda12)) / 24.0
-            coeff2 = (self.gamma**2 * self.lambda0 + 3 * self.gamma**4 * self.lambda0 + self.lambda12) / 12.0
-            a += coeff1 * T2
-            b += coeff2 * T2
-
-            c = 2 * self.gamma**2 * self.lambda0 * phi1 * phi2 + 2 * self.lambda12 * phi1 * phi2
-
-            A = 0.5 * (a + b)
-            B = np.sqrt(0.25 * (a - b) ** 2 + c ** 2)
-            m1sq = A + B
-            m2sq = A - B
-
-            return np.stack((m1sq, m2sq), axis=-1)
+            return bosons_at(compiled_bosons, 2, X, T, self._numbers())
 
         fermion = Fermion(name="m_psi", latex_name=r"$m_{\psi}$", dof=2, is_SM=False)
 
         def fermion_mass_function(X):
-            X = np.asarray(X)
-            phi1 = X[..., 0]
-            m2psi = 0.5 * self.y**2 * phi1**2
-            return np.stack((m2psi,), axis=-1)
+            return fermions_at(compiled_fermions, 1, X, self._numbers())
 
         spectrum = MassSpectrum([scalar1, scalar2], fermions=[fermion],
                                 boson_massSq_fn=boson_mass_function,
                                 fermion_massSq_fn=fermion_mass_function)
 
         return spectrum
+
+    def _numbers(self):
+        """The numbers of the compiled functions."""
+        return (self.lambda0, self.gamma, self.lambda1, self.lambda12, self.v2, self.y,
+                self.dmu1, self.dmu2, self.dlambda1, self.dlambda2, self.dlambda12)
+
+    def compiled_model(self):
+        return compiled_tree, compiled_bosons, compiled_fermions, self._numbers()
 
     def approxZeroTMin(self):
         """Return approximate zero-temperature minima for the flip-flop model."""

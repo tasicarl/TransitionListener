@@ -1,0 +1,35 @@
+# Nested sampling of the conformal U(1) with two Weyl fermions, with the default modelling choices of the paper
+# Run with N processes, from the repository root, in the TL environment (ceffyl 1.41):
+#   PYTHONPATH=$PWD/src mpiexec -n N tl -c examples/sample_fermions_paper_defaults.yaml
+Modelfile:
+  models/TL_conformal_u1_fermions_3d.py
+Potential:
+  specific_potential
+Scan:
+  UltranestScan
+Parameters:
+  scan_params:
+    g:
+      scale: lin
+      range: [0.39, 0.75]
+    y:
+      scale: lin
+      range: [0.0, 0.75]
+    v_GeV:
+      scale: log
+      range: [1e-2, 1e2]
+  other_params:
+    gw_source_model: LewickiVaskonen22
+    gw_expansion_suppression: True
+    gw_lv22_expanding_shape: dissipative
+    gw_expansion_speed: betaH_Gamma
+    gw_causality_tail: smooth
+    gw_bw_collisions: full
+    gw_pta_free_spectrum: ng15_cp_v2
+timeout: 300
+format: "txt"
+output_path: "scans/sample_fermions_paper_defaults/"
+resume_mode: "overwrite"
+description: "conformal U(1) with fermions, paper defaults"
+plot_description: "conformal U(1) with fermions"
+plots: False

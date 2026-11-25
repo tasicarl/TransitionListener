@@ -1,0 +1,9 @@
+['T_f', 'T_nuc', 'T_p', 'T_reh', 'alpha', 'betaH_R', 'betaH_S', 'beta_Gamma_H', 'dlnV_dt_over_H', 'in_table', 'window_limited']
+NG15 68%: alpha 5.53e+10-7.86e+34; T_p max 153.7 keV
+NG15 95%: alpha 4.54e+07-3.91e+35; T_p max 376.0 keV
+  posterior with (beta/H)_Gamma < 8: 0.355
+  ln(T_p/T_f) in the 1 sigma cells with a growing false-vacuum volume: 0.27-0.85
+IPTA2 68%: alpha 1.96e+08-6.57e+35; T_p max 189.7 keV
+IPTA2 95%: alpha 1.51e+06-4.82e+36; T_p max 328.9 keV
+  posterior with (beta/H)_Gamma < 8: 0.028
+  ln(T_p/T_f) in the 1 sigma cells with a growing false-vacuum volume: 0.87-0.87

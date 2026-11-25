@@ -36,8 +36,11 @@ dependencies = [
     "cycler",
     "getdist",
     "h5py",
+    "llvmlite",
     "matplotlib",
+    "mpmath",
     "mpi4py",
+    "numba",
     "numpy>=1.21",
     "pandas",
     "rich",
@@ -48,6 +51,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# the fluctuation determinants of the 3D rate (tl-nlo-table; runs on a shipped NLO grid do not need it)
+nlo = [
+    "BubbleDet",
+]
 dev = [
     "pytest",
     "mpmath",
@@ -64,6 +71,8 @@ Issues = "https://github.com/tasicarl/TransitionListener/issues"
 
 [project.scripts]
 tl = "transitionlistener.interface:main"
+tl-bounce-table = "transitionlistener.eft_rate.abelian_lo_bounce_table:main"
+tl-nlo-table = "transitionlistener.interface.nlo_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/transitionlistener"]

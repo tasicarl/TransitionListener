@@ -88,6 +88,10 @@ worth trying if a point behaves oddly. Most runs never need either setting touch
 What each solver does, which settings reach it, and what its warnings mean is in
 :doc:`algorithms/nucleation_and_percolation` and :doc:`algorithms/the_observables`.
 
+The inner loops run in compiled code. The first run compiles them, which takes about twenty
+seconds. :doc:`algorithms/compiled_code` describes what is compiled and how a model gets a
+compiled potential.
+
 
 Precision modes
 ---------------

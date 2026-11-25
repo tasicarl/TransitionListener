@@ -1,5 +1,5 @@
 Modelfile:
-  models/TL_conformal_dark_u1.py
+  models/TL_conformal_u1_fermions.py
 
 Potential:
   specific_potential

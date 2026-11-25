@@ -19,7 +19,6 @@ import numpy as np
 from transitionlistener import config, errors, generic_potential
 from transitionlistener.constants import SM_FERMION_MASSES_GEV, SM_GAUGE_MASSES_GEV
 from transitionlistener.generic_potential import console as tl_console
-from transitionlistener.helper_functions import eigenvalues_2x2
 from transitionlistener.particles import (
     GaugeBoson,
     MassSpectrum,
@@ -29,6 +28,59 @@ from transitionlistener.particles import (
 )
 from transitionlistener.counterterms import CounterTerms
 from transitionlistener.counterterms.twohdm_solver import compute_counterterms
+from transitionlistener.compiled.multifield import eigenvalues_2x2 as compiled_eigenvalues
+from transitionlistener.compiled.multifield_potential import bosons_at, fermions_at, tree_at
+
+# The model is these three functions, which numba compiles; V0, Vct and the mass functions of R2HDM call them.
+# Their numbers, in the order of R2HDM._numbers:
+(M11, M22, M12, L1, L2, L3, L5, L345, L34M5, L45, THERMAL1, THERMAL2, G1, G2, YT, YB, YTAU, BOTTOM_FIELD, LEPTON_FIELD,
+ DM11, DM22, DM12, DL1, DL2, DL345) = range(25)
+LAST_NUMBER = DL345
+NUMBER_OF_BOSONS, NUMBER_OF_FERMIONS = 12, 3
+
+
+def compiled_tree(x, p):
+    """V0 + Vct."""
+    phi1, phi2 = x[0], x[1]
+    tree = (0.5 * p[M11] * phi1**2 + 0.5 * p[M22] * phi2**2 - p[M12] * phi1 * phi2 + 0.125 * p[L1] * phi1**4
+            + 0.125 * p[L2] * phi2**4 + 0.25 * p[L345] * phi1**2 * phi2**2)
+    return (tree + 0.5 * p[DM11] * phi1**2 + 0.5 * p[DM22] * phi2**2 - p[DM12] * phi1 * phi2 + 0.125 * p[DL1] * phi1**4
+            + 0.125 * p[DL2] * phi2**4 + 0.25 * p[DL345] * phi1**2 * phi2**2)
+
+
+def compiled_bosons(x, T, p, m2):
+    phi1, phi2 = x[0], x[1]
+    phi_sq = phi1**2 + phi2**2
+    T2 = T * T
+    a0 = p[M11] + 0.5 * p[L1] * phi1**2 + p[THERMAL1] * T2
+    c0 = p[M22] + 0.5 * p[L2] * phi2**2 + p[THERMAL2] * T2
+
+    m2[0], m2[1] = compiled_eigenvalues(a0 + p[L1] * phi1**2 + 0.5 * p[L345] * phi2**2,
+                                        -p[M12] + p[L345] * phi1 * phi2,
+                                        c0 + p[L2] * phi2**2 + 0.5 * p[L345] * phi1**2)
+    m2[3], m2[2] = compiled_eigenvalues(a0 + 0.5 * p[L34M5] * phi2**2, -p[M12] + p[L5] * phi1 * phi2,
+                                        c0 + 0.5 * p[L34M5] * phi1**2)
+    m2[5], m2[4] = compiled_eigenvalues(a0 + 0.5 * p[L3] * phi2**2, -p[M12] + 0.5 * p[L45] * phi1 * phi2,
+                                        c0 + 0.5 * p[L3] * phi1**2)
+
+    g1_sq, g2_sq = p[G1]**2, p[G2]**2
+    a = 0.25 * g2_sq * phi_sq + 2 * g2_sq * T2
+    b = -0.25 * p[G1] * p[G2] * phi_sq
+    c = 0.25 * g1_sq * phi_sq + 2 * g1_sq * T2
+    discriminant = a**2 + 4.0 * b**2 - 2.0 * a * c + c**2
+    root = np.sqrt(0.0 if discriminant < 0.0 else discriminant)
+    m2[6] = 0.25 * (g1_sq + g2_sq) * phi_sq
+    m2[7] = 0.5 * (a + c + root)
+    m2[8] = 0.0
+    m2[9] = 0.5 * (a + c - root)
+    m2[10] = 0.25 * g2_sq * phi_sq
+    m2[11] = m2[10] + 2 * g2_sq * T2
+
+
+def compiled_fermions(x, p, m2):
+    m2[0] = (p[YT] * x[1])**2
+    m2[1] = (p[YB] * x[int(p[BOTTOM_FIELD])])**2
+    m2[2] = (p[YTAU] * x[int(p[LEPTON_FIELD])])**2
 
 
 class R2HDM(generic_potential.generic_potential):
@@ -240,6 +292,8 @@ class R2HDM(generic_potential.generic_potential):
 
         self.X0 = np.array([self.v1, self.v2])
         self.renormScaleSq = self.v1 * self.v1 + self.v2 * self.v2
+        self.dm11_sq = self.dm22_sq = self.dm12_sq = 0.0
+        self.dlambda1 = self.dlambda2 = self.dlambda3 = self.dlambda4 = self.dlambda5 = 0.0
         self.mass_spectrum = self._build_mass_spectrum()
 
         counterterms = self._initialize_counterterms()
@@ -257,9 +311,8 @@ class R2HDM(generic_potential.generic_potential):
         self.dm22_sq_GeV2 = self.dm22_sq * inv_cf_sq
         self.dm12_sq_GeV2 = self.dm12_sq * inv_cf_sq
 
-        mh_sq, mH_sq = self._cp_even_eigenvalues(self.v1, self.v2, 0.0)
-        _, mA_sq = self._cp_odd_eigenvalues(self.v1, self.v2, 0.0)
-        _, mHpm_sq = self._charged_eigenvalues(self.v1, self.v2, 0.0)
+        vacuum = np.array([self.v1, self.v2])
+        mh_sq, mH_sq, mA_sq, _, mHpm_sq = self.boson_massSq(vacuum, 0.0)[0][:5]
 
         self.derived_parameters = {
             "v1_GeV": self.v1_GeV,
@@ -303,102 +356,28 @@ class R2HDM(generic_potential.generic_potential):
         self._cw_residual = residual_internal
         return counterterms
 
-    # ------------------------------------------------------------------
-    # Thermal mass shifts and eigenvalues in the 2D field space
-    # ------------------------------------------------------------------
-    def _scalar_daisy_shifts(self, T):
-        if self.daisy not in ("ArnoldEspinosa", "Parwani"):
-            return 0.0, 0.0
-        T_arr = np.asarray(T, dtype=float)
-        T2 = T_arr * T_arr
-        Pi1 = self.CTempC1 * T2
-        Pi2 = self.CTempC2 * T2
-        return Pi1, Pi2
+    def _numbers(self):
+        """The numbers of the compiled functions. The counterterms are zero until they are known."""
+        thermal = self.daisy in ("ArnoldEspinosa", "Parwani")
+        return (self.m11_sq, self.m22_sq, self.m12_sq, self.lambda1, self.lambda2, self.lambda3, self.lambda5,
+                self.lambda345, self.lambda34m5, self.lambda45, self.CTempC1 if thermal else 0.0,
+                self.CTempC2 if thermal else 0.0, self.g1, self.g2, self.yt, self.yb, self.ytau,
+                1 if self._bottom_uses_phi2 else 0, 1 if self._lepton_uses_phi2 else 0,
+                self.dm11_sq, self.dm22_sq, self.dm12_sq, self.dlambda1, self.dlambda2,
+                self.dlambda3 + self.dlambda4 + self.dlambda5)
 
-    def _scalar_mass_entries(self, phi1, phi2, sector):
-        phi1 = np.asarray(phi1, dtype=float)
-        phi2 = np.asarray(phi2, dtype=float)
-        if sector == "cp_even":
-            a = (
-                self.m11_sq
-                + 1.5 * self.lambda1 * phi1**2
-                + 0.5 * self.lambda345 * phi2**2
-            )
-            c = (
-                self.m22_sq
-                + 1.5 * self.lambda2 * phi2**2
-                + 0.5 * self.lambda345 * phi1**2
-            )
-            b = -self.m12_sq + self.lambda345 * phi1 * phi2
-        elif sector == "cp_odd":
-            a = (
-                self.m11_sq
-                + 0.5 * self.lambda1 * phi1**2
-                + 0.5 * self.lambda34m5 * phi2**2
-            )
-            c = (
-                self.m22_sq
-                + 0.5 * self.lambda2 * phi2**2
-                + 0.5 * self.lambda34m5 * phi1**2
-            )
-            b = -self.m12_sq + self.lambda5 * phi1 * phi2
-        elif sector == "charged":
-            a = (
-                self.m11_sq
-                + 0.5 * self.lambda1 * phi1**2
-                + 0.5 * self.lambda3 * phi2**2
-            )
-            c = (
-                self.m22_sq
-                + 0.5 * self.lambda2 * phi2**2
-                + 0.5 * self.lambda3 * phi1**2
-            )
-            b = -self.m12_sq + 0.5 * self.lambda45 * phi1 * phi2
-        else:
-            raise ValueError(f"Unknown scalar sector '{sector}'.")
-        return a, b, c
-
-    def _cp_even_eigenvalues(self, phi1, phi2, T):
-        a, b, c = self._scalar_mass_entries(phi1, phi2, "cp_even")
-        Pi1, Pi2 = self._scalar_daisy_shifts(T)
-        return eigenvalues_2x2(a + Pi1, b, c + Pi2)
-
-    def _cp_odd_eigenvalues(self, phi1, phi2, T):
-        a, b, c = self._scalar_mass_entries(phi1, phi2, "cp_odd")
-        Pi1, Pi2 = self._scalar_daisy_shifts(T)
-        return eigenvalues_2x2(a + Pi1, b, c + Pi2)
-
-    def _charged_eigenvalues(self, phi1, phi2, T):
-        a, b, c = self._scalar_mass_entries(phi1, phi2, "charged")
-        Pi1, Pi2 = self._scalar_daisy_shifts(T)
-        return eigenvalues_2x2(a + Pi1, b, c + Pi2)
+    def compiled_model(self):
+        return compiled_tree, compiled_bosons, compiled_fermions, self._numbers()
 
     # ------------------------------------------------------------------
     # Potentials used by TransitionListener
     # ------------------------------------------------------------------
     def V0(self, X):
-        X = np.asarray(X, dtype=float)
-        phi1 = X[..., 0]
-        phi2 = X[..., 1]
-        tree = 0.5 * self.m11_sq * phi1**2 + 0.5 * self.m22_sq * phi2**2
-        tree -= self.m12_sq * phi1 * phi2
-        tree += 0.125 * self.lambda1 * phi1**4
-        tree += 0.125 * self.lambda2 * phi2**4
-        tree += 0.25 * self.lambda345 * phi1**2 * phi2**2
-        return tree
+        return tree_at(compiled_tree, X, self._numbers()[:DM11] + (0.0,) * (LAST_NUMBER + 1 - DM11))
 
     def Vct(self, X):
-        X = np.asarray(X, dtype=float)
-        phi1 = X[..., 0]
-        phi2 = X[..., 1]
-        counter = 0.5 * self.dm11_sq * phi1**2 + 0.5 * self.dm22_sq * phi2**2
-        counter -= self.dm12_sq * phi1 * phi2
-        counter += 0.125 * self.dlambda1 * phi1**4
-        counter += 0.125 * self.dlambda2 * phi2**4
-        counter += (
-            0.25 * (self.dlambda3 + self.dlambda4 + self.dlambda5) * phi1**2 * phi2**2
-        )
-        return counter
+        numbers = self._numbers()
+        return tree_at(compiled_tree, X, (0.0,) * DM11 + numbers[DM11:])
 
     # ------------------------------------------------------------------
     # Spectrum construction (2D field space)
@@ -406,57 +385,7 @@ class R2HDM(generic_potential.generic_potential):
     def _build_mass_spectrum(self) -> MassSpectrum:
 
         def boson_mass_function(X, T):
-            X = np.asarray(X)
-            T2 = T * T
-            phi1 = X[..., 0]
-            phi2 = X[..., 1]
-            phi_sq = phi1**2 + phi2**2
-
-            Nbosons = 12  # How many entries?
-            M2 = np.empty(phi1.shape + (Nbosons,))
-
-            # Scalars and Goldstones
-            cp_even_light, cp_even_heavy = self._cp_even_eigenvalues(phi1, phi2, T)
-            cp_odd_small, cp_odd_large = self._cp_odd_eigenvalues(phi1, phi2, T)
-            charged_small, charged_large = self._charged_eigenvalues(phi1, phi2, T)
-
-            M2[..., 0] = cp_even_light
-            M2[..., 1] = cp_even_heavy
-            M2[..., 2] = cp_odd_large
-            M2[..., 3] = cp_odd_small
-            M2[..., 4] = charged_large
-            M2[..., 5] = charged_small
-
-            # Gauge bosons. The neutral sector has two mass matrices in the (W^3, B) basis,
-            # one for the longitudinal modes, which carry the Debye masses, and one for the
-            # transverse modes, which carry none at this order. Each is diagonalised on its
-            # own, the Debye masses being added before the diagonalisation: since Pi_WL and
-            # Pi_BL differ, the longitudinal mixing angle is temperature dependent and the
-            # longitudinal "photon" is not the photon direction.
-            Pi_WL = 2 * self.g2**2 * T2
-            Pi_BL = 2 * self.g1**2 * T2
-            a = 0.25 * self.g2**2 * phi_sq + Pi_WL
-            b = -0.25 * self.g1 * self.g2 * phi_sq
-            c = 0.25 * self.g1**2 * phi_sq + Pi_BL
-            discr = np.sqrt(np.maximum(a**2 + 4.0 * b**2 - 2.0 * a * c + c**2, 0.0))
-            mZ2L = 0.5 * (a + c + discr)
-            mA2L = 0.5 * (a + c - discr)
-            # The transverse matrix is the same one without Pi_WL and Pi_BL. Its determinant
-            # vanishes identically, so its eigenvalues are (g1^2 + g2^2) phi^2 / 4 and zero:
-            # the transverse Z, and a transverse photon that is massless at every field value.
-            mZ2 = 0.25 * (self.g1**2 + self.g2**2) * phi_sq
-            mA2 = np.zeros_like(phi_sq)
-            mW2 = 0.25 * self.g2**2 * phi_sq
-            mW2L = mW2 + Pi_WL
-
-            M2[..., 6] = mZ2
-            M2[..., 7] = mZ2L
-            M2[..., 8] = mA2
-            M2[..., 9] = mA2L
-            M2[..., 10] = mW2
-            M2[..., 11] = mW2L
-
-            return M2
+            return bosons_at(compiled_bosons, NUMBER_OF_BOSONS, X, T, self._numbers())
 
         scalars = [
             Scalar(name="m_h", latex_name=r"$m_h$", dof=1, is_SM=True),
@@ -484,25 +413,7 @@ class R2HDM(generic_potential.generic_potential):
         ]
 
         def fermion_mass_function(X):
-            X = np.asarray(X, dtype=float)
-            phi1 = X[..., 0]
-            phi2 = X[..., 1]
-
-            Nfermions = 3
-            M2 = np.empty(phi1.shape + (Nfermions,))
-
-            mt_sq = (self.yt * phi2) ** 2
-            bottom_field = phi2 if self._bottom_uses_phi2 else phi1
-            lepton_field = phi2 if self._lepton_uses_phi2 else phi1
-            mb_sq = (self.yb * bottom_field) ** 2
-            mtau_sq = (self.ytau * lepton_field) ** 2
-
-            M2[..., 0] = mt_sq
-            M2[..., 1] = mb_sq
-            M2[..., 2] = mtau_sq
-
-            return M2
-
+            return fermions_at(compiled_fermions, NUMBER_OF_FERMIONS, X, self._numbers())
 
         spectrum = MassSpectrum(scalars=scalars, gaugeBosons=gauge_bosons,
                                 boson_massSq_fn=boson_mass_function,

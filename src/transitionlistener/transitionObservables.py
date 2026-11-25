@@ -11,6 +11,7 @@ Authors:
     Carlo Tasillo <carlo.tasillo@ific.uv.es>
 """
 
+from transitionlistener.eft_rate import one_field_rate_3d
 import numpy as np
 from dataclasses import dataclass
 from typing import Sequence
@@ -25,10 +26,12 @@ from . import errors
 from transitionlistener.hydrodynamics import (Hydrodynamics, calc_kappas,
                                               resolve_configured_sound_speed)
 from transitionlistener.bubbledynamics import (
+    ActionExponentSpline,
     calcPercAndEvolve,
     calcAlphas,
     calc_betaH_S3,
     calc_betaH_S3_approx,
+    calc_rate_log_slope,
     calcMeanBubbleSeparation,
     record_entropy_scheme_diagnostics,
     falseVacuumVolumeGrowthRate,
@@ -56,7 +59,7 @@ def _extract_instanton_profile_arrays(instanton) -> tuple[np.ndarray, np.ndarray
     """Return radius/field arrays from either supported instanton representation.
 
     Most tunneling paths return an object with ``instanton.profile1D.R`` and
-    ``instanton.profile1D.Phi``. The lightweight WIP tunneling approximation
+    ``instanton.profile1D.Phi``. The lightweight tunneling approximation
     instead returns a plain dictionary carrying raw arrays under
     ``{"profile1D": r, "Phi": phis}``. The observable pipeline only needs the
     radius/field samples to estimate the half-maximum bubble radius ``R0``, so
@@ -236,15 +239,54 @@ def build_action_spline(TSYM, S):
     above its data, and its bubble-number integral runs to the hottest support temperature only
     because the integrand is identically zero above the last computed action.
 
+    Between the support points the action is read from the cubic spline of ``S/T`` in ``ln T``
+    that the percolation integral uses (``bubbledynamics.ActionExponentSpline``), not from a
+    shape-preserving spline of ``S``: the bubble number density is an integral of
+    ``exp(-S/T)`` with ``S/T`` near 100, so an interpolation error of 1e-2 in ``S/T`` is 1 % in
+    the rate, and the shape-preserving interpolant has errors of that size across the gaps of
+    the adaptive support, so (beta/H)_RH would step with the placement of the support points.
+    Outside the runs that spline covers, and at the support
+    temperatures themselves, the values are those of the shape-preserving interpolant, so
+    ``Sint(Sint.x)`` still returns the samples, which ``calc_betaH_S3`` fits.
     """
     S = np.asarray(S, dtype=float)
     finite_s = S[np.isfinite(S)]
-    return _BoundedPchipInterpolator(
+    return _SmoothActionInterpolator(
         TSYM,
         S,
         fill_low=float(finite_s[-1]),
         fill_high=np.inf,
     )
+
+
+class _SmoothActionInterpolator(_BoundedPchipInterpolator):
+    """The bounded action interpolant with ``S/T`` read from `ActionExponentSpline` where it is defined."""
+
+    def __init__(self, x, y, **kwargs) -> None:
+        super().__init__(x, y, **kwargs)
+        x_arr = np.asarray(x, dtype=float)
+        y_arr = np.asarray(y, dtype=float)
+        mask = np.isfinite(x_arr) & np.isfinite(y_arr) & (x_arr > 0.0)
+        x_arr, y_arr = x_arr[mask], y_arr[mask]
+        order = np.argsort(x_arr)
+        x_arr, y_arr = x_arr[order], y_arr[order]
+        keep = np.concatenate(([True], np.diff(x_arr) > 0)) if x_arr.size else np.zeros(0, dtype=bool)
+        self._exponent = ActionExponentSpline(np.log(x_arr[keep]), y_arr[keep])
+
+    def __call__(self, values):
+        out = super().__call__(values)
+        if not self._exponent.runs:
+            return out
+        arr = np.atleast_1d(np.asarray(values, dtype=float))
+        result = np.array(np.atleast_1d(out), dtype=float)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            u = np.log(arr)
+        smooth = self._exponent.covers(u) & ~np.isin(arr, self.x)
+        if np.any(smooth):
+            result[smooth] = arr[smooth] * self._exponent(u[smooth])
+        if np.isscalar(values) or np.ndim(values) == 0:
+            return float(result.reshape(()))
+        return result.reshape(np.shape(values))
 
 
 def hottest_known_action_temperature(support_T, support_S):
@@ -298,6 +340,7 @@ class TransitionObservableInfo:
     h0: float = np.nan
     betaH_S3: float = np.nan
     betaH_RH: float = np.nan
+    betaH_Gamma: float = np.nan
     Tf_SM_GeV: float = np.nan
     kappa_phi: float = np.nan
     kappa_sw: float = np.nan
@@ -418,11 +461,9 @@ def theChainEndedElsewhere(pot, last_vev) -> bool:
         the separation is not finite.
     """
     T0 = pot.Tmin
-    # The field points first, before the potential is asked about them. `np.allclose`, which
-    # this replaces, compared the coordinates and never evaluated `Vtot`, so a traced endpoint
-    # that is not finite could not reach a model's own code; a model is free to refuse such a
-    # point by raising, and that would come out of here as an exception where it used to come
-    # out as this verdict.
+    # The field points first, before the potential is asked about them: a model is free to
+    # refuse a traced endpoint that is not finite by raising, and that would come out of here
+    # as an exception instead of this verdict.
     if not (np.isfinite(np.atleast_1d(np.asarray(last_vev, dtype=float))).all()
             and np.isfinite(np.atleast_1d(np.asarray(pot.X0, dtype=float))).all()):
         return True
@@ -579,6 +620,7 @@ class TransitionObservables:
             "WARNING:noisy_c_s": False,
             "DIAG:c_s_step_change": float("nan"),
             "WARNING:daisy_outside_validity": False,
+            **one_field_rate_3d.VALIDITY_KEYS,
             "DIAG:daisy_over_radiation": float("nan"),
             "WARNING:v_wall_no_solution": False,
             "WARNING:no_perc_splines": False,
@@ -1055,6 +1097,7 @@ class TransitionObservables:
                     percolation.TSYM,
                     percolation.P,
                     percolation.Tperc,
+                    log_entropy=percolation.logEntropyInt,
                 )
             except Exception:
                 Treh = None
@@ -1217,6 +1260,7 @@ class TransitionObservables:
         if (
             "betaH_S3" in ctx.derived_param_names
             or "betaH_RH" in ctx.derived_param_names
+            or "betaH_Gamma" in ctx.derived_param_names
             or "Tf_SM_GeV" in ctx.derived_param_names
         ):
             self._populate_beta_related(
@@ -1238,6 +1282,8 @@ class TransitionObservables:
         verbose = ctx.verbose
         pot = ctx.pot
         beta_time_factor = self._beta_time_temperature_factor(ctx, percolation.Tperc)
+        # the samples behind betaH_S3, which betaH_Gamma is fitted on too
+        betaH_diag: dict = {}
 
         if "betaH_S3" in ctx.derived_param_names:
             if verbose:
@@ -1261,7 +1307,6 @@ class TransitionObservables:
                     verbose=verbose,
                 )
             else:
-                betaH_diag: dict = {}
                 derived["betaH_S3"] = calc_betaH_S3(
                     percolation.Tperc,
                     percolation.Sint,
@@ -1314,6 +1359,10 @@ class TransitionObservables:
                     * (1 / f_perc) ** (1 / 3)
                 )
 
+        if "betaH_Gamma" in ctx.derived_param_names:
+            derived["betaH_Gamma"] = self._betaH_Gamma(
+                ctx, percolation, beta_time_factor, temperatures=betaH_diag.get("fit_temperatures"))
+
         if "Tf_SM_GeV" in ctx.derived_param_names:
             if verbose:
                 print("Calculating Tf_SM_GeV...")
@@ -1348,6 +1397,38 @@ class TransitionObservables:
                         console.print("Error message: ", err)
                     Tf_val = np.nan
             derived["Tf_SM_GeV"] = Tf_val * pot.conversionFactor if np.isfinite(Tf_val) else np.nan
+
+    def _betaH_Gamma(self, ctx: TransitionContext, percolation: PercolationResult,
+                     beta_time_factor: float, temperatures=None) -> float:
+        """``betaH_Gamma = H^-1 d ln Gamma/dt`` at ``Tperc``.
+
+        The growth rate of the nucleation rate at percolation in units of ``H``, the Hubble
+        rate of the percolation history at ``Tperc``. With the time-temperature relation,
+        ``d ln Gamma/dt = -3 c_s^2 H d ln Gamma/d ln T``, so
+        ``betaH_Gamma = (3 c_s^2) (-d ln Gamma/d ln T)``: ``beta_time_factor`` times the
+        slope of :func:`calc_rate_log_slope`.
+
+        The expansion factors of arXiv:2511.15687 were fitted for an exponential rate
+        ``Gamma ~ exp(beta t)`` and are written in its ``beta/H_V``, with
+        ``H_V = (8 pi Delta V/3)^(1/2)/M_Pl`` the Hubble rate of the free-energy difference
+        ``Delta V`` of the two phases alone. ``betaH_Gamma`` equals that ``beta/H_V`` up to
+        the factor ``H(Tperc)/H_V``, which is close to one in a vacuum-dominated transition.
+        ``gwConf.expansion_speed = "betaH_Gamma"`` passes it to them.
+
+        ``nan`` without percolation splines or without a finite slope. ``temperatures``, the
+        samples :func:`calc_betaH_S3` used for ``betaH_S3``, are passed on to
+        :func:`calc_rate_log_slope`.
+        """
+        derived = ctx.derived_params
+        if derived.get("WARNING:no_perc_splines", False) or percolation.Sint is None:
+            return np.nan
+        slope = calc_rate_log_slope(
+            percolation.Tperc, percolation.Sint, ctx.outdict, ctx.pot, ctx.phase_symmetric,
+            ctx.phase_broken, verbose=ctx.verbose, temperatures=temperatures,
+        )
+        if not np.isfinite(slope):
+            return np.nan
+        return float(beta_time_factor * slope)
 
     def _beta_time_temperature_factor(self, ctx: TransitionContext, temperature: float) -> float:
         """Return the factor converting temperature derivatives to beta/H.
@@ -1409,7 +1490,7 @@ class TransitionObservables:
         # the field just rolls down to the broken phase minimum, i.e.
         # the endpoint in the instanton solution.
 
-        # The fixed_step_size solver historically uses the nucleation instanton.
+        # The fixed_step_size solver uses the nucleation instanton.
         # In the adaptive_step_size workflow there is no trustworthy Tnuc seed,
         # so use the instanton at Tperc when present, otherwise the closest
         # outdict instanton to Tperc. This keeps R0 tied to the actual
@@ -1419,6 +1500,11 @@ class TransitionObservables:
         if instanton is None:
             instanton = ctx.tr.instanton
         R_, phi_ = _extract_instanton_profile_arrays(instanton)
+        profile = None
+        if R_ is None and hasattr(ctx.pot, "bounce_profile"):
+            profile = ctx.pot.bounce_profile(percolation.Tperc)
+        if profile is not None:
+            R_, phi_ = profile
         if (
             R_ is None
             or phi_ is None
@@ -1600,6 +1686,8 @@ class TransitionObservables:
         milestone_temperature = percolation.Tperc
         self._ensure_wall_velocity(ctx, milestone_temperature)
         self._ensure_sound_speed(ctx, milestone_temperature)
+        # the validity of the 3D theory at the same temperature; defaults where the run has no 3D rate
+        ctx.derived_params.update(one_field_rate_3d.validity_diagnostics(ctx.pot, milestone_temperature))
         alpha_theta_milestone = self._compute_transition_strength(ctx, milestone_temperature)
         ctx.derived_params["WARNING:too_weak_to_compute_perc"] = (
             np.isfinite(alpha_theta_milestone)

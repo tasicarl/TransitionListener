@@ -74,9 +74,14 @@ asymptotic ones that fix how much pressure the wall feels.
 .. versionchanged:: 2.2
    They did not share it. The strength that drives the sound waves was normalised to the
    enthalpy of the symmetric phase, while the two describing the wall were normalised to the
-   radiation energy density of the transitioning sector with zero-temperature masses. They are
-   now all referred to the same enthalpy. Found and fixed by Nico Benincasa and Kristjan
-   Müürsepp.
+   radiation energy density of the transitioning sector with zero-temperature masses. The
+   three strengths that enter the bubble-collision efficiency, the one at the wall and the
+   two asymptotic ones, are now all referred to the enthalpy :math:`w_\mathrm{sym}` of the
+   transitioning sector alone, the asymptotic ones through
+   :math:`\rho_\mathrm{rad} = 3w_\mathrm{sym}/4`. The strength that drives the sound waves
+   also includes a decoupled radiation bath in :math:`w_\mathrm{sym}` when
+   ``GWConf.coupled_hydrodynamics`` is ``True``, the default, because the two sectors then
+   move as one fluid. Found and fixed by Nico Benincasa and Kristjan Müürsepp.
 
 The sound speed
 ---------------
@@ -222,11 +227,14 @@ What fraction of the released energy reaches each source is given by fits to hyd
 simulations [Espinosa:2010hh]_. The sound-wave efficiency :math:`\kappa_\mathrm{sw}` is
 interpolated between four limiting regimes, chosen by the wall velocity relative to the sound
 speed and the Jouguet velocity, each with its own closed form in :math:`\alpha`. The
-turbulent efficiency is a fixed fraction of it, set by ``epsilon_turbulence``. The
-bubble-collision efficiency [Ellis:2019oqb]_ depends on the ratios of the strengths
-discussed above, which is why they must share a normalisation, and what is left after the
-collisions have taken their share, :math:`\alpha(1-\kappa_\phi)`, is what the sound-wave fit
-is evaluated at.
+turbulent efficiency is a fixed fraction of it, set by ``epsilon_turbulence`` (0.1 by
+default). The bubble-collision efficiency :math:`\kappa_\phi` is selected by
+``bw_collisions``: ``off``, the default, sets it to zero, ``full`` to one, and ``NLO``
+computes it from the friction of [Ellis:2019oqb]_ and the wall evolution of
+[Lewicki:2022pdb]_. That last form depends on the ratios of the strengths discussed
+above, which is why they must share a normalisation. What is left after the collisions have
+taken their share, :math:`\alpha(1-\kappa_\phi)`, is what the sound-wave fit is evaluated at,
+and the result is multiplied by :math:`1-\kappa_\phi`.
 
 The fits are what the pipeline uses, including for a wall velocity obtained in local
 equilibrium. The solver of the previous section computes its own efficiency on the way, by

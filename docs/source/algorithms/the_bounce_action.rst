@@ -40,6 +40,10 @@ The exponent :math:`S_3/T` is what matters: it runs over tens of orders of magni
 the temperatures of a transition, so the rate is set by the action and the prefactor only
 shades it.
 
+This rate is the default, ``rate_mode = "S3overT_4D"`` in ``nucleationConf``. A model with a
+three-dimensional potential sets ``rate_mode = "model"`` and takes the rate from the
+three-dimensional effective theory instead, as :doc:`the_three_dimensional_rate` describes.
+
 .. admonition:: Only the thermal bounce is computed
    :class: important
 
@@ -206,10 +210,11 @@ Settings
    * - ``fRatioConv``
      - 2e-2
      - Convergence of the path deformation, as the largest normal force divided by the largest
-       gradient. Tightened to 1e-2 where the model has more than one field.
+       gradient. Tightened to 3e-3 where the model has more than one field.
    * - ``converge_0``
-     - 5.0
-     - The same ratio, applied as an early stop during the first stage of the deformation.
+     - 1.5
+     - Early stop after the first deformation step, which is accepted if the ratio is below
+       ``converge_0`` times ``fRatioConv``.
    * - ``V_spline_samples``
      - 1000
      - Points at which the potential is sampled along the path.

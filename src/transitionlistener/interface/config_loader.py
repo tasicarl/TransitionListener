@@ -25,6 +25,23 @@ from . import state
 from ..observability import GW_Sensitivity_Data
 
 
+def _with_nucleation_settings(factory, settings: dict):
+    """Wrap a potential factory so every instance gets the given settings.
+
+    The pipeline builds its own potential objects, so the settings cannot be
+    applied to a single instance here; they have to travel with the factory.
+    """
+    def wrapped(*args, **kwargs):
+        pot = factory(*args, **kwargs)
+        for key, value in settings.items():
+            setattr(pot.config.nucleationConf, key, value)
+        return pot
+
+    wrapped.__name__ = getattr(factory, "__name__", "specific_potential")
+    wrapped.__doc__ = getattr(factory, "__doc__", None)
+    return wrapped
+
+
 class ScanConfig:
     """Read and store all settings required for a TransitionListener scan."""
 
@@ -56,6 +73,26 @@ class ScanConfig:
 
         self.description = config["description"]
         self.plot_description = config["plot_description"]
+
+        # Optional `Nucleation:` block, applied to every potential this scan
+        # builds. This is how the three-dimensional rate mode is selected from
+        # a configuration file rather than only from Python. Unknown keys are
+        # refused rather than ignored, because a silently misspelt switch here
+        # would leave the run quietly in the default mode -- which is exactly
+        # the failure that hid the seam defect for as long as it did.
+        self.nucleation = config.get("Nucleation", None) or {}
+        if self.nucleation:
+            from transitionlistener.config import NucleationConf
+            allowed = {k for k in vars(NucleationConf)
+                       if not k.startswith("_")}
+            unknown = set(self.nucleation) - allowed
+            if unknown:
+                raise Exception(
+                    f"Unknown key(s) in the Nucleation block: {sorted(unknown)}. "
+                    f"Allowed: {sorted(allowed)}"
+                )
+            state.potential = _with_nucleation_settings(state.potential,
+                                                        self.nucleation)
 
         if self.type == "SinglePoint":
             self.params = config["Parameters"]

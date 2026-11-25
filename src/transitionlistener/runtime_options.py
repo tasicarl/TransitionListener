@@ -15,7 +15,17 @@ Authors:
 import copy
 from collections.abc import Mapping
 
-from transitionlistener.config import TracingConf
+from transitionlistener.config import (
+    TracingConf,
+    GW_SOURCE_MODELS,
+    GW_SW_LIFETIME_FACTORS,
+    GW_LV22_SHAPES_FIELD,
+    GW_LV22_SHAPES_FLUID,
+    GW_LV22_EXPANDING_SHAPES,
+    GW_CAUSALITY_TAILS,
+    GW_EXPANSION_SPEEDS,
+    GW_BW_COLLISIONS,
+)
 from transitionlistener import errors
 from transitionlistener import constants as cn
 
@@ -55,6 +65,7 @@ PERCOLATION_OVERRIDE_KEYS = (
     "percolation_max_log10_rate_step",
     "percolation_action_jitter_tunneltight_rescue",
     "percolation_n_jitter_save",
+    "percolation_f_perc",
     "percolation_betaH_S3_fit_points",
     "percolation_betaH_S3_fit_check_points",
     "percolation_betaH_S3_fit_rel_tol",
@@ -66,8 +77,30 @@ PERCOLATION_OVERRIDE_KEYS = (
 
 GW_OVERRIDE_KEYS = (
     "gw_wall_velocity",
+    "gw_source_model",
+    "gw_kinetic_energy_efficiency",
+    "gw_expansion_suppression",
+    "gw_sw_lifetime_factor",
+    "gw_lv22_shape_field",
+    "gw_lv22_shape_fluid",
+    "gw_lv22_expanding_shape",
+    "gw_causality_tail",
+    "gw_expansion_speed",
     "gw_pta_free_spectrum",
+    "gw_bw_collisions",
+    "gw_use_mean_bubble_separation",
 )
+
+GW_CHOICE_KEYS = {
+    "gw_source_model": ("source_model", GW_SOURCE_MODELS),
+    "gw_sw_lifetime_factor": ("sw_lifetime_factor", GW_SW_LIFETIME_FACTORS),
+    "gw_lv22_shape_field": ("lv22_shape_field", GW_LV22_SHAPES_FIELD),
+    "gw_lv22_shape_fluid": ("lv22_shape_fluid", GW_LV22_SHAPES_FLUID),
+    "gw_lv22_expanding_shape": ("lv22_expanding_shape", GW_LV22_EXPANDING_SHAPES),
+    "gw_causality_tail": ("causality_tail", GW_CAUSALITY_TAILS),
+    "gw_expansion_speed": ("expansion_speed", GW_EXPANSION_SPEEDS),
+    "gw_bw_collisions": ("bw_collisions", GW_BW_COLLISIONS),
+}
 
 PRECISION_MODE_NAMES = ("default", "robust", "xtrace", "tunneltight", "benchmark")
 
@@ -182,6 +215,18 @@ def _as_float(value, minimum: float | None = None) -> float:
     return number
 
 
+def _as_bool(value) -> bool:
+    """Cast ``value`` to ``bool``, accepting the usual YAML and command-line spellings."""
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"true", "yes", "on", "1"}:
+            return True
+        if text in {"false", "no", "off", "0"}:
+            return False
+        raise ValueError(f"Cannot interpret {value!r} as a boolean.")
+    return bool(value)
+
+
 def apply_percolation_overrides(percolation_conf, overrides: dict[str, object]) -> None:
     """Apply runtime percolation controls parsed from model or scan inputs."""
     overrides = {key: overrides.get(key) for key in PERCOLATION_OVERRIDE_KEYS}
@@ -256,6 +301,12 @@ def apply_percolation_overrides(percolation_conf, overrides: dict[str, object]) 
         if overrides[key] is not None:
             setattr(percolation_conf, attr, bool(overrides[key]))
 
+    if overrides["percolation_f_perc"] is not None:
+        f_perc = float(overrides["percolation_f_perc"])
+        if not 0.0 < f_perc < 1.0:
+            raise ValueError("percolation_f_perc must lie strictly between 0 and 1.")
+        percolation_conf.f_perc = f_perc
+
     percolation_conf.n_action_max = max(
         int(percolation_conf.n_action_max),
         int(percolation_conf.n_action_min),
@@ -263,9 +314,30 @@ def apply_percolation_overrides(percolation_conf, overrides: dict[str, object]) 
 
 
 def apply_gw_overrides(gw_conf, overrides: dict[str, object]) -> None:
-    """Apply runtime GW-observable overrides consumed from scan inputs."""
+    """Apply runtime GW-observable overrides consumed from scan inputs.
+
+    The modelling choices of the spectrum are validated here, against the same
+    allowed values that :class:`transitionlistener.gwfopt.FOPTspectrum` checks,
+    so that a misspelt switch fails when the potential is built and not after
+    the percolation has been computed.
+    """
     if overrides.get("gw_wall_velocity") is not None:
         gw_conf.wall_velocity = overrides["gw_wall_velocity"]
+    for key, (attr, allowed) in GW_CHOICE_KEYS.items():
+        if overrides.get(key) is not None:
+            value = str(overrides[key])
+            if value not in allowed:
+                raise ValueError(f"{key} must be one of {allowed}, got {value!r}.")
+            setattr(gw_conf, attr, value)
+    if overrides.get("gw_kinetic_energy_efficiency") is not None:
+        efficiency = float(overrides["gw_kinetic_energy_efficiency"])
+        if not 0.0 < efficiency <= 1.0:
+            raise ValueError("gw_kinetic_energy_efficiency must lie in (0, 1].")
+        gw_conf.kinetic_energy_efficiency = efficiency
+    if overrides.get("gw_use_mean_bubble_separation") is not None:
+        gw_conf.use_mean_bubble_separation = _as_bool(overrides["gw_use_mean_bubble_separation"])
+    if overrides.get("gw_expansion_suppression") is not None:
+        gw_conf.expansion_suppression = _as_bool(overrides["gw_expansion_suppression"])
     if overrides.get("gw_pta_free_spectrum") is not None:
         # Imported here rather than at module level: `observability` pulls in matplotlib and
         # the optional PTA stack, and this module is loaded for every model.

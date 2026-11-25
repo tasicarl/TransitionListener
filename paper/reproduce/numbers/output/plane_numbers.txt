@@ -1,0 +1,166 @@
+NG15 (no foreground): best g = 0.450, v = 2.99 GeV, (beta/H)_R = 9.5, beta_Gamma/H = 7.7, (beta/H)_S = 11.8, T_reh = 153 MeV, T_p = 2.94 keV, completion d ln(a^3 P_f)/dt/H = -0.02, lnL = 1.56
+   68%: g 0.433-0.497, v 0.96-4.78 GeV (log10 -0.02 to +0.68), width g 0.064, log10 v 0.70; (beta/H)_R in the 68% region 3.2-18.0, T_reh 62-324 MeV; posterior mass with T_p outside the Delta S table 0.00
+NG15 (with the (A, gamma) foreground): best g = 0.450, v = 2.99 GeV, (beta/H)_R = 9.5, beta_Gamma/H = 7.7, (beta/H)_S = 11.8, T_reh = 153 MeV, T_p = 2.94 keV, completion d ln(a^3 P_f)/dt/H = -0.02, lnL = 1.55
+   68%: g 0.433-0.521, v 0.94-7.18 GeV (log10 -0.02 to +0.86), width g 0.088, log10 v 0.88; (beta/H)_R in the 68% region 3.2-21.3, T_reh 44-384 MeV; posterior mass with T_p outside the Delta S table 0.00
+   bins5    : best g = 0.507, v = 0.89, lnL = 4.02; 68% g 0.455-0.552, v 0.26-2.56
+   bins30   : best g = 0.443, v = 3.76, lnL = -7.81; 68% g 0.430-0.495, v 1.01-5.23
+   v1       : best g = 0.440, v = 3.98, lnL = -46.27; 68% g 0.428-0.486, v 1.16-5.36
+   hd       : best g = 0.455, v = 2.99, lnL = 0.81; 68% g 0.437-0.505, v 0.97-4.81
+   dmgp     : best g = 0.537, v = 0.45, lnL = -4.94; 68% g 0.483-0.577, v 0.18-1.62
+   binaryfog: best g = 0.450, v = 2.99, lnL = 1.56; 68% g 0.458-0.693, v 0.31-714.29
+IPTA2 (no foreground): best g = 0.477, v = 0.53 GeV, (beta/H)_R = 15.5, beta_Gamma/H = 13.4, (beta/H)_S = 17.5, T_reh = 36 MeV, T_p = 14.27 keV, completion d ln(a^3 P_f)/dt/H = -2.06, lnL = -3.70
+   68%: g 0.470-0.519, v 0.24-0.70 GeV (log10 -0.62 to -0.15), width g 0.050, log10 v 0.47; (beta/H)_R in the 68% region 3.1-24.4, T_reh 17-99 MeV; posterior mass with T_p outside the Delta S table 0.00
+IPTA2 (with the (A, gamma) foreground): best g = 0.480, v = 0.50 GeV, (beta/H)_R = 15.9, beta_Gamma/H = 13.8, (beta/H)_S = 18.0, T_reh = 34 MeV, T_p = 16.53 keV, completion d ln(a^3 P_f)/dt/H = -2.23, lnL = -3.80
+   68%: g 0.473-0.621, v 0.19-14.37 GeV (log10 -0.72 to +1.16), width g 0.148, log10 v 1.88; (beta/H)_R in the 68% region 3.1-81.9, T_reh 3-358 MeV; posterior mass with T_p outside the Delta S table 0.00
+   bins5    : best g = 0.427, v = 2.51, lnL = 0.89; 68% g 0.430-0.514, v 0.26-2.34
+   bins30   : best g = 0.460, v = 1.12, lnL = -17.54; 68% g 0.442-0.471, v 0.82-1.85
+
+local completion line at log10 v = +0.47: g = 0.448-0.450
+cells that percolate: 36059, of which reach T_f: 35871, fail the local criterion: 5335
+NANOGrav lnL max with the local criterion imposed: 1.56 (default 1.56)
+NG15 best fit in IPTA2: Delta lnL = -6.91
+IPTA2 best fit in NG15: Delta lnL = -17.13
+joint best fit (not used): g = 0.477, v = 1.06; Delta lnL NG15 -2.03, IPTA -2.88
+max Delta N_eff^GW on the grid: 0.013; min T_reh on the grid 0.2 MeV
+
+budget NG15: width g 0.064, log10 v 0.70; grid step 4% / 4% of the widths
+   sym  name                                  shift, width change g  shift, width change v    D2   area  dlnLmax  edge
+   N1   mu4 x0.5                                     0   +0%            0   +0%           0.01  1.00   +0.00  
+   N1   mu4 x2                                       0   +0%            0   +0%           0.01  1.00   -0.00  
+   N1   mu3 x0.5                                     1   -0%            0   +0%           0.07  1.00   -0.00  
+   N1   mu3 x2                                       1   +0%            0   -1%           0.06  1.00   -0.00  
+   N2   prefactor x10                                5   +0%            0   +2%           0.39  1.00   -0.00  
+   N2   prefactor /10                                5   -0%            0   -2%           0.40  1.00   -0.00  
+   N3   full leading order                          11   +5%            2   +1%           0.89  1.05   -0.00  
+   N4   4D daisy RG                                  9   +3%            1   -2%           0.78  1.03   -0.00  
+   N5   4D daisy                                    73   -8%            5  -11%           5.91  0.90   -0.00  
+   P1   false-vacuum background                      4   -3%            1   -3%           0.43  1.00   -0.00  
+   P2   percolation at 1/e                           3   +3%            2   +0%           0.41  0.99   -0.00  
+   P3   local completion criterion                  25  -25%           28  -35%           0.54  0.74   +0.00  
+   P4   beta/H from the action slope                17   -9%            6   -3%           1.62  0.88   -0.00  
+   P4   expansion factors at the separation speed     8   -8%            6   -8%           0.31  0.96   -0.01  
+   P4   expansion factors at beta/H_V                1   +1%            0   -0%           0.10  0.99   -0.00  
+   P5   T_reh = T_p (1+alpha)^1/4                    0  +11%           28  -15%           2.18  0.93   -0.01  
+   G1   no expansion, bubbles R^-3                  22  -17%           10  -21%           1.22  0.87   -0.10  
+   G2   expansion, bulk flow                         9   -4%           36   -8%           2.36  0.96   -0.22  
+   G3   sound waves                                136  +51%          126  +25%           2.91  1.38   -0.04  
+   G4   LISA update 2019                           180  +29%          206   -8%           4.56  1.01   -0.39  
+   G5   no expansion, envelope                      11   -6%           68   +4%           4.72  0.88   -0.42  
+   G6   sound waves, guo                            20   +6%            6   -2%           0.96  1.05   -0.04  
+   G7   template within its simulated range          9  -10%           11  -15%           0.21  0.88   +0.00  
+   B1   binary foreground                            0   +4%            3   +4%           0.43  1.12   -0.01  
+   B1   binaryfog, survey-averaged                  22  +43%            5  +26%           2.86  2.01    +nan  
+   B1   binaryfog                                   10  +20%            4  +14%           1.89  1.47    +nan  
+   B1   binaryfog, Tomczak-Kormendy                  1   +5%            3   +4%           0.33  1.14    +nan  
+   B2   HD instead of CURN                           9   +6%            1   -0%           0.84  1.13    +nan  
+   B3   DMGP instead of DMX                        101  +47%           86  +37%           2.48  1.92    +nan  
+   B4   bins: 5                                     60  +52%           59  +42%           1.23  1.83    +nan  
+   B4   bins: 30                                     4   +1%            4   +2%           0.09  0.96    +nan  
+   B5   IPTA DR2                                    46  -23%          103  -32%           5.00  1.52    +nan  
+   B6   2024 release                                12  -10%           10   -5%           0.25  0.84    +nan  
+
+budget IPTA2: width g 0.050, log10 v 0.47; grid step 5% / 5% of the widths
+   sym  name                                  shift, width change g  shift, width change v    D2   area  dlnLmax  edge
+   N1   mu4 x0.5                                     0   +0%            0   -0%           0.01  1.00   +0.00  
+   N1   mu4 x2                                       0   +0%            0   +0%           0.01  1.00   -0.00  
+   N1   mu3 x0.5                                     1   +0%            0   +0%           0.05  1.00   -0.02  
+   N1   mu3 x2                                       1   -0%            0   -0%           0.04  1.00   -0.00  
+   N2   prefactor x10                                7   +1%            0   +1%           0.24  1.00   -0.03  
+   N2   prefactor /10                                7   -1%            0   -1%           0.25  1.00   -0.03  
+   N3   full leading order                          19   +5%            2   -0%           0.67  1.05   -0.06  
+   N4   4D daisy RG                                 16   +2%            2   -1%           0.57  1.03   -0.05  
+   N5   4D daisy                                    93   -8%            3   -1%           3.38  0.95   +0.04  
+   P1   false-vacuum background                      5   -3%            0   -1%           0.21  0.99   -0.01  
+   P2   percolation at 1/e                           4   +4%            0   +2%           0.17  1.03   +0.00  
+   P3   local completion criterion                   2   -2%            3   -4%           0.07  0.96   +0.00  
+   P4   beta/H from the action slope                31   -6%            5   +5%           0.95  0.92   -0.05  
+   P4   expansion factors at the separation speed     3   -3%            1   -2%           0.10  0.97   -0.06  
+   P4   expansion factors at beta/H_V                1   +1%            1   +1%           0.03  1.01   -0.01  
+   P5   T_reh = T_p (1+alpha)^1/4                    2   +5%           19   -8%           0.65  0.98   -0.01  
+   G1   no expansion, bubbles R^-3                  14   -7%            1   +8%           0.54  1.04   -0.19  
+   G2   expansion, bulk flow                         7  +16%           43  +56%           1.26  1.50   -0.79  
+   G3   sound waves                                213   +3%          197  -13%           4.02  0.82   +0.10  
+   G4   LISA update 2019                           240   +2%          273  -28%           4.93  0.63   +0.56  >=
+   G5   no expansion, envelope                      25  -18%           60   -1%           2.91  0.72   +0.20  
+   G6   sound waves, guo                            21   +7%           11   +6%           0.50  1.08   +0.10  
+   G7   template within its simulated range          1   -1%            1   -1%           0.03  0.99   +0.00  
+   B1   binary foreground                           21  +31%            3  +30%           1.50  1.60   -0.10  
+   B1   binaryfog, survey-averaged                  46  +75%            8  +57%           2.46  2.22    +nan  
+   B1   binaryfog                                   71 +129%           26  +83%           3.30  2.76    +nan  
+   B1   binaryfog, Tomczak-Kormendy                  3   +3%            2   +4%           0.12  1.09    +nan  
+   B4   bins: 5                                     46  +68%           59 +103%           0.99  1.33    +nan  
+   B4   bins: 30 (IPTA)                             77  -42%          101  -25%           1.84  0.42    +nan  
+
+68% regions of the variants (NANOGrav, then IPTA):
+   NG15  nlo                                    g 0.433-0.497  log10 v -0.02 to +0.68  (beta/H)_RH   3.2- 18.0  lnL_max    1.56
+   NG15  mu4 x0.5                               g 0.433-0.497  log10 v -0.02 to +0.68  (beta/H)_RH   3.2- 18.0  lnL_max    1.56
+   NG15  mu4 x2                                 g 0.433-0.497  log10 v -0.02 to +0.68  (beta/H)_RH   3.2- 18.0  lnL_max    1.56
+   NG15  prefactor x10                          g 0.430-0.494  log10 v -0.02 to +0.69  (beta/H)_RH   2.7- 17.5  lnL_max    1.56
+   NG15  full leading order                     g 0.439-0.506  log10 v -0.03 to +0.67  (beta/H)_RH   3.9- 20.7  lnL_max    1.56
+   NG15  mu3 x0.5                               g 0.433-0.497  log10 v -0.02 to +0.68  (beta/H)_RH   3.1- 18.0  lnL_max    1.56
+   NG15  mu3 x2                                 g 0.434-0.498  log10 v -0.02 to +0.68  (beta/H)_RH   3.2- 18.0  lnL_max    1.56
+   NG15  prefactor /10                          g 0.436-0.500  log10 v -0.02 to +0.67  (beta/H)_RH   3.7- 18.7  lnL_max    1.56
+   NG15  higher order +                         g 0.431-0.493  log10 v -0.02 to +0.68  (beta/H)_RH   2.9- 17.1  lnL_max    1.56
+   NG15  higher order -                         g 0.435-0.501  log10 v -0.02 to +0.67  (beta/H)_RH   3.4- 18.6  lnL_max    1.56
+   NG15  lattice shift -                        g 0.476-0.546  log10 v -0.01 to +0.62  (beta/H)_RH   8.9- 29.3  lnL_max    1.56
+   NG15  lattice scale -                        g 0.454-0.522  log10 v -0.05 to +0.64  (beta/H)_RH   6.0- 24.6  lnL_max    1.56
+   NG15  leading order                          g 0.433-0.499  log10 v -0.02 to +0.68  (beta/H)_RH   3.0- 18.0  lnL_max    1.56
+   NG15  Delta S tables                         g 0.433-0.497  log10 v -0.02 to +0.68  (beta/H)_RH   3.2- 18.0  lnL_max    1.56
+   NG15  4D daisy                               g 0.483-0.541  log10 v -0.01 to +0.61  (beta/H)_RH  10.7- 28.1  lnL_max    1.56
+   NG15  4D daisy RG                            g 0.438-0.504  log10 v -0.02 to +0.67  (beta/H)_RH   3.8- 20.0  lnL_max    1.56
+   NG15  percolation at 1/e                     g 0.430-0.496  log10 v -0.03 to +0.67  (beta/H)_RH   3.4- 17.6  lnL_max    1.56
+   NG15  beta/H from the action slope           g 0.425-0.484  log10 v -0.05 to +0.63  (beta/H)_RH   2.6- 16.6  lnL_max    1.56
+   NG15  dark sector with its own temperature   g 0.432-0.492  log10 v -0.03 to +0.70  (beta/H)_RH   3.2- 17.0  lnL_max    1.56
+   NG15  local completion criterion             g 0.457-0.505  log10 v -0.09 to +0.36  (beta/H)_RH   9.5- 18.8  lnL_max    1.56
+   NG15  false-vacuum background                g 0.437-0.499  log10 v -0.01 to +0.67  (beta/H)_RH   3.2- 18.0  lnL_max    1.56
+   NG15  template within its simulated range    g 0.442-0.500  log10 v -0.04 to +0.55  (beta/H)_RH   6.1- 18.1  lnL_max    1.56
+   NG15  expansion factors at beta/H_V          g 0.432-0.497  log10 v -0.02 to +0.68  (beta/H)_RH   3.4- 18.0  lnL_max    1.56
+   NG15  sound waves                            g 0.504-0.601  log10 v -0.99 to -0.11  (beta/H)_RH  14.6- 52.2  lnL_max    1.52
+   NG15  sound waves, guo                       g 0.489-0.590  log10 v -0.94 to -0.08  (beta/H)_RH  12.0- 48.7  lnL_max    1.52
+   NG15  LISA update 2019                       g 0.539-0.622  log10 v -1.43 to -0.79  (beta/H)_RH  22.3- 60.6  lnL_max    1.18
+   NG15  expansion, bulk flow                   g 0.428-0.490  log10 v +0.26 to +0.90  (beta/H)_RH   3.1- 15.4  lnL_max    1.35
+   NG15  no expansion, bubbles R^-3             g 0.453-0.506  log10 v -0.02 to +0.54  (beta/H)_RH   7.1- 20.1  lnL_max    1.47
+   NG15  no expansion, bubbles R^-2             g 0.452-0.506  log10 v +0.28 to +0.77  (beta/H)_RH   6.7- 18.6  lnL_max    1.31
+   NG15  no expansion, envelope                 g 0.442-0.502  log10 v -0.51 to +0.22  (beta/H)_RH   6.1- 20.7  lnL_max    1.14
+   NG15  no expansion, fluid R^-3 v=1           g 0.455-0.506  log10 v +0.04 to +0.56  (beta/H)_RH   7.5- 20.0  lnL_max    1.45
+   NG15  no expansion, fluid R^-3 v=cs          g 0.448-0.496  log10 v +0.17 to +0.67  (beta/H)_RH   6.6- 17.3  lnL_max    1.32
+   NG15  no expansion, fluid R^-2 v=1           g 0.453-0.507  log10 v +0.28 to +0.77  (beta/H)_RH   6.7- 19.2  lnL_max    1.31
+   NG15  no expansion, fluid R^-2 v=cs          g 0.442-0.490  log10 v +0.33 to +0.81  (beta/H)_RH   5.6- 15.8  lnL_max    1.34
+   NG15  T_reh = T_p (1+alpha)^1/4              g 0.430-0.501  log10 v -0.16 to +0.44  (beta/H)_RH   3.1- 19.1  lnL_max    1.55
+   NG15  expansion factors at the separation speed g 0.441-0.500  log10 v -0.03 to +0.61  (beta/H)_RH   5.1- 18.8  lnL_max    1.55
+   IPTA2 nlo                                    g 0.470-0.519  log10 v -0.62 to -0.15  (beta/H)_RH   3.1- 24.4  lnL_max   -3.70
+   IPTA2 mu4 x0.5                               g 0.470-0.519  log10 v -0.63 to -0.15  (beta/H)_RH   3.1- 24.4  lnL_max   -3.70
+   IPTA2 mu4 x2                                 g 0.470-0.519  log10 v -0.62 to -0.15  (beta/H)_RH   3.1- 24.4  lnL_max   -3.70
+   IPTA2 prefactor x10                          g 0.466-0.516  log10 v -0.63 to -0.15  (beta/H)_RH   2.6- 23.8  lnL_max   -3.73
+   IPTA2 full leading order                     g 0.478-0.530  log10 v -0.63 to -0.16  (beta/H)_RH   3.8- 28.0  lnL_max   -3.75
+   IPTA2 mu3 x0.5                               g 0.469-0.519  log10 v -0.62 to -0.15  (beta/H)_RH   3.0- 24.4  lnL_max   -3.71
+   IPTA2 mu3 x2                                 g 0.470-0.520  log10 v -0.62 to -0.15  (beta/H)_RH   3.2- 24.4  lnL_max   -3.70
+   IPTA2 prefactor /10                          g 0.473-0.522  log10 v -0.63 to -0.16  (beta/H)_RH   3.6- 25.1  lnL_max   -3.73
+   IPTA2 higher order +                         g 0.467-0.515  log10 v -0.62 to -0.15  (beta/H)_RH   2.9- 23.3  lnL_max   -3.70
+   IPTA2 higher order -                         g 0.473-0.523  log10 v -0.63 to -0.16  (beta/H)_RH   3.3- 25.8  lnL_max   -3.71
+   IPTA2 lattice shift -                        g 0.518-0.571  log10 v -0.64 to -0.16  (beta/H)_RH   8.4- 39.7  lnL_max   -3.74
+   IPTA2 lattice scale -                        g 0.493-0.546  log10 v -0.65 to -0.18  (beta/H)_RH   6.0- 32.5  lnL_max   -3.74
+   IPTA2 leading order                          g 0.471-0.521  log10 v -0.62 to -0.15  (beta/H)_RH   2.9- 25.1  lnL_max   -3.75
+   IPTA2 Delta S tables                         g 0.470-0.519  log10 v -0.62 to -0.15  (beta/H)_RH   3.1- 24.4  lnL_max   -3.70
+   IPTA2 4D daisy                               g 0.518-0.563  log10 v -0.64 to -0.17  (beta/H)_RH  10.6- 37.4  lnL_max   -3.65
+   IPTA2 4D daisy RG                            g 0.477-0.528  log10 v -0.63 to -0.16  (beta/H)_RH   3.8- 27.2  lnL_max   -3.75
+   IPTA2 percolation at 1/e                     g 0.467-0.518  log10 v -0.63 to -0.15  (beta/H)_RH   3.3- 23.9  lnL_max   -3.70
+   IPTA2 beta/H from the action slope           g 0.456-0.502  log10 v -0.61 to -0.12  (beta/H)_RH   9.2- 22.0  lnL_max   -3.74
+   IPTA2 dark sector with its own temperature   g 0.467-0.512  log10 v -0.62 to -0.12  (beta/H)_RH   3.1- 23.1  lnL_max   -3.70
+   IPTA2 local completion criterion             g 0.471-0.520  log10 v -0.63 to -0.17  (beta/H)_RH  12.4- 24.4  lnL_max   -3.70
+   IPTA2 false-vacuum background                g 0.473-0.521  log10 v -0.62 to -0.16  (beta/H)_RH   3.1- 25.1  lnL_max   -3.71
+   IPTA2 template within its simulated range    g 0.470-0.519  log10 v -0.63 to -0.16  (beta/H)_RH  12.4- 24.4  lnL_max   -3.70
+   IPTA2 expansion factors at beta/H_V          g 0.469-0.519  log10 v -0.62 to -0.15  (beta/H)_RH   3.3- 24.4  lnL_max   -3.70
+   IPTA2 sound waves                            g 0.575-0.626  log10 v -1.52 to -1.11  (beta/H)_RH  33.4- 60.6  lnL_max   -3.60
+   IPTA2 sound waves, guo                       g 0.563-0.617  log10 v -1.49 to -1.05  (beta/H)_RH  29.6- 59.6  lnL_max   -3.60
+   IPTA2 LISA update 2019                       g 0.589-0.642  log10 v -1.87 to -1.51  (beta/H)_RH  36.2- 66.0  lnL_max   -3.14
+   IPTA2 expansion, bulk flow                   g 0.462-0.520  log10 v -0.56 to +0.18  (beta/H)_RH   3.1- 25.5  lnL_max   -4.49
+   IPTA2 no expansion, bubbles R^-3             g 0.478-0.524  log10 v -0.65 to -0.14  (beta/H)_RH  13.1- 25.6  lnL_max   -3.88
+   IPTA2 no expansion, bubbles R^-2             g 0.480-0.532  log10 v -0.50 to +0.19  (beta/H)_RH  11.9- 27.3  lnL_max   -4.29
+   IPTA2 no expansion, envelope                 g 0.462-0.502  log10 v -0.91 to -0.44  (beta/H)_RH  10.6- 22.1  lnL_max   -3.50
+   IPTA2 no expansion, fluid R^-3 v=1           g 0.479-0.524  log10 v -0.57 to -0.08  (beta/H)_RH  13.0- 25.7  lnL_max   -3.91
+   IPTA2 no expansion, fluid R^-3 v=cs          g 0.465-0.507  log10 v -0.35 to +0.09  (beta/H)_RH   9.9- 20.8  lnL_max   -3.65
+   IPTA2 no expansion, fluid R^-2 v=1           g 0.481-0.532  log10 v -0.46 to +0.20  (beta/H)_RH  12.3- 27.4  lnL_max   -4.27
+   IPTA2 no expansion, fluid R^-2 v=cs          g 0.462-0.504  log10 v -0.27 to +0.23  (beta/H)_RH   9.7- 20.0  lnL_max   -3.97
+   IPTA2 T_reh = T_p (1+alpha)^1/4              g 0.469-0.521  log10 v -0.70 to -0.26  (beta/H)_RH   3.1- 24.4  lnL_max   -3.71
+   IPTA2 expansion factors at the separation speed g 0.472-0.520  log10 v -0.63 to -0.16  (beta/H)_RH  12.3- 24.4  lnL_max   -3.76

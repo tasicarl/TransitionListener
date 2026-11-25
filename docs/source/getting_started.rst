@@ -38,7 +38,7 @@ It starts as follows:
    # Scan settings
    # ================================================== 
    Modelfile:
-   models/TL_conformal_dark_u1.py
+   models/TL_conformal_u1_fermions.py
 
    Potential:
    specific_potential
@@ -103,7 +103,7 @@ The next part of the yaml file controls the plotting options:
          n: 100
 
       phases:
-         plot?: False
+         plot?: True
          include_transitions?: False
 
       profileV:

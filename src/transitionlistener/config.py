@@ -63,8 +63,8 @@ class TracingConf:
         },
         "deformation_deform_params": {
             "startstep": 2e-3,
-            "fRatioConv": 2e-2,  # Convergence on normal/tangential force ratio along the path. Auto-tightened to 1e-2 for Ndim>=2 models in generic_potential.__init__.
-            "converge_0": 5.0,   # Early-stop threshold for the force-ratio at the first stage.
+            "fRatioConv": 2e-2,  # Convergence on normal/tangential force ratio along the path. Auto-tightened to 3e-3 for Ndim>=2 models in generic_potential.__init__.
+            "converge_0": 1.5,   # Early-stop threshold for the force-ratio at the first stage.
             "fRatioIncrease": 5.0,
             "maxiter": 500,
             "verbose": False,
@@ -179,7 +179,9 @@ class PercolationConf:
 class GWConf:
     """Settings for calculating the gravitational-wave signal."""
 
-    use_mean_bubble_separation = True  # If True, use mean bubble separation for the GW signal scale.
+    use_mean_bubble_separation = True  # The speed of the spectrum: True, (beta/H)_RH from the mean bubble separation at
+                                       # percolation; False, (beta/H)_S3 from the slope of the action, in every factor
+                                       # (the separation then follows from it, and expansion_speed is ignored).
     wall_velocity = "LTE"              # "LTE", "c", "WallGo", or a float in (0, 1].
     bw_collisions = "off"              # Bubble-wall collisions: "off", "full" (kappa_phi=1), or "NLO".
     turbulence = "off"                 # Turbulence contribution: "off" or a model key.
@@ -193,6 +195,86 @@ class GWConf:
     # optional PTA stack; a test holds this to `observability.DEFAULT_PTA_FREE_SPECTRUM`.
     pta_free_spectrum = "ng15_hd_v2"
 
+    # Modelling choices of the spectrum itself. They are the nuisance parameters
+    # of a parameter inference and can be set per run from the input dictionary
+    # through the ``gw_<name>`` keys handled in runtime_options.
+    source_model = "LISA-pipeline24"   # The template. "LISA-pipeline24": the three sources of the LISA pipeline paper 2403.03723,
+                                       # with the sound waves as fitted to the Higgsless simulations of 2209.04369; "LISA-update2019":
+                                       # the sound waves of the LISA update 1910.13125 with the collision (1802.05712) and turbulence
+                                       # (0909.0622) sources of the sub-GeV analysis 2502.19478; "LewickiVaskonen22": the broken power
+                                       # laws of 2208.11697 fitted to strongly supercooled scalar-field and fluid shells, one per shell type.
+    kinetic_energy_efficiency = 0.6    # Fluid kinetic energy relative to the single-bubble estimate kappa_sw alpha/(1+alpha), from the
+                                       # Higgsless simulations of 2209.04369; values between 0.4 and 0.8 are realistic (LISA-pipeline24 only).
+    expansion_suppression = False      # The cosmic expansion during the transition, 2511.15687: the amplitude of eq. (23), the peak
+                                       # frequency of eq. (22) and the causal f^3 tail below the horizon frequency of eq. (21). For the
+                                       # LISA templates the ratios A(beta)/A(infinity) and f_p(beta)/f_p(infinity) rescale the flat-space
+                                       # template; for LewickiVaskonen22 the fit with expansion replaces the flat-space one. False: flat space.
+    sw_lifetime_factor = "min"         # Form of the sound-wave lifetime factor Upsilon_sw, always applied: "min" = min(1, H tau_sh)
+                                       # (2403.03723), "guo" = 1 - (1 + 2 H tau_sh)^(-1/2) (2007.08537), "guo_capped" = Guo's form with
+                                       # tau_sh first capped at one Hubble time (BSMPT).
+    lv22_shape_field = "bubbles_R3"    # LewickiVaskonen22: column of table 1 of 2208.11697 for the scalar-field shells (energy kappa_phi).
+    lv22_shape_fluid = "fluid_R3_v1"   # LewickiVaskonen22: column for the fluid shells (energy kappa_sw).
+    lv22_expanding_shape = "dissipative"  # LewickiVaskonen22 with expansion, the models of 2511.15687: "dissipative" (dissipative bulk
+                                       # flow, a = b = c = 2; bubbles_R3 in flat space) or "non_dissipative" (bulk flow, a = c = 1, b = 2;
+                                       # bubbles_R2 in flat space).
+    causality_tail = "smooth"          # Join of the f^3 tail below the horizon frequency, applied when expansion_suppression is on
+                                       # (f_H of 2511.15687 eq. (21)) and to the flat-space LewickiVaskonen22 fits (f_H = a_p H_p/2 pi,
+                                       # eq. (20) there): "smooth" (no kink),
+                                       # "sharp" (as fitted in 2511.15687) or "off" (the flat-space fits as published in 2208.11697).
+    expansion_speed = "betaH_RH"       # The speed in the three expansion factors of 2511.15687 (amplitude, peak frequency, horizon
+                                       # frequency) when expansion_suppression is on. "betaH_RH": the speed from the bubble separation,
+                                       # as in every other factor of the spectrum. "betaH_Gamma": H^-1 dlnGamma/dt at T_perc, with H the
+                                       # Hubble rate of the percolation history, the growth rate of the nucleation rate; it equals the
+                                       # beta/H_V of the exponential rate the fits were made for up to H(T_perc)/H_V, which is close to
+                                       # one in a vacuum-dominated transition. Needs the observable betaH_Gamma, which only the adaptive
+                                       # solver computes (the fixed step size solver refuses this choice). Every other factor keeps
+                                       # betaH_RH.
+
+
+# Allowed values of the GWConf modelling choices, shared by the input-dictionary
+# overrides (runtime_options) and the spectrum itself (gwfopt).
+GW_SOURCE_MODELS = ("LISA-pipeline24", "LISA-update2019", "LewickiVaskonen22")
+GW_SW_LIFETIME_FACTORS = ("min", "guo", "guo_capped")
+GW_LV22_SHAPES_FIELD = ("bubbles_envelope", "bubbles_R2", "bubbles_R3")
+GW_LV22_SHAPES_FLUID = ("fluid_R2_v1", "fluid_R2_vcs", "fluid_R3_v1", "fluid_R3_vcs")
+GW_LV22_EXPANDING_SHAPES = ("dissipative", "non_dissipative")
+GW_CAUSALITY_TAILS = ("smooth", "sharp", "off")
+GW_EXPANSION_SPEEDS = ("betaH_RH", "betaH_Gamma")
+GW_BW_COLLISIONS = ("off", "full", "NLO")
+
+
+class NucleationConf:
+    """Settings for the bubble nucleation rate.
+
+    By default `rate_mode` "S3overT_4D" is the hard-coded 4D rate
+    T^4 (S3/2piT)^{3/2} exp(-S3/T), and the validity monitor is inert unless a model supplies the ratios it needs.
+    A model with a 3D potential (one that mixes in ``one_field_rate_3d.ThreeDimensionalRate``) switches on the 3D
+    effective-theory rate in its own defaults; the values below are those of every other model.
+    """
+
+    rate_mode = "S3overT_4D"      # "S3overT_4D" (default, 4D) or "model" (model supplies the rate).
+    # Whether the model's own rate expression is used on top of its action.
+    # At leading order it is not needed: supplying the action already gives the
+    # 3D rate, because the two expressions are the same function. Set this once
+    # the fluctuation determinants are in, where the prefactor really differs.
+    include_determinants = False
+    keep_4d_action = False        # rate_mode "model": also solve the 4D bounce, for comparison (stored as action_4d).
+    # Order of the hard -> soft matching relations. "NLO" uses DRalgo's
+    # next-to-leading-order thermal masses and g3^2 with the one-loop quartic. "LO" uses
+    # the leading-order masses and g3^2, which carry no mubar, so nothing cancels the 4D matching
+    # scale: at sub-GeV vevs the scale band on T_perc is 11-15% against 4% at NLO.
+    matching_order = "NLO"        # "NLO" or "LO".
+    mu4_over_T = 7.0553           # Central 4D matching scale in units of T: 4 pi exp(-gamma_E).
+    input_scheme = "CW"           # Conformal U(1) models: "CW" or "zero_quartic" (lambda(mu0) = 0); see the 3D model files.
+    mu3_choice = "g3sq"           # Conformal U(1) models: the 3D scale, "g3sq" or "gT" (g(mu0) T).
+    # The A0^2 phi^2 coupling h3 in the temporal mass m_D^2 + h3 phi^2 / 2 of the 3D rate (LO potential, temporal
+    # determinant, double-counting subtraction): "h3", the NLO-matched coupling; "2g3sq", its leading-order value.
+    temporal_coupling = "h3"
+    # include_determinants = True with no table attached: the grid to use instead of the one shipped for the model
+    # (transitionlistener.eft_rate.nlo_tables), and whether to add the dimension-six shift the grid stores apart from Delta S.
+    nlo_grid_file = None
+    include_dim6 = False
+
 
 class Configuration:
     """Container holding one independent configuration object per subsystem."""
@@ -202,6 +284,7 @@ class Configuration:
         self.tracingConf = TracingConf()
         self.gwConf = GWConf()
         self.percolationConf = PercolationConf()
+        self.nucleationConf = NucleationConf()
 
 
 all_observables = {
@@ -212,6 +295,7 @@ all_observables = {
     "alpha_eq": R"$\alpha_\mathrm{eq}$",
     "betaH_S3": R"$(\beta /H)_{S_3}$",
     "betaH_RH": R"$(\beta /H)_{RH}$",
+    "betaH_Gamma": R"$(\beta /H)_\Gamma$",
     "RH": R"$RH$",
     "Treh_SM_GeV": R"$T^{\mathrm{reh}}_{\mathrm{SM}}$ / $\mathrm{GeV}$",
     "Treh_DS_GeV": R"$T^{\mathrm{reh}}_{\mathrm{DS}}$ / $\mathrm{GeV}$",
@@ -275,6 +359,10 @@ all_observables = {
     "WARNING:daisy_outside_validity":
         R"$\mathrm{WARNING:} \mathrm{daisy\ outside\ validity}$",
     "DIAG:daisy_over_radiation": R"$\mathrm{DIAG:} V_\mathrm{daisy}/V_\mathrm{rad}$",
+    "WARNING:eft3d_outside_validity": R"$\mathrm{WARNING:} \mathrm{3D\ EFT\ outside\ validity}$",
+    "DIAG:eft3d_expansion_3d": R"$\mathrm{DIAG:} g_3^2/(\pi m_3)$",
+    "DIAG:eft3d_hard": R"$\mathrm{DIAG:} m_\mathrm{heavy}/(2\pi T)$",
+    "DIAG:eft3d_dim6": R"$\mathrm{DIAG:} |\Delta S_6|/S_3$",
     "WARNING:noisy_c_s":
         R"$\mathrm{WARNING:} c_\mathrm{s} \mathrm{\ step\ dependent}$",
     "DIAG:c_s_step_change": R"$\mathrm{DIAG:} \Delta c_\mathrm{s}/c_\mathrm{s}$",

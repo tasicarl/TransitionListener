@@ -444,6 +444,35 @@ class AMapThatIsNotAGroupActionIsDeclined(unittest.TestCase):
         np.testing.assert_allclose(got, FLIP_BOTH)
 
 
+class ATraceOfOnePointWithASingularHessian(unittest.TestCase):
+    """A trace that starts where the Hessian is singular has one point and no derivative there.
+
+    `traceMinimum` returns such a trace with `dXdT = array([None])`, and the phase is dropped a
+    few lines after it is moved to its image, so moving it must not read that derivative. On the
+    2HDM with lambda3 = 5.535 the phase ends in this way at T = 25.55 GeV, where the rounding of
+    the point that starts the trace decides whether the Hessian counts as singular.
+    """
+
+    def test_the_trace_is_dropped_on_the_image_of_its_point(self):
+        original = ph.traceMinimum
+        calls = []
+
+        def single_point(f, df_dx, d2f_dxdt, d2f_dx2, x0, t0, tstop, dtstart, *args, **kwargs):
+            calls.append(t0)
+            return ph._traceMinimum_rval(np.array([x0]), np.array([t0]), np.array([None]), x0, t0)
+
+        ph.traceMinimum = single_point
+        try:
+            phases = ph.traceMultiMin(
+                V, dV, d2V_dxdt, d2V, [[np.array([-1.0, -1.0 / 3.0]), 1.0]], tLow=0.05 * T0, tHigh=3.0 * T0,
+                deltaX_target=0.1, applySymmetries=canonical_under([FLIP_BOTH, IDENTITY]),
+                invGroupElements=[FLIP_BOTH, IDENTITY])
+        finally:
+            ph.traceMinimum = original
+        self.assertTrue(calls)
+        self.assertEqual(phases, {})
+
+
 class TheNewOptionDoesNotDisturbTheExistingSignature(unittest.TestCase):
     """`traceMultiMin` is a public helper and callers may pass its arguments positionally.
 

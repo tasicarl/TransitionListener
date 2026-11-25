@@ -68,7 +68,7 @@ def _run_smoke(console, failures: int) -> int:
         return failures
 
     yaml_src = repo_root / "examples" / "example_point.yaml"
-    model_src = repo_root / "models" / "TL_conformal_dark_u1.py"
+    model_src = repo_root / "models" / "TL_conformal_u1_fermions.py"
 
     # Persistent output dir so the user can inspect the result of the
     # smoke run after ``tl --check`` exits.  Each invocation gets its
@@ -82,7 +82,7 @@ def _run_smoke(console, failures: int) -> int:
         (tmpdir / "examples").mkdir()
         (tmpdir / "models").mkdir()
         shutil.copy(yaml_src, tmpdir / "examples" / "example_point.yaml")
-        shutil.copy(model_src, tmpdir / "models" / "TL_conformal_dark_u1.py")
+        shutil.copy(model_src, tmpdir / "models" / "TL_conformal_u1_fermions.py")
 
         env = os.environ.copy()
         env.update({

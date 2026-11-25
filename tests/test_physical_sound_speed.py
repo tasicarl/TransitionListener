@@ -31,7 +31,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 def conformal(g=0.7, v_GeV=0.1, y=0.01):
     with contextlib.redirect_stdout(io.StringIO()):
-        return load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+        return load_potential(str(REPO / "models/TL_conformal_u1_fermions.py"),
                               "specific_potential")(
             {"g": g, "y": y, "v_GeV": v_GeV}, verbose=False)
 
@@ -1243,7 +1243,7 @@ class DefaultDebyeMassTests(unittest.TestCase):
                                    rtol=0.0, atol=0.0)
 
     def test_it_reproduces_a_model_that_states_its_own(self):
-        """The conformal dark U(1) writes its Debye masses in closed form.
+        """The conformal U(1) with fermions writes its Debye masses in closed form.
 
         That makes it the one case where the measured default can be checked against an
         analytic answer rather than against the subtraction it is meant to replace.

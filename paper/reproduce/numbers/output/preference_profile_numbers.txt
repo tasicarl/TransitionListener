@@ -1,0 +1,3 @@
+NANOGrav: minimum 1.93 sigma at tau_f = 0.10 Gyr; 2.47 sigma at 5 Gyr, 2.86 sigma at 7 Gyr; above 3 sigma from 7.50 Gyr, above 4 sigma from 9.60 Gyr
+survey-averaged: minimum 2.11 sigma at tau_f = 0.24 Gyr; 2.98 sigma at 5 Gyr, 3.50 sigma at 7 Gyr; above 3 sigma from 5.20 Gyr, above 4 sigma from 8.10 Gyr
+Tomczak-Kormendy: minimum 3.60 sigma at tau_f = 0.71 Gyr; 4.53 sigma at 5 Gyr, 5.20 sigma at 7 Gyr; above 3 sigma from 0.10 Gyr, above 4 sigma from 3.08 Gyr

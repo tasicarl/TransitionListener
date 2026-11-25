@@ -9,7 +9,10 @@ its minima. A transition is the passage from one minimum to another. The bounce 
 of the equations of motion of the scalar fields in this potential, and the energy the
 transition releases is the difference between the values of the potential at the two minima.
 The model file specifies the tree-level potential and the field-dependent mass spectrum. This
-page describes the loop, thermal and resummed terms that the package adds to them.
+page describes the loop, thermal and resummed terms that the package adds to them. A model
+with a three-dimensional potential takes its nucleation rate from the dimensionally reduced
+theory instead, as :doc:`the_three_dimensional_rate` describes, and uses the potential of this
+page for everything else.
 
 Assembling the potential
 ------------------------
@@ -175,11 +178,11 @@ Settings
      - The renormalisation scale squared in the one-loop correction.
    * - ``counterterm_derivative_step``
      - 1e-3
-     - Step for the derivatives that fix the counterterms.
-   * - ``entropy_definition``
-     - setting
-     - Which entropy the expansion history and the sound speed are built from. The two
-       must agree.
+     - Step used for the derivatives that fix the counterterms.
+   * - ``percolation_entropy_definition``
+     - ``dof_table``
+     - Which entropy the scale factor and the sound speed of the expansion history are built
+       from, ``dof_table`` or ``eff_potential``. Both are always built from the same one.
 
 References
 ----------

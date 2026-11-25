@@ -14,6 +14,26 @@ Interface
    :undoc-members:
    :show-inheritance:
 
+Compiled potential
+------------------
+
+.. automodule:: transitionlistener.compiled.onefield_potential
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Three-dimensional rate
+----------------------
+
+.. automodule:: transitionlistener.eft_rate.one_field_rate_3d
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: transitionlistener.eft_rate.nlo_tables
+   :members:
+   :show-inheritance:
+
 Phases and phase tracing
 ------------------------
 

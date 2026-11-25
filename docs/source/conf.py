@@ -6,10 +6,17 @@
 import inspect
 import os
 import sys
+import warnings
 from pathlib import Path
 
 project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root / "src"))  # Ensure autodoc finds the package
+
+try:                                   # the class exists from Sphinx 9 on
+    from sphinx.deprecation import RemovedInSphinx11Warning
+    warnings.filterwarnings("ignore", category=RemovedInSphinx11Warning)
+except ImportError:
+    pass
 
 on_github = bool(os.environ.get("GITHUB_PAGES"))
 

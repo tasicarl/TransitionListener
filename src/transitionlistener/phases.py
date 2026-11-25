@@ -47,6 +47,16 @@ def findLocalMinimum(
 ) -> np.ndarray:
     r"""Find a nearby local minimum by Newton stepping in field space."""
 
+    # the whole loop runs in the compiled potential, if dV and d2V are the derivatives of one
+    pot = getattr(dV, "__self__", None)
+    if isinstance(pot, generic_potential.generic_potential) and getattr(d2V, "__self__", None) is pot \
+            and dV.__func__ is type(pot).gradV and d2V.__func__ is type(pot).d2V:
+        kernels = pot.current_kernels()
+        if kernels is not None:
+            found = kernels.newton_minimum(X, T, phitol, step_size, pot._origin_stencil())
+            if found is not None:
+                return found
+
     hess_offset = np.diag(np.ones_like(X) * 1e-5)
     niter = 0
     while True:
@@ -68,6 +78,11 @@ if EXTRA_ACCURATE_TRACING:
         return findLocalMinimum(x, t, df_dx, d2f_dx2)
 else:
     def traceLocalMinimum(f, x, t, df_dx, d2f_dx2, xeps):
+        # a function that can say so finds the minimum in compiled code (Phases.findPhases)
+        compiled = getattr(f, "compiled_minimum", None)
+        found = compiled(x, t, xeps) if compiled is not None else None
+        if found is not None:
+            return found
         return optimize.fmin(f, x, args=(t,), xtol=xeps, ftol=np.inf, disp=False)
 
 
@@ -166,9 +181,8 @@ class PhaseInfo:
         if T.size < 2:
             raise ValueError("A phase needs at least two traced temperatures to interpolate.")
         # Short traces need no special case. `PchipInterpolator` reduces to the straight line
-        # between two nodes, which is what the old code also did by dropping to `k = 1`; on
-        # three it gives a cubic where the old code gave two straight segments, and that cubic
-        # is shape preserving too, so it stays within the three traced values.
+        # between two nodes; on three it gives a cubic that is shape preserving too, so it
+        # stays within the three traced values.
         return interpolate.PchipInterpolator(T, X, axis=0, extrapolate=True)
 
     def valAt(self, T: float | np.ndarray, deriv: int = 0) -> np.ndarray:
@@ -193,6 +207,36 @@ class PhaseInfo:
         T = np.asanyarray(T)
         y = self.interpolator(T) if deriv == 0 else self.interpolator.derivative(deriv)(T)
         return np.asanyarray(y)
+
+    def compiled_spline(self):
+        """``(c, x)`` of the interpolant of a one-field trace for the kernels, or None if there is no such pair."""
+        if type(self).valAt is not PhaseInfo.valAt or "valAt" in self.__dict__:
+            return None
+        interpolator = self.interpolator
+        state = self.__dict__.get("_spline_state")
+        if state is None or state[0] is not interpolator:
+            c = interpolator.c
+            usable = (c.ndim == 3 and c.shape[2] == 1 and interpolator.extrapolate is True and c.dtype == np.float64
+                      and interpolator.x[0] < interpolator.x[-1])
+            state = (interpolator, (np.ascontiguousarray(c[:, :, 0]), np.ascontiguousarray(interpolator.x))
+                     if usable else None)
+            self._spline_state = state
+        return state[1]
+
+    def compiled_trace(self):
+        """``(c, x)`` of the interpolant of a trace of any number of fields for the kernels, with the fields in the last
+        axis of ``c``, or None if there is no such pair."""
+        if type(self).valAt is not PhaseInfo.valAt or "valAt" in self.__dict__:
+            return None
+        interpolator = self.interpolator
+        state = self.__dict__.get("_trace_state")
+        if state is None or state[0] is not interpolator:
+            c = interpolator.c
+            usable = (c.ndim == 3 and interpolator.extrapolate is True and c.dtype == np.float64
+                      and interpolator.x[0] < interpolator.x[-1])
+            state = (interpolator, (np.ascontiguousarray(c), np.ascontiguousarray(interpolator.x)) if usable else None)
+            self._trace_state = state
+        return state[1]
 
     def replaceTrace(self, X: np.ndarray, dXdT: np.ndarray) -> None:
         """Replace the minima and their derivatives at the traced temperatures and
@@ -572,11 +616,10 @@ def traceMinimum(
             # wrong in the other direction, admitting a genuinely negative endpoint wherever
             # the spectrum spans many decades.
             #
-            # Measured on the conformal dark U(1) at g = 0.7, in the internal units the tracer
-            # works in: at the internal temperature 1e-6 the origin's `d2V` reads -6.771e-08,
-            # -1.693e-08, -4.232e-09, -1.058e-09 and -2.645e-10 as `x_eps` halves from 4e-3 to
-            # 2.5e-4, extrapolating to the zero a conformal potential has there, while the
-            # broken phase's endpoint holds +9160 across the same steps.
+            # At the origin of a conformal potential at low temperature the finite-difference
+            # `d2V` is small and negative and shrinks by a factor of four each time `x_eps`
+            # halves, extrapolating to the zero a conformal potential has there, while the
+            # curvature at a genuine minimum does not change with the step.
             #
             # So the endpoint is accepted on the slope alone, and a trace can still finish on a
             # point that is not a minimum. The check that would decide it is not implemented:
@@ -587,9 +630,7 @@ def traceMinimum(
                 # No usable slope at the endpoint; the trace ends at the last node that had
                 # one rather than reaching `tstop`.
                 return True
-            # Here it previously doesn't check if we have a phase transition between
-            # tstop and t. This can happend. Therefore implement a
-            # check for this:
+            # A phase transition can lie between tstop and t, so check for one.
             xerr = max(np.sum((x + dxdt * dt - xnext) ** 2), np.sum((xnext - dxdt_next * dt - x) ** 2)) ** 0.5
             if xerr < deltaX_tol:
                 # good step, found endpoint of phase
@@ -883,10 +924,10 @@ def traceMultiMin(
         # Accuracy alone cannot get the minimiser off a saddle that symmetry puts the
         # gradient to zero at, so step off it explicitly and trace the minimum the field
         # actually sits in. Where the point is still not a minimum, there is no phase to
-        # trace from it: seeding one anyway is what used to put nodes into a phase at
-        # temperatures where it does not exist, and the bounce was then computed from a
-        # false vacuum that is a saddle, over a whole window of temperatures where the
-        # smallest eigenvalue of the Hessian is negative.
+        # trace from it: seeding one anyway puts nodes into a phase at temperatures where
+        # it does not exist, and the bounce is then computed from a false vacuum that is
+        # a saddle, over a whole window of temperatures where the smallest eigenvalue of the
+        # Hessian is negative.
         descended = descendFromSaddle(x1, t1, f, df_dx, d2f_dx2, xeps, deltaX_target,
                                       max_descent)
         if applySymmetries is not None and not np.array_equal(descended, x1):
@@ -1001,7 +1042,10 @@ def traceMultiMin(
             # otherwise answer for an image the phase is not stored on.
             image = canonicalImageElement(X, applySymmetries, invGroupElements)
             if image is not None:
-                X, dXdT = X @ image, dXdT @ image
+                X = X @ image
+                # A single point, which is dropped below, has no derivative where its Hessian is singular.
+                if len(X) > 1:
+                    dXdT = dXdT @ image
             if forbidCrit is not None and (forbidCrit(X[0]) or forbidCrit(X[-1])):
                 # The phase is forbidden.
                 # Don't add it, and make it a dead-end.
@@ -1896,6 +1940,12 @@ class Phases:
         def V_(X, T):
             # speedup: no call to interpolated geff needed here
             return pot.Vtot(X, T, include_radiation=False, include_decoupled=False)
+
+        def compiled_minimum(x, t, xeps):
+            read = getattr(pot, "current_kernels", None)
+            kernels = read() if read is not None else None
+            return None if kernels is None else kernels.minimum(x, t, xeps)
+        V_.compiled_minimum = compiled_minimum
 
         phases = traceMultiMin(
             V_,  # pot.Vtot,

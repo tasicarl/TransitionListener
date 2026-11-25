@@ -46,6 +46,6 @@ nuclRate = Gamma(Tperc, action)
 
 # Gravitational wave spectrum
 # ======================================================
-gwspectrum = FOPTspectrum(observables[0], verbose=False)
+gwspectrum = FOPTspectrum(observables[0], verbose=False, config=pot.config)
 observability = Observability(gwspectrum, verbose=True, include_smbhb=False)
 plotGWSpectrum(observables[0], showplot=True)

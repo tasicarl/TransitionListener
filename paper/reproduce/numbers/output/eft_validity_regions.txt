@@ -1,0 +1,5 @@
+thresholds: {'hard': (1.0, 1.0), 'hard_fermion': (1.0, 1.0), 'debye': (0.5, 1.0), 'soft_separation': (inf, inf), 'expansion_3d': (1.0, 1.0), 'dim6': (0.05, 0.25)}
+NG15 68% (60 nodes): hard 0.235-0.390, debye 0.037-0.047, expansion_3d 0.299-0.348, dim6 2.40e-04-1.80e-03
+NG15 95% (60 nodes): hard 0.232-0.431, debye 0.037-0.050, expansion_3d 0.297-0.370, dim6 2.29e-04-2.88e-03
+IPTA2 68% (60 nodes): hard 0.233-0.423, debye 0.037-0.049, expansion_3d 0.295-0.363, dim6 2.30e-04-2.62e-03
+IPTA2 95% (60 nodes): hard 0.231-0.457, debye 0.037-0.052, expansion_3d 0.291-0.384, dim6 2.22e-04-3.86e-03

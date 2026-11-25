@@ -24,7 +24,7 @@ from transitionlistener.helper_functions import load_potential, temperatureDeriv
 from transitionlistener.thermodynamics import e_geffSM, p_geffSM
 
 REPO = Path(__file__).resolve().parents[1]
-CONFORMAL = (REPO / "models/TL_conformal_dark_u1.py", "specific_potential",
+CONFORMAL = (REPO / "models/TL_conformal_u1_fermions.py", "specific_potential",
              {"g": 0.692, "y": 0.01, "v_GeV": 0.14})
 # Internal units: the zero-temperature vacuum expectation value is 1000.
 TEMPERATURES = (20.0, 60.0)

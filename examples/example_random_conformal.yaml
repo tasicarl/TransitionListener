@@ -6,7 +6,7 @@
 # Scan settings
 # ================================================== 
 Modelfile:
-  models/TL_conformal_dark_u1.py
+  models/TL_conformal_u1_fermions.py
 
 Potential:
   specific_potential
@@ -36,7 +36,7 @@ timeout: -1  # Timeout in seconds for the individual TL run, -1 for no timeout
 format: "txt"  # either "txt" or "hdf5"
 output_path: "scans/example_random_conformal"
 description: "RandomScan: Conformal dark U1"
-plot_description: "RandomScan: Conformal dark $U(1)$"
+plot_description: "RandomScan: Conformal $U(1)$ with fermions"
 
 # Additional plotting options for single point scans
 plots: True

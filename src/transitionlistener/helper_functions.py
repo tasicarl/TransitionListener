@@ -12,8 +12,12 @@ Authors:
 import numpy as np
 from collections import namedtuple
 import importlib.util
+import os
+import sys
 from itertools import product as _product
 from typing import Any
+
+from .compiled import deformation
 
 
 """
@@ -53,7 +57,14 @@ def import_file(filename : str ) -> object:
     -------
     ModuleType
         The imported, ready-to-use module object.
+
+    The directory of the file is put on ``sys.path`` first, so that a model can import the modules beside it (the
+    three-dimensional models import their four-dimensional parent and the matching relations by name), wherever the
+    run is started and whether the models are those of a checkout or of an installed package.
     """
+    directory = os.path.dirname(os.path.abspath(filename))
+    if directory not in sys.path:
+        sys.path.insert(0, directory)
     spec = importlib.util.spec_from_file_location("module.name", filename)
     try:
         module = importlib.util.module_from_spec(spec)
@@ -908,24 +919,9 @@ def Nbspld1(t, x, k=3):
 
 def Nbspld2(t, x, k=3):
     """Same as :func:`Nbspl`, but returns first and second derivatives too."""
-    kmax = k
-    if kmax > len(t)-2:
+    if k > len(t)-2:
         raise Exception("Input error in Nbspl: require that k < len(t)-2")
-    t = np.array(t)
-    x = np.array(x)[:, np.newaxis]
-    N = 1.0*((x > t[:-1]) & (x <= t[1:]))
-    dN = np.zeros_like(N)
-    d2N = np.zeros_like(N)
-    for k in range(1, kmax+1):
-        dt = t[k:] - t[:-k]
-        _dt = dt.copy()
-        _dt[dt != 0] = 1./dt[dt != 0]
-        d2N = d2N[:,:-1]*(x-t[:-k-1])*_dt[:-1] - d2N[:,1:]*(x-t[k+1:])*_dt[1:] \
-            + 2*dN[:,:-1]*_dt[:-1] - 2*dN[:,1:]*_dt[1:]
-        dN = dN[:,:-1]*(x-t[:-k-1])*_dt[:-1] - dN[:,1:]*(x-t[k+1:])*_dt[1:] \
-            + N[:,:-1]*_dt[:-1] - N[:,1:]*_dt[1:]
-        N = N[:,:-1]*(x-t[:-k-1])*_dt[:-1] - N[:,1:]*(x-t[k+1:])*_dt[1:]
-    return N, dN, d2N
+    return deformation.basis(np.array(t, dtype=float), np.array(x, dtype=float), k)
 
 
 def temperatureDerivativeStep(pot, T: float, X=None,
@@ -955,7 +951,7 @@ def temperatureDerivativeStep(pot, T: float, X=None,
     A radiation-dominated phase has :math:`V = -p = -\rho/3`, so the ratio cannot fall much
     below one third and the step stays above :math:`(\epsilon/3)^{1/6} \simeq 2\times10^{-3}`;
     the lower clip is a guard, not a working bound. The two regimes this has to serve differ by
-    orders of magnitude. For the conformal dark U(1) the vacuum piece is some
+    orders of magnitude. For the conformal U(1) with fermions the vacuum piece is some
     :math:`3\times10^8` against a thermal scale of order one, so the step has to be about a
     per cent of ``T`` or the sound speed in the broken phase picks up a 0.1 % scatter and a
     0.3 % bias; for the abelian dark Higgs the offset is comparable to the thermal scale, no
@@ -1049,7 +1045,7 @@ def thermalDerivativeStep(pot, T: float, X=None) -> float:
     :math:`1.45\times10^{-4}`. The two differ by 50 %, the optimum is flat, and the radiation
     value is used for both.
 
-    Verified on the conformal dark U(1) at three couplings, at internal temperatures from
+    Verified on the conformal U(1) with fermions at three couplings, at internal temperatures from
     :math:`10^{-1}` to :math:`10^{-9}` of the scale: ``c_s`` at this step agrees with the
     plateau measured over :math:`\Delta T/T \in [3\times10^{-5}, 10^{-3}]` to
     :math:`4\times10^{-8}` or better everywhere, and at :math:`T/v = 10^{-9}` returns

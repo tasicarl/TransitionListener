@@ -71,9 +71,11 @@ Finally :py:mod:`transitionlistener.gwfopt` builds the spectrum and
    the_plasma
    phases_and_transitions
    the_bounce_action
+   the_three_dimensional_rate
    nucleation_and_percolation
    hydrodynamics
    the_observables
    the_spectrum
    the_plots
+   compiled_code
    error_reference

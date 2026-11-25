@@ -630,6 +630,15 @@ class GoldstoneResummation(unittest.TestCase):
         self.assertLess(abs(float(np.ravel(pot.gradV(vev, T))[0])), 1e-6 * pot.mDH**2 * 1000.0)
         self.assertAlmostEqual(float(np.ravel(pot.d2V(vev, T))[0]) / pot.mDH**2, 1.0, delta=1e-3)
 
+    def test_the_kernels_carry_the_shift(self):
+        pot = self.model()
+        self.assertEqual(type(pot._kernels).__name__, "OneFieldPotential")
+        field = np.array([[1000.0], [700.0], [5.0], [0.0]])
+        python = pot._Vtot_generic(field, 30.0, False, True)
+        np.testing.assert_allclose(pot.Vtot(field, 30.0, False, True), python, rtol=1e-9)
+        pot.goldstone_shift = 0.0
+        self.assertFalse(np.allclose(pot.Vtot(field, 30.0, False, True), python, rtol=1e-6))
+
 
 class OnlyADivergentTermIsResummed(unittest.TestCase):
     """A model resums only where the term it shifts is the infrared divergent one.

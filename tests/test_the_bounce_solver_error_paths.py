@@ -170,34 +170,33 @@ class TheThinWallMessageOfTheShootingTests(unittest.TestCase):
     """Code 11 from `initialConditions`, where the starting radius cannot be bracketed.
 
     `initialConditions` brackets the radius at which the profile has moved `delta_phi_cutoff`
-    away from the true vacuum, with `brentq`. The guard is around that bracket and nothing
-    else: `exactSolution` is also called before the `try`, so a failure there escapes
-    untranslated and patching it does not reach this path. Where the bracket fails the solver
-    reports a wall too thin to integrate, which is the usual cause. The message is the only thing that reaches the user, because
-    `pathDeformation._find_profile` turns this into an infinite action and `bounceAction`
-    reports no tunnelling.
+    away from the true vacuum, in `compiled.shooting.initial_conditions`. Where the bracket fails
+    the solver reports a wall too thin to integrate, which is the usual cause. The message is the
+    only thing that reaches the user, because `pathDeformation._find_profile` turns this into an
+    infinite action and `bounceAction` reports no tunnelling.
     """
 
     _instanton = staticmethod(_quartic_instanton)
 
+    def _failed_bracket(self, status):
+        return mock.patch.object(tunneling1D.shooting, "initial_conditions",
+                                 return_value=(status, 2.5, float("nan"), float("nan")))
+
     def test_a_failure_to_bracket_the_starting_radius_is_code_11(self):
         inst = self._instanton()
-        with mock.patch.object(tunneling1D.optimize, "brentq",
-                               side_effect=ValueError("no solution here")):
+        with self._failed_bracket(tunneling1D.shooting.START_SAME_SIGN):
             with self.assertRaises(errors.TunnelingError) as caught:
                 inst.initialConditions(1e-3, 1e-4, 1e-2)
         self.assertEqual(caught.exception.errorcode, 11)
 
     def test_the_message_names_the_thin_wall_and_carries_the_original_failure(self):
         inst = self._instanton()
-        with mock.patch.object(tunneling1D.optimize, "brentq",
-                               side_effect=ValueError("no solution here")):
+        with self._failed_bracket(tunneling1D.shooting.START_NOT_A_NUMBER):
             with self.assertRaises(errors.TunnelingError) as caught:
                 inst.initialConditions(1e-3, 1e-4, 1e-2)
         message = str(caught.exception)
         self.assertIn("thin-walled", message)
-        self.assertIn("no solution here", message,
-                      "the original failure is what says why the bracket could not be found")
+        self.assertIn("NaN", message, "the failure is what says why the bracket could not be found")
 
     def test_the_run_deadline_is_not_read_as_a_thin_wall(self):
         """`Timeout` is raised from a signal handler and subclasses `Exception`.
@@ -206,7 +205,7 @@ class TheThinWallMessageOfTheShootingTests(unittest.TestCase):
         out of time would be indistinguishable from one the solver judged.
         """
         inst = self._instanton()
-        with mock.patch.object(tunneling1D.optimize, "brentq",
+        with mock.patch.object(tunneling1D.shooting, "initial_conditions",
                                side_effect=errors.Timeout("the run's deadline")):
             with self.assertRaises(errors.Timeout):
                 inst.initialConditions(1e-3, 1e-4, 1e-2)

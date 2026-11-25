@@ -16,18 +16,6 @@ from collections import OrderedDict
 
 import numpy as np
 from scipy import integrate
-try:  # Optional PTA dependencies; skipped if environment lacks tempo2/ptarcade stack.
-    from ptarcade import signal_builder  # type: ignore
-    from ptarcade import models_utils  # type: ignore
-    from ceffyl import Ceffyl  # type: ignore
-    from enterprise.signals.parameter import Uniform
-    _PTA_IMPORT_ERROR: Exception | None = None
-except Exception as exc:  # pragma: no cover - optional dependency
-    signal_builder = None  # type: ignore
-    models_utils = None  # type: ignore
-    Ceffyl = None  # type: ignore
-    Uniform = None  # type: ignore
-    _PTA_IMPORT_ERROR = exc
 
 from . import console, print
 from .colors import *
@@ -36,13 +24,39 @@ from .constants import *
 import rich
 
 
+_PTA_STACK = None
+
+
+def _pta_stack():
+    """The optional PTA packages, imported on first use: a namespace with ``signal_builder``, ``models_utils``,
+    ``Ceffyl``, ``Uniform`` and ``error`` (the import error, or None).
+
+    Importing them takes about four seconds (ptarcade loads enterprise_extensions, PTMCMCSampler and mpi4py), which a
+    run that computes no PTA likelihood, and every ``import transitionlistener.interface``, would otherwise pay.
+    """
+    global _PTA_STACK
+    if _PTA_STACK is None:
+        from types import SimpleNamespace
+        try:  # optional; absent where the environment lacks the tempo2/ptarcade stack
+            from ptarcade import signal_builder  # type: ignore
+            from ptarcade import models_utils  # type: ignore
+            from ceffyl import Ceffyl  # type: ignore
+            from enterprise.signals.parameter import Uniform
+            _PTA_STACK = SimpleNamespace(signal_builder=signal_builder, models_utils=models_utils, Ceffyl=Ceffyl,
+                                         Uniform=Uniform, error=None)
+        except Exception as exc:  # pragma: no cover - optional dependency
+            _PTA_STACK = SimpleNamespace(signal_builder=None, models_utils=None, Ceffyl=None, Uniform=None, error=exc)
+    return _PTA_STACK
+
+
 def _require_pta_dependencies() -> None:
     """Raise a clear error if PTA dependencies are unavailable."""
-    if _PTA_IMPORT_ERROR is not None:
+    error = _pta_stack().error
+    if error is not None:
         raise RuntimeError(
             "PTA likelihood evaluation requires ptarcade/enterprise/tempo2; "
             "set up tempo2 and ptarcade or disable PTA calculations."
-        ) from _PTA_IMPORT_ERROR
+        ) from error
 
 # ---------------------------------------------------------------------------------------
 # The pulsar-timing free-spectrum products this package ships, and how to load one.
@@ -531,6 +545,7 @@ class PTAModel_SMBHB:
         """Store the spectrum and freeze the astrophysical nuisance priors."""
         self.spectrum = spectrum
         self.smbhb = False
+        Uniform = _pta_stack().Uniform
         self.parameters = {
             # The ranges are irrelevant for the likelihood calculation
             'A': Uniform(0, 0)('A'),
@@ -554,6 +569,8 @@ def _build_ceffyl(datadir: str, nbins: int, model):
     through the spectrum, as `h2OmegaGW_with_astrobg_fun`, not as a second ceffyl signal. The
     branch of `ceffyl_builder` that adds one is therefore never taken here and is not copied.
     """
+    stack = _pta_stack()
+    Ceffyl, models_utils = stack.Ceffyl, stack.models_utils
     pta = Ceffyl.ceffyl(datadir)
     pta.add_signals([
         Ceffyl.signal(
@@ -609,7 +626,9 @@ class Observability(GW_Sensitivity_Data):
             label: free_spectrum_for_label(label, self.pta_free_spectrum)
             for label in PTA_LIKELIHOOD_SETTINGS
         }
-        if signal_builder is not None and _PTA_IMPORT_ERROR is None:
+        stack = _pta_stack()
+        pta_import_error = stack.error
+        if stack.signal_builder is not None and pta_import_error is None:
             for label, settings in PTA_LIKELIHOOD_SETTINGS.items():
                 product = self.pta_products[label]
                 if product is None:
@@ -647,8 +666,8 @@ class Observability(GW_Sensitivity_Data):
                 self.calc_PTA_logL()
         elif self.verbose:
             msg = "[yellow]PTA likelihood dependencies unavailable; continuing with SNR-only observability outputs.[/yellow]"
-            if _PTA_IMPORT_ERROR is not None:
-                msg += f"\n  [dim]Import error: {_PTA_IMPORT_ERROR}[/dim]"
+            if pta_import_error is not None:
+                msg += f"\n  [dim]Import error: {pta_import_error}[/dim]"
             console.print(msg)
         self.calc_DNeff_GW()
         self.observability_dict = self.return_gw_info_dict()

@@ -119,6 +119,21 @@ class PercolationSoundSpeedTests(unittest.TestCase):
                     )
                 self.assertAlmostEqual(value, 1.0 / k, places=6)
 
+    def test_dof_table_scheme_uses_the_counted_entropy(self):
+        # s ~ T^k gives c_s^2 = 1/k exactly. The potential's sound speed must not enter,
+        # so it is mocked to a value the test would notice.
+        phase = types.SimpleNamespace(valAt=lambda T: np.array([0.0]))
+        for k in (3.0, 4.0, 5.0):
+            with self.subTest(k=k):
+                with mock.patch.object(bd, "entropy_density",
+                                       lambda pot, ph, T, d, k=k: float(T) ** k), \
+                     mock.patch.object(bd, "calcSoundSpeedSq", return_value=0.21):
+                    value = bd.percolation_sound_speed_sq(
+                        object(), phase, 0.5, time_temperature_mode="sound_speed",
+                        entropy_definition="dof_table",
+                    )
+                self.assertAlmostEqual(value, 1.0 / k, places=6)
+
     def test_unusable_sound_speed_falls_back_to_one_third(self):
         # The potential route is the one that reads calcSoundSpeedSq, so the scheme has to
         # be named: under the default "dof_table" this would reach the bag fallback because

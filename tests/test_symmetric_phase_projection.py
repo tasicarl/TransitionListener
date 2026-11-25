@@ -7,7 +7,7 @@ field value of about 0.017 in internal units where the scale is 1000, at which t
 even at a minimum.
 
 Everything read off the false vacuum below that point inherits the error. On a trace drifted that
-way, the counted entropy of the false vacuum of the conformal dark U(1) falls from its 7.5 light
+way, the counted entropy of the false vacuum of the conformal U(1) with fermions falls from its 7.5 light
 modes to 2.1 between 30 and 0.3 keV instead of holding at 7.5, so it no longer scales as T^3, and
 the sound speed of the symmetric phase comes out c_s^2 = 0.324 rather than 1/3. Those two are what
 the tests below measure, on a drifted trace put in by hand so that they do not depend on the tracer
@@ -289,13 +289,13 @@ def test_mirrors_of_several_phases_are_kept_apart():
 
 @pytest.fixture(scope="module")
 def conformal_potential():
-    """The classically conformal dark U(1) at the point where the drift was found.
+    """The classically conformal U(1) with fermions at the point where the drift was found.
 
     Its own symmetric phase traces to the origin exactly, so the drifted trace below is put in by
     hand: what is tested is what a drifted false vacuum does to the quantities read off it, and
     that the projection undoes it.
     """
-    import TL_conformal_dark_u1 as model
+    import TL_conformal_u1_fermions as model
 
     return model.specific_potential({"g": 0.45, "y": 0.01, "v_GeV": 2.62525}, verbose=False)
 

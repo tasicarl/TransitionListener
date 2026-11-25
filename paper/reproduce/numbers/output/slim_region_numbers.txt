@@ -1,0 +1,13 @@
+WARNING  libstempo not installed. PINT or libstempo are required to use par and 
+         tim files.                                                             
+WARNING  PINT not installed. PINT or libstempo are required to use par and tim  
+         files.                                                                 
+NG15 68% main: g 0.412-0.507, v 0.89-8.91 GeV, (b/H)_R 3.302-17.998, (b/H)_G 1.74-16.00, G/R 0.526-0.893, S-G 4.08-6.39, H/HV 0.904-0.970, T_reh 61.5-323.8 MeV, g_eff 16.11-54.48, m_A' 0.448-3.721 GeV, mass of islands 0.0059 of the region
+NG15 95% main: g 0.412-0.542, v 0.35-10.00 GeV, (b/H)_R 3.249-27.393, (b/H)_G 1.69-24.68, G/R 0.520-0.905, S-G 4.08-6.78, H/HV 0.903-0.980, T_reh 28.1-365.2 MeV, g_eff 13.09-56.75, m_A' 0.191-4.200 GeV, mass of islands 0.0065 of the region
+IPTA2 68% main: g 0.463-0.532, v 0.22-1.00 GeV, (b/H)_R 12.396-24.418, (b/H)_G 10.42-21.91, G/R 0.840-0.912, S-G 4.12-7.03, H/HV 0.960-0.978, T_reh 17.3-62.2 MeV, g_eff 11.87-16.17, m_A' 0.115-0.463 GeV, mass of islands 0.0032 of the region
+IPTA2 95% main: g 0.438-0.560, v 0.11-2.51 GeV, (b/H)_R 7.881-32.300, (b/H)_G 6.08-29.42, G/R 0.771-0.920, S-G 4.11-7.78, H/HV 0.943-0.983, T_reh 9.3-130.7 MeV, g_eff 11.53-22.69, m_A' 0.061-1.099 GeV, mass of islands 0.0067 of the region
+NG15 main 68%: shortcut overestimate 1.197-2.064; T_reh TL/SM-only 0.805-0.939; posterior mass at g < 0.44 0.203; area with a^3 P_f growing 0.352, mass 0.375
+IPTA2 main 68%: shortcut overestimate 1.069-1.316; T_reh TL/SM-only 0.919-0.946; posterior mass at g < 0.44 0.013; area with a^3 P_f growing 0.000, mass 0.000
+NG15 sound waves main 68%: g 0.477-0.620, v 0.08-1.26, (b/H)_R 14.578-52.245
+NG15 expansion, bulk flow main 68%: g 0.415-0.495, v 1.78-12.59, (b/H)_R 3.340-15.402
+NG15 no expansion, bubbles R^-3 main 68%: g 0.438-0.512, v 0.84-6.31, (b/H)_R 7.116-19.335

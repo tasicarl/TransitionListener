@@ -343,8 +343,7 @@ class TheRunDeadlineIsNotAPhysicsVerdictTests(unittest.TestCase):
     solver failure, so the walk reports code 19, no viable phase pair. `tunneling1D` already
     guards its own `brentq` call for this reason.
 
-    The class guard below is scoped to `transitions` on purpose. Measured across `src/` on
-    2026-10-17, with this branch's guards in place, there are 122 bare
+    The class guard below is scoped to `transitions` on purpose. Across `src/` there are 122 bare
     `except Exception`/`except BaseException` handlers, of which 37 guard the deadline, so a
     package-wide version of this test would fail on 85 sites. The numbers shift whenever a guard
     is added, this branch included, so treat them as a measurement rather than a target. Most of those are not on the physics path, where a swallowed deadline becomes a

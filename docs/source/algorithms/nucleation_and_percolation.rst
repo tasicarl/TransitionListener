@@ -25,9 +25,10 @@ The probability that a given point is still in the false vacuum at temperature :
 
 with :math:`\Gamma` the nucleation rate from :doc:`the_bounce_action`, :math:`H` the expansion
 rate and :math:`v_\mathrm{w}` the speed at which a bubble wall advances. The upper limit
-:math:`T_\mathrm{start}` is the hottest temperature at which the transition could have begun,
-taken as the temperature at which the two phases become degenerate, above which no bubble can
-nucleate. The inner integral is the
+:math:`T_\mathrm{start}` can be any temperature above which no bubble nucleates, such as the
+temperature at which the two phases become degenerate. The code starts the integral at the
+hottest support point it keeps, which the scout described below places where :math:`P` is
+still below :math:`f_\mathrm{start} = 10^{-3}`. The inner integral is the
 distance a bubble nucleated at :math:`T'` has grown by the time the universe has cooled to
 :math:`T`, and the cube of it is its volume. The true-vacuum fraction is
 
@@ -173,9 +174,11 @@ each has its own signature:
   points differing by more than :math:`\Delta P = 0.1` mean the rise between them is
   unresolved, and intermediate temperatures are added. Nothing else says as directly that the
   grid has stepped over the transition.
-- The rise of the rate gets points across the interval where :math:`\log(\Gamma/H^4)` climbs,
-  located from the sampled rate rather than from the true-vacuum fraction, so that the rise is
-  resolved before it has had any visible effect on :math:`P`.
+- The rise of the rate gets points across any interval where :math:`\log_{10}(\Gamma/H^4)`
+  changes by more than ``percolation_max_log10_rate_step`` (12 decades by default) between
+  neighbouring support points. The interval is located from the sampled rate rather than from
+  the true-vacuum fraction, so that the rise is resolved before it has had any visible effect
+  on :math:`P`.
 - The peak of the rate is refined where the sampled maximum is a single point rather than a
   resolved shape.
 - The hot shoulder is the region where the true-vacuum fraction is still near zero but the rate
@@ -199,8 +202,9 @@ Acceptance
 
 A profile is accepted only if no two neighbouring support points differ by more than
 :math:`\Delta P = 0.2`, and the hot head is resolved. An interval is exempt from the first
-test where the rate there is so far past its peak that it cannot contribute, which is the same
-dead-tail criterion the scout uses.
+test where it cannot change :math:`P`: the rate has a resolved peak, the interval lies on a
+monotonic flank of that peak, :math:`\Gamma/H^4` is below :math:`10^{-10}` at both of its
+ends, and an upper bound on what the interval adds to :math:`I` is below :math:`10^{-4}`.
 
 If neither the refinement budget nor the range can fix a failure, the point is refused, and the
 message says which resource ran out: the number of actions, the number of iterations, or the
@@ -215,46 +219,58 @@ temperature range.
 Settings
 ~~~~~~~~
 
+The keys below are set per run in the input dictionary. Each sets the attribute of
+``PercolationConf`` with the same name without the ``percolation_`` prefix. For
+``percolation_maxit`` that attribute is ``maxit``. The last three rows have no input key and
+are attributes of ``PercolationConf`` only.
+
 .. list-table::
    :header-rows: 1
-   :widths: 34 10 56
+   :widths: 40 10 50
 
    * - Setting
      - Default
      - Meaning
    * - ``percolation_algorithm_mode``
-     - adaptive
+     - ``adaptive_step_size``
      - Which backend computes the history.
-   * - ``n_action``
+   * - ``percolation_n_action``
      - 30
      - Support points of the fixed-step backend.
-   * - ``n_action_min``
+   * - ``percolation_n_action_min``
      - 15
      - Support points built before the first adaptive refinement sweep.
-   * - ``n_action_increment``
+   * - ``percolation_n_action_increment``
      - 5
      - Support points added per adaptive refinement iteration.
-   * - ``n_action_max``
+   * - ``percolation_n_action_max``
      - 60
      - Most new support points in one update. A cached action is free.
-   * - ``max_action_temperatures``
+   * - ``percolation_max_action_temperatures``
      - 100
      - Most actions the scout may spend bracketing the transition.
+   * - ``percolation_maxit``
+     - 20
+     - Support updates per pass, in the second and the third pass each. At the limit the
+       solver keeps the best grid it has and refuses the point if that grid fails the
+       acceptance tests.
+   * - ``percolation_max_log10_rate_step``
+     - 12
+     - Largest change of :math:`\log_{10}(\Gamma/H^4)` between neighbouring support points
+       before the interval is refined. Zero switches the test off.
+   * - ``percolation_f_perc``
+     - 0.28957
+     - Converted fraction defining the percolation temperature.
    * - ``large_delta_p_refine_threshold``
      - 0.1
      - Neighbouring jump in :math:`P` above which refinement is triggered.
    * - ``large_delta_p_success_threshold``
      - 0.2
      - Neighbouring jump in :math:`P` above which a profile is refused.
-   * - ``percolation_maxit``
-     - 20
-     - Refinement iterations before the solver stops and refuses the point.
-   * - ``f_perc``
-     - 0.28957
-     - Converted fraction defining the percolation temperature.
    * - ``max_boundary_ratio``
      - 0.45
-     - Most of the range that may sit on a plateau where :math:`P` is zero or one.
+     - Fixed-step backend only. Most of the range that may sit on a plateau where :math:`P`
+       is zero or one.
 
 The expansion history
 ---------------------
@@ -273,12 +289,20 @@ energy density. It follows from entropy conservation, :math:`a^3 s = \mathrm{con
 The entropy used
 ~~~~~~~~~~~~~~~~
 
-The entropy can be taken in two ways, selected by ``entropy_definition``. ``dof_table``, the
-default, uses the counted degrees of freedom, and ``eff_potential`` uses
+The entropy can be taken in two ways, selected by ``percolation_entropy_definition``.
+``dof_table``, the default, uses the counted degrees of freedom, and ``eff_potential`` uses
 :math:`-\partial V/\partial T` of the effective potential. They are two forms of the same quantity and agree where the
 counting and the potential describe the same plasma. The important thing is that one of them is
 used throughout: the scale factor and the sound speed must come from the same entropy, or the
 expansion history is not consistent with the thermodynamics it is built from.
+
+The setting applies to the adaptive backend. The fixed-step backend has its own
+time-temperature relation, which takes the entropy and the sound speed from the potential.
+It accepts the default ``dof_table`` without using it and refuses ``eff_potential``.
+
+The time-temperature relation itself is selected by ``percolation_time_temperature_mode``:
+``sound_speed``, the default, uses :math:`\mathrm{d}T/\mathrm{d}t = -3 c_\mathrm{s}^2 H T`
+with the sound speed of this entropy, and ``bag`` uses :math:`\mathrm{d}T/\mathrm{d}t = -HT`.
 
 The temperatures reported
 -------------------------
@@ -313,8 +337,11 @@ it and the growth of the bubbles eats it. The transition finishes only where the
    = 3H\left(1 + c_\mathrm{s}^2\, T\,\frac{\mathrm{d}I}{\mathrm{d}T}\right) < 0 ,
 
 which is the criterion of [Turner:1992tz]_ in the form of [Ellis:2018mja]_, written for the
-time-temperature relation :math:`\mathrm{d}T/\mathrm{d}t = -3 c_\mathrm{s}^2 H T` rather than the radiation one. A
-transition that percolates but never satisfies this is reported as stalled, not as complete.
+time-temperature relation :math:`\mathrm{d}T/\mathrm{d}t = -3 c_\mathrm{s}^2 H T` rather than the radiation one. The
+code evaluates it at the percolation temperature, and where it fails there the run sets
+``WARNING:false_vacuum_not_shrinking`` and keeps its results. A transition whose true-vacuum
+fraction stays below :math:`f_\mathrm{final} = 0.99` down to the coldest temperature searched
+is refused as stalled.
 
 The mean separation between bubbles
 -----------------------------------
@@ -350,13 +377,19 @@ bubbles, against the temperature :math:`T` of the symmetric phase outside them. 
 that the expansion alone would produce. The second is the heating by the energy the
 transition releases.
 
-The reheating temperature :math:`T_\mathrm{reh}` is the value this equation reaches at the
-end of the transition, when the whole volume is in the broken phase. It is the temperature
-the universe has once the released energy is spread through the plasma, and it is the one
-that enters the redshift of the spectrum, in place of the percolation temperature at which
-the bubbles were still growing. For a strong transition the two differ by a factor of
+The integration starts where the true-vacuum fraction first reaches :math:`10^{-6}`, with
+the instantaneous-reheating condition as its initial value. The reheating temperature
+:math:`T_\mathrm{reh}` is the value :math:`T_\mathrm{b}` has reached when the symmetric phase
+is at the percolation temperature. It is the temperature of the plasma inside the bubbles
+once the released energy is spread through it, and it is the one that enters the redshift of
+the spectrum, in place of the percolation temperature of the phase outside. For a strong
+transition the reheating and the percolation temperature differ by a factor of
 :math:`(1+\alpha)^{1/4}` or more, which is why the package integrates the equation above
-rather than using that factor.
+rather than using that factor. Where the integration fails, the code reads
+:math:`T_\mathrm{b}` off the tabulated trajectory, and then solves the instantaneous-reheating
+condition at the percolation temperature. A Standard Model bath that is decoupled from the
+transitioning sector is not reheated, and its reheating temperature is reported as the
+percolation temperature.
 
 .. versionchanged:: 2.2
    The equation is integrated with an error-controlled integrator rather than read off the
@@ -374,7 +407,10 @@ documentation, because the symbol without a subscript does not say which of the 
 meant.
 
 The local one is the logarithmic derivative of the rate at the percolation temperature,
-:math:`(\beta/H)_{S_3} = T\,\mathrm{d}(S_3/T)/\mathrm{d}T`. The integral one is read off the
+:math:`(\beta/H)_{S_3} = 3 c_\mathrm{s}^2\,T\,\mathrm{d}(S_3/T)/\mathrm{d}T`, with
+:math:`c_\mathrm{s}` the sound speed of the symmetric phase from the entropy of the expansion
+history. The factor :math:`3 c_\mathrm{s}^2` converts the temperature derivative into a time
+derivative and is one in the bag limit. The integral one is read off the
 mean separation between bubbles, :math:`R_*`, which follows from the whole nucleation history
 rather than from one temperature. Its subscript is the one the output key ``betaH_RH``
 carries, and it stands for :math:`R_*` measured in Hubble radii.

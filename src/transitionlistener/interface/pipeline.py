@@ -168,7 +168,8 @@ def _compute_single_point(
             try:
                 gwspectrum = FOPTspectrum(
                     context["strongest_transition_observables"],
-                    astroparams_dict, verbose
+                    astroparams_dict, verbose,
+                    config=context["pot"].config,
                 )
                 observability = Observability(
                     gwspectrum, verbose, include_smbhb=include_smbhb,
@@ -237,9 +238,8 @@ def _handle_single_point_error(
 ):
     """Log the error and shape a result dictionary containing
     available partial results."""
-    # An exception that carries no `errorcode` used to be reported as -1, which names no
-    # cause and is documented nowhere. `UnexpectedError`, code 999, is what the package
-    # already calls an unclassified failure, so that is what the user is told; the original
+    # An exception that carries no `errorcode` is an unclassified failure, which the package
+    # calls `UnexpectedError`, code 999, so that is what the user is told; the original
     # exception type is named in the message, which keeps a genuine 999 distinguishable from
     # a stray `ValueError` that reached here.
     error_code = getattr(error, "errorcode", None)

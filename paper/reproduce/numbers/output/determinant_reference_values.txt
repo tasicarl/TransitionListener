@@ -1,0 +1,4 @@
+g = 0.475: T = 3.435e-05 GeV, S3 = 140.6415, Delta S (grid) -0.8643, radial 1.9930, goldstone -23.0371, gauge -25.7211, temporal -29.9989, C -83.0272, 1/2 mixing -18.1732, J0 0.9350, V3NLO 2.9346, kinetic -18.0165, lnAdyn/T -2.3626
+g = 0.5: T = 0.0002103 GeV, S3 = 146.9802, Delta S (grid) -0.6538, radial 2.0046, goldstone -27.7323, gauge -30.6143, temporal -35.3506, C -98.2844, 1/2 mixing -19.2322, J0 0.9190, V3NLO 3.7605, kinetic -19.1366, lnAdyn/T -2.3432
+g = 0.7: T = 0.04682 GeV, S3 = 154.5403, Delta S (grid) 7.8330, radial 3.2844, goldstone -69.7783, gauge -74.3876, temporal -83.7369, C -234.9636, 1/2 mixing -26.0894, J0 0.8651, V3NLO 13.7310, kinetic -26.5199, lnAdyn/T -2.3434
+written

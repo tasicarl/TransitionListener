@@ -150,8 +150,8 @@ def rand_worker(inp_params, q):
         errms = res["errormsg"]
         res_params = get_empty_result()
         res_params["error"] = errcode
-        # `get_empty_result` blanks every column, so this row used to carry its code and
-        # nothing else while the line and grid paths carried both.
+        # `get_empty_result` blanks every column, so the code and the message are set again,
+        # as on the line and grid paths.
         res_params["errormsg"] = _csv_safe(errms)
     else:
         res_params = extract_parameters(res, derived_params)
@@ -520,6 +520,7 @@ def get_empty_result() -> dict:
            'alpha_eq': np.nan,
            'betaH_S3': np.nan,
            'betaH_RH': np.nan,
+           'betaH_Gamma': np.nan,
            'RH': np.nan,
            'Treh_SM_GeV': np.nan,
            'Treh_DS_GeV': np.nan,
@@ -565,6 +566,10 @@ def get_empty_result() -> dict:
            'DIAG:runtime_s': np.nan,
            'WARNING:daisy_outside_validity': False,
            'DIAG:daisy_over_radiation': np.nan,
+           'WARNING:eft3d_outside_validity': False,
+           'DIAG:eft3d_expansion_3d': np.nan,
+           'DIAG:eft3d_hard': np.nan,
+           'DIAG:eft3d_dim6': np.nan,
            'WARNING:noisy_c_s': False,
            'DIAG:c_s_step_change': np.nan,
            'WARNING:entropy_scheme_sensitive': False,

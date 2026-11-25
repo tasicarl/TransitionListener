@@ -28,8 +28,10 @@ from transitionlistener import errors
 from transitionlistener import thermodynamics
 from transitionlistener.helper_functions import thermalDerivativeStep
 from transitionlistener.pathDeformation import (bounceAction,
+                                                bounceFreeParams,
                                                 bounceActionOverImages,
-                                                imagesToPairOver)
+                                                imagesToPairOver,
+                                                modelAction)
 from transitionlistener.finiteT import Jb_spline as Jb
 from transitionlistener.finiteT import Jf_spline as Jf
 
@@ -287,8 +289,19 @@ def calcAction(pot, T: float, start_phase, end_phase, outdict: dict, verbose: bo
     outdict = bounceActionOverImages(
         T, pot.Vtot, pot.gradV, outdict, tdict,
         imagesToPairOver(pot), verbose, pot.conversionFactor,
-        **pot.config.tracingConf.tunneling_params)
-    return outdict[T]["action"]
+        **pot.config.tracingConf.tunneling_params, **bounceFreeParams(pot))
+
+    # Same action seam as the adaptive twin in bubbledynamics.calcAction. This
+    # file carries its own copy of calcAction, so a model supplying its own
+    # action would silently be ignored here and the fixed-step path would run
+    # four-dimensional physics while claiming otherwise -- the same duplicate
+    # -code trap that made an earlier fix need applying three times over.
+    entry = outdict[T]
+    if "action_4d" not in entry:                 # the model has not supplied it already
+        raw = entry["action"]
+        entry["action_4d"] = raw
+        entry["action"] = modelAction(pot, T, raw, instanton=entry.get("instanton"))
+    return entry["action"]
 
 
 def approxPercIntegral(
@@ -526,7 +539,7 @@ def ApproxPercCritSecondOrder(
     -------
     float
         Zero if the criterion is met for ``T``; negative if ``T`` is too large, positive if it is too small."""
-    fperc = 0.34  # - log(P = 0.7) = 0.34
+    fperc = -np.log1p(-float(pot.config.percolationConf.f_perc))  # I_perc = -ln(1 - f_perc)
     dT = np.maximum(T * 1e-3, 1e-3)  # Try this for numerical stability
     Tr = np.zeros(3)
     Sr = np.zeros(3)
@@ -628,7 +641,7 @@ def ApproxPercolCriterion(
         return np.inf
 
     # Calculate beta/H
-    fperc = 0.34  # - log(P = 0.7) = 0.34
+    fperc = -np.log1p(-float(pot.config.percolationConf.f_perc))  # I_perc = -ln(1 - f_perc)
     dT = np.maximum(T * 1e-2, 1e-3)  # Try this for numerical stability
     if T + dT > Tmax:
         dT = (Tmax - T) / 100.0
@@ -726,7 +739,7 @@ def ApproxPercolCriterion2(
     if T + dT <= Tmin:
         return np.inf
 
-    fperc = 0.34  # - log(P = 0.7) = 0.34
+    fperc = -np.log1p(-float(pot.config.percolationConf.f_perc))  # I_perc = -ln(1 - f_perc)
     SdT = calcAction(pot, T + dT, phase_sym, phase_bro, outdict)
     S = calcAction(pot, T, phase_sym, phase_bro, outdict)
     if np.isinf(SdT) or np.isinf(S):
@@ -1966,9 +1979,10 @@ def symmetricPhaseEnthalpy(pot, X, T, include_decoupled: bool = True) -> float:
     double holds once the transition is supercooled far enough, so the sum is formed from the
     temperature-dependent parts alone.
     """
-    return float(np.squeeze(
-        hotEnergyDensity(pot, X, T, include_decoupled)
-        - pot.V_thermal(X, T, include_decoupled=include_decoupled)))
+    # pot.enthalpyDensity forms e + p from the temperature-dependent parts, and for a model that rewrites its
+    # potential or energy density from the two with the vacuum energy removed (generic_potential).
+    return float(np.squeeze(pot.enthalpyDensity(X, T, include_decoupled=include_decoupled)))
+
 
 
 def requireUsableEnthalpy(value: float, T: float, terms: dict) -> float:
@@ -2039,9 +2053,8 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     dDeltaV_m = np.abs(pot.Vtot(high_phi, T - dT / 2) - pot.Vtot(low_phi, T - dT / 2))
     dDeltaVdT = (dDeltaV_p - dDeltaV_m) / dT
 
-    # previously we used the broken phase geff of the dark sector,
-    # This seemed wrong to me, so I put here the symmetric phase
-    # Note that this gives slightly different alpha values for T < 100 MeV
+    # The radiation energy density takes geff in the symmetric phase, not in the broken phase
+    # of the dark sector. The two give slightly different alpha values for T < 100 MeV.
 
     # Here we assume that the decoupled sector has the same temperature as the PT sector
     rho_rad_tot = pot.radiationEnergyDensity(high_phi, T, include_decoupled=True)
@@ -2083,20 +2096,8 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
                      + (pot.Vtot(high_phi, T, include_decoupled=False) - V0_ref)/csSq_bro)
         theta_bro = (pot.energyDensity(low_phi, T, include_decoupled=False)
                      + (pot.Vtot(low_phi, T, include_decoupled=False) - V0_ref)/csSq_bro)
-        # The enthalpy w = e + p, with the vacuum energy left out of both terms rather than
-        # added to one and subtracted from the other. It carries no enthalpy: it enters e as
-        # +rho_vac and p as -rho_vac, so it cancels analytically, while numerically the two
-        # are equal to every digit a double holds once the transition is supercooled far
-        # enough. Written this way the sum is the thermal energy density minus the thermal
-        # part of the potential, and it agrees bit for bit with the old form wherever that
-        # form still had digits.
-        # Zero and not-a-number both mean a phase with no plasma in it rather than a
-        # precision loss now, and neither can normalise a strength, so the point is refused.
-        enthalpy_sym = requireUsableEnthalpy(
-            symmetricPhaseEnthalpy(pot, high_phi, T), T,
-            {"hot e": hotEnergyDensity(pot, high_phi, T),
-             "V_thermal": float(np.squeeze(
-                 pot.V_thermal(high_phi, T, include_decoupled=True)))})
+        # Zero, infinity and not-a-number mean a phase with no plasma in it, and none can normalise a strength.
+        enthalpy_sym = requireUsableEnthalpy(symmetricPhaseEnthalpy(pot, high_phi, T), T, {"plasma": "with the decoupled bath"})
         alpha_theta = (theta_sym - theta_bro)/(3 * enthalpy_sym)
     
 
@@ -2127,14 +2128,10 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False) -> tuple[flo
     m_bos_before = np.sqrt(np.where(m2_bos_before > 0, m2_bos_before, 0))
     delta_m_bos = np.maximum(m_bos_after - m_bos_before, 0)
 
-    # Enthalpy w = e + p of the symmetric phase of the transitioning sector alone, without a
-    # decoupled radiation bath. Built from the temperature-dependent parts, as in the
-    # pseudo-trace normalisation above and in the adaptive solver: written as `-Veff + e` the
-    # vacuum energy is subtracted from itself and the result loses every digit under
-    # supercooling.
-    w_sym_PT = requireUsableEnthalpy(
-        symmetricPhaseEnthalpy(pot, high_phi, T, include_decoupled=False), T,
-        {"plasma": "the transitioning sector alone"})
+    # Enthalpy w = e + p of the symmetric phase of the transitioning sector alone,
+    # without a decoupled radiation bath; the hydrodynamic alphas do not depend on it.
+    w_sym_PT = requireUsableEnthalpy(symmetricPhaseEnthalpy(pot, high_phi, T, include_decoupled=False), T,
+                                     {"plasma": "the transitioning sector alone"})
 
     # alpha_inf and alpha_eq as defined in section 2 of 1903.09642, normalised to the
     # radiation energy density taken as 3 w / 4, as in the adaptive step size solver.
@@ -2225,7 +2222,8 @@ def calcMeanBubbleSeparation(T, Tmax, Sint, Pint, Hint):
         Mean bubble separation."""
 
     # See eq. (5.42) in 2305.02357
-    Tr = np.linspace(T, Tmax, 10_000)
+    # uniform in ln T: under supercooling a linear grid puts the whole nucleation history in its first cell
+    Tr = np.geomspace(T, Tmax, 10_000) if T > 0.0 and Tmax / T > 1.0 + 1e-10 else np.linspace(T, Tmax, 10_000)
     integrant = Gamma(Tr, Sint(Tr)) * (1 - Pint(Tr)) / (Tr * Hint(Tr)) * (T / Tr) ** 3
     integrant[np.isnan(integrant)] = 0  # Replace NaNs (due to infinite action) with 0
     res = integrate.trapezoid(integrant, x=Tr)
@@ -2259,7 +2257,8 @@ def calcMeanBubbleSeparationwExp(T, Tmax, Sint, Pint, Hint, CSint, SFRint):
         Mean bubble separation."""
 
     # See eq. (5.42) in 2305.02357
-    Tr = np.linspace(T, Tmax, 10_000)
+    # uniform in ln T: under supercooling a linear grid puts the whole nucleation history in its first cell
+    Tr = np.geomspace(T, Tmax, 10_000) if T > 0.0 and Tmax / T > 1.0 + 1e-10 else np.linspace(T, Tmax, 10_000)
     integrant = Gamma(Tr, Sint(Tr)) * (1 - Pint(Tr)) / (3 * Hint(Tr) * Tr * CSint(Tr) ) \
         * SFRint(Tr)**3
     integrant[np.isnan(integrant)] = 0  # Replace NaNs (due to infinite action) with 0
@@ -2447,7 +2446,7 @@ def findTminFromUShapedNucl(Tmin, Tmax, args, start_phase, end_phase, outdict,
         if result.success:
             # We found a minimum of the action! Let's check if the nucleation
             # criterion is fulfilled at this temperature.
-            Tmin_u = float(np.squeeze(result.x))  # this is a hack to make the np array hashable
+            Tmin_u = float(np.squeeze(result.x))  # a float, so that it is hashable as a key of outdict
             action_u = outdict[Tmin_u]["action"]
             ncMin_u = nuclCriterion(action_u, Tmin_u, start_phase, end_phase)
 

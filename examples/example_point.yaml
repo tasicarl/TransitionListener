@@ -5,7 +5,7 @@
 # Scan settings
 # ================================================== 
 Modelfile:
-  models/TL_conformal_dark_u1.py
+  models/TL_conformal_u1_fermions.py
 
 Potential:
   specific_potential
@@ -17,6 +17,12 @@ Parameters:
   g: 0.7
   v_GeV: 0.1
   y: 0.01
+  # Modelling choices of the gravitational wave spectrum (see the usage page):
+  # gw_source_model: LISA-pipeline24      # or LISA-update2019, LewickiVaskonen22
+  # gw_kinetic_energy_efficiency: 0.6     # 0.4 to 0.8 realistic
+  # gw_expansion_suppression: False       # True: arXiv:2511.15687 amplitude, peak frequency and f^3 tail
+  # gw_sw_lifetime_factor: min            # or guo, guo_capped
+  # percolation_f_perc: 0.28957           # or 0.3679 for 1/e
 
 # ==================================================
 # output stuff

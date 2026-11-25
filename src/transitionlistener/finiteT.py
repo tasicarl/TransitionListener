@@ -35,6 +35,8 @@ from scipy import integrate, interpolate
 from scipy import special
 from scipy.special import factorial as fac
 
+from transitionlistener.compiled.splines import _knot_table, jspline_array
+
 pi = numpy.pi
 euler_gamma = 0.577215661901532
 log, exp, sqrt = numpy.log, numpy.exp, numpy.sqrt
@@ -242,8 +244,21 @@ else:
 
 
 _tckf = interpolate.splrep(_xf, _yf)
+_tckf = (numpy.ascontiguousarray(_tckf[0], dtype=float), numpy.ascontiguousarray(_tckf[1], dtype=float), _tckf[2])
+_tabf = _knot_table(_tckf[0])
+_yfmin = float(interpolate.splev(_xfmin, _tckf))
+def _spline_values(X, tck, tables, xmin, xmax, ymin):
+    """The compiled evaluation of Jb_spline or Jf_spline with n = 0."""
+    X = numpy.asarray(X, dtype=float)
+    out = numpy.empty(X.size)
+    jspline_array(numpy.ascontiguousarray(X).ravel(), tck[0], tck[1], tables, xmin, xmax, ymin, out)
+    return out.reshape(X.shape)
+
+
 def Jf_spline(X,n=0):
     """Jf interpolated from a saved spline. Input is (m/T)^2."""
+    if n == 0:
+        return _spline_values(X, _tckf, _tabf, _xfmin, _xfmax, _yfmin)
     X = numpy.array(X, copy=False)
     x = X.ravel()
     y = interpolate.splev(x,_tckf, der=n).ravel()
@@ -272,8 +287,15 @@ else:
 
 
 _tckb = interpolate.splrep(_xb, _yb)
+_tckb = (numpy.ascontiguousarray(_tckb[0], dtype=float), numpy.ascontiguousarray(_tckb[1], dtype=float), _tckb[2])
+_tabb = _knot_table(_tckb[0])
+_ybmin = float(interpolate.splev(_xbmin, _tckb))
+
+
 def Jb_spline(X : float | numpy.ndarray, n : int = 0) -> float | numpy.ndarray:
     """Jb interpolated from a saved spline. Input is (m/T)^2."""
+    if n == 0:
+        return _spline_values(X, _tckb, _tabb, _xbmin, _xbmax, _ybmin)
     X = numpy.array(X, copy=False)
     x = X.ravel()
     y = interpolate.splev(x,_tckb, der=n).ravel()

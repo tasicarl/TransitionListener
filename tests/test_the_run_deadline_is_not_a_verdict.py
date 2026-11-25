@@ -141,10 +141,9 @@ class EveryConvertingHandlerLetsTheDeadlineThroughTests(unittest.TestCase):
         handlers = _converting_handlers()
         self.assertTrue(any(guarded for *_, guarded in handlers),
                         "the sweep found no guarded handler, so it is not discriminating")
-        self.assertIn(("tunneling1D.py", "initialConditions"),
+        self.assertIn(("bubbledynamics.py", "_solve_for_initial_Tperc"),
                       {(f, fn) for f, fn, _, guarded in handlers if guarded},
-                      "tunneling1D guarded its broad handler before this change and must "
-                      "still be seen as guarded")
+                      "this handler is guarded and must be seen as guarded")
 
 
 class TheOptionalStagesDoNotAbsorbTheDeadlineTests(unittest.TestCase):

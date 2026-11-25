@@ -19,7 +19,7 @@ import numpy as np
 from transitionlistener.helper_functions import load_potential, temperatureDerivativeStep
 
 REPO = Path(__file__).resolve().parents[1]
-CONFORMAL = (REPO / "models/TL_conformal_dark_u1.py", "specific_potential",
+CONFORMAL = (REPO / "models/TL_conformal_u1_fermions.py", "specific_potential",
              {"g": 0.62, "y": 0.01, "v_GeV": 0.14})
 
 
@@ -152,14 +152,16 @@ class SoundSpeedAccuracyTests(unittest.TestCase):
                                 f"chosen {chosen} vs reference {reference}")
 
     def test_the_old_rule_misses_it_at_low_temperature(self):
-        """The regression this fixes: at T = 0.5 the old step is 0.9 percent off."""
-        T = 0.5
-        phi = self.pot.findMinimum(np.array([1000.0]), T)
-        reference = self.cs_sq(phi, T, 0.1 * T)
-        old = self.cs_sq(phi, T, old_step(self.pot, T))
-        chosen = self.cs_sq(phi, T, temperatureDerivativeStep(self.pot, T, phi))
-        self.assertGreater(abs(old / reference - 1), 5e-3)
-        self.assertLess(abs(chosen / reference - 1), 5e-3)
+        """The regression this fixes: the old step is ruled by rounding, off by 0.05 to 3 percent from one T to the next."""
+        worst_old, worst_chosen = 0.0, 0.0
+        for T in (0.2, 0.4, 0.6):
+            phi = self.pot.findMinimum(np.array([1000.0]), T)
+            reference = self.cs_sq(phi, T, 0.1 * T)
+            worst_old = max(worst_old, abs(self.cs_sq(phi, T, old_step(self.pot, T)) / reference - 1))
+            chosen = self.cs_sq(phi, T, temperatureDerivativeStep(self.pot, T, phi))
+            worst_chosen = max(worst_chosen, abs(chosen / reference - 1))
+        self.assertGreater(worst_old, 5e-3)
+        self.assertLess(worst_chosen, 5e-3)
 
     def test_both_rules_agree_where_there_is_no_cancellation(self):
         """High temperature: the offset is not dominant and the step does not matter."""

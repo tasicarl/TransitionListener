@@ -31,7 +31,11 @@ Authors:
     Carlo Tasillo <carlo.tasillo@ific.uv.es>
 """
 
+import abc
+
+import warnings
 import numpy as np
+from collections import namedtuple
 from scipy import optimize
 from rich.columns import Columns as RichColumns
 import rich
@@ -47,6 +51,9 @@ from transitionlistener.thermodynamics import (e_geffSM, p_geffSM, sm_bath,
 from transitionlistener.bubbledynamics import approxNucleationCriterion
 
 from transitionlistener import errors
+from transitionlistener.compiled import multifield_potential
+from transitionlistener.compiled import onefield_potential
+from transitionlistener.compiled.onefield import daisy_difference_array
 from transitionlistener import runtime_options
 from transitionlistener.config import Configuration
 from transitionlistener import constants as cn
@@ -132,7 +139,50 @@ def _daisy_mass_cubed_difference(m20, m2T, Pi=None):
     return out
 
 
-class generic_potential():
+# The compiled potential is read from the model once, and it has to follow every later change of the model. The changes
+# report themselves: assigning to an instance goes through generic_potential.__setattr__, and to a class through the
+# metaclass below. A class counts for all its instances, so the entry points compare a number and a stamp taken at the
+# last build.
+_class_edits = 0
+
+#: Bookkeeping of the potential: assigning to these does not change what the kernels compute.
+_NOT_IN_THE_KERNELS = frozenset({
+    "_kernels", "_kernel_stamp", "_kernel_failures", "_compile_note", "_gradV", "_d2V", "_gradVT", "_massSqMatrix",
+    "_debye_state", "_sm_fields_geff_splines", "config", "verbose", "derived_parameters", "nlo_correction",
+})
+#: The entry points of the kernels. A model that replaces one of them, or a piece they stand for, stays on the
+#: Python potential. A class may declare in ``_origin_entries`` those it only replaces where its ``_at_origin`` says so.
+_KERNEL_ENTRIES = ("Vtot", "V1T", "V1T_from_X", "Vdaisy", "V_thermal", "gradV", "d2V", "dgradV_dT")
+_KERNEL_ENERGY = ("energyDensity", "radiationEnergyDensity", "energyDensityDaisy", "V1_from_X")
+#: A one-field model that keeps assigning to itself in its Python potential is not built again after this many refusals.
+_MAX_KERNEL_FAILURES = 8
+
+
+# Path-deformation convergence target of models with more than one field (see __init__).
+MULTIFIELD_FRATIOCONV = 3e-3
+
+
+class _PotentialClass(abc.ABCMeta):
+    """The type of potential classes: an assignment to a class reaches the compiled potentials of its instances."""
+
+    def __setattr__(cls, name, value):
+        global _class_edits
+        super().__setattr__(name, value)
+        if name != "_abc_impl" and not name.startswith("__"):
+            _class_edits += 1
+
+    def __delattr__(cls, name):
+        global _class_edits
+        super().__delattr__(name)
+        _class_edits += 1
+
+
+_warned_python_potential = set()
+
+
+_Fermions = namedtuple("_Fermions", "masses_sq dof")
+
+class generic_potential(metaclass=_PotentialClass):
     """
     An abstract class from which one can easily create finite-temperature effective potentials.
 
@@ -224,6 +274,101 @@ class generic_potential():
     #: value leaves :meth:`V1` at the unresummed expression. See :meth:`setGoldstoneShift`.
     goldstone_shift: float = 0.0
 
+    #: The compiled potential, None on the generic numpy path, and the value of _class_edits it was read at. The stamp
+    #: stays None until the model is constructed, and -1 asks for a new build.
+    _kernels = None
+    _kernel_stamp = None
+    _kernel_failures = 0
+    _compile_note = "not constructed"
+
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+        if name not in _NOT_IN_THE_KERNELS and self._kernel_stamp is not None:
+            object.__setattr__(self, "_kernel_stamp", -1)
+
+    def __delattr__(self, name):
+        object.__delattr__(self, name)
+        if name not in _NOT_IN_THE_KERNELS and self._kernel_stamp is not None:
+            object.__setattr__(self, "_kernel_stamp", -1)
+
+    def _update_kernels(self) -> None:
+        """Build the compiled potential of the model as it is now, or stay on the numpy path, saying why."""
+        if self._kernel_stamp is None:
+            return
+        self._debye_state = None               # measured on the model as it was
+        self._kernels = None
+        self._kernel_stamp = _class_edits      # the Python potential below must not come back here
+        cls = type(self)
+        kept = getattr(cls, "_origin_entries", ())
+        replaced = [n for n in _KERNEL_ENTRIES if n in self.__dict__
+                    or (n not in kept and getattr(cls, n) is not getattr(generic_potential, n))]
+        if replaced:
+            self._python_potential(f"it replaces {', '.join(replaced)}")
+            return
+        if self._kernel_failures >= _MAX_KERNEL_FAILURES:
+            return
+        energy = any(n in self.__dict__ or getattr(cls, n) is not getattr(generic_potential, n) for n in _KERNEL_ENERGY)
+        try:
+            with np.errstate(all="ignore"):
+                model = self.compiled_model()
+                if model is not None:
+                    self._kernels = multifield_potential.build(self, model)
+                elif getattr(self, "Ndim", 1) == 1:
+                    self._kernels = onefield_potential.build(self, energy, cls.V1 is generic_potential.V1)
+                else:
+                    raise NotImplementedError("more than one field")
+            self._compile_note = "compiled"
+        except errors.Timeout:
+            self._kernel_stamp = -1
+            raise
+        except Exception as error:     # a model outside the compiled form, whatever it does with these inputs
+            self._kernel_failures += 1
+            self._python_potential(str(error) or type(error).__name__)
+        self._kernel_stamp = _class_edits
+
+    def compiled_model(self):
+        """The functions and numbers of a compiled potential, or None for a model without one.
+
+        A model returns ``(tree, bosons, fermions, numbers)``: three module-level functions of plain arithmetic, which
+        numba compiles, and the numbers they read, taken from the attributes of the model. ``tree(x, p)`` returns
+        ``V0 + Vct`` at the fields ``x[i]``, ``bosons(x, T, p, m2)`` and ``fermions(x, p, m2)`` write the masses squared
+        to ``m2[i]`` in the order of the spectrum, and ``p[i]`` are the numbers. ``fermions`` may be None for a model
+        without fermions. The section "Compiled code" of the documentation has a worked example.
+        """
+        return None
+
+    def _python_potential(self, reason: str) -> None:
+        """Stay on the Python potential, and warn once per model class."""
+        self._compile_note = reason
+        cls = type(self)
+        if cls not in _warned_python_potential:
+            _warned_python_potential.add(cls)
+            warnings.warn(f"{cls.__name__}: no compiled potential ({reason}). The model runs on the Python potential: "
+                          "the same physics, more slowly.", stacklevel=2)
+
+    @property
+    def compiled_status(self) -> str:
+        """``"compiled"``, or why the model runs on the Python potential."""
+        if self._kernel_stamp != _class_edits:
+            self._update_kernels()
+        return self._compile_note
+
+    def current_kernels(self):
+        """The compiled potential of the model as it is now, or None."""
+        if self._kernel_stamp != _class_edits:
+            self._update_kernels()
+        return self._kernels
+
+    def thermal_kernels(self):
+        """The compiled potential if it also stands for the energy and entropy density, else None."""
+        kernels = self.current_kernels()
+        return kernels if kernels is not None and kernels.thermal is not None else None
+
+    def _origin_stencil(self):
+        """(mass per unit field, mass/T below which a field is at the origin, step/T of the derivatives there), for a
+        model whose derivatives take their step on the scale of T at the origin, else None."""
+        return None
+
     def __init__(self, *args, **dargs) -> None:
         """Prepare configuration objects and delegate to :meth:`init` for setup."""
 
@@ -268,6 +413,9 @@ class generic_potential():
         # For multi-field potentials the path-deformation convergence target
         # needs to be tighter than the 1d default; otherwise the bounce action
         # exhibits 0.1-1 dex jitter that downstream percolation cannot resolve.
+        # The deformation also leaves the action biased high: on 25 points of the 2HDM
+        # at 1e-2, alpha came out 0.7-1.2 % high and (beta/H)_RH 1-4.5 % low wherever
+        # alpha > 0.4, against 0.2 % and 1 % at the value below, for 1.35 times the time per point.
         # Only override when the user has not already set fRatioConv themselves.
         if (
             getattr(self, "Ndim", 1) >= 2
@@ -278,7 +426,7 @@ class generic_potential():
         ):
             self.config.tracingConf.tunneling_params["deformation_deform_params"][
                 "fRatioConv"
-            ] = 1e-2
+            ] = MULTIFIELD_FRATIOCONV
         self._ensure_mass_spectrum()
         self._sync_mass_labels()
         self.Tmin = cn.T0_SM_GeV / self.conversionFactor
@@ -286,9 +434,12 @@ class generic_potential():
         self.checkInitialisation()
         self.generateInvGroupElements()
         self._check_radiation_baths()
+        self._kernel_stamp = -1
+        self._update_kernels()
 
         if self.verbose:
             self.makePrettyDictionaryPrint(self.derived_parameters)
+            console.print(f"Compiled potential: {self.compiled_status}")
 
     def _check_radiation_baths(self) -> None:
         """Validate ``SM_bath``, and the Standard Model's place among the radiation baths.
@@ -414,9 +565,10 @@ class generic_potential():
                     f"[{min_val}, {max_val}]."
                 )
         # The Standard Model fields of the potential are tabulated per model and keyed on what
-        # they are built from; changing the parameters invalidates that table, as it used to
-        # reset the temperature cap of the Standard Model tables.
+        # they are built from; changing the parameters invalidates that table.
         self._sm_fields_geff_splines = {}
+        if self._kernel_stamp is not None:      # the parameters change in place, unseen by __setattr__
+            self._kernel_stamp = -1
         return mp
 
     def computeConversionFactor(self, v_stable: float, v_GeV: float) -> float:
@@ -919,7 +1071,17 @@ class generic_potential():
         Vtot : array_like
             Total effective potential.
         """
+        if self._kernel_stamp != _class_edits:
+            self._update_kernels()
+        kernels = self._kernels
+        if kernels is not None:
+            y = kernels.vtot(self, X, T, include_radiation, include_decoupled)
+            if y is not None:
+                return y
+        return self._Vtot_generic(X, T, include_radiation, include_decoupled)
 
+    def _Vtot_generic(self, X, T, include_radiation, include_decoupled) -> np.ndarray:
+        """The potential from the mass spectrum in numpy, for any number of fields."""
         T = np.asanyarray(T)
         X = broadcast_fields(X, T)
 
@@ -956,7 +1118,7 @@ class generic_potential():
         temperature, so they drop out of every temperature derivative analytically, but not
         numerically: forming the sum first and differencing afterwards subtracts the vacuum
         energy from itself, and under supercooling the thermal part is ten or more orders of
-        magnitude smaller. On the conformal dark U(1) of ``examples/example_point.yaml`` the
+        magnitude smaller. On the conformal U(1) with fermions of ``examples/example_point.yaml`` the
         thermal part is ``7e-4`` of the vacuum energy at the percolation temperature and
         ``1e-13`` of it two decades below, where a second temperature derivative of the whole
         potential has no significant digits left.
@@ -1030,10 +1192,10 @@ class generic_potential():
         ``exp(-m/T)`` in it, so it survives where the physics says it should not and eventually
         exceeds the radiation that is still relativistic.
 
-        Measured on the conformal dark U(1) shipped in ``examples/``: the daisy term is 7 % of
-        the field-independent radiation at ``T/v = 1e-1``, equal to it at about ``1e-2``, and
-        ten million times it at ``1e-9``, while the lightest mode runs from ``m/T = 1.3`` to
-        ``1.3e8``. Where it dominates, the free energy goes as ``T^3`` rather than ``T^4`` and
+        In a strongly supercooled model, where ``m/T`` of the lightest mode grows by many orders
+        of magnitude as the temperature falls, the daisy term overtakes the field-independent
+        radiation and then exceeds it by orders of magnitude. Where it dominates, the free
+        energy goes as ``T^3`` rather than ``T^4`` and
         the sound speed tends to ``1/sqrt(2)`` instead of the ``1/sqrt(3)`` of the radiation
         that is actually there. A sound speed above ``1/sqrt(3)`` in a late, cold, heavily
         supercooled phase is therefore this, and not a property of the plasma.
@@ -1110,7 +1272,7 @@ class generic_potential():
         ``T`` and at zero, which is what it used before.
 
         That difference is badly conditioned, and the daisy term is the one place it matters.
-        On the conformal dark U(1) at an internal temperature of 0.02 the masses squared are
+        On the conformal U(1) with fermions at an internal temperature of 0.02 the masses squared are
         about ``5e4`` while their thermal part is about ``5e-5``, so the subtraction keeps seven
         of sixteen digits; by an internal temperature of ``1e-7`` it keeps none and the thermal
         part underflows to zero, which silently removes the daisy term altogether.
@@ -1152,7 +1314,7 @@ class generic_potential():
         return coefficient * float(T2)
 
     # Outcome of the check in `_debye_coefficient`, kept because `Vtot` calls it on every
-    # evaluation and the answer cannot change for a given model: `None` not yet asked,
+    # evaluation; `_update_kernels` drops it when the model changes. `None` not yet asked,
     # `"unavailable"` the thermal part does not go as `T^2`, `"field_dependent"` it does but
     # the coefficient moves with the field, or the coefficient array itself where it does not.
     _debye_state = None
@@ -1261,9 +1423,14 @@ class generic_potential():
         m20, nb, _, _ = bosons0
         m2T, _, _, _ = bosonsT
 
-        y = np.real(-(T/(12.*np.pi))
-                    * np.sum(nb * _daisy_mass_cubed_difference(m20, m2T, Pi), axis=-1))
-        return y
+        if m20.dtype != np.float64 or m2T.dtype != np.float64:
+            return np.real(-(T/(12.*np.pi))
+                           * np.sum(nb * _daisy_mass_cubed_difference(m20, m2T, Pi), axis=-1))
+        m20r, thermal = np.broadcast_arrays(m20, m2T - m20 if Pi is None else Pi)
+        difference = np.empty(m20r.size)
+        daisy_difference_array(np.ascontiguousarray(m20r).ravel(), np.ascontiguousarray(thermal, dtype=float).ravel(),
+                               difference)
+        return -(T/(12.*np.pi)) * np.sum(nb * difference.reshape(m20r.shape), axis=-1)
 
     def Vdaisy_from_X(self, X,  T: float | np.ndarray,
                realDaisy=False) -> float | np.ndarray:
@@ -1339,6 +1506,13 @@ class generic_potential():
             The gradient of the effective potential at the given field values
             and temperatures.
         """
+        if self._kernel_stamp != _class_edits:
+            self._update_kernels()
+        kernels = self._kernels
+        if kernels is not None:
+            y = kernels.gradv(X, T)
+            if y is not None:
+                return y
         try:
             f = self._gradV
         except BaseException:
@@ -1477,7 +1651,7 @@ class generic_potential():
             def contribution(X, boson_weights=boson_weights, fermion_weights=fermion_weights):
                 m2, n, c, physical = self.boson_massSq(X, 0.0)
                 fermion_masses, dof = tuple(self.fermion_massSq(X))[:2]
-                return one_loop((m2, n * boson_weights, c, physical), (fermion_masses, dof * fermion_weights))
+                return one_loop((m2, n * boson_weights, c, physical), _Fermions(fermion_masses, dof * fermion_weights))
 
             step = smooth_step if is_smooth[species] else self.counterterm_derivative_step
             total = total + derivative(contribution, eps=step, Ndim=self.Ndim,
@@ -1588,6 +1762,13 @@ class generic_potential():
             The derivative of the gradient of the effective potential with
             respect to temperature at the given field values and temperatures.
         """
+        if self._kernel_stamp != _class_edits:
+            self._update_kernels()
+        kernels = self._kernels
+        if kernels is not None:
+            y = kernels.dgradv_dt(X, T)
+            if y is not None:
+                return y
         T_eps = self.T_eps
         try:
             gradVT = self._gradVT
@@ -1749,6 +1930,13 @@ class generic_potential():
             The Hessian matrix of the effective potential at the given field
             values and temperatures.
         """
+        if self._kernel_stamp != _class_edits:
+            self._update_kernels()
+        kernels = self._kernels
+        if kernels is not None:
+            y = kernels.d2v(X, T)
+            if y is not None:
+                return y
         try:
             f = self._d2V
         except BaseException:
@@ -1949,6 +2137,117 @@ class generic_potential():
         """
         return approxNucleationCriterion(T, S, self, high_phase, low_phase)
 
+    def bounceFreeAction(self):
+        """The action to use in place of the four-dimensional bounce, or None to solve the bounce.
+
+        A model whose rate does not read the bounce returns a callable of the temperature, and
+        ``pathDeformation.bounceAction`` then takes the action from it and does not run the
+        solver. The default solves the bounce.
+        """
+        return None
+
+    def actionNuc(self, T: float, action: float, instanton=None) -> float:
+        r"""Return the bounce action the pipeline should use at temperature `T`.
+
+        This is the *second* seam, and for a leading-order three-dimensional
+        rate it is the one that matters. The default returns the action it is
+        handed, so nothing changes.
+
+        The reason it exists is an identity. The four-dimensional rate is
+
+        .. math::
+            \ln\frac{\Gamma}{V} = 4\ln T
+            + \tfrac32\ln\!\frac{S}{2\pi T} - \frac{S}{T} ,
+
+        and the leading-order three-dimensional rate is the same expression in
+        terms of :math:`S_3/T`. So they differ *only* through the action, and a
+        model that supplies its own action gets the three-dimensional rate
+        everywhere the pipeline uses :math:`\Gamma(T,S)` -- including the
+        twenty-odd percolation integrands that see arrays and have no potential
+        in scope.
+
+        That matters because overriding :meth:`logGammaNuc` alone does **not**
+        reach those integrands: running the three-dimensional mode through the
+        pipeline gave observables identical to the four-dimensional ones to
+        seven digits, while the rate itself differed by 388 in the log. The
+        rate seam was real and the pipeline was ignoring it. Supplying the
+        action instead works with the architecture rather than against it.
+
+        A next-to-leading-order rate, whose prefactor genuinely differs, still
+        needs :meth:`logGammaNuc`; the two seams are complementary, not
+        alternatives.
+
+        Parameters
+        ----------
+        T : float
+            Temperature, in internal units.
+        action : float
+            The four-dimensional bounce action the tunnelling solver found.
+        instanton : optional
+            The bounce profile, when one is available.
+
+        Returns
+        -------
+        float
+            The action to use, in internal units. Dimensionful, so a model
+            working with :math:`S_3/T` must return ``T * S3_over_T``.
+        """
+        return action
+
+    def logGammaNuc(self, T: float, S: float, instanton=None) -> float:
+        r"""Return :math:`\ln(\Gamma/V)`, the log nucleation rate per unit volume.
+
+        This is the seam through which the nucleation rate enters the pipeline.
+        The default is the four-dimensional expression,
+
+        .. math::
+            \frac{\Gamma}{V} = T^4
+            \left(\frac{S_3}{2\pi T}\right)^{3/2} e^{-S_3/T},
+
+        so that with ``rate_mode = "S3overT_4D"`` (the default) nothing changes.
+
+        The reason this method exists, rather than the pipeline calling
+        :func:`bubbledynamics.logGamma` directly, is that the rate is only a
+        function of ``(T, S)`` in the leading-order four-dimensional treatment.
+        A three-dimensional effective-theory rate also needs the bounce
+        *profile*, for the fluctuation determinant, and the model's matching
+        relations at this temperature. Both are available here and neither is
+        available inside the percolation integrands, which see only arrays.
+
+        Parameters
+        ----------
+        T : float
+            Temperature, in internal units.
+        S : float
+            Bounce action :math:`S_3` at that temperature, internal units.
+        instanton : optional
+            The bounce profile returned by the tunnelling solver, when one is
+            available. Unused by the default rate; a model overriding this
+            method for a three-dimensional rate needs it for the determinant.
+
+        Returns
+        -------
+        float
+            :math:`\ln(\Gamma/V)` in internal units.
+        """
+        # local import: the percolation modules do the same, to keep the
+        # module-level import graph acyclic
+        from transitionlistener import bubbledynamics as bd
+
+        mode = getattr(self.config.nucleationConf, "rate_mode", "S3overT_4D")
+        if mode == "S3overT_4D":
+            return float(np.atleast_1d(bd.logGamma(T, S))[0])
+        if mode == "model":
+            raise NotImplementedError(
+                "config.nucleationConf.rate_mode is 'model', but this model "
+                f"({type(self).__name__}) does not override logGammaNuc(). "
+                "Either implement it or set rate_mode back to 'S3overT_4D'."
+            )
+        raise ValueError(
+            f"unknown nucleationConf.rate_mode {mode!r}; "
+            "expected 'S3overT_4D' or 'model'"
+        )
+
     def radiationEnergyDensity(self, X: np.ndarray, T: float | np.ndarray,
                                include_decoupled=True) -> float | np.ndarray:
         r"""Return the energy density in radiation that is not
@@ -2035,6 +2334,11 @@ class generic_potential():
         -------
         float|np.ndarray :
             The energy density at `T`."""
+        kernels = self.thermal_kernels()
+        if kernels is not None:
+            y = kernels.energy_density(X, T, include_decoupled)
+            if y is not None:
+                return y
 
         if np.ndim(T) > 0 or np.ndim(X) > 1:
             T = np.asanyarray(T, dtype=float)
@@ -2059,6 +2363,23 @@ class generic_potential():
         if T != 0.0:
             etot += self.radiationEnergyDensity(X, T, include_decoupled)
         return etot
+
+    def enthalpyDensity(self, X: np.ndarray, T: float | np.ndarray,
+                        include_decoupled: bool = True) -> float | np.ndarray:
+        """The enthalpy density ``e + p`` from the thermal part of the potential alone.
+
+        The vacuum energy cancels in ``e + p``. Forming the two first and adding them leaves that cancellation to the
+        floating point: under strong supercooling, where the plasma is 1e-16 of the vacuum energy, the sum has no digit
+        left and is often exactly zero. A model that rewrites the potential or its energy density has no thermal part
+        that can be read from the spectrum, so there the two are formed and added.
+        """
+        if any(n in self.__dict__ or getattr(type(self), n) is not getattr(generic_potential, n)
+               for n in ("Vtot", "V1T_from_X", "V_thermal", "energyDensity")):
+            vacuum = self.V0(self.X0) + self.Vct(self.X0) + self.V1_from_X(self.X0)
+            return (self.energyDensity(X, T, include_decoupled=include_decoupled)
+                    - (self.Vtot(X, T, include_decoupled=include_decoupled) - vacuum))
+        return (self.radiationEnergyDensity(X, T, include_decoupled) + self.energyDensityDaisy(X, T)
+                - self.V_thermal(X, T, include_decoupled=include_decoupled))
 
     def makePrettyDictionaryPrint(self, derived_dict: dict={}) -> None:
         """Print the potential information in a nice way.

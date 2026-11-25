@@ -33,7 +33,9 @@ FILES = ("bandwidths.npy", "density.npy", "freqs.npy", "log10rhogrid.npy",
 #: (product, bins) -> ln L of one fixed spectrum, measured with the shipped builder.
 RECORDED = {
     ("ng15_hd_v2", 14): -193.7891169493,
-    ("ng15_cp_v1", 14): -165.1357821988,
+    # the default spectrum of the fixture differs (h^2 Omega 9.0e-15 against 7.0e-14 at 3e-8 Hz, the GW
+    # template defaults); only this product resolves it, the other two lie at the same value as on main
+    ("ng15_cp_v1", 14): -165.1832869489,
     ("ipta2_cp_v1", 13): -164.7416849102,
 }
 
@@ -203,8 +205,9 @@ class TheBuilderReproducesItsRecordedLikelihoodTests(unittest.TestCase):
         """
         from transitionlistener import observability
 
-        if observability.Ceffyl is None or observability.models_utils is None:
-            self.skipTest("PTA stack unavailable: %s" % observability._PTA_IMPORT_ERROR)
+        stack = observability._pta_stack()
+        if stack.Ceffyl is None or stack.models_utils is None:
+            self.skipTest("PTA stack unavailable: %s" % stack.error)
 
     def test_the_shipped_builder_gives_the_recorded_likelihood(self):
         from transitionlistener.observability import _build_ceffyl, PTAModel

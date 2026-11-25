@@ -327,7 +327,7 @@ class SchemeSeparationTests(unittest.TestCase):
     def test_the_potential_scale_factor_follows_the_potential(self):
         """The a(T) of "eff_potential" must be -dV/dT, on a point where that is visible.
 
-        ``ModelThermodynamicsTests`` makes the same check on the conformal dark U(1), where
+        ``ModelThermodynamicsTests`` makes the same check on the conformal U(1) with fermions, where
         the two schemes' entropy ratios differ by only 1.1e-3 and its tolerance cannot tell
         them apart. Here they differ by more than a percent.
         """
@@ -358,8 +358,8 @@ class SchemeSeparationTests(unittest.TestCase):
 
 class ModelThermodynamicsTests(unittest.TestCase):
     def test_interpolants_follow_the_model_across_the_qcd_crossover(self):
-        # Conformal dark U(1) with v = 6 GeV: internal temperatures 15 to 50 span 90 to 300 MeV.
-        pot = load_potential(str(REPO / "models/TL_conformal_dark_u1.py"), "specific_potential")(
+        # Conformal U(1) with fermions with v = 6 GeV: internal temperatures 15 to 50 span 90 to 300 MeV.
+        pot = load_potential(str(REPO / "models/TL_conformal_u1_fermions.py"), "specific_potential")(
             {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
         phase = FixedPhase([0.0])
         T = np.geomspace(50.0, 15.0, 200)
@@ -489,7 +489,7 @@ class TimeoutPropagationTests(unittest.TestCase):
     """
 
     def _potential(self):
-        return load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+        return load_potential(str(REPO / "models/TL_conformal_u1_fermions.py"),
                               "specific_potential")(
             {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
 
@@ -659,7 +659,7 @@ class CountedEntropyTimeoutTests(unittest.TestCase):
             def valAt(self, T, deriv=0):
                 raise errors.Timeout()
 
-        pot = load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+        pot = load_potential(str(REPO / "models/TL_conformal_u1_fermions.py"),
                              "specific_potential")(
             {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
         for module in (bd, bdf):
@@ -674,7 +674,7 @@ class CountedEntropyTimeoutTests(unittest.TestCase):
             def valAt(self, T, deriv=0):
                 raise ValueError("outside the traced range")
 
-        pot = load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+        pot = load_potential(str(REPO / "models/TL_conformal_u1_fermions.py"),
                              "specific_potential")(
             {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
         for module in (bd, bdf):
@@ -694,7 +694,7 @@ class TimeoutReachesTheCallerTests(unittest.TestCase):
     """
 
     def _potential(self):
-        return load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+        return load_potential(str(REPO / "models/TL_conformal_u1_fermions.py"),
                               "specific_potential")(
             {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
 
@@ -761,7 +761,7 @@ class UnknownEntropyDefinitionTests(unittest.TestCase):
     def test_entropy_density_refuses_an_unknown_definition(self):
         # It is a public function and the tests call it directly, so it may not answer a
         # misspelled scheme with the counted entropy.
-        pot = load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+        pot = load_potential(str(REPO / "models/TL_conformal_u1_fermions.py"),
                              "specific_potential")(
             {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
         for definition in ("dof_tabel", "", "DOF_TABLE", "potential"):
@@ -770,7 +770,7 @@ class UnknownEntropyDefinitionTests(unittest.TestCase):
                     bd.entropy_density(pot, FixedPhase([0.0]), 20.0, definition)
 
     def test_both_documented_definitions_are_accepted(self):
-        pot = load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+        pot = load_potential(str(REPO / "models/TL_conformal_u1_fermions.py"),
                              "specific_potential")(
             {"g": 0.692, "y": 0.01, "v_GeV": 6.0}, verbose=False)
         for definition in cn.ENTROPY_DEFINITIONS:

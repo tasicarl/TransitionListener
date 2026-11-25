@@ -37,7 +37,7 @@ class FixedPhase:
 
 
 def conformal(v_GeV=6.0, g=0.692):
-    return load_potential(str(REPO / "models/TL_conformal_dark_u1.py"),
+    return load_potential(str(REPO / "models/TL_conformal_u1_fermions.py"),
                           "specific_potential")({"g": g, "y": 0.01, "v_GeV": v_GeV},
                                                 verbose=False)
 

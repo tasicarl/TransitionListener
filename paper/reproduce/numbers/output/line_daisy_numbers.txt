@@ -1,0 +1,16 @@
+NLO at g = 0.40: T_p 6.52 meV, (beta/H)_S 4.441, (beta/H)_R 1.822, (beta/H)_Gamma 0.362
+N5 (4D daisy, fixed couplings): smallest coupling on the line that completes 0.4452 (+12% against NLO, 0.3964)
+N4 (4D daisy, couplings at pi T): smallest coupling on the line that completes 0.3999 (+1% against NLO, 0.3964)
+N4 at g = 0.5: T_p 132.05 keV, (beta/H)_R 14.56; NLO T_p 210.29 keV, (beta/H)_R 16.31; ratio of the (beta/H)_R 0.89
+N5 at g = 0.5: T_p 15.04 keV, (beta/H)_R 9.65; NLO T_p 210.29 keV, (beta/H)_R 16.31; ratio of the (beta/H)_R 0.59
+T_p shift under A_dyn x 10 and / 10 (half the difference, per cent), along the tabulated couplings:
+  g = 0.420: 54.9%
+  g = 0.430: 40.7%
+  g = 0.440: 32.4%
+  g = 0.450: 26.8%
+  g = 0.460: 22.8%
+  g = 0.470: 19.8%
+  g = 0.475: 18.6%
+  g = 0.480: 17.8%
+  g = 0.490: 15.4%
+  g = 0.500: 13.4%

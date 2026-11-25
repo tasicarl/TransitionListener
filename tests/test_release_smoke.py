@@ -60,7 +60,7 @@ EXPECTED = {
 }
 
 
-# The example point is the conformal dark U(1) at g = 0.7, v_GeV = 0.1, y = 0.01, a strongly
+# The example point is the conformal U(1) with fermions at g = 0.7, v_GeV = 0.1, y = 0.01, a strongly
 # supercooled transition, which is the configuration where the bounce integration does the most
 # work. Measured on one core of an otherwise idle machine: 143.0 s at d66a774 and 183.9 s once
 # `epsabs` is a fraction of the bounce's own excursion rather than of the gap between the minima,

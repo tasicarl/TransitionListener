@@ -314,3 +314,24 @@ class DeepHistoryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SaturatedTailTests(unittest.TestCase):
+    """The support below completion carries no physics: step 3 stops solving bounces there and
+    takes the Hubble rate of the false phase, which jumps by a factor of about 2 from the mixed
+    background just above. The integral at the warmer nodes must not see that tail."""
+
+    def test_a_step_in_the_tail_leaves_the_warmer_nodes_alone(self):
+        beta = 13.0
+        # the grid ends where I ~ 15, beyond f_final = 0.99 (I = 4.6); the last four nodes form the tail
+        N_cold = math.log(20.0 * beta**4 / (8 * np.pi)) / beta
+        nodes = np.concatenate((np.linspace(N_cold - 3.0, N_cold - 0.1, 20), np.linspace(N_cold - 0.09, N_cold, 10)))
+        T, H = de_sitter_grid(nodes)
+        S = action_for(T, 4 * math.log(H0) + beta * nodes)
+        stepped = H.copy()
+        stepped[-4:] *= 2.2
+        before = bd.percIntegralODE(T, H, S)
+        after = bd.percIntegralODE(T, stepped, S)
+        self.assertGreater(before[-6], 4.6)
+        # the interpolant of one interval may reach one node beyond it, not further
+        np.testing.assert_allclose(after[:-6], before[:-6], rtol=1e-9, atol=0)

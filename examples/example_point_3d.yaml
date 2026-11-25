@@ -1,0 +1,87 @@
+# Single-point run of the conformal U(1) without fermions, with the nucleation rate of the three-dimensional
+# effective theory at next-to-leading order, from the table shipped with the package.
+# Run with: tl -c examples/example_point_3d.yaml -v
+#
+# Every switch of the uncertainty study (arXiv:XXXX.XXXXX, table "modelling choices") that TransitionListener
+# exposes is written out below at the default of the paper, with the alternatives in the comment and the label
+# of the variant in brackets. The PTA log-likelihoods of 14 and of 5 frequency bins [B4] are both in the output.
+# Variants without a key (mu3 halved or doubled in N1, the prefactor in N2, P1, P3, P5, the binaries of B1 and the
+# 30 bins of B4) are computed by the scripts in paper/reproduce.
+
+# ==================================================
+# Model and point
+# ==================================================
+Modelfile:
+  models/TL_conformal_u1_no_fermions_3d.py
+  # models/TL_conformal_u1_fermions_3d.py     the model with two Weyl fermions; add the Yukawa y to Parameters
+  # models/TL_conformal_u1_no_fermions_rg.py  [N4] 4D potential with daisy resummation, couplings run to pi T
+  #                                           (each temperature solved directly: minutes per point)
+  # models/TL_conformal_u1_fermions_rg.py     [N4] the same with fermions, its action from a shipped table
+  # models/TL_conformal_u1_no_fermions.py     [N5] 4D potential with daisy resummation, couplings at mu = v
+  # (with a 4D model file, drop the Nucleation block: its keys belong to the 3D rate)
+
+Potential:
+  specific_potential
+
+Scan:
+  SinglePoint
+
+Parameters:
+  g: 0.45
+  v_GeV: 2.9
+  # y: 0.3                                    Yukawa coupling, model with fermions only (shipped grid: 0 <= y <= 1)
+
+  # ---- percolation ----
+  percolation_f_perc: 0.28957                 # [P2] true-vacuum fraction at percolation; alternative 0.632 (= 1 - 1/e)
+
+  # ---- gravitational-wave source ----
+  gw_source_model: LewickiVaskonen22          # LewickiVaskonen22: strongly supercooled shells; with the expansion on, the
+                                              #   fits on an expanding background (2511.15687), without it those of 2208.11697
+                                              # [G3] LISA-pipeline24: sound waves, higgsless simulations (2403.03723)
+                                              # [G4] LISA-update2019: sound waves, hybrid simulations (1910.13125)
+                                              #      (G3 and G4 with gw_expansion_suppression: False)
+  gw_expansion_suppression: True              # [G1] False: no Hubble expansion during the transition (2511.15687);
+                                              #      then the flat-space shapes below apply
+  gw_lv22_expanding_shape: dissipative        # with expansion; [G2] non_dissipative: free-streaming shells (bulk flow)
+  gw_lv22_shape_field: bubbles_R3             # flat space only; [G5] bubbles_envelope: envelope approximation; bubbles_R2
+  gw_lv22_shape_fluid: fluid_R3_v1            # flat space only; fluid_R2_v1, fluid_R2_vcs, fluid_R3_vcs
+  gw_causality_tail: smooth                   # sharp (as fitted in 2511.15687), off (flat-space fits as published)
+  gw_expansion_speed: betaH_Gamma             # betaH_RH: speed from the bubble separation in the expansion factors
+  gw_use_mean_bubble_separation: True         # [P4] False: (beta/H)_S3, the slope of the action, in every factor
+  gw_bw_collisions: full                      # off, NLO
+  gw_sw_lifetime_factor: min                  # guo (2007.08537), guo_capped (BSMPT); LISA templates only
+  gw_kinetic_energy_efficiency: 0.6           # fluid kinetic energy over the single-bubble estimate; LISA-pipeline24 only
+  # gw_wall_velocity: LTE                     # LTE, c, WallGo, or a number in (0, 1]
+
+  # ---- PTA data (shipped free spectra) ----
+  gw_pta_free_spectrum: ng15_cp_v2            # NANOGrav 15 yr, common uncorrelated red noise
+                                              # [B2] ng15_hd_v2: Hellings-Downs
+                                              # [B3] ng15_hd_dmgp_v1: dispersion measure as a Gaussian process
+                                              # [B5] ipta2_cp_v1: IPTA DR2
+                                              # also ng15_hdall_v2, ng15_hd_v1, ng15_cp_v1, ng12p5_cp_v1
+
+# ==================================================
+# Nucleation rate (3D model files only)
+# ==================================================
+# The 3D model sets these defaults itself; they are written out to show what can be changed.
+Nucleation:
+  rate_mode: model                            # S3overT_4D: the 4D rate with the 4D bounce
+  include_determinants: True                  # [N3] False: leading-order rate
+  include_dim6: True                          # False: without the dimension-six operator
+  mu4_over_T: 7.0553                          # [N1] 4D matching scale in units of T; the shipped grids hold
+                                              #      0.5, 1 and 2 times 7.0553
+  matching_order: NLO                         # LO (needs a table built for it with tl-nlo-table, as nlo_grid_file)
+  temporal_coupling: h3                       # 2g3sq: leading-order coupling in the temporal gauge mass
+  input_scheme: zero_quartic                  # CW (needs a table built for it, as nlo_grid_file)
+  mu3_choice: gT                              # g3sq (needs a table built for it, as nlo_grid_file)
+  nlo_grid_file: null                         # the shipped table, src/transitionlistener/tab_data/nlo_grids/
+                                              #   conformal_u1_no_fermions.npz; a path replaces it
+
+# ==================================================
+# Output
+# ==================================================
+timeout: -1
+format: txt
+output_path: scans/example_point_3d
+description: example point, conformal U(1) model, 3D rate
+plot_description: Example point, conformal $U(1)$ model, 3D rate

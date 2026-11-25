@@ -64,7 +64,7 @@ class AccuracyVerdictProducerTests(unittest.TestCase):
         """RH is the one target with no reference-free measure, so an infinite RH uncertainty
         beside two met targets is undecided rather than missed.
 
-        This test asserted False until 2026-10-16. False makes the warning fire, and because
+        False makes the warning fire, and because
         the controller normally reaches this point with nothing to difference RH against, the
         warning fired on every point of every scan: 127 of 127 resolved couplings of the 2HDM
         broad arm, 36 of 36 of its edge arm, and the shipped example point. A column that says
@@ -144,7 +144,7 @@ class AccuracyVerdictProducerTests(unittest.TestCase):
 
         Every other test here stubs `_estimate_dynamiczoomwindow_accuracy`, so nothing
         checked that a lone profile really does measure Tperc and Tf. It does, through the
-        bracket-width fallback, and the references below are the linearised crossing and the
+        halved support (the bracket width where that has no crossing), and the references below are the linearised crossing and the
         sample spacing of the grid this test writes down, not values read off a previous run.
         RH had no such fallback until it gained one: it is now recomputed on every second
         support point, and the relative difference between the two is its uncertainty. So a
@@ -172,12 +172,22 @@ class AccuracyVerdictProducerTests(unittest.TestCase):
 
         expected_Tperc = 80.0 + (settings.f_perc - 0.20) / (0.40 - 0.20) * (70.0 - 80.0)
         self.assertAlmostEqual(est["Tperc"], expected_Tperc, places=10)
-        self.assertAlmostEqual(est["Tperc_uncertainty"], spacing / expected_Tperc, places=12)
+        # The uncertainty is the difference between the integrator's crossings on
+        # the full and on the halved support, and the bracket width only where one of them is
+        # missing. Both are measured here, from the estimate's own two values.
+        for key in ("Tperc", "Tf"):
+            full, half = est[f"{key}_ode"], est[f"{key}_half_support"]
+            if np.isfinite(full) and np.isfinite(half):
+                expected = abs(full - half) / est[key]
+            else:
+                expected = est[f"{key}_bracket_width"] / est[key]
+            self.assertAlmostEqual(est[f"{key}_uncertainty"], expected, places=12)
+        self.assertAlmostEqual(est["Tperc_bracket_width"], spacing, places=10)
 
         # Tf is solved on the interpolant rather than linearised, so it is pinned to its
-        # bracket and to the relation the fallback asserts, not to a number.
+        # bracket, not to a number.
         self.assertTrue(30.0 <= est["Tf"] <= 40.0, est["Tf"])
-        self.assertAlmostEqual(est["Tf_uncertainty"] * est["Tf"], spacing, places=10)
+        self.assertAlmostEqual(est["Tf_bracket_width"], spacing, places=10)
 
         self.assertTrue(np.isfinite(est["RH"]), "RH itself was determined")
         self.assertTrue(np.isfinite(est["RH_half_support"]),

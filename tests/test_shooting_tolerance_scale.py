@@ -8,7 +8,7 @@ bounce's own excursion, `|phi(0) - phi_metaMin|`.
 The two are the same thing on an ordinary transition, where the bounce starts somewhere between
 the minima. They are not on a supercooled one: the escape point sits a few `T` from the false
 vacuum while the minima stay `v` apart, so the excursion shrinks with the temperature and the
-gap does not. Measured on the shipped conformal dark U(1) at g = 0.46, y = 0.1, where the gap is
+gap does not. Measured on the shipped conformal U(1) with fermions at g = 0.46, y = 0.1, where the gap is
 1000 internal units at every temperature and the excursion is 4.4 to 6.2 T, `phitol |delta_phi|`
 is 1.6e-07 of the integrated feature at T_int = 0.1 and 2.3e-02 of it at 1e-6.
 
@@ -25,7 +25,7 @@ from unittest import mock
 
 import numpy as np
 
-import models.TL_conformal_dark_u1 as conformal_u1
+import models.TL_conformal_u1_fermions as conformal_u1_fermions
 from transitionlistener import errors
 from transitionlistener import pathDeformation
 from transitionlistener import tunneling1D
@@ -117,7 +117,7 @@ class TheAcceptanceRadiusNeverSwallowsTheBounce(unittest.TestCase):
     the radius in ``abs(y - [phi_metaMin, 0]) < 3*epsabs`` inside which a trial profile counts
     as having arrived at the metastable minimum, and that verdict ends the shooting loop.
     Tied to the gap between the minima the radius was a fixed absolute distance while the
-    bounce shrank with the temperature, so on the shipped conformal dark U(1) at g = 0.46,
+    bounce shrank with the temperature, so on the shipped conformal U(1) with fermions at g = 0.46,
     y = 0.1 the ratio ``3 phitol |delta_phi| / excursion`` grew from 5.8e-05 at an internal
     temperature of 1e-3 to 2.19 at 1e-7. At that last temperature the first trial was declared
     converged after two integration steps with the profile not having moved at all, and the
@@ -131,10 +131,10 @@ class TheAcceptanceRadiusNeverSwallowsTheBounce(unittest.TestCase):
     T_INT = 1e-7
 
     def _run(self):
-        pot = conformal_u1.specific_potential(
+        pot = conformal_u1_fermions.specific_potential(
             {"g": 0.46, "y": 0.1, "v_GeV": 1.0}, verbose=False)
         calls = []
-        real = tunneling1D.SingleFieldInstanton.integrateProfile
+        real = tunneling1D.CompiledInstanton.integrateProfile
 
         def spy(self, r0, y0, dr0, epsfrac, epsabs, drmin, rmax, *a, **k):
             out = real(self, r0, y0, dr0, epsfrac, epsabs, drmin, rmax, *a, **k)
@@ -144,7 +144,10 @@ class TheAcceptanceRadiusNeverSwallowsTheBounce(unittest.TestCase):
                 verdict=out.convergence_type))
             return out
 
-        tunneling1D.SingleFieldInstanton.integrateProfile = spy
+        tunneling1D.CompiledInstanton.integrateProfile = spy
+        # the Python loop, which tests/test_compiled_bisection.py holds equal to the compiled one
+        real_trials = tunneling1D.SplinePathInstanton._ordinary_trials
+        tunneling1D.SplinePathInstanton._ordinary_trials = tunneling1D.SingleFieldInstanton._ordinary_trials
         try:
             out = pathDeformation.bounceAction(
                 self.T_INT, lambda X, T: pot.Vtot(X, T), lambda X, T: pot.gradV(X, T), {},
@@ -153,7 +156,8 @@ class TheAcceptanceRadiusNeverSwallowsTheBounce(unittest.TestCase):
                 verbose=False, conversionFactor=pot.conversionFactor,
                 **pot.config.tracingConf.tunneling_params)
         finally:
-            tunneling1D.SingleFieldInstanton.integrateProfile = real
+            tunneling1D.CompiledInstanton.integrateProfile = real
+            tunneling1D.SplinePathInstanton._ordinary_trials = real_trials
         return calls, float(out[self.T_INT]["action"]) / self.T_INT
 
     def test_the_supercooled_bounce_is_not_accepted_before_it_has_moved(self):
@@ -255,11 +259,10 @@ class TheRunsDeadlineSurvivesTheInitialConditions(unittest.TestCase):
     """A timeout raised inside the root find must not come back as a thin wall.
 
     `errors.Timeout` is raised from a POSIX alarm handler, so it lands wherever the run happens
-    to be, `scipy.optimize.brentq` included. It subclasses `Exception`, and the handler around
-    that root find turns anything it catches into a `TunnelingError`, which
-    `pathDeformation._find_profile` turns into an `InfiniteActionError` and `bounceAction`
-    reports as no tunnelling: a timed-out point would come back as a finished one with a
-    verdict.
+    to be. It subclasses `Exception`, and a handler around the root find that turned anything it
+    catches into a `TunnelingError` would reach `pathDeformation._find_profile`, which turns that
+    into an `InfiniteActionError`, and `bounceAction` would report no tunnelling: a timed-out point
+    would come back as a finished one with a verdict.
     """
 
     def test_a_timeout_is_not_read_as_a_bubble_too_thin_to_integrate(self):
@@ -267,22 +270,19 @@ class TheRunsDeadlineSurvivesTheInitialConditions(unittest.TestCase):
         instanton = tunneling1D.SingleFieldInstanton(
             0.0, 50.0, lambda x: V(50.0 - np.asarray(x)),
             lambda x: -dV(50.0 - np.asarray(x)))
-        # These arguments reach the root find; the branches above it return at `rmin`. The
-        # instanton is built before the patch, since its own set-up calls `brentq` too.
         delta_phi0, rmin, cutoff = 1e-4 * 50.0, 1e-4 * instanton.rscale, 0.01 * 50.0
         calls = []
 
-        def brentq(*args, **kwargs):
-            calls.append(args[1:3])
+        def root_find(*args, **kwargs):
+            calls.append(args)
             raise errors.Timeout("deadline inside the initial-condition root find")
 
-        with mock.patch.object(tunneling1D.optimize, "brentq", brentq):
+        with mock.patch.object(tunneling1D.shooting, "initial_conditions", root_find):
             with self.assertRaises(errors.Timeout):
                 instanton.initialConditions(delta_phi0, rmin, cutoff)
         self.assertEqual(len(calls), 1,
                          "the root find was never reached, so this proves nothing: "
                          f"{calls}")
-
 
 
 if __name__ == "__main__":

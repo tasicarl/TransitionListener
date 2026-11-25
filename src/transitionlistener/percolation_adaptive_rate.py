@@ -18,6 +18,7 @@ from scipy import interpolate
 from scipy import optimize
 
 from transitionlistener.bubbledynamics import _temperature_grid
+from transitionlistener.compiled.percolation import rate_interval_is_inert
 
 HOT_RATE_REFINE_LOG = 1.0
 HOT_RATE_ACCEPT_LOG = 0.0
@@ -178,7 +179,25 @@ def _log_gamma_h4_array(
     actions: np.ndarray,
     hubble: np.ndarray,
 ) -> np.ndarray:
-    """Vectorized ``log(Gamma/H^4)`` for support arrays."""
+    """Vectorized ``log(Gamma/H^4)`` for support arrays.
+
+    This deliberately keeps the leading-order expression even when the
+    nucleation rate is being computed by the model, and the reason is worth
+    stating. Every caller of this function is a *grid-building heuristic* --
+    locating the rate peak, deciding whether an interval is under-resolved,
+    choosing where to place support points -- rather than a consumer of the
+    physical rate. None of them has the potential in scope, and threading it in
+    would mean re-solving bounces from inside the meshing logic.
+
+    The approximation is defensible because the placement of support points is
+    governed by the exponent ``S_3/T``, which is already the model's own action
+    in either mode, whereas the prefactor that a three-dimensional treatment
+    changes is a comparatively slowly varying multiplicative factor. It shifts
+    where points are *sampled*, not what is computed from them.
+
+    The physical rate that enters the percolation integral does go through the
+    model: see :func:`bubbledynamics.rateArrays`.
+    """
 
     from transitionlistener import bubbledynamics as bd
 
@@ -992,35 +1011,11 @@ def _rate_interval_is_post_peak_inert(
 
     if actions is None or hubble is None:
         return False
-    temps = np.asarray(temperatures, dtype=float)
-    acts = np.asarray(actions, dtype=float)
-    hub = np.asarray(hubble, dtype=float)
-    if temps.size < 3 or not (temps.size == acts.size == hub.size):
+    temps = np.ascontiguousarray(temperatures, dtype=float)
+    acts = np.ascontiguousarray(actions, dtype=float)
+    hub = np.ascontiguousarray(hubble, dtype=float)
+    if temps.ndim != 1 or temps.size < 3 or not (temps.size == acts.size == hub.size):
         return False
-
-    order = np.argsort(-temps)
-    temps = temps[order]
-    acts = acts[order]
-    hub = hub[order]
-    log10_rate = _log10_gamma_h4_array(temps, acts, hub)
-    finite = np.isfinite(temps) & np.isfinite(log10_rate) & (temps > 0.0)
-    if np.count_nonzero(finite) < 3:
-        return False
-
-    finite_indices = np.flatnonzero(finite)
-    peak_index = int(finite_indices[int(np.nanargmax(log10_rate[finite]))])
-    if peak_index <= 0 or peak_index >= temps.size - 1:
-        return False
-
-    peak_rate = float(log10_rate[peak_index])
-    if peak_rate < RATE_PEAK_INERT_MIN_PEAK_LOG10:
-        return False
-
-    high = float(interval_high)
-    low = float(interval_low)
-    if not (np.isfinite(high) and np.isfinite(low) and high > low):
-        return False
-
     # ``_largest_probability_jump_interval`` returns two entries of ``temps`` itself, so both
     # endpoints are looked up relative to their own size and the closest entry wins. An
     # absolute tolerance scaled by the hottest support point was larger than the gaps at the
@@ -1029,86 +1024,9 @@ def _rate_interval_is_post_peak_inert(
     # them to ``high_index >= low_index``, which returned "not inert" for an interval whose
     # rate it never looked at.
     #
-    # `relative` is 2e-6 rather than the 1e-6 of `_temperature_present` because the tolerance
-    # it replaces was the sum of the presence tolerances of the two endpoints. The width is
-    # therefore the one this lookup already had; only its scale changed. Both values answer the
-    # same question, is this the support point the caller named, so the wider one is kept here
-    # only to leave the acceptance behaviour of a warm support untouched.
-    #
-    # Taking the closest entry rather than the first makes the width of this window inert on
-    # every path that reaches here: all three callers hand over two entries of `temps` itself,
-    # so the matching entry is at distance zero and wins any argmin. No test can therefore
-    # separate this tolerance from the one it replaces, and none here tries to; what the tests
-    # pin is the index selection. The scale is made relative anyway, because an endpoint that
-    # has been through arithmetic would be looked up against the hottest support point instead
-    # of against itself.
-    high_matches = np.flatnonzero(_temperatures_match(temps, high, relative=2.0e-6))
-    low_matches = np.flatnonzero(_temperatures_match(temps, low, relative=2.0e-6))
-    if high_matches.size == 0 or low_matches.size == 0:
-        return False
-    high_index = int(high_matches[int(np.argmin(np.abs(temps[high_matches] - high)))])
-    low_index = int(low_matches[int(np.argmin(np.abs(temps[low_matches] - low)))])
-    if high_index >= low_index:
-        return False
-
-    endpoint_rates = log10_rate[[high_index, low_index]]
-    if not np.all(np.isfinite(endpoint_rates)):
-        return False
-    if float(np.max(endpoint_rates)) > RATE_PEAK_INERT_LOG10:
-        return False
-
-    max_interval_dI = RATE_PEAK_INERT_MAX_INTERVAL_DI
-    if max_interval_dI > 0.0:
-        log_a = np.full_like(log10_rate, -np.inf, dtype=float)
-        valid_a = np.isfinite(log10_rate) & np.isfinite(hub) & (hub > 0.0) & np.isfinite(temps) & (temps > 0.0)
-        log_a[valid_a] = log10_rate[valid_a] * math.log(10.0) + 3.0 * np.log(hub[valid_a]) - 4.0 * np.log(temps[valid_a])
-        inv_h = np.where(np.isfinite(hub) & (hub > 0.0), 1.0 / hub, 0.0)
-        volume_to_cold = np.zeros_like(temps, dtype=float)
-        for index in range(max(temps.size - 2, -1), -1, -1):
-            dt = abs(float(temps[index]) - float(temps[index + 1]))
-            volume_to_cold[index] = volume_to_cold[index + 1] + 0.5 * dt * (
-                abs(float(inv_h[index])) + abs(float(inv_h[index + 1]))
-            )
-
-        interval_log_a = log_a[[high_index, low_index]]
-        if not np.all(np.isfinite(interval_log_a)):
-            return False
-        max_log_a = float(np.max(interval_log_a))
-        max_volume = float(np.max(volume_to_cold[[high_index, low_index]]))
-        interval_width = abs(float(high) - float(low))
-        wall_velocity = max(float(vw), 0.0)
-        if max_volume <= 0.0 or interval_width <= 0.0 or wall_velocity <= 0.0:
-            interval_dI_bound = 0.0
-        else:
-            log_bound = (
-                math.log(4.0 * math.pi / 3.0)
-                + 3.0 * math.log(wall_velocity)
-                + max_log_a
-                + 3.0 * math.log(max_volume)
-                + math.log(interval_width)
-            )
-            if log_bound > 700.0:
-                interval_dI_bound = float("inf")
-            elif log_bound < -745.0:
-                interval_dI_bound = 0.0
-            else:
-                interval_dI_bound = float(math.exp(log_bound))
-        if not np.isfinite(interval_dI_bound) or interval_dI_bound > max_interval_dI:
-            return False
-
-    min_monotone_points = RATE_PEAK_INERT_MIN_MONOTONE_POINTS
-    monotone_tolerance = RATE_PEAK_INERT_MONOTONE_TOLERANCE_LOG10
-
-    if high_index > peak_index and low_index > peak_index:
-        shoulder_rates = log10_rate[peak_index : low_index + 1]
-        if np.count_nonzero(np.isfinite(shoulder_rates)) < min_monotone_points + 1:
-            return False
-        diffs = np.diff(shoulder_rates[np.isfinite(shoulder_rates)])
-        return bool(np.all(diffs <= monotone_tolerance))
-    if high_index < peak_index and low_index < peak_index:
-        shoulder_rates = log10_rate[high_index : peak_index + 1]
-        if np.count_nonzero(np.isfinite(shoulder_rates)) < min_monotone_points + 1:
-            return False
-        diffs = np.diff(shoulder_rates[np.isfinite(shoulder_rates)])
-        return bool(np.all(diffs >= -monotone_tolerance))
-    return False
+    # The reasoning and the measurements are in the implementation notes for
+    # percolation_adaptive_rate.py, under `_rate_interval_is_post_peak_inert`.
+    return bool(rate_interval_is_inert(temps, acts, hub, float(interval_high), float(interval_low), float(vw),
+                                       RATE_PEAK_INERT_MIN_PEAK_LOG10, RATE_PEAK_INERT_LOG10,
+                                       RATE_PEAK_INERT_MAX_INTERVAL_DI, RATE_PEAK_INERT_MIN_MONOTONE_POINTS,
+                                       RATE_PEAK_INERT_MONOTONE_TOLERANCE_LOG10, 2.0e-6))

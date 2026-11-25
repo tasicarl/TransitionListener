@@ -104,6 +104,10 @@ def kappa_sw(alpha : float, vw: float, cs: float) -> float:
     vJ = (cs + root) / (1 + alpha)
     lK = kC - kB - (vJ - cs) * dK
 
+    if vw == 1.0:
+        # (vJ - 1)^3 cancels in the detonation branch. Above alpha ~ 1e15 vJ rounds to 1, where
+        # that branch would read 0/0.
+        return kD
     if vw <= cs:  # Choose regime
         num = (cs**(11/5) * kA * kB)
         denom = ((cs**(11/5) - vw**(11/5)) * kB + vw * cs**(6/5) * kA)
@@ -204,11 +208,9 @@ class Hydrodynamics():
         # it. The two are the same analytically, since what does not depend on temperature
         # drops out of both derivatives, and differ numerically: taking them on the whole
         # potential subtracts the vacuum energy from itself, and under supercooling that
-        # vacuum energy is the larger by ten or more orders of magnitude. Measured on the
-        # conformal dark U(1) of `examples/example_point.yaml`, the whole-potential route
-        # degrades from a temperature of 5e-4 of the scale, returns 0.19 and 0.02 where the
-        # answer is 0.70, and gives nothing at all below 1e-6; the thermal part stays good
-        # to a temperature of 2.75e-9 of the scale, the lowest tested.
+        # vacuum energy is the larger by ten or more orders of magnitude. The whole-potential
+        # route then loses its significant digits several orders of magnitude in temperature
+        # before the thermal part does.
         dVdT = self.pot.dV_thermal_dT(phi, T, dT=dT)
         ddVdT = self.pot.d2V_thermal_dT2(phi, T, dT=dT)
         # Once a phase has frozen out both derivatives vanish and this is 0/0, which raises
@@ -245,10 +247,10 @@ class Hydrodynamics():
         A value can be round-off and still be a speed, so no test on the value itself can
         find it. Under extreme supercooling the thermal part of the potential sits far below
         the vacuum energy and the finite differences lose their significant digits; what comes
-        back is a number that moves when the step moves. Measured on the conformal dark U(1),
-        at a temperature where the thermal part is 2.8e-16 of the vacuum energy, ``c_s`` comes
-        out as 0.82 while ``c_s^2`` ranges over -0.001 to 0.89 across steps from
-        ``dT/T = 1e-3`` to ``2e-1``: perfectly subluminal, and meaningless.
+        back is a number that moves when the step moves. Where the thermal part is close to the
+        round-off level of the vacuum energy, ``c_s`` can come out subluminal at one step while
+        ``c_s^2`` takes negative and positive values across steps from ``dT/T = 1e-3`` to
+        ``2e-1``: perfectly subluminal, and meaningless.
 
         A value that is refused at one step and not at another is noisy, since it has stopped
         being a speed somewhere inside the step range, which no single step can show. A value
@@ -719,16 +721,15 @@ class Hydrodynamics():
         # `find_vw` calls this with `upper_limit = 100`, far outside the regime the matching
         # conditions describe. Measured on the 2HDM line at lambda3 = 5.6868686869, where a
         # one-point dip in the symmetric-phase sound speed leaves `func` positive at
-        # alN = 1 and negative from alN = 10: the early return then discarded a root the
-        # solver finds without trouble at alN = 0.06707, reported `max_al = 100`, and so
-        # turned `alN > max_al` false for every physical strength. The wall velocity came
-        # back as a hybrid 0.7475 instead of the runaway 1 of all its neighbours, which took
+        # alN = 1 and negative from alN = 10: judging from the top end discards a root the
+        # solver finds without trouble at alN = 0.06707, reports `max_al = 100`, and so
+        # turns `alN > max_al` false for every physical strength. The wall velocity comes
+        # back as a hybrid 0.7475 instead of the runaway 1 of all its neighbours, which takes
         # the LISA SNR from 0.8076 to 11.269, a factor 14, on the same model configuration.
         #
         # `func < 0` is the side on which subsonic solutions exist, so the boundary is the
         # first crossing up from below, which is also the root the bracketed solve returns
-        # where the function is monotonic. The answer is therefore unchanged in the ordinary
-        # case and recovered in the non-monotonic one.
+        # where the function is monotonic.
         grid = np.geomspace(max(lower_limit, 1e-12), upper_limit, 64)
         values = []
         for point in grid:
@@ -752,7 +753,7 @@ class Hydrodynamics():
         # positive residual would then read as a crossing although no bracket spans the
         # missing interval, and a monotonic point could be called ambiguous on the strength
         # of two samples that never touch. A hole inside a same-sign stretch is unaffected
-        # either way, which is what the compression was there for.
+        # either way.
         crossings = sum(
             1
             for low, high in zip(values, values[1:])
@@ -770,21 +771,19 @@ class Hydrodynamics():
         # No crossing anywhere in the range, which is two situations and both report the
         # bound. Where the residual stays negative, subsonic solutions survive to the top of
         # the search, the limit is at least `upper_limit`, and the caller's comparison
-        # against it is the same statement the early return made.
+        # against it holds.
         #
-        # Where it stays positive there is no subsonic branch anywhere in the range. The old
-        # code reached `root_scalar` with equal signs at both ends of the bracket there and
-        # raised a bare `ValueError: f(a) and f(b) must have different signs`, which nothing
-        # upstream types, so the point was reported as error -1. It is not a rare corner.
-        # Sweeping 15 x 15 x 11 triples with c_b^2 and c_s^2 in [0.05, 1/3] and psi_N in
-        # [0.9, 1.1], and calling a triple affected when the residual is finite and
-        # non-negative at both ends of the old bracket -- the condition under which
-        # `root_scalar` raised -- 895 of the 2475 are affected, 227 of them with psi_N below
-        # one, i.e. with the broken phase softer than the symmetric one. The count is
-        # sensitive to the psi_N window, so the window is quoted with it. Reporting the
-        # bound leaves the verdict
-        # to `find_vw`, whose own `shooting(v_J) < 0` test then decides between the subsonic
-        # solve and the runaway branch, instead of ending the point in an untyped error.
+        # Where it stays positive there is no subsonic branch anywhere in the range, and
+        # `root_scalar` with equal signs at both ends would raise a bare
+        # `ValueError: f(a) and f(b) must have different signs`, which nothing upstream
+        # types. It is not a rare corner. Sweeping 15 x 15 x 11 triples with c_b^2 and c_s^2
+        # in [0.05, 1/3] and psi_N in [0.9, 1.1], and calling a triple affected when the
+        # residual is finite and non-negative at both ends of the range, 895 of the 2475 are
+        # affected, 227 of them with psi_N below one, i.e. with the broken phase softer than
+        # the symmetric one. The count is sensitive to the psi_N window, so the window is
+        # quoted with it. Reporting the bound leaves the verdict to `find_vw`, whose own
+        # `shooting(v_J) < 0` test then decides between the subsonic solve and the runaway
+        # branch, instead of ending the point in an untyped error.
         return upper_limit
 
     def find_vw(self, alN : float, cb2 : float, cs2 : float,
@@ -919,6 +918,10 @@ class Hydrodynamics():
         return kappa
 
 
+#: R_eff of the efficiency in units of the mean bubble separation: beta R_eff = 5 (2208.11697) over (8 pi)^(1/3).
+KAPPA_EFFECTIVE_RADIUS = 5.0 / (8.0 * np.pi) ** (1.0 / 3.0)
+
+
 def calc_kappas(alphaN: float, alpha_inf: float, alpha_eq: float,
                 vw: float, cs: float, Rsep: float, R0: float, config,
                 alpha_wall: float | None = None) -> tuple:
@@ -973,23 +976,22 @@ def calc_kappas(alphaN: float, alpha_inf: float, alpha_eq: float,
     eps = config.epsilon_turbulence
 
     # Step 1:
-    # Computation of kappa_phi
-    # based on 1903.09642 by John Ellis, Marek 
-    # Lewicki, José Miguel No & Ville Vaskonen
+    # Computation of kappa_phi, the fraction of the released energy in the wall, from eqs. (9) to (17) of 2208.11697
+    # for a friction linear in gamma. The wall accelerates as gamma = 2 R / (3 R0) until R_eq = (3/2) R0 gamma_eq and
+    # then keeps gamma_eq, so that kappa falls as 1 / R beyond R_eq. The spectra follow kappa at R_eff = 5 / beta,
+    # about 1.7 times the mean bubble separation (8 pi)^(1/3) / beta.
     if alpha_wall is None:
         alpha_wall = alphaN
     gamma_eq = np.inf if alpha_eq == 0 else (alpha_wall - alpha_inf) / alpha_eq
-    gamma_star = 2 * Rsep / (3 * R0)
+    R_eff = KAPPA_EFFECTIVE_RADIUS * Rsep
 
-    def kappa_col(gamma_star, gamma_eq, alpha_inf, alpha):
-        if alpha < alpha_inf:
-            # If the leading-order friction is so large that the bubbles would not even reach
-            # relativistic terminal velocity, we set kappa_BW = 0.
+    def kappa_col(R_eff, R0, gamma_eq, alpha_inf, alpha):
+        if not (np.isfinite(R_eff) and np.isfinite(R0)):      # no radius of the critical bubble
+            return np.nan
+        if alpha < alpha_inf or gamma_eq <= 1:
+            # the friction stops the walls before they become relativistic
             return 0
-        if gamma_star > gamma_eq:
-            return (gamma_eq / gamma_star) * (1 - (alpha_inf / alpha) * (gamma_eq / gamma_star)**2)
-        else:
-            return 1 - alpha_inf / alpha
+        return (1 - alpha_inf / alpha) * (1 - 1 / gamma_eq) / (1 + R_eff / (1.5 * R0 * gamma_eq))
 
     kappa_BW = 0
     if config.bw_collisions == "off":
@@ -997,7 +999,7 @@ def calc_kappas(alphaN: float, alpha_inf: float, alpha_eq: float,
     elif config.bw_collisions == "full":
         kappa_BW = 1
     elif config.bw_collisions == "NLO":
-        kappa_BW = kappa_col(gamma_star, gamma_eq, alpha_inf, alpha_wall)
+        kappa_BW = kappa_col(R_eff, R0, gamma_eq, alpha_inf, alpha_wall)
     else:
         raise ValueError("Wrong config input: bw_collisions must be 'off', 'full' or 'NLO'.")
 

@@ -1,0 +1,70 @@
+WARNING  libstempo not installed. PINT or libstempo are required to use par and 
+         tim files.                                                             
+WARNING  PINT not installed. PINT or libstempo are required to use par and tim  
+         files.                                                                 
+NG15 best fit (maximised): g = 0.4506, v = 2.930 GeV, lnL = 1.565 (grid 1.564)
+   (beta/H)_RH = 9.63, (beta/H)_S3 = 11.89, (beta/H)_Gamma = 7.75, T_p = 3.13 keV, alpha = 3.10e+19
+   T_reh (TL) = 151.7 MeV, g_reh = 28.36, h_reh = 26.48; SM-only balance 162.7 MeV (TL/SM = 0.932); shortcut T_p(1+alpha)^1/4 = 233.5 MeV (x1.54)
+   m_A'/T_reh = 8.7, m_phi/T_reh = 0.76
+   spectrum peak f = 25.7 nHz, h^2 Omega_peak = 1.17e-08
+   f_H = 2.80 nHz
+   no expansion, bubbles R^-3: peak x1.31, frequency x0.95
+   sound waves: peak x8.01, frequency x2.45
+   LISA update 2019: peak x10.82, frequency x4.18
+IPTA2 best fit (maximised): g = 0.4773, v = 0.530 GeV, lnL = -3.693 (grid -3.697)
+   (beta/H)_RH = 15.42, (beta/H)_S3 = 17.52, (beta/H)_Gamma = 13.34, T_p = 14.05 keV, alpha = 1.03e+14
+   T_reh (TL) = 35.8 MeV, g_reh = 14.06, h_reh = 13.71; SM-only balance 38.5 MeV (TL/SM = 0.930); shortcut T_p(1+alpha)^1/4 = 44.8 MeV (x1.25)
+   m_A'/T_reh = 7.1, m_phi/T_reh = 0.66
+   spectrum peak f = 8.0 nHz, h^2 Omega_peak = 6.20e-09
+   f_H = 0.61 nHz
+   no expansion, bubbles R^-3: peak x1.14, frequency x1.02
+   sound waves: peak x7.00, frequency x2.62
+   LISA update 2019: peak x9.46, frequency x4.47
+NANOGrav profile over v at g = 0.440: Delta lnL = -0.09
+NANOGrav profile over v at g = 0.430: Delta lnL = -0.35
+NANOGrav profile over v at g = 0.420: Delta lnL = -0.63
+NANOGrav profile over v at g = 0.415: Delta lnL = -0.37
+NG15 68%: area fraction with a^3 P_f growing at T_p 0.355, posterior mass 0.378; (beta/H)_Gamma min 1.63
+   shortcut overestimate of T_reh: 1.20-2.06
+   T_reh TL / SM-only in the region: 0.805-0.939
+IPTA2 68%: area fraction with a^3 P_f growing at T_p 0.003, posterior mass 0.003; (beta/H)_Gamma min 1.58
+   shortcut overestimate of T_reh: 1.07-1.62
+   T_reh TL / SM-only in the region: 0.799-0.946
+cross: IPTA best fit in NANOGrav Delta lnL = -17.32; NANOGrav best fit in IPTA -6.87
+max Delta N_eff^GW on the grid 0.0130; in the NANOGrav 95% region 0.0085; min T_reh on the grid 0.2 MeV
+best fit LISA update 2019                         IPTA2 -3.095  NG15 +1.186
+best fit leading order                            IPTA2 -3.692  NG15 +1.565
+best fit higher order +                           IPTA2 -3.692  NG15 +1.565
+best fit higher order -                           IPTA2 -3.692  NG15 +1.565
+best fit nlo                                      IPTA2_bhb -3.775  IPTA2 -3.693  NG15 +1.565  NG15_bhb +1.554
+best fit lattice scale -                          IPTA2 -3.692  NG15 +1.565
+best fit prefactor /10                            IPTA2 -3.692  NG15 +1.565
+best fit false-vacuum background                  IPTA2 -3.692  NG15 +1.565
+best fit sound waves, guo                         IPTA2 -3.568  NG15 +1.522
+best fit beta/H from the action slope             IPTA2 -3.691  NG15 +1.564
+best fit percolation at 1/e                       IPTA2 -3.693  NG15 +1.565
+best fit mu4 x2                                   IPTA2 -3.693  NG15 +1.565
+best fit mu3 x2                                   IPTA2 -3.692  NG15 +1.565
+best fit sound waves                              IPTA2 -3.563  NG15 +1.522
+best fit mu3 x0.5                                 IPTA2 -3.692  NG15 +1.565
+best fit prefactor x10                            IPTA2 -3.692  NG15 +1.565
+best fit full leading order                       IPTA2 -3.693  NG15 +1.565
+best fit expansion factors at beta/H_V            IPTA2 -3.637  NG15 +1.565
+best fit no expansion, bubbles R^-3               IPTA2 -3.883  NG15 +1.474
+best fit local completion criterion               IPTA2 -3.693  NG15 +1.565
+best fit mu4 x0.5                                 IPTA2 -3.692  NG15 +1.565
+best fit template within its simulated range      IPTA2 -3.693  NG15 +1.565
+best fit Delta S tables                           IPTA2 -3.693  NG15 +1.565
+best fit lattice shift -                          IPTA2 -3.692  NG15 +1.565
+best fit no expansion, envelope                   IPTA2 -3.487  NG15 +1.155
+best fit expansion factors at the separation speed IPTA2 -3.691  NG15 +1.564
+best fit no expansion, fluid R^-3 v=1             NG15 +1.455  IPTA2 -3.844
+best fit dark sector with its own temperature     IPTA2 -3.693  NG15 +1.565
+best fit 4D daisy RG                              IPTA2 -3.692  NG15 +1.565
+best fit no expansion, fluid R^-3 v=cs            IPTA2 -3.584  NG15 +1.322
+best fit no expansion, fluid R^-2 v=cs            IPTA2 -3.925  NG15 +1.338
+best fit expansion, bulk flow                     NG15 +1.354  IPTA2 -4.218
+best fit no expansion, fluid R^-2 v=1             NG15 +1.322  IPTA2 -4.238
+best fit no expansion, bubbles R^-2               NG15 +1.321  IPTA2 -4.278
+best fit T_reh = T_p (1+alpha)^1/4                NG15 +1.565  IPTA2 -3.693
+best fit 4D daisy                                 IPTA2 -3.645  NG15 +1.565

@@ -27,10 +27,16 @@ from scipy import integrate
 from transitionlistener import thermodynamics as td
 from transitionlistener import constants as cn
 from transitionlistener import errors
+from transitionlistener.compiled import multifield_potential
+from transitionlistener.compiled import onefield_potential
+from transitionlistener.compiled import percolation as compiled_percolation
+from transitionlistener.compiled.splines import PchipInterpolator
 from transitionlistener.helper_functions import (temperatureDerivativeStep,
                                                  thermalDerivativeStep)
 from transitionlistener.pathDeformation import (bounceActionOverImages,
-                                                imagesToPairOver)
+                                                bounceFreeParams,
+                                                imagesToPairOver,
+                                                modelAction)
 from transitionlistener.finiteT import Jb_spline as Jb
 from transitionlistener.finiteT import Jf_spline as Jf
 from transitionlistener.nucleation import computeNucleationTemperature
@@ -64,7 +70,7 @@ def _maybe_dump_percolation_spline(state, stage: str, pot=None) -> None:
         T = T[unique_idx]
         P = P[unique_idx]
         P = np.clip(P, 0.0, 1.0)
-        Pint = interpolate.PchipInterpolator(T, P, extrapolate=True)
+        Pint = PchipInterpolator(T, P, extrapolate=True)
         T_grid = np.linspace(float(T.min()), float(T.max()), n_support)
         P_grid = np.clip(Pint(T_grid), 0.0, 1.0)
         os.makedirs(dump_dir, exist_ok=True)
@@ -130,10 +136,10 @@ class PercolationState:
     # The accuracy estimate the post-sweep controller took on the profile it accepted, kept
     # so the verdict survives the solve. The controller accepts the profile either way -- by
     # the time it estimates, refinement has nothing left to try, so retrying would be futile
-    # -- and the estimate used to be a loop-local that the solver dropped on return. A
-    # profile that missed acc_rh was then indistinguishable from one that met it. Left None
-    # when the controller stopped at its iteration limit, because the estimate it hands back
-    # there was measured on an earlier grid and does not describe the returned profile.
+    # -- so without this field a profile that missed acc_rh is indistinguishable from one
+    # that met it. Left None when the controller stopped at its iteration limit, because the
+    # estimate it hands back there was measured on an earlier grid and does not describe the
+    # returned profile.
     accuracy_estimate: dict | None = None
     # Support points spent approaching a boundary at which the bounce stops solving.
     # Its own allowance, like `rate_refine_points`: by the time the support reaches such a
@@ -455,16 +461,29 @@ def _temperature_grid(
     if raw.size == 0:
         return np.asarray([], dtype=float)
 
-    ordered = np.sort(raw)[::-1]
-    unique = [float(ordered[0])]
-    for candidate in ordered[1:]:
-        candidate = float(candidate)
-        # relative to the two temperatures: a floor of one in the model's internal units
-        # merged distinct temperatures of a strongly supercooled transition
-        scale = max(abs(unique[-1]), abs(candidate))
-        if not math.isclose(unique[-1], candidate, abs_tol=1e-10 * scale, rel_tol=0.0):
-            unique.append(candidate)
-    return np.asarray(unique, dtype=float)
+    return compiled_percolation.distinct(np.sort(raw)[::-1])
+
+
+def _on_kernels(pot, phase):
+    """The compiled potential of ``pot`` and the spline of a one-field ``phase``, or ``(None, None)`` if either is missing."""
+    read = getattr(pot, "thermal_kernels", None)
+    kernels = read() if read is not None else None
+    if kernels is None:
+        return None, None
+    spline = getattr(phase, "compiled_spline", None)
+    spline = spline() if spline is not None else None
+    return (kernels, spline) if spline is not None else (None, None)
+
+
+def _on_multifield_kernels(pot, phase):
+    """The compiled potential of a model with several fields and the spline of ``phase``, or ``(None, None)``."""
+    read = getattr(pot, "current_kernels", None)
+    kernels = read() if read is not None else None
+    if not isinstance(kernels, multifield_potential.MultiFieldPotential):
+        return None, None
+    spline = getattr(phase, "compiled_trace", None)
+    spline = spline() if spline is not None else None
+    return (kernels, spline) if spline is not None and spline[0].shape[2] == kernels.ndim else (None, None)
 
 
 def g_eff_DS(T_DS: float, pot, phase) -> float:
@@ -525,6 +544,13 @@ def h_eff_DS(T_DS: float, pot, phase) -> float:
     ----------
     geff : float
         Effective degrees of freedom in the dark sector."""
+    if (type(T_DS) is float or type(T_DS) is np.float64) and T_DS > 0.0:
+        kernels, spline = _on_kernels(pot, phase)
+        if kernels is not None:
+            return kernels.h_eff(spline, float(T_DS))
+        kernels, spline = _on_multifield_kernels(pot, phase)
+        if kernels is not None:
+            return kernels.h_eff(spline, float(T_DS))
     try:
         vevT = phase.valAt(T_DS)
     except errors.Timeout:
@@ -550,6 +576,11 @@ def h_eff_coupled_radiation(T: float, pot) -> float:
     For the default Standard Model bath the tabulated entropy degrees of freedom are
     used; otherwise ``s = (e + p)/T`` gives ``h = (3 g_e + g_p)/4``.
     """
+    if (type(T) is float or type(T) is np.float64) and T > 0.0:
+        read = getattr(pot, "thermal_kernels", None)
+        kernels = read() if read is not None else None
+        if kernels is not None and kernels.thermal["sm_bath"]:
+            return kernels.h_eff_coupled(float(T))
     table = td.h_eff_radiation(pot.kin_coupled_e_geff, pot.kin_coupled_p_geff, T, pot.conversionFactor)
     # Standard Model fields of the potential are counted there, not in the tabulated bath.
     return table - td.sm_fields_in_potential_geff(pot, T, "s")
@@ -573,6 +604,10 @@ def energyDensity(pot, phase, T: float | np.ndarray, include_decoupled=True) -> 
     -------
     float|np.ndarray :
         The energy density at `T`."""
+    if (type(T) is float or type(T) is np.float64) and T > 0.0:
+        kernels, spline = _on_kernels(pot, phase)
+        if kernels is not None:
+            return kernels.energy_density_on_phase(spline, float(T), include_decoupled)
     X = phase.valAt(T)
     return pot.energyDensity(X, T, include_decoupled=include_decoupled)
 
@@ -671,10 +706,9 @@ def hotEnergyDensity(pot, X, T, include_decoupled: bool = True) -> float:
     temperature minimum, which does not depend on the temperature. Anything built from a
     temperature difference of the energy density has to difference this part alone: under
     supercooling the vacuum energy is the larger by up to fifteen orders of magnitude, and a
-    difference of the sum then has no significant digits left, or none at all. Measured on
-    the conformal dark U(1) of ``examples/example_line.yaml`` at g = 0.5, where the two
-    energies either side of the step are the same double and their difference is exactly
-    zero, while this part differences cleanly.
+    difference of the sum then has no significant digits left, or none at all: the two
+    energies either side of a small temperature step can be the same double, with a
+    difference of exactly zero, while this part differences cleanly.
 
     The vacuum energy also carries no enthalpy, entering ``e`` as ``+rho_vac`` and ``p`` as
     ``-rho_vac``, so an enthalpy formed as ``e + p`` leaves it out the same way.
@@ -696,9 +730,10 @@ def symmetricPhaseEnthalpy(pot, X, T, include_decoupled: bool = True) -> float:
     cent wrong at g = 0.5 of ``examples/example_line.yaml``. Built from the
     temperature-dependent parts alone it is exact there and identical from g = 0.6 up.
     """
-    return float(np.squeeze(
-        hotEnergyDensity(pot, X, T, include_decoupled)
-        - pot.V_thermal(X, T, include_decoupled=include_decoupled)))
+    # pot.enthalpyDensity forms e + p from the temperature-dependent parts, and for a model that rewrites its
+    # potential or energy density from the two with the vacuum energy removed (generic_potential).
+    return float(np.squeeze(pot.enthalpyDensity(X, T, include_decoupled=include_decoupled)))
+
 
 
 def requireUsableEnthalpy(value: float, T: float, terms: dict) -> float:
@@ -775,42 +810,8 @@ def entropy_density(pot, phase, T: float, definition: str = "dof_table") -> floa
     )
 
 
-def _time_temperature_factors(
-    pot,
-    phase,
-    T: np.ndarray,
-    mode: str | None = None,
-    definition: str | None = None,
-    usable_out: list | None = None,
-) -> tuple[np.ndarray | None, np.ndarray | None]:
-    """Return ``(c_s^2, a/a_hot)`` arrays for the generalized integral.
-
-    Both come from one entropy density, because ``d ln a/dT = -1/(3 c_s^2 T)`` and
-    ``s a^3 = const`` are the same relation: a constant ``g_*s``, ``c_s^2 = 1/3`` and
-    ``a ~ 1/T`` are one assumption, not three. Which entropy is used is the
-    ``entropy_definition`` setting.
-
-    ``None, None`` is returned for the bag-limit mode so the historical ODE is
-    used without any extra thermodynamic finite-difference cost.
-    """
-    mode = "sound_speed" if mode is None else str(mode)
-    if mode not in {"sound_speed", "bag"}:
-        raise errors.PercolationError(
-            f"Unknown percolation time-temperature mode {mode!r}. "
-            "Supported modes are 'sound_speed' and 'bag'."
-        )
-    definition = "dof_table" if definition is None else str(definition)
-    if definition not in ENTROPY_DEFINITIONS:
-        raise errors.PercolationError(
-            f"Unknown percolation entropy definition {definition!r}. "
-            f"Supported definitions are {ENTROPY_DEFINITIONS[0]!r} and {ENTROPY_DEFINITIONS[1]!r}."
-        )
-    if mode == "bag" or pot is None or phase is None:
-        return None, None
-
-    temperatures = np.asarray(T, dtype=float)
-    sound_speed_sq = np.full_like(temperatures, 1.0 / 3.0, dtype=float)
-    entropy = np.full_like(temperatures, np.nan, dtype=float)
+def _entropy_history(pot, phase, temperatures, definition, sound_speed_sq, entropy) -> int:
+    """Fill the sound speed and the entropy at each temperature; returns how many are usable."""
     usable_points = 0
     for i, temp in enumerate(temperatures):
         t = float(temp)
@@ -863,9 +864,7 @@ def _time_temperature_factors(
         # the false vacuum no longer describes a plasma. The bag value is the fallback there.
         # Strictly below one, as everywhere else: `calc_cs` refuses one or more and
         # `resolve_configured_sound_speed` will not accept it, and the spectrum divides by
-        # `v_wall - c_s`, which is zero for a runaway wall at exactly one. The bound used to
-        # be inclusive here alone. In floating point the case is measure zero, so this is a
-        # consistency fix rather than a behaviour change.
+        # `v_wall - c_s`, which is zero for a runaway wall at exactly one.
         # The two are one entropy read twice, so a temperature contributes both or neither:
         # keeping a sound speed where the entropy is unusable, or the other way round, would
         # build the scale factor and the time-temperature relation from different amounts of
@@ -877,6 +876,53 @@ def _time_temperature_factors(
             entropy[i] = entropy_here
             usable_points += 1
 
+    return usable_points
+
+
+def _time_temperature_factors(
+    pot,
+    phase,
+    T: np.ndarray,
+    mode: str | None = None,
+    definition: str | None = None,
+    usable_out: list | None = None,
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """Return ``(c_s^2, a/a_hot)`` arrays for the generalized integral.
+
+    Both come from one entropy density, because ``d ln a/dT = -1/(3 c_s^2 T)`` and
+    ``s a^3 = const`` are the same relation: a constant ``g_*s``, ``c_s^2 = 1/3`` and
+    ``a ~ 1/T`` are one assumption, not three. Which entropy is used is the
+    ``entropy_definition`` setting.
+
+    ``None, None`` is returned for the bag-limit mode, whose ODE needs neither.
+    """
+    mode = "sound_speed" if mode is None else str(mode)
+    if mode not in {"sound_speed", "bag"}:
+        raise errors.PercolationError(
+            f"Unknown percolation time-temperature mode {mode!r}. "
+            "Supported modes are 'sound_speed' and 'bag'."
+        )
+    definition = "dof_table" if definition is None else str(definition)
+    if definition not in ENTROPY_DEFINITIONS:
+        raise errors.PercolationError(
+            f"Unknown percolation entropy definition {definition!r}. "
+            f"Supported definitions are {ENTROPY_DEFINITIONS[0]!r} and {ENTROPY_DEFINITIONS[1]!r}."
+        )
+    if mode == "bag" or pot is None or phase is None:
+        return None, None
+
+    temperatures = np.ascontiguousarray(T, dtype=float)
+    sound_speed_sq = np.full_like(temperatures, 1.0 / 3.0, dtype=float)
+    entropy = np.full_like(temperatures, np.nan, dtype=float)
+    kernels, spline = _on_kernels(pot, phase)
+    if (kernels is not None and definition == ENTROPY_DEFINITIONS[0] and kernels.thermal["sm_bath"]
+            and temperatures.ndim == 1 and temperatures.size > 0 and hasattr(phase, "Tmin") and hasattr(phase, "Tmax")
+            and np.all(np.isfinite(temperatures)) and np.all(temperatures > 0.0)):
+        usable_points = kernels.entropy_history(spline, temperatures, float(phase.Tmin), float(phase.Tmax),
+                                                _ENTROPY_REL_STEP, sound_speed_sq, entropy)
+    else:
+        usable_points = _entropy_history(pot, phase, temperatures, definition, sound_speed_sq, entropy)
+
     # The scale factor follows from entropy conservation, a^3 s = const, which is the integral
     # form of d ln a / dT = -1 / (3 c_s^2 T). Taking the ratio of entropies instead of
     # integrating the sound speed keeps a(T) accurate on the coarse grids of the percolation
@@ -885,24 +931,7 @@ def _time_temperature_factors(
     # width of the interval by a sound speed that is already meaningless at its cold end.
     # Where the entropy is not usable, the bag relation a ~ 1/T continues the chain, and a
     # step that would shrink the universe as it cools is replaced by it as well.
-    ln_a = np.zeros_like(temperatures)
-    for i in range(1, temperatures.size):
-        t_prev, t_cur = float(temperatures[i - 1]), float(temperatures[i])
-        s_prev, s_cur = entropy[i - 1], entropy[i]
-        if t_prev <= 0.0 or t_cur <= 0.0:
-            step = 0.0
-            ln_a[i] = ln_a[i - 1] + step
-            continue
-        bag_step = -(np.log(t_cur) - np.log(t_prev))
-        if np.isfinite(s_prev) and np.isfinite(s_cur):
-            step = -(np.log(s_cur) - np.log(s_prev)) / 3.0
-        else:
-            step = bag_step
-        if step * bag_step < 0.0:
-            step = bag_step
-        ln_a[i] = ln_a[i - 1] + step
-    ln_a = np.clip(ln_a, -700.0, 700.0)
-    scale_factor = np.exp(ln_a)
+    scale_factor = compiled_percolation.scale_factor_from_entropy(temperatures, entropy)
     if usable_out is not None:
         # The arrays hold the bag values where a temperature fell back, so a caller cannot
         # tell a history that was computed from one that was not. Ask for the count to find
@@ -953,8 +982,101 @@ def calcAction(pot, T: float, start_phase, end_phase, outdict: dict, verbose: bo
     outdict = bounceActionOverImages(
         T, pot.Vtot, pot.gradV, outdict, tdict,
         imagesToPairOver(pot), verbose, pot.conversionFactor,
-        **pot.config.tracingConf.tunneling_params)
-    return outdict[T]["action"]
+        **pot.config.tracingConf.tunneling_params, **bounceFreeParams(pot))
+
+    # Give the model the chance to supply its own action. The default returns
+    # what it is handed, so the four-dimensional path is untouched. Both are
+    # kept: everything downstream reads "action", and "action_4d" preserves the
+    # tunnelling solver's own answer for comparison. See
+    # generic_potential.actionNuc for why this seam exists alongside the rate
+    # one -- overriding the rate alone does not reach the percolation
+    # integrands, which is how the 3D mode came to change nothing.
+    entry = outdict[T]
+    if "action_4d" not in entry:                 # the model has not supplied it already
+        raw = entry["action"]
+        entry["action_4d"] = raw
+        entry["action"] = modelAction(pot, T, raw, instanton=entry.get("instanton"))
+    return entry["action"]
+
+
+def calcLogGamma(pot, T: float, outdict: dict) -> float:
+    """Return ``ln(Gamma/V)`` at temperature `T`, caching it in `outdict`.
+
+    The rate is evaluated through :meth:`generic_potential.logGammaNuc`, at the
+    one point where the bounce profile stored by the tunnelling solver is still
+    available alongside the action. The value is cached in
+    ``outdict[T]["log_gamma"]`` so that repeated queries at the same temperature
+    -- of which the adaptive percolation machinery makes many -- do not repeat
+    the work.
+
+    With the default ``rate_mode`` this returns exactly ``logGamma(T, S)``.
+
+    Parameters
+    ----------
+    pot : generic_potential
+        The effective potential object, which owns the rate.
+    T : float
+        The temperature, in internal units.
+    outdict : dict
+        The tunnelling dictionary, keyed by temperature. Must already contain
+        an entry for `T`; call :func:`calcAction` first if it might not.
+
+    Returns
+    -------
+    float
+        ``ln(Gamma/V)`` in internal units.
+    """
+    entry = outdict[T]
+    if "log_gamma" not in entry:
+        entry["log_gamma"] = pot.logGammaNuc(
+            T, entry["action"], instanton=entry.get("instanton")
+        )
+    return entry["log_gamma"]
+
+
+def rateArrays(pot, temperatures: np.ndarray, actions: np.ndarray,
+               outdict: dict | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """Return ``(Gamma, ln Gamma)`` on a temperature grid, routed through the model.
+
+    In the default ``rate_mode`` this delegates to :func:`Gamma` and
+    :func:`logGamma`. In ``"model"`` mode the logarithm comes from the model
+    -- which is the only way a rate depending on the bounce profile or on the
+    three-dimensional matching can be obtained -- and ``Gamma`` is its
+    exponential.
+
+    Parameters
+    ----------
+    pot : generic_potential
+        The effective potential object.
+    temperatures, actions : np.ndarray
+        The support grid and the bounce action on it.
+    outdict : dict, optional
+        Required in ``"model"`` mode, where the per-temperature entries carry
+        the bounce profiles.
+
+    Returns
+    -------
+    tuple of np.ndarray
+        ``(Gamma, ln Gamma)``.
+    """
+    # a potential without a configuration (a stand-in in the grid-builder tests) takes the
+    # default four-dimensional rate
+    conf = getattr(getattr(pot, "config", None), "nucleationConf", None)
+    mode = getattr(conf, "rate_mode", "S3overT_4D")
+    if mode == "S3overT_4D":
+        return (np.asarray(Gamma(temperatures, actions), dtype=float),
+                np.asarray(logGamma(temperatures, actions), dtype=float))
+
+    if outdict is None:
+        raise ValueError(
+            f"rate_mode {mode!r} needs the tunnelling dictionary, because the "
+            "rate depends on more than (T, S): pass outdict."
+        )
+    log_gamma = np.asarray(
+        [calcLogGamma(pot, float(t), outdict) for t in np.atleast_1d(temperatures)],
+        dtype=float,
+    )
+    return np.exp(log_gamma), log_gamma
 
 
 def percIntegral(
@@ -1027,20 +1149,11 @@ def percIntegral(
     else:
         scale = T[0] / T
     T, H, S, cooling, scale = _double_integral_subgrid(T, H, S, cooling, scale)
-    base = 1.0 / (cooling * H * T)
     # a(T') (int_T^T' dT'' base/a), built from the cold end with the ratios of neighbouring
     # scale factors only: a^3 and the transport factor never appear separately, so a history
     # of hundreds of e-folds neither overflows nor underflows. The ratio never exceeds one,
     # since a grows as T falls.
-    ratio = scale[:-1] / scale[1:]
-    dT = T[:-1] - T[1:]
-    step = 0.5 * (base[:-1] + base[1:] * ratio) * dT
-    radius = np.zeros_like(T)
-    for i in range(T.size - 2, -1, -1):
-        radius[i] = ratio[i] * radius[i + 1] + step[i]
-    with np.errstate(invalid="ignore", over="ignore"):
-        integrant = np.nan_to_num(Gamma(T, S) * base * radius**3)
-    y = float(np.sum(0.5 * (integrant[:-1] + integrant[1:]) * dT))
+    y = compiled_percolation.double_integral(T.size, T, H, S, cooling, scale)
     return 4 * np.pi / 3 * vw**3 * y
 
 
@@ -1059,6 +1172,48 @@ _SUBGRID_NEGLIGIBLE = 40.0        # intervals this far below the peak of ln(sour
 def _clamp_between(values, first, second):
     """Hold ``values`` between ``first`` and ``second``, in either order."""
     return np.clip(values, min(first, second), max(first, second))
+
+
+def _subgrid_source(T, H, S, cooling, scale):
+    """What the kernels of the sub-grid read per support point, as contiguous arrays: the five inputs, the logarithm of
+    the source with the mask of its finite entries, its change per interval and the sub-steps that change asks for,
+    ln T, the four interpolated quantities, S/T, and the room needed for the interior points."""
+    T, H, S, cooling, scale = (np.ascontiguousarray(np.broadcast_to(values, np.shape(T)), dtype=float)
+                               for values in (T, H, S, cooling, scale))
+    ok = (np.isfinite(S) & (S > 0.0) & np.isfinite(H) & (H > 0.0) & np.isfinite(cooling)
+          & (cooling > 0.0) & np.isfinite(scale) & (scale > 0.0) & (T > 0.0))
+    log_source = np.full_like(T, -np.inf)
+    with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
+        log_source[ok] = (np.asarray(logGamma(T[ok], S[ok]), dtype=float) + 3.0 * np.log(scale[ok])
+                          - np.log(cooling[ok] * H[ok] * T[ok]))
+        finite = np.isfinite(log_source)
+        change = np.abs(np.diff(np.where(finite, log_source, 0.0)))
+        want = np.ceil(change / _SUBGRID_MAX_LOG_STEP)
+        S_over_T = S / T
+        interpolated = np.array([S_over_T, np.log(np.where(ok, H, 1.0)), cooling, np.log(np.where(ok, scale, 1.0))])
+        u = np.log(np.where(T > 0.0, T, np.nan))
+    size = int(np.sum(np.clip(want, 1.0, _SUBGRID_MAX_STEPS) - 1.0)) + 1
+    return (T, H, S, cooling, scale, log_source, finite, change, want, u, interpolated, S_over_T,
+            float(_SUBGRID_NEGLIGIBLE), float(_SUBGRID_MAX_STEPS), size)
+
+
+def _warn_of_the_cap(capped) -> None:
+    """``capped`` is what the kernels report: the support intervals the cap limits, and the largest change among them."""
+    # The cap bounds the memory one support interval can ask for, but it must not degrade the
+    # resolution without saying so. It binds only where a single interval spans more than
+    # _SUBGRID_MAX_STEPS * _SUBGRID_MAX_LOG_STEP in the logarithm of the source; the step then
+    # achieved is change / _SUBGRID_MAX_STEPS, and the trapezoidal error on that interval grows
+    # as its square over twelve.
+    if capped[0] > 0:
+        achieved = float(capped[1] / _SUBGRID_MAX_STEPS)
+        warnings.warn(
+            f"percolation sub-grid limited by _SUBGRID_MAX_STEPS on "
+            f"{int(capped[0])} support interval(s): the logarithm of the source "
+            f"changes by up to {float(capped[1]):.3g} across one of them, so it is "
+            f"resolved to {achieved:.3g} instead of the requested {_SUBGRID_MAX_LOG_STEP:.3g}.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
 
 
 def _double_integral_subgrid(T, H, S, cooling, scale):
@@ -1084,82 +1239,10 @@ def _double_integral_subgrid(T, H, S, cooling, scale):
     tuple of np.ndarray
         ``(T, H, S, cooling, scale)`` on the sub-grid, still descending in temperature.
     """
-    ok = (np.isfinite(S) & (S > 0.0) & np.isfinite(H) & (H > 0.0) & np.isfinite(cooling)
-          & (cooling > 0.0) & np.isfinite(scale) & (scale > 0.0) & (T > 0.0))
-    if np.count_nonzero(ok) < 2:
-        return T, H, S, cooling, scale
-    log_source = np.full_like(T, -np.inf)
-    with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
-        log_source[ok] = (np.asarray(logGamma(T[ok], S[ok]), dtype=float) + 3.0 * np.log(scale[ok])
-                          - np.log(cooling[ok] * H[ok] * T[ok]))
-    finite = np.isfinite(log_source)
-    if np.count_nonzero(finite) < 2:
-        return T, H, S, cooling, scale
-    peak = float(np.max(log_source[finite]))
-    both = finite[:-1] & finite[1:] & (T[:-1] > T[1:])
-    relevant = both & (np.maximum(log_source[:-1], log_source[1:]) > peak - _SUBGRID_NEGLIGIBLE)
-    steps = np.ones(T.size - 1, dtype=int)
-    change = np.abs(np.diff(np.where(finite, log_source, 0.0)))
-    steps[relevant] = np.clip(np.ceil(change[relevant] / _SUBGRID_MAX_LOG_STEP), 1,
-                              _SUBGRID_MAX_STEPS).astype(int)
-    # The cap bounds the memory one support interval can ask for, but it must not degrade the
-    # resolution without saying so. It binds only where a single interval spans more than
-    # _SUBGRID_MAX_STEPS * _SUBGRID_MAX_LOG_STEP in the logarithm of the source; the step then
-    # achieved is change / _SUBGRID_MAX_STEPS, and the trapezoidal error on that interval grows
-    # as its square over twelve.
-    capped = relevant & (np.ceil(change / _SUBGRID_MAX_LOG_STEP) > _SUBGRID_MAX_STEPS)
-    if np.any(capped):
-        achieved = float(np.max(change[capped]) / _SUBGRID_MAX_STEPS)
-        warnings.warn(
-            f"percolation sub-grid limited by _SUBGRID_MAX_STEPS on "
-            f"{int(np.count_nonzero(capped))} support interval(s): the logarithm of the source "
-            f"changes by up to {float(np.max(change[capped])):.3g} across one of them, so it is "
-            f"resolved to {achieved:.3g} instead of the requested {_SUBGRID_MAX_LOG_STEP:.3g}.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-    if np.all(steps == 1):
-        return T, H, S, cooling, scale
-
-    # interpolants in ascending u on the finite support points around the refined intervals
-    u_all = np.log(np.where(T > 0.0, T, np.nan))
-    refined = np.flatnonzero(steps > 1)
-    lo, hi = max(int(refined[0]) - 1, 0), min(int(refined[-1]) + 2, T.size - 1)
-    near = np.zeros_like(finite)
-    near[lo:hi + 1] = True
-    u_nodes, first = np.unique(u_all[finite & near], return_index=True)
-    idx = np.flatnonzero(finite & near)[first]
-    spline = (lambda x, y: interpolate.CubicSpline(x, y, bc_type="not-a-knot", extrapolate=True)) \
-        if u_nodes.size >= 4 else (lambda x, y: interpolate.PchipInterpolator(x, y, extrapolate=True))
-    interp = {
-        name: spline(u_nodes, values[idx])
-        for name, values in (("s", S / T), ("lnH", np.log(np.where(ok, H, 1.0))),
-                             ("cool", cooling), ("lna", np.log(np.where(ok, scale, 1.0))))
-    }
-    pieces = {key: [] for key in ("T", "H", "S", "cool", "scale")}
-    for k in range(T.size - 1):
-        pieces["T"].append(T[k:k + 1]); pieces["H"].append(H[k:k + 1]); pieces["S"].append(S[k:k + 1])
-        pieces["cool"].append(cooling[k:k + 1]); pieces["scale"].append(scale[k:k + 1])
-        m = steps[k]
-        if m > 1:
-            u = np.linspace(u_all[k], u_all[k + 1], m + 1)[1:-1]
-            Tk = np.exp(u)
-            pieces["T"].append(Tk)
-            pieces["H"].append(np.exp(interp["lnH"](u)))
-            # S/T and 3 c_s^2 are interpolated in linear space, where a cubic spline can
-            # overshoot: across an unresolved feature it can leave the range of the two support
-            # values it sits between, and for S/T or 3 c_s^2 that means crossing zero, which would
-            # flip the sign of the nucleation rate or of the comoving step. A positive quantity
-            # between two positive support values stays between them, so it is held there. On a
-            # resolved interval the quantity is monotone, so the bound has almost nothing to do:
-            # it moves the mean bubble separation of a conformal dark U(1) point by four parts in
-            # ten million.
-            pieces["S"].append(_clamp_between(interp["s"](u), S[k] / T[k], S[k + 1] / T[k + 1]) * Tk)
-            pieces["cool"].append(_clamp_between(interp["cool"](u), cooling[k], cooling[k + 1]))
-            pieces["scale"].append(np.exp(interp["lna"](u)))
-    for key, last in (("T", T), ("H", H), ("S", S), ("cool", cooling), ("scale", scale)):
-        pieces[key].append(last[-1:])
-    return tuple(np.concatenate(pieces[key]) for key in ("T", "H", "S", "cool", "scale"))
+    capped = np.zeros(2)
+    fine = compiled_percolation.subgrid(*_subgrid_source(T, H, S, cooling, scale), capped)
+    _warn_of_the_cap(capped)
+    return fine
 
 
 # ---------------------------------------------------------------------------
@@ -1221,6 +1304,161 @@ def _log_bag_gamma_source_array(
 # Value of the percolation integral I at which the ODE sweep stops: the false-vacuum
 # fraction exp(-I) is then 2e-22, far below anything an observable can resolve.
 _PERC_INTEGRAL_STOP = 50.0
+
+# Spacing in u = ln T of the lattice on which `percIntegralODE` evaluates its integrand, and
+# the largest number of lattice nodes it builds (the spacing is doubled until it fits).
+_RATE_LATTICE_DU = 2.0 ** -11
+_RATE_LATTICE_MAX_NODES = 2 ** 17
+# Samples closer than this in ln T are thinned out of `ActionExponentSpline`.
+_ACTION_SPLINE_MIN_DU = 2.0 ** -9
+
+
+def _rate_lattice(u_low: float, u_high: float, du: float = _RATE_LATTICE_DU) -> np.ndarray:
+    """Nodes ``k du`` for integer ``k`` inside ``[u_low, u_high]``, plus the two ends.
+
+    The nodes are fixed in ``u = ln T``, not placed relative to the support, so two supports
+    that cover the same range share every interior node. A lattice node closer than ``du/8``
+    to an end is dropped so that no interval is much shorter than the others.
+    """
+    span = float(u_high) - float(u_low)
+    while span / du > _RATE_LATTICE_MAX_NODES:
+        du *= 2.0
+    k_low = math.ceil(float(u_low) / du)
+    k_high = math.floor(float(u_high) / du)
+    inner = np.arange(k_low, k_high + 1, dtype=float) * du
+    inner = inner[(inner - u_low > du / 8.0) & (u_high - inner > du / 8.0)]
+    return np.concatenate(([float(u_low)], inner, [float(u_high)]))
+
+
+class ActionExponentSpline:
+    r"""``S/T`` as a function of ``u = ln T``: a cubic spline over each run of usable samples.
+
+    ``u`` ascending and ``S`` the action at those points; ``usable`` marks the samples that
+    may enter. Every maximal run of consecutive usable samples gets its own not-a-knot cubic
+    spline of ``S/T``, provided it keeps at least four samples; the spline is only defined
+    from the first to the last sample of its run, and `covers` says where that is.
+
+    Within a run a sample closer than ``min_du`` in ``u`` to the previous one kept is left
+    out, the last sample of the run always kept. The adaptive support places samples as close
+    as ``1e-6 T``, and a cubic through two samples that close takes its slope from their
+    difference, i.e. from the noise of the bounce solver; thinned, the spline cannot amplify
+    that noise beyond its value. Smooth actions lose nothing, since the dropped sample carries
+    the same information as its neighbour.
+
+    Used by `percIntegralODE` for the rate, and by the action interpolant of the observables
+    (``transitionObservables.build_action_spline``) for the mean bubble separation, so that
+    both read one action between the support points.
+    """
+
+    def __init__(self, u, S, usable=None, min_du: float = None):
+        u = np.asarray(u, dtype=float)
+        S = np.asarray(S, dtype=float)
+        min_du = _ACTION_SPLINE_MIN_DU if min_du is None else float(min_du)
+        with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
+            exponent = S / np.exp(u)
+        ok = np.isfinite(u) & np.isfinite(S) & (S > 0.0) & np.isfinite(exponent)
+        if usable is not None:
+            ok &= np.asarray(usable, dtype=bool)
+        self.runs: list[tuple[int, int, float, float, interpolate.CubicSpline]] = []
+        n = u.size
+        start = 0
+        while start < n:
+            if not ok[start]:
+                start += 1
+                continue
+            stop = start
+            while stop + 1 < n and ok[stop + 1]:
+                stop += 1
+            kept = [start]
+            for i in range(start + 1, stop + 1):
+                if u[i] - u[kept[-1]] >= min_du:
+                    kept.append(i)
+                elif i == stop and len(kept) > 1:
+                    kept[-1] = i
+            if len(kept) >= 4:
+                kept = np.asarray(kept)
+                spline = interpolate.CubicSpline(u[kept], exponent[kept], bc_type="not-a-knot")
+                self.runs.append((int(start), int(stop), float(u[start]), float(u[stop]), spline))
+            start = stop + 1
+
+    def covers(self, u) -> np.ndarray:
+        """Whether each ``u`` lies inside one of the runs."""
+        u = np.asarray(u, dtype=float)
+        inside = np.zeros(u.shape, dtype=bool)
+        for _, _, low, high, _ in self.runs:
+            inside |= (u >= low) & (u <= high)
+        return inside
+
+    def __call__(self, u) -> np.ndarray:
+        """``S/T`` at ``u``, ``nan`` outside every run."""
+        u = np.asarray(u, dtype=float)
+        out = np.full(u.shape, np.nan)
+        for _, _, low, high, spline in self.runs:
+            inside = (u >= low) & (u <= high)
+            if np.any(inside):
+                out[inside] = spline(u[inside])
+        return out
+
+
+def _rate_on_log_lattice(
+    u: np.ndarray,
+    S: np.ndarray,
+    log_source: np.ndarray,
+    log_transport: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    r"""The integrand of `percIntegralODE` on a lattice fixed in ``u = ln T``.
+
+    ``u`` ascending, ``S`` the action, ``log_source`` and ``log_transport`` the logarithms of
+    the source and transport factors at the same support points. Returns the lattice and both
+    factors on it.
+
+    Interpolating ``ln gamma`` itself between the support points would make the result
+    depend on where those points landed. ``ln gamma = b - S/T`` has a maximum at the peak of
+    the nucleation rate, and a shape-preserving interpolant puts a zero slope at each sample
+    next to an extremum, so it flattens the peak whenever no sample sits on it, and ``T_p``
+    then moves when a support point is added or removed near the peak.
+
+    The two parts of ``ln gamma`` are therefore interpolated apart. ``S/T`` carries the
+    curvature of the peak (with a slowly varying Hubble rate the peak of the rate sits close
+    to the minimum of ``S/T``) and is interpolated by `ActionExponentSpline`, a cubic spline,
+    which follows an extremum between samples to the fourth power of the spacing instead of
+    flattening it; the remainder ``b = ln gamma + S/T`` varies slowly (``ln S``, ``ln H``,
+    ``ln a``) and keeps the shape-preserving interpolant. Both are evaluated on the lattice,
+    and the integrator interpolates between lattice nodes, which are dense enough
+    (``du = 2^-11``) for that step to be negligible. Adding or moving a support point then
+    changes the integrand only by the change of the spline.
+
+    Where the source is floored or the action is unusable the samples carry no rate, and the
+    old interpolant of ``ln gamma`` is kept on every interval touching such a sample, as is
+    any run of fewer than four usable samples. The transport factor has no extremum and keeps
+    its interpolant everywhere; it is only evaluated on the lattice, because the integrator
+    takes both factors on one set of nodes.
+    """
+    u = np.asarray(u, dtype=float)
+    n = u.size
+    if n < 4:
+        return u, np.asarray(log_source, dtype=float), np.asarray(log_transport, dtype=float)
+    S = np.asarray(S, dtype=float)
+    log_source = np.asarray(log_source, dtype=float)
+    old_source = PchipInterpolator(u, log_source, extrapolate=True)
+    old_transport = PchipInterpolator(u, np.asarray(log_transport, dtype=float), extrapolate=True)
+    nodes = _rate_lattice(u[0], u[-1])
+    source = np.asarray(old_source(nodes), dtype=float)
+    transport = np.asarray(old_transport(nodes), dtype=float)
+
+    exponent = ActionExponentSpline(
+        u, S, usable=np.isfinite(log_source) & (log_source > _LOG_GAMMA_SOURCE_FLOOR + 1.0))
+    if exponent.runs:
+        with np.errstate(invalid="ignore", divide="ignore"):
+            exponent_samples = S / np.exp(u)
+        for start, stop, low, high, _ in exponent.runs:
+            run = slice(start, stop + 1)
+            remainder = PchipInterpolator(u[run], log_source[run] + exponent_samples[run])
+            inside = (nodes >= low) & (nodes <= high)
+            source[inside] = remainder(nodes[inside]) - exponent(nodes[inside])
+    source = np.maximum(source, _LOG_GAMMA_SOURCE_FLOOR)
+    transport = np.maximum(transport, _LOG_GAMMA_SOURCE_FLOOR)
+    return nodes, source, transport
 
 
 def percIntegralODE(
@@ -1381,9 +1619,14 @@ def percIntegralODE(
     u_asc = np.log(T_asc)           # ascending (T_asc is ascending → u_asc ascending)
     log_gamma_source_asc = log_gamma_source[::-1].copy()
     log_transport_asc = log_transport[::-1].copy()
+    S_asc = S[n_trim:][::-1].copy()
 
-    log_gamma_source_interp = interpolate.PchipInterpolator(u_asc, log_gamma_source_asc, extrapolate=True)
-    log_transport_interp = interpolate.PchipInterpolator(u_asc, log_transport_asc, extrapolate=True)
+    # The integrand is evaluated on a lattice fixed in u = ln T rather than interpolated
+    # between the support points, see `_rate_on_log_lattice`.
+    u_nodes, source_nodes, transport_nodes = _rate_on_log_lattice(
+        u_asc, S_asc, log_gamma_source_asc, log_transport_asc)
+    log_gamma_source_interp = PchipInterpolator(u_nodes, source_nodes, extrapolate=True)
+    log_transport_interp = PchipInterpolator(u_nodes, transport_nodes, extrapolate=True)
 
     # The ODE chain in u = ln(T) coordinates.  Chain rule: d/du = T · d/dT,
     # so each RHS term acquires a factor of T = exp(u):
@@ -1393,67 +1636,36 @@ def percIntegralODE(
     #   dJ2/du = -2 J1 · nu(T) · T
     #   dJ3/du = -3 J2 · nu(T) · T
     #
-    # We integrate from u_hot = ln(T[0]) downward to u_cold = ln(T[-1]).
-    # solve_ivp supports a decreasing t_span, so we pass (u_hot, u_cold)
-    # and it steps in the negative-u direction.
+    # We integrate from u_hot = ln(T[0]) downward to u_cold = ln(T[-1]) with
+    # compiled_percolation.chain_integral, which is DOP853.
     #
     # Absolute tolerance: J0 starts at values as small as exp(-S_3/T_hot)
     # which can be ~exp(-800) ~ 1e-348.  atol=1e-300 keeps the solver from
     # treating J0 as zero in the early (very suppressed) hot-tail phase.
+    #
+    # The integration stops once the false vacuum is gone for all practical
+    # purposes. Nothing colder can change Tperc, Tf, Treh or R*, and the grid can
+    # extend far below completion into regions where the traced false vacuum is no
+    # longer a sensible equilibrium (its sound speed passes through zero, the scale
+    # factor blows up by e^700), which makes the integrator fail on an otherwise
+    # healthy transition.
     u_eval = np.log(T)   # decreasing (mirrors T which is decreasing)
-
-    def rhs(u, y):
-        t = np.exp(u)
-        log_gamma_source_value = float(log_gamma_source_interp(u))
-        gamma_source = (
-            np.exp(log_gamma_source_value)
-            if log_gamma_source_value > _LOG_GAMMA_SOURCE_FLOOR
-            else 0.0
-        )
-        lt = float(log_transport_interp(u))
-        transport = np.exp(lt) if lt > _LOG_GAMMA_SOURCE_FLOOR else 0.0
-        J0, J1, J2, J3 = y
-        return [
-            -gamma_source * t,          # dJ0/du
-            -J0 * transport * t,        # dJ1/du
-            -2.0 * J1 * transport * t,  # dJ2/du
-            -3.0 * J2 * transport * t,  # dJ3/du
-        ]
-
-    events = []
-    if i_target is not None:
-        def _reaches_target(u, y):
-            return (4.0 * np.pi / 3.0) * vw**3 * y[3] - float(i_target)
-
-        _reaches_target.terminal = False
-        _reaches_target.direction = 0.0
-        events.append(_reaches_target)
-
-    # Stop once the false vacuum is gone for all practical purposes. Nothing
-    # colder can change Tperc, Tf, Treh or R*, and the grid can extend far below
-    # completion into regions where the traced false vacuum is no longer a
-    # sensible equilibrium (its sound speed passes through zero, the scale
-    # factor blows up by e^700), which used to make the integrator fail on
-    # an otherwise healthy transition.
-    def _false_vacuum_gone(u, y):
-        return (4.0 * np.pi / 3.0) * vw**3 * y[3] - _PERC_INTEGRAL_STOP
-
-    _false_vacuum_gone.terminal = True
-    _false_vacuum_gone.direction = 1.0
-    events.append(_false_vacuum_gone)
-
-    sol = integrate.solve_ivp(
-        rhs,
-        t_span=(float(u_eval[0]), float(u_eval[-1])),
-        y0=[0.0, 0.0, 0.0, 0.0],
-        method="DOP853",
-        t_eval=u_eval,
-        rtol=1e-10,
-        atol=1e-300,
-        dense_output=False,
-        events=events,
+    prefactor = (4.0 * np.pi / 3.0) * vw**3
+    J3 = np.empty(u_eval.size)
+    status, reached, u_crossing, j3_stop = compiled_percolation.chain_integral(
+        np.ascontiguousarray(log_gamma_source_interp.x),
+        np.ascontiguousarray(log_gamma_source_interp.c),
+        np.ascontiguousarray(log_transport_interp.c),
+        _LOG_GAMMA_SOURCE_FLOOR,
+        np.ascontiguousarray(u_eval),
+        float(prefactor),
+        np.nan if i_target is None else float(i_target),
+        _PERC_INTEGRAL_STOP,
+        1e-10,
+        1e-300,
+        J3,
     )
-    if sol.status == -1:
+    if status == compiled_percolation.CHAIN_FAILED:
         raise errors.PercolationError(
             "percIntegralODE: the percolation integral solver could not reach "
             "the cold end of the temperature grid. The action S_3(T) is most "
@@ -1463,16 +1675,13 @@ def percIntegralODE(
             "Suggested fixes: (a) rerun with precision_mode: tunneltight or "
             "benchmark to tighten the bounce-action path deformation; "
             "(b) if the model is multi-field, lower precision_deform_fRatioConv "
-            "(default 1e-2 for Ndim>=2) further. "
-            f"Underlying solver message: {sol.message}"
+            "(default 1e-2 for Ndim>=2) further."
         )
 
-    J3 = sol.y[3]  # J3 at each T_i reached before a terminal event
-    if J3.size < u_eval.size:
+    if reached < u_eval.size:
         # Stopped at _PERC_INTEGRAL_STOP: the colder points keep that value, so
         # the true-vacuum fraction there is 1 to within exp(-_PERC_INTEGRAL_STOP).
-        j3_stop = float(sol.y_events[-1][0][3]) if len(sol.y_events[-1]) else float(J3[-1])
-        J3 = np.concatenate([J3, np.full(u_eval.size - J3.size, max(j3_stop, float(J3[-1]) if J3.size else 0.0))])
+        J3[reached:] = max(j3_stop, J3[reached - 1]) if reached > 0 else j3_stop
     I_trimmed = (4.0 * np.pi / 3.0) * vw**3 * J3
     # Restore trimmed hot-end points with I = 0 (A ≈ 0 there).
     if n_trim > 0:
@@ -1482,9 +1691,7 @@ def percIntegralODE(
     I_values = np.asarray(I_values, dtype=float)
     if i_target is None:
         return I_values
-    crossing = None
-    if sol.t_events and len(sol.t_events[0]) > 0:
-        crossing = float(np.exp(float(sol.t_events[0][-1])))
+    crossing = None if np.isnan(u_crossing) else float(np.exp(u_crossing))
     return I_values, crossing
 
 
@@ -1536,6 +1743,23 @@ def percolation_temperature_from_ode(
     return float(crossing)
 
 
+def _prefix_integrals(T, H, S, vw, cooling_factor, scale_factor) -> np.ndarray:
+    """``percIntegral(T[:i+1], ...)`` for every ``i``."""
+    T = np.asarray(T, dtype=float)
+    if T.size < 2:
+        return np.zeros(T.size)
+    if not T[0] >= T[1]:
+        raise errors.PercolationError("T is not decreasing in the percolation integral.")
+    cooling = np.ones_like(T) if cooling_factor is None else np.asarray(cooling_factor, dtype=float) * np.ones_like(T)
+    scale = T[0] / T if scale_factor is None else np.asarray(scale_factor, dtype=float) / scale_factor[0]
+    capped = np.zeros(2)
+    I_values = compiled_percolation.prefix_integrals(
+        *_subgrid_source(T, np.asarray(H, dtype=float), np.asarray(S, dtype=float), cooling, scale),
+        4 * np.pi / 3 * vw**3, capped)
+    _warn_of_the_cap(capped)
+    return I_values
+
+
 def percIntegralODE_full_sweep(
     T: np.ndarray,
     H: np.ndarray,
@@ -1569,8 +1793,8 @@ def percIntegralODE_full_sweep(
     """
     method = "ode" if integral_method is None else str(integral_method)
     if method == "double_integral":
-        # The double integral used to ignore the expansion history entirely; it now uses the
-        # same one as the ODE, so both methods read the same time-temperature relation.
+        # The double integral uses the same expansion history as the ODE, so both methods
+        # read the same time-temperature relation.
         sound_speed_sq, scale_factor = _time_temperature_factors(
             pot,
             phase_symmetric,
@@ -1582,17 +1806,7 @@ def percIntegralODE_full_sweep(
             cooling_factor = None
         else:
             cooling_factor = 3.0 * sound_speed_sq
-        I_values = np.asarray(
-            [
-                percIntegral(
-                    T[: i + 1], H[: i + 1], S[: i + 1], vw=vw,
-                    scale_factor=None if sound_speed_sq is None else scale_factor[: i + 1],
-                    cooling_factor=None if cooling_factor is None else cooling_factor[: i + 1],
-                )
-                for i in range(len(T))
-            ],
-            dtype=float,
-        )
+        I_values = _prefix_integrals(T, H, S, vw, cooling_factor, scale_factor)
     elif method == "ode":
         sound_speed_sq, scale_factor = _time_temperature_factors(
             pot,
@@ -2011,21 +2225,22 @@ def energy_criterion_BRO(TBRO: float, eSYM: float, eBRO_start: float, P: float, 
     return crit
 
 
-def entropy_criterion_SYM_BRO(Tb: float, TBRO_ref: float, TSYM: float, TSYM_ref: float, phase_broken, pot) -> float:
-    """Calculate the temperature of the dark sector broken phase in terms
-    of the symmetric phase temperature. Only valid when entropy is
-    conserved between reference temperature and TSYM.
+def entropy_criterion_SYM_BRO(Tb: float, TBRO_ref: float, volume_ratio: float, phase_broken, pot) -> float:
+    """Calculate the temperature of the reheated broken phase after an adiabatic expansion
+    from a reference point. Only valid when entropy is conserved in between.
 
     Parameters
     ----------
     Tb : float
         Temperature in the broken phase.
     TBRO_ref : float
-        Reference temperature of DS from which on entropy is conserved.
-    TSYM : float
-        SYM temperature for which we want to know TDS(TSM).
-    TSYM_ref : float
-        Reference temperature of SYM from which on entropy is conserved.
+        Broken-phase temperature at the reference point, from which on entropy is conserved.
+    volume_ratio : float
+        ``(a_ref/a)^3``, the comoving volume at the reference point over that at the point
+        of interest. It has to come from the expansion history of the percolation integral,
+        ``s_sym(T)/s_sym(T_ref)`` for the entropy density ``s_sym`` of the false-vacuum plasma
+        (``comoving_volume_ratios``), so that the broken plasma is redshifted with the same
+        scale factor that fixes the percolation temperature.
     phase_broken : PhaseInfo
         Phase information about the end (broken) phase.
     pot : generic_potential
@@ -2035,18 +2250,105 @@ def entropy_criterion_SYM_BRO(Tb: float, TBRO_ref: float, TSYM: float, TSYM_ref:
     float
         Zero when the condition is met.
     """
-    # Working assumption: the broken bubble reheats the DS and the coupled
-    # radiation to one local common temperature Tb, while the cosmological scale
-    # factor between successive steps is still inferred from the background
-    # symmetric-phase temperatures TSYM / TSYM_ref. A decoupled bath is not
-    # reheated and does not enter.
+    # The broken bubble reheats the DS and the coupled radiation to one local common
+    # temperature Tb, and its entropy is diluted by the background expansion. A decoupled
+    # bath is not reheated and does not enter.
     heff_ds_pt = h_eff_DS(TBRO_ref, pot, phase_broken)
     heff_SM_pt = h_eff_coupled_radiation(TBRO_ref, pot)
     heff_ds = h_eff_DS(Tb, pot, phase_broken)
     heff_SM = h_eff_coupled_radiation(Tb, pot)
     crit = (heff_ds + heff_SM) * Tb**3
-    crit -= (heff_ds_pt + heff_SM_pt) * TBRO_ref**3 * TSYM**3 / TSYM_ref**3
+    crit -= (heff_ds_pt + heff_SM_pt) * TBRO_ref**3 * volume_ratio
     return crit
+
+
+def comoving_volume_ratios(pot, phase_symmetric, T, time_temperature_mode=None,
+                           entropy_definition=None) -> np.ndarray:
+    """``(a(T[i-1])/a(T[i]))^3`` between neighbouring temperatures of a descending grid.
+
+    The scale factor is the one of the percolation integral, ``_time_temperature_factors``
+    on the same grid: entropy conservation in the false-vacuum plasma, ``s_sym a^3 = const``,
+    with the bag relation ``a ~ 1/T`` in ``bag`` mode and wherever the entropy is not usable.
+    The first entry, which has no hotter neighbour, is one.
+    """
+    temperatures = np.asarray(T, dtype=float)
+    ratios = np.ones(temperatures.size)
+    if temperatures.size < 2:
+        return ratios
+    _, scale_factor = _time_temperature_factors(
+        pot, phase_symmetric, temperatures, time_temperature_mode, entropy_definition)
+    if scale_factor is None:
+        ratios[1:] = (temperatures[1:] / temperatures[:-1]) ** 3
+    else:
+        scale_factor = np.asarray(scale_factor, dtype=float)
+        ratios[1:] = (scale_factor[:-1] / scale_factor[1:]) ** 3
+    return ratios
+
+
+_CRITERIA = {Tb_criterion: onefield_potential.TB_CRITERION, energy_criterion_BRO: onefield_potential.ENERGY_CRITERION,
+             entropy_criterion_SYM_BRO: onefield_potential.ENTROPY_CRITERION}
+
+
+def criterion_root(criterion, a: float, b: float, args: tuple = ()) -> float:
+    """``optimize.brentq(criterion, a, b, args=args)`` for one of the three criteria above.
+
+    On a compiled potential with the tabulated Standard Model bath the search runs in the kernels; anything but a
+    converged root goes to scipy, for its error.
+    """
+    kind = _CRITERIA.get(criterion)
+    kernels, spline = (None, None) if kind is None else _on_kernels(args[-1], args[-2])
+    if kernels is None or not kernels.thermal["sm_bath"] or not (a > 0.0 and b > 0.0):
+        return optimize.brentq(criterion, a, b, args=args)
+    constants = [0.0, 0.0, 0.0, 0.0]
+    if kind == onefield_potential.TB_CRITERION:
+        constants[0] = float(energyDensity(args[-1], args[1], args[0], include_decoupled=False))
+    elif kind == onefield_potential.ENERGY_CRITERION:
+        constants[:4] = [float(value) for value in args[:4]]
+    else:
+        reference, volume_ratio = float(args[0]), float(args[1])
+        constants[0] = kernels.entropy_on_phase(spline, reference) * volume_ratio
+    root, converged = kernels.criterion_root(kind, spline, float(a), float(b), constants)
+    return root if converged else optimize.brentq(criterion, a, b, args=args)
+
+
+def _convert_half_at_interval_start(
+    pot, phase_symmetric, phase_broken, T_hot, Tb_hot, P_hot, dP, TBROmin, TBROmax
+) -> tuple[float, bool]:
+    r"""Broken-phase temperature after converting half of an interval's ``dP`` at its hot end.
+
+    Step 3 of the adaptive solver carries the reheated broken-phase temperature ``T_b``
+    from one support point to the next: the broken plasma is redshifted adiabatically from ``T_hot`` to the next support
+    temperature, and the false vacuum converted in between, ``dP``, is added at the energy
+    density of the symmetric phase there. Adding all of it at the cold end leaves the energy
+    released inside the interval unredshifted, an error of first order in the width of the
+    interval, so ``H(T)`` and with it ``T_p`` would change whenever the support changes.
+    Converting half at the hot end, redshifting, and the other half at the cold end is the
+    symmetric splitting, of second order.
+
+    Returns the temperature to redshift from and whether the half was converted; on no
+    conversion (``dP`` not positive, or the root not bracketed) it returns ``Tb_hot`` and
+    ``False``, and the caller converts the whole ``dP`` at the cold end.
+
+    The fixed-step solver keeps the end-point conversion: the copy a run executes is
+    ``bubbledynamics_fixedstep._refine_percolation_temperature``, reached through
+    ``transitionObservables_fixedstep``.
+    """
+    if not (np.isfinite(dP) and dP > 0.0 and np.isfinite(Tb_hot)):
+        return float(Tb_hot), False
+    e_sym_hot = energyDensity(pot, phase_symmetric, T_hot, include_decoupled=False)
+    e_bro_hot = energyDensity(pot, phase_broken, Tb_hot, include_decoupled=False)
+    try:
+        Tb = criterion_root(
+            energy_criterion_BRO,
+            TBROmin,
+            TBROmax,
+            args=(e_sym_hot, e_bro_hot, P_hot + 0.5 * dP, 0.5 * dP, phase_broken, pot),
+        )
+    except ValueError:
+        return float(Tb_hot), False
+    if not np.isfinite(Tb):
+        return float(Tb_hot), False
+    return float(Tb), True
 
 
 def _finite_difference(func, x: float, rel_step: float = 1e-6) -> float:
@@ -2066,6 +2368,7 @@ def integrate_broken_temperature(
     p_seed: float = 1e-6,
     rtol: float = 1e-8,
     atol: float = 0.0,
+    log_entropy=None,
 ):
     r"""Integrate the broken-phase temperature down to ``T_target``.
 
@@ -2074,13 +2377,18 @@ def integrate_broken_temperature(
     discretisation of
 
     .. math::
-        \frac{dT_b}{dT} = \frac{3\,S(T_b)}{T\,S'(T_b)}
+        \frac{dT_b}{dT} = \frac{d\ln s_{\rm sym}}{dT}\,\frac{S(T_b)}{S'(T_b)}
         + \frac{P'(T)}{P(T)}\,\frac{e_s(T) - E(T_b)}{E'(T_b)} ,
 
     with :math:`S(x) = [h_{\rm ds}(x) + h_{\rm SM}(x)]\,x^3` proportional to the entropy
-    density of the broken phase and :math:`E` its energy density. Reading the reheating
-    temperature off the tabulated trajectory instead makes it depend on where the support
-    points happen to sit, which shows up as point-to-point scatter along smooth scans.
+    density of the broken phase and :math:`E` its energy density. The entropy density of the
+    false-vacuum plasma, :math:`s_{\rm sym} \propto a^{-3}`, sets the dilution by the
+    expansion: ``log_entropy`` is :math:`\ln s_{\rm sym}(T)` of the expansion history of the
+    percolation integral (``expansion_interpolants``), and ``None`` stands for the bag
+    relation :math:`s_{\rm sym} \propto T^3`, the history of a percolation integral that uses
+    it. Reading the reheating temperature off the tabulated trajectory instead makes it depend
+    on where the support points happen to sit, which shows up as point-to-point scatter along
+    smooth scans.
 
     The true-vacuum fraction enters through the source term, and its derivative is taken on a
     spline of :math:`\ln I`, with :math:`I = -\ln(1-P)`, which is smooth and monotone, rather
@@ -2201,6 +2509,9 @@ def integrate_broken_temperature(
     except Exception:
         return None
 
+    def dlog_entropy(T):
+        return _finite_difference(lambda x: float(log_entropy(x)), T)
+
     # Guard against a pathological right-hand side stalling the integrator; the
     # caller falls back to the tabulated trajectory.
     calls = {"n": 0}
@@ -2214,7 +2525,8 @@ def integrate_broken_temperature(
             return [0.0]
         ds = _finite_difference(s_bro, tb)
         de = _finite_difference(e_bro, tb)
-        drift = 3.0 * s_bro(tb) / (T * ds) if ds != 0.0 else 0.0
+        dilution = 3.0 / T if log_entropy is None else dlog_entropy(T)
+        drift = dilution * s_bro(tb) / ds if ds != 0.0 else 0.0
         source = 0.0
         p_val, dp_val = profile_at(T)
         if np.isfinite(p_val) and p_val > 0.0 and de != 0.0 and np.isfinite(dp_val):
@@ -2359,6 +2671,17 @@ def _transition_action_outdict_temperatures(
     )
     interval_tol = 1e-10 * scale
 
+    # kept on the broken phase, and valid for these two traces: PhaseInfo.replaceTrace builds a new interpolator
+    symmetric_trace = getattr(phase_symmetric, "interpolator", phase_symmetric)
+    broken_trace = getattr(phase_broken, "interpolator", phase_broken)
+    matched_points = getattr(phase_broken, "_matched_action_points", None)
+    if matched_points is None:
+        matched_points = {}
+        try:
+            phase_broken._matched_action_points = matched_points
+        except AttributeError:
+            pass
+
     temperatures: list[float] = []
     for key, payload in outdict.items():
         if not isinstance(payload, dict):
@@ -2386,6 +2709,16 @@ def _transition_action_outdict_temperatures(
         high_vev = payload.get("high_vev")
         low_vev = payload.get("low_vev")
         if high_vev is not None and low_vev is not None:
+            # This scan runs hundreds of times over the same entries, and its comparisons were 9 %
+            # of a 3D-rate run. An entry's answer is kept for as long as it is the same entry.
+            traced = payload.get("high_vev_as_traced")
+            known = matched_points.get(temperature)
+            if (known is not None and known[0] is high_vev and known[1] is low_vev and known[2] is traced
+                    and known[3] is symmetric_trace and known[4] is broken_trace):
+                if not known[5]:
+                    continue
+                temperatures.append(float(temperature))
+                continue
             try:
                 symmetric_point = phase_symmetric.valAt(temperature)
                 broken_point = phase_broken.valAt(temperature)
@@ -2400,11 +2733,11 @@ def _transition_action_outdict_temperatures(
                 # as-traced point is
                 # recorded beside it for exactly this comparison; entries written before it
                 # existed carry only `high_vev`.
-                traced = payload.get("high_vev_as_traced")
                 high_matches = phase_point_matches(high_vev, symmetric_point) or (
                     traced is not None and phase_point_matches(traced, symmetric_point))
-                if not (high_matches
-                        and phase_point_matches(low_vev, broken_point)):
+                matched = bool(high_matches and phase_point_matches(low_vev, broken_point))
+                matched_points[temperature] = (high_vev, low_vev, traced, symmetric_trace, broken_trace, matched)
+                if not matched:
                     continue
         temperatures.append(float(temperature))
     return _temperature_grid(temperatures)
@@ -2953,13 +3286,10 @@ def estimate_spline_tnuc_from_rate_history(
         if u.size < 3 or np.ptp(u) <= 1.0e-12:
             return {"Tnuc": None, "warning": "spline_tnuc_unavailable", "max_N": math.nan}
 
-        # A cubic spline for the rate: N crosses one on the hot side of the history, where the
-        # support points are sparse, and the slopes of a monotone interpolant there are only
-        # first-order accurate and move with the nodes. The percolation integral interpolates the
-        # same logarithmic rate with a PCHIP, so the bubble count here and the true-vacuum
-        # fraction there rest on rate models that differ by the interpolant.
+        # A cubic spline, as the double integral uses: N crosses one on the hot side, where the support points are
+        # sparse, and the slopes of a monotone interpolant there are only first-order accurate and move with them.
         rate_spline = interpolate.CubicSpline(u, rate, extrapolate=False)
-        prob_spline = interpolate.PchipInterpolator(u, prob, extrapolate=False)
+        prob_spline = PchipInterpolator(u, prob, extrapolate=False)
         n_grid = max(1000, 20 * int(u.size))
         u_dense = np.linspace(float(u[0]), float(u[-1]), n_grid)
         rate_dense = np.asarray(rate_spline(u_dense), dtype=float)
@@ -3102,7 +3432,7 @@ def _fit_action_slope(T_samples, S_samples, T: float, n_points: int) -> float:
 
 
 # The rate-jitter rescue divides the path-deformation convergence target by this factor,
-# after the historical absolute cap. A fixed absolute target on its own cannot work: a model
+# after the absolute cap. A fixed absolute target on its own cannot work: a model
 # that already declares that target gets no tightening and the rescue becomes a no-op.
 _JITTER_RESCUE_TIGHTEN_FACTOR = 5.0
 
@@ -3129,8 +3459,8 @@ def _tight_tunneling_params(pot):
     # every deformation parameter of the "tight" set is then bit-identical to the run's and the
     # rate-jitter rescue is a no-op. Divide by a further factor instead, so there is always
     # real margin: with the cap above, the tight target is 1e-3 for any run at or above 5e-3,
-    # a factor 10 below the multi-field default of 1e-2, and one fifth of the configured
-    # value below that. `converge_0` keeps the plain clamp, so the margin comes from
+    # and one fifth of the configured value below that (6e-4 at the multi-field default of
+    # 3e-3). `converge_0` keeps the plain clamp, so the margin comes from
     # `fRatioConv` alone, where halving the target was measured to cut the action jitter by
     # about a factor three, so a further factor buys a comparable amount; the cost is bounded
     # because the rescue only
@@ -3227,7 +3557,9 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
         Information about the low temperature (broken) phase
     diagnostics : dict, optional
         Filled with the samples used, the fallback flag, the check-fit value
-        and ``fit_unstable``.
+        and ``fit_unstable``. ``fit_temperatures`` holds the temperatures of the
+        samples behind the returned value: the support samples, the fallback
+        actions, or the stencil of a fit rescue whose answer was used.
 
     Returns
     ----------
@@ -3302,7 +3634,8 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
         return slope, None, None
 
     betaH, check, rel = fit_and_check(T_samples, S_samples)
-    diag.update(betaH_fit=betaH, n_fit=int(min(n_fit, T_samples.size)))
+    diag.update(betaH_fit=betaH, n_fit=int(min(n_fit, T_samples.size)),
+                fit_temperatures=T_samples[np.argsort(np.abs(T_samples - T))[:n_fit]])
     if rel is None:
         diag.update(fit_unstable=False)
         return betaH
@@ -3358,13 +3691,112 @@ def calc_betaH_S3(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phas
     diag.update(betaH_fit=betaH_tight, betaH_check=check_tight, check_rel_diff=rel_tight,
                 fit_unstable=bool(rel_tight > rel_tol),
                 fit_rescue_success=bool(rel_tight <= rel_tol),
-                betaH_before_rescue=betaH, n_fit=n_fit_tight)
+                betaH_before_rescue=betaH, n_fit=n_fit_tight,
+                fit_temperatures=T_tight[np.argsort(np.abs(T_tight - T))[:n_fit]])
     if verbose:
         print(f"betaH_S3: the two fits differed by {100 * rel:.2f} %; refitted on "
               f"{int(T_stencil.size)} fresh actions spanning {100 * diag['fit_rescue_rel_span']:.2f} % "
               f"in T with the deformation tightened, {100 * rel_tight:.2f} % after, "
               f"beta/H {betaH:.6g} -> {betaH_tight:.6g}.")
     return betaH_tight
+
+
+def calc_rate_log_slope(T: float, Sint: interpolate.interp1d, outdict: dict, pot, phase_sym, phase_bro,
+                        verbose=False, diagnostics: dict | None = None,
+                        temperatures=None) -> float:
+    """Return ``-d ln Gamma / d ln T`` at ``T``, the slope of the nucleation rate itself.
+
+    The rate is the model's, :func:`calcLogGamma`, at the actions the model supplies. It
+    differs from the slope of the action alone, :func:`calc_betaH_S3`, by the prefactor
+    ``T^4 (S/2 pi T)^(3/2)``, and by whatever a model's ``logGammaNuc`` adds beyond it. For
+    the rates in this repository ``logGammaNuc`` is ``logGamma(T, S)``, the rate of the
+    percolation integrals, and the three-dimensional model carries its determinant
+    correction in the action, so :func:`calc_betaH_S3` contains that correction as well.
+
+    The slope is the linear coefficient of a least-squares quadratic in ``ln Gamma``
+    against ``T - T_ref``. ``temperatures`` are the samples to fit, normally
+    ``diagnostics["fit_temperatures"]`` of :func:`calc_betaH_S3` at the same ``T``, so that
+    both speeds rest on the same actions, including the stencil of its fit rescue when that
+    rescue replaced the support fit. Without them the samples are selected as
+    :func:`calc_betaH_S3` selects them before any rescue: the support samples nearest to
+    ``T`` (``betaH_S3_fit_points``, at least ``betaH_S3_fit_min_per_side`` on each side,
+    none further than ``betaH_S3_fit_max_rel_span``), otherwise five actions at
+    ``T (1 + k step)``, k = -2..2, with ``betaH_S3_fallback_rel_step``. Neither the
+    stability check nor the fit rescue of :func:`calc_betaH_S3` is repeated here. With the
+    samples of :func:`calc_betaH_S3` every action is already in ``outdict``; the rate is
+    evaluated at most once per sample and cached there, which is the cost to watch for a
+    model whose ``logGammaNuc`` is expensive.
+
+    Converted to time with the factor of :meth:`_beta_time_temperature_factor`, this is
+    the observable ``betaH_Gamma = H^-1 d ln Gamma/dt``.
+
+    Returns
+    -------
+    float
+        ``-d ln Gamma / d ln T``, or ``nan`` if fewer than three finite rates are available.
+    """
+    conf = pot.config.percolationConf
+    n_fit = max(int(getattr(conf, "betaH_S3_fit_points", 11)), 3)
+    min_side = int(getattr(conf, "betaH_S3_fit_min_per_side", 2))
+    max_span = float(getattr(conf, "betaH_S3_fit_max_rel_span", 0.02))
+    fallback_step = float(getattr(conf, "betaH_S3_fallback_rel_step", 2e-3))
+    diag = diagnostics if diagnostics is not None else {}
+
+    tmin = max(float(phase_sym.Tmin), float(phase_bro.Tmin))
+    tmax = min(float(phase_sym.Tmax), float(phase_bro.Tmax))
+    if tmin >= tmax or T <= tmin or T >= tmax:
+        return np.nan
+
+    if temperatures is not None:
+        T_samples = np.asarray(temperatures, dtype=float).reshape(-1)
+        T_samples = T_samples[np.isfinite(T_samples)]
+        diag.update(shared_samples=True, fallback=False)
+    else:
+        T_samples = np.asarray(getattr(Sint, "x", []), dtype=float)
+        T_samples = T_samples[np.isfinite(T_samples)]
+        use_support = T_samples.size >= n_fit
+        if use_support:
+            nearest = T_samples[np.argsort(np.abs(T_samples - T))[:n_fit]]
+            use_support = (int(np.sum(nearest < T)) >= min_side and int(np.sum(nearest > T)) >= min_side
+                           and float(np.max(np.abs(nearest / T - 1.0))) <= max_span)
+            T_samples = nearest
+        if not use_support:
+            step = min(fallback_step * T, 0.2 * (T - tmin), 0.2 * (tmax - T))
+            T_samples = T + step * np.arange(-2, 3)
+        diag.update(shared_samples=False, fallback=not use_support)
+
+    log_gamma = []
+    for t in T_samples:
+        t = float(t)
+        action = calcAction(pot, t, phase_sym, phase_bro, outdict)
+        log_gamma.append(calcLogGamma(pot, t, outdict) if np.isfinite(action) else np.nan)
+    log_gamma = np.asarray(log_gamma, dtype=float)
+    finite = np.isfinite(log_gamma)
+    if int(np.count_nonzero(finite)) < 3:
+        return np.nan
+    x = T_samples[finite] - T
+    coeffs = np.polyfit(x, log_gamma[finite], 2)
+    diag.update(n_fit=int(np.count_nonzero(finite)))
+    return float(-T * coeffs[1])
+
+
+def energyDensityTemperatureDerivative(pot, X, T: float, dT: float,
+                                       include_decoupled: bool = True) -> float:
+    """``d(energy density)/dT`` at ``(X, T)``, by central difference of its
+    temperature-dependent part only.
+
+    ``pot.energyDensity`` is a temperature-independent vacuum offset (the
+    potential difference to the broken vacuum ``X0``) plus the daisy and
+    radiation terms. Differencing the total subtracts two numbers dominated by
+    that offset, and in a strongly supercooled transition the thermal part
+    falls below double precision against it: at ``T/v ~ 5e-5`` the difference
+    is exactly zero and ``alpha_thetabar`` becomes infinite, at ``T/v ~ 5e-4``
+    only about two significant digits survive. The offset does not depend on
+    ``T``, so leaving it out changes nothing mathematically and removes the
+    cancellation.
+    """
+    return (hotEnergyDensity(pot, X, T + dT, include_decoupled)
+            - hotEnergyDensity(pot, X, T - dT, include_decoupled)) / (2 * dT)
 
 
 def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
@@ -3479,26 +3911,16 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
         theta_bro = -T*pot.dVdT(low_phi, T, dT=dT_bro, include_decoupled=False) + Veff_bro * (1 + 1/ csSq_bro)
     # This energy density keeps the decoupled bath, so its step is sized with it too. That
     # the sound speed beside it in the denominator is computed without the bath is the
-    # separate question of which plasma 3 w refers to; it is not decided here.
+    # separate question of which plasma 3 w refers to; it is not decided here. The
+    # temperature-independent vacuum offset is left out of the difference, which removes
+    # the cancellation that the step alone cannot at extreme supercooling.
     dT_e = temperatureDerivativeStep(pot, T, high_phi, include_decoupled=True,
                                      two_point=True)
-    # Difference the part of the energy density that depends on the temperature, not the
-    # whole of it. `energyDensity` is that part plus the vacuum energy, which is constant in
-    # T and so cancels analytically but not numerically: on the conformal dark U(1) at
-    # g = 0.5 the vacuum energy is 1.486e8 in internal units while the thermal part is about
-    # 1e-15 of it, so differencing the sum returned exactly zero and the strength came back
-    # as infinity. At g = 0.517 it kept one digit and still looked like a number. Away from
-    # supercooling the two forms agree bit for bit, as the 2HDM benchmark does at every
-    # temperature, because there the offset is no larger than the plasma.
-    e_plus = hotEnergyDensity(pot, high_phi, T + dT_e)
-    e_minus = hotEnergyDensity(pot, high_phi, T - dT_e)
-    dedT = (e_plus - e_minus)/(2*dT_e)
-    # With the offset gone this can only fail where the plasma itself has no temperature
-    # dependence left, which is a phase with nothing in it rather than a precision loss.
+    dedT = energyDensityTemperatureDerivative(pot, high_phi, T, dT_e)
+    # The vacuum offset is out of the difference; what can still fail is a plasma with no temperature dependence left,
+    # a phase with nothing in it rather than a loss of precision.
     if sym_usable:
-        requireUsableEnthalpy(
-            3 * csSq_sym * T * dedT, T,
-            {"hot e(T + dT)": e_plus, "hot e(T - dT)": e_minus, "dT": dT_e})
+        requireUsableEnthalpy(3 * csSq_sym * T * dedT, T, {"de/dT": dedT, "dT": dT_e})
     if broken_usable and sym_usable:
         alpha_thetabar = (theta_sym - theta_bro) / (3* csSq_sym * T * dedT)
     else:
@@ -3535,13 +3957,11 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     m_bos_before = np.sqrt(np.where(m2_bos_before > 0, m2_bos_before, 0))
     delta_m_bos = np.maximum(m_bos_after - m_bos_before, 0)
 
-    # Enthalpy w = e + p of the symmetric phase of the transitioning sector alone, without a
-    # decoupled radiation bath. Built from the temperature-dependent parts: the vacuum energy
-    # cancels in e + p analytically, and subtracting it from itself loses every digit under
-    # supercooling, as it does in the pseudo-trace normalisation above.
-    w_sym_PT = requireUsableEnthalpy(
-        symmetricPhaseEnthalpy(pot, high_phi, T, include_decoupled=False), T,
-        {"plasma": "the transitioning sector alone"})
+    # Enthalpy w = e + p of the symmetric phase of the transitioning sector alone,
+    # without a decoupled radiation bath. The vacuum parts cancel in e + p, and Veff_sym
+    # above is already the transitioning sector's effective potential.
+    w_sym_PT = requireUsableEnthalpy(symmetricPhaseEnthalpy(pot, high_phi, T, include_decoupled=False), T,
+                                     {"plasma": "the transitioning sector alone"})
 
     # alpha_inf and alpha_eq as defined in section 2 of 1903.09642: the leading- and
     # next-to-leading-order friction pressures on the wall divided by the radiation energy
@@ -3559,10 +3979,8 @@ def calcAlphas(T: float, pot, high_phase, low_phase, verbose=False,
     alpha_hyd_wall = (theta_sym - theta_bro) / (3 * w_sym_PT)
     include_decoupled_in_enthalpy = bool(pot.config.gwConf.coupled_hydrodynamics)
     w_sym_sw = requireUsableEnthalpy(
-        symmetricPhaseEnthalpy(pot, high_phi, T,
-                               include_decoupled=include_decoupled_in_enthalpy), T,
-        {"plasma": "with the decoupled bath" if include_decoupled_in_enthalpy
-                   else "the transitioning sector alone"})
+        symmetricPhaseEnthalpy(pot, high_phi, T, include_decoupled=include_decoupled_in_enthalpy), T,
+        {"plasma": "with the decoupled bath" if include_decoupled_in_enthalpy else "the transitioning sector alone"})
     alpha_hyd = (theta_sym - theta_bro) / (3 * w_sym_sw)
 
     alphas = (alpha_p, alpha_theta, alpha_thetabar, alpha_e, alpha_hyd, alpha_inf, alpha_eq)
@@ -3690,7 +4108,7 @@ def falseVacuumVolumeGrowthRate(TSYM, P, T, cs_sq: float = 1.0 / 3.0) -> float:
         return float("nan")
 
     try:
-        log_integral = interpolate.PchipInterpolator(
+        log_integral = PchipInterpolator(
             temperatures, np.log(integral), extrapolate=False
         )
         dIdT = float(np.exp(log_integral(T)) * log_integral(T, 1))
@@ -3786,8 +4204,8 @@ def expansion_interpolants(pot, phase_symmetric, T, *, time_temperature_mode: st
         # percolation integral reads `_time_temperature_factors` directly and is unaffected.
         return None, None
     ascending = temperatures[::-1]
-    cs_sq_int = interpolate.PchipInterpolator(ascending, sound_speed_sq[::-1], extrapolate=True)
-    ln_a_int = interpolate.PchipInterpolator(ascending, np.log(scale_factor[::-1]), extrapolate=True)
+    cs_sq_int = PchipInterpolator(ascending, sound_speed_sq[::-1], extrapolate=True)
+    ln_a_int = PchipInterpolator(ascending, np.log(scale_factor[::-1]), extrapolate=True)
 
     def logEntropyInt(x):
         return -3.0 * ln_a_int(np.asarray(x, dtype=float))
@@ -3931,6 +4349,11 @@ def record_entropy_scheme_diagnostics(
         )
 
 
+# The potential's entropy takes three derivatives per temperature, and the comparison is a median over the support, which
+# needs no more temperatures than this. Both ends always stay.
+_ENTROPY_SCHEME_POINTS = 24
+
+
 def entropy_scheme_sensitivity(
     pot,
     phase_symmetric,
@@ -3979,6 +4402,9 @@ def entropy_scheme_sensitivity(
     temperatures = np.asarray(T, dtype=float)
     if temperatures.size < 2:
         return float("nan"), float("nan")
+    if temperatures.size > _ENTROPY_SCHEME_POINTS:
+        temperatures = temperatures[np.unique(np.round(
+            np.linspace(0, temperatures.size - 1, _ENTROPY_SCHEME_POINTS)).astype(np.int64))]
 
     histories = {}
     if configured_history is not None:
@@ -4078,8 +4504,7 @@ def calcMeanBubbleSeparation(
 
         Both come from ``expansion_interpolants``, built from the same factors as the
         percolation integral, so that the separation uses the history that fixed
-        ``Tperc``. With both ``None`` the previous bag-limit integration is reproduced
-        exactly, on the same linear temperature grid.
+        ``Tperc``. With both ``None`` the integral is that of the bag limit.
 
     Returns
     ----------
@@ -4089,17 +4514,13 @@ def calcMeanBubbleSeparation(
     # See eq. (5.42) in 2305.02357.
     if not (np.isfinite(T) and np.isfinite(Tmax)) or Tmax <= T:
         return np.inf
-    if entropyInt is None and coolingInt is None and logEntropyInt is None:
-        # Preserve the bag-mode integration path exactly so RH/betaH_from_RH
-        # remain comparable to fixed-grid reference runs.
-        Tr = np.linspace(T, Tmax, 10_000)
+    # A grid uniform in ln T, whatever the expansion history: the nucleation history spans a few
+    # e-folds of T above T, while Tmax can lie orders of magnitude higher, so that a linear grid
+    # puts the whole history inside its first cell when the transition is supercooled.
+    if T > 0.0 and Tmax > 0.0 and Tmax / T > 1.0 + 1e-10:
+        Tr = np.geomspace(T, Tmax, 10_000)
     else:
-        # For entropy-aware histories, use a relative-temperature grid so the
-        # numerical resolution is stable under overall temperature rescalings.
-        if T > 0.0 and Tmax > 0.0 and Tmax / T > 1.0 + 1e-10:
-            Tr = np.geomspace(T, Tmax, 10_000)
-        else:
-            Tr = np.linspace(T, Tmax, 10_000)
+        Tr = np.linspace(T, Tmax, 10_000)
     if logEntropyInt is not None:
         # s(T)/s(T') as a difference of logarithms: T' >= T and a falls with rising T, so
         # the exponent is never positive and deep histories underflow to zero, which is

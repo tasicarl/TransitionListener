@@ -179,10 +179,15 @@ class TheChangeMovesNoNumber(unittest.TestCase):
         new = np.asarray(pot.Vct(grid), dtype=float)
         old = np.asarray(_Vct_with_a_quadratic_second_term(pot, grid), dtype=float)
         self.assertTrue(np.isfinite(new).all())
-        self.assertTrue(
-            np.array_equal(new.view(np.int64), old.view(np.int64)),
-            msg="the counterterm potential of the benchmark point is not "
-                "bitwise what the pre-change expression gave")
+        # The model evaluates its counterterms in compiled code, whose order of operations differs
+        # from the expression above, so the two agree to rounding and not bit for bit: measured
+        # 3.5e-16 relative at worst on this grid. A change of the dlambda2 term would move the
+        # values by the size of that term, many orders above this window.
+        scale = float(np.max(np.abs(old)))
+        np.testing.assert_allclose(
+            new, old, rtol=0.0, atol=1e-14 * scale,
+            err_msg="the counterterm potential of the benchmark point is not "
+                    "what the pre-change expression gave")
 
 
 if __name__ == "__main__":

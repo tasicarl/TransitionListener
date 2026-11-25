@@ -60,7 +60,7 @@ class ModelDeclaredFRatioConvTests(unittest.TestCase):
         """Control: the override must keep working where it is wanted.
 
         The plain 2HDM does not set ``fRatioConv``, so it must still be tightened from
-        the 1d default of 2e-2 to 1e-2 rather than left loose.
+        the 1d default of 2e-2 to the multi-field target rather than left loose.
         """
         plain = REPO / "models" / "TL_2HDM_BSMPT.py"
         if not plain.exists():
@@ -69,7 +69,7 @@ class ModelDeclaredFRatioConvTests(unittest.TestCase):
         pot = cls_(PARAMS, verbose=False)
         self.assertGreaterEqual(getattr(pot, "Ndim", 1), 2)
         self.assertAlmostEqual(
-            float(deform_params(pot)["fRatioConv"]), 1.0e-2, places=12,
+            float(deform_params(pot)["fRatioConv"]), 3.0e-3, places=12,
             msg="the multi-field auto-tighten stopped applying to a model that makes no "
                 "choice of its own",
         )

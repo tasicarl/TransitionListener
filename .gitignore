@@ -52,5 +52,42 @@ arxiv/*.synctex.gz
 arxiv/*.toc
 arxiv/main.pdf
 
+# Slurm logs and submit scripts (working-tree only; never tracked)
+*.sbatch
+slurm_logs/
+**/slurm_logs/
+
+# tl/tests scratch outputs that were getting noisy
+tests/results/
+diffs/
+
+# Sub-paper / dev-only sandboxes that occasionally re-appear in the tree
+# (these directories are not tracked on the release branch)
+to_be_deleted/
+debug_outputs/
+SMEWPHT/
+THDM_EWPT/
+ptamodels_plots/
+tools/
+BSMPT/
+
+# Top-level submit shell scripts. We never ship these; researcher-side
+# submission scripts belong in the local sandbox or in tests/.
+submit_*.sh
+
+# PNG copies of the figures, written only for on-screen inspection; every note
+# embeds the .pdf version.
+# numerical caches written by the note scripts (delete to force recomputation)
+
+# large Monte Carlo outputs of the transport study (reproducible with mc_transport.py)
+# local backups of superseded analysis outputs
+paper/analysis/*_before_*.npz
+
+# job logs and numba caches of the paper and note scripts
+paper/**/*.err
+paper/**/*.out
+paper/**/*.log
+*.nbi
+*.nbc
 # Local test-suite and batch-job logs
 suite_logs/

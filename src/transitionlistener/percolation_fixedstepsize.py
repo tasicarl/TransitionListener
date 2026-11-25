@@ -47,8 +47,8 @@ def _initial_percolation_scan(
 ) -> PercolationState:
     """Step 2: compute P(T) with a P-independent Hubble rate.
 
-    This is the historical fixed-grid solver from main. It keeps the original
-    equidistant TSYM logic and only records a little extra diagnostic state.
+    This is the fixed-grid solver: an equidistant TSYM and a little extra
+    diagnostic state.
     """
     TSYM = grid.TSYM
     Sr = np.zeros_like(TSYM)
@@ -311,15 +311,16 @@ def _refine_percolation_temperature(
                         except ValueError:
                             TBRO = optimize.brentq(
                                 entropy_criterion_SYM_BRO, TBROmin, TBROmax,
-                                args=(state.Tb[i - 1], T, TSYM[i - 1], phase_broken, pot)
+                                args=(state.Tb[i - 1], (T / TSYM[i - 1]) ** 3, phase_broken, pot)
                             )
                     else:
                         # Use entropy conservation in the symmetric phase between two time steps
                         # to compute the broken phase energy density in step i based on the
-                        # broken phase energy density in step i-1.
+                        # broken phase energy density in step i-1. The comoving volume follows
+                        # a ~ 1/T, the expansion history percIntegral uses on this path.
                         TBRO = optimize.brentq(
                             entropy_criterion_SYM_BRO, TBROmin, TBROmax,
-                            args=(state.Tb[i - 1], T, TSYM[i - 1], phase_broken, pot)
+                            args=(state.Tb[i - 1], (T / TSYM[i - 1]) ** 3, phase_broken, pot)
                         )
                     eSYM_PT = energyDensity(pot, phase_symmetric, T, include_decoupled=False)
                     e_decoupled = eSYM - eSYM_PT

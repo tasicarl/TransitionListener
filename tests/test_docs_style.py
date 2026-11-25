@@ -621,7 +621,7 @@ class TestPagesAgainstTheCode(unittest.TestCase):
         """
         import yaml
 
-        model = (ROOT / "models" / "TL_conformal_dark_u1.py").read_text(encoding="utf-8")
+        model = (ROOT / "models" / "TL_conformal_u1_fermions.py").read_text(encoding="utf-8")
         self.assertIn("self.Ndim = 1", model)
         conformal = yaml.safe_load((DOCS / "docs_gallery.yaml").read_text(encoding="utf-8"))
         self.assertNotIn("profileV", conformal["additional_plots"])
@@ -629,7 +629,7 @@ class TestPagesAgainstTheCode(unittest.TestCase):
         two_field = yaml.safe_load(
             (DOCS / "docs_gallery_2hdm.yaml").read_text(encoding="utf-8"))
         self.assertIn("profileV", two_field["additional_plots"])
-        self.assertNotIn("TL_conformal_dark_u1", two_field["Modelfile"])
+        self.assertNotIn("TL_conformal_u1_fermions", two_field["Modelfile"])
 
         page = (DOCS / "source" / "algorithms" / "the_plots.rst").read_text(encoding="utf-8")
         self.assertIn("docs/docs_gallery_2hdm.yaml", page)

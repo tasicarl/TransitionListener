@@ -389,7 +389,7 @@ class FixedStepPseudoTraceGuardTests(PseudoTraceGuardTests):
 class EnthalpyNormalisationTests(unittest.TestCase):
     """The strength must not be normalised by a difference of the vacuum energy with itself.
 
-    Measured on the conformal dark U(1) model of `examples/example_line.yaml`, whose full
+    Measured on the conformal U(1) with fermions model of `examples/example_line.yaml`, whose full
     coupling range the release paper plots the strength over: at g = 0.5 and its percolation
     temperature of 2.94e-6 GeV the energy density either side of the derivative step is the
     same double, 1.48570035040305108e+08 in internal units, because the thermal part the
@@ -410,7 +410,7 @@ class EnthalpyNormalisationTests(unittest.TestCase):
 
         repo = Path(__file__).resolve().parents[1]
         return load_potential(
-            str(repo / "models/TL_conformal_dark_u1.py"), "specific_potential"
+            str(repo / "models/TL_conformal_u1_fermions.py"), "specific_potential"
         )({"g": g, "y": 0.01, "v_GeV": 0.14}, verbose=False)
 
     def test_the_hot_part_is_the_energy_density_without_a_constant(self):

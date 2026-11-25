@@ -106,23 +106,31 @@ Ie_geffSM = interpolate.CubicSpline(
     data_geffSM[:, 1],
     bc_type="clamped"
 )
+
+
+def _smooth_dof_spline(column: int) -> interpolate.CubicSpline:
+    """Spline of a filtered column of the table, on every eighth row and on every row of the QCD region.
+
+    The sound speed is a second derivative of the pressure, and a spline through every row turns the scatter of the
+    table into structure of 3e-4 in c_s^2 with a period of about one row. Between 0.05 and 0.35 GeV the table has real
+    structure on the scale of the filter window, the seam at 0.12 GeV among it, so that every row is kept there.
+    """
+    log_T = np.log10(data_geffSM[:, 0])
+    filtered = savgol_filter(data_geffSM[:, column], 81, 3)
+    kept = np.unique(np.r_[np.arange(0, log_T.size - 1, 8), log_T.size - 1,
+                           np.flatnonzero((data_geffSM[:, 0] > 0.05) & (data_geffSM[:, 0] < 0.35))])
+    return interpolate.CubicSpline(log_T[kept], filtered[kept], bc_type="clamped")
+
+
 # Add filter to smooth for derivative
-Ie_geffSM_smooth = interpolate.CubicSpline(
-    np.log10(data_geffSM[:, 0]),
-    savgol_filter(data_geffSM[:, 1], 81, 3),
-    bc_type="clamped"
-)
+Ie_geffSM_smooth = _smooth_dof_spline(1)
 
 Is_geffSM = interpolate.CubicSpline(
     np.log10(data_geffSM[:, 0]),
     data_geffSM[:, 3],
     bc_type="clamped"
 )
-Is_geffSM_smooth = interpolate.CubicSpline(
-    np.log10(data_geffSM[:, 0]),
-    savgol_filter(data_geffSM[:, 3], 81, 3),
-    bc_type="clamped"
-)
+Is_geffSM_smooth = _smooth_dof_spline(3)
 
 
 Inb = interpolate.interp1d(data_ndensity[:,0], data_ndensity[:,1], kind="cubic")
@@ -605,15 +613,26 @@ def potential_fields_geff(mSq_bosons, mSq_fermions, T, kind: str = "e", mask=Non
     fn = {"e": e_geff, "p": p_geff, "s": s_geff}[kind]
     m2b, gb, _, _ = mSq_bosons
     m2f, gf = mSq_fermions
+    m2b = np.asarray(m2b)
+    m2f = np.asarray(m2f)
     mask_b = np.ones(np.shape(m2b), dtype=bool) if mask is None or mask[0] is None else np.asarray(mask[0], dtype=bool)
     mask_f = np.ones(np.shape(m2f), dtype=bool) if mask is None or mask[1] is None else np.asarray(mask[1], dtype=bool)
+    # The modes of one kind go through `fn` in one call: each operation in `fn` acts element by element.
     total = 0.0
-    for i in range(len(m2b)):
-        if mask_b[i]:
-            total = total + fn(np.sqrt(np.maximum(m2b[i], 0.0)), T, gb[i], "b")
-    for i in range(len(m2f)):
-        if mask_f[i]:
-            total = total + fn(np.sqrt(np.maximum(m2f[i], 0.0)), T, gf[i], "f")
+    for m2, g, selected, particle in ((m2b, gb, mask_b, "b"), (m2f, gf, mask_f, "f")):
+        if m2.ndim == 1 and np.ndim(T) <= 1:
+            chosen = np.flatnonzero(selected[:len(m2)])
+            if chosen.size:
+                m = np.sqrt(np.maximum(m2[chosen], 0.0))
+                dof = np.asarray(g)[chosen]
+                if np.ndim(T) == 1:      # one row per mode, one column per temperature
+                    m, dof = m[:, np.newaxis], dof[:, np.newaxis]
+                for row in fn(m, T, dof, particle):
+                    total = total + row
+        else:
+            for i in range(len(m2)):
+                if np.all(selected[i]):
+                    total = total + fn(np.sqrt(np.maximum(m2[i], 0.0)), T, g[i], particle)
     return total
 
 
@@ -710,12 +729,11 @@ def _sm_fields_spline(pot, kind: str, mask, spectrum):
     """Cubic spline of ``sm_fields_in_potential_geff`` in log10(T/GeV), built once per model."""
     # The table is keyed on everything it is built from that is cheap to read, so a model whose
     # parameters, vacuum, spectrum or is_SM flags change after it was first evaluated does not
-    # keep a stale table. ``generic_potential.set_modelparams`` drops the tables as well, as it
-    # used to reset the temperature cap this replaces. The masses themselves are deliberately
-    # not part of the key: evaluating them costs about 50 microseconds, and this runs inside
-    # ``Vtot``, so it would slow down every potential evaluation by roughly a sixth. A model
-    # whose masses are changed by assigning to its attributes, without going through
-    # ``set_modelparams``, is therefore not caught -- as it was not by the temperature cap.
+    # keep a stale table. ``generic_potential.set_modelparams`` drops the tables as well. The
+    # masses themselves are deliberately not part of the key: evaluating them costs about 50
+    # microseconds, and this runs inside ``Vtot``, so it would slow down every potential
+    # evaluation by roughly a sixth. A model whose masses are changed by assigning to its
+    # attributes, without going through ``set_modelparams``, is therefore not caught.
     X0 = np.atleast_2d(np.asarray(pot.X0, dtype=float))[0]
     key = (kind, float(pot.conversionFactor), int(spectrum.Nscalars), X0.tobytes(),
            _model_parameter_fingerprint(pot),
@@ -736,8 +754,10 @@ def _sm_fields_spline(pot, kind: str, mask, spectrum):
     gauge_dof = _sm_gauge_dof(spectrum, mask)
     fn = {"e": e_geff, "p": p_geff, "s": s_geff}[kind]
     T_internal = _SM_FIELDS_T_GeV / pot.conversionFactor
-    values = np.array([float(potential_fields_geff(bosons, fermions, t, kind, mask)
-                             - fn(0.0, t, gauge_dof / 3.0, "b")) for t in T_internal])
+    values = np.asarray(potential_fields_geff(bosons, fermions, T_internal, kind, mask)
+                        - fn(0.0, T_internal, gauge_dof / 3.0, "b"), dtype=float)
+    if values.shape != T_internal.shape:
+        values = np.broadcast_to(values, T_internal.shape).copy()
     spline = interpolate.CubicSpline(np.log10(_SM_FIELDS_T_GeV), values)
     if cache is not None:
         cache[key] = spline

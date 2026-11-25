@@ -22,10 +22,12 @@ mass spectrum. The values of its parameters are set in the configuration file of
 one-loop corrections at zero and at finite temperature, the counterterms and the daisy
 resummation are computed by the class that every model inherits from,
 :py:mod:`transitionlistener.generic_potential`, so the model file carries the physics of the
-model and not the machinery around it. Any number of scalar fields is supported. Four models
-ship with the package, in eight model files: the two Higgs doublet model, a dark U(1) with a
-dark photon and a dark Higgs, the conformal limit of that model with a dark fermion added,
-and a dark sector of two singlet scalars that mix with each other.
+model and not the machinery around it. Any number of scalar fields is supported. Five models
+ship with the package, in ten model files: the two Higgs doublet model, a dark U(1) with a
+dark photon and a dark Higgs, the conformal limit of that model with two dark fermions added,
+and its special case without the fermions, and a dark sector of two singlet scalars that
+mix with each other. The two conformal models can also take the nucleation rate from the
+three-dimensional effective theory, as :doc:`algorithms/the_three_dimensional_rate` describes.
 
 .. figure:: _static/algorithm_potential_vs_temperature.png
    :width: 100%
@@ -88,6 +90,11 @@ turbulence, with the templates of the LISA Cosmology Working Group and efficienc
 taken from the wall velocity and the strength. It is then compared against the sensitivities
 of LIGO-Virgo-KAGRA, LISA, DECIGO, BBO, the Einstein Telescope, Cosmic Explorer and muAres,
 and against the pulsar timing arrays, with likelihoods for the NANOGrav and IPTA data sets.
+The order-one modelling choices of the spectrum are configuration switches that can be varied
+per run, so that their spread can be propagated into a parameter inference: the template (LISA
+pipeline 2024, LISA update 2019 or the strongly supercooled fits of Lewicki and Vaskonen), the
+kinetic-energy efficiency of the sound waves, the form of their lifetime factor, the cosmic
+expansion during the transition and the percolation fraction.
 
 .. figure:: _static/algorithm_spectrum_sources.png
    :width: 100%

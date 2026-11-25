@@ -1,10 +1,9 @@
 """
 Low-level helpers for symbolic curvature tensors.
 
-The utilities provided here centralise the JSON I/O that we use to ship SymPy
-expressions from the generator stage to the runtime evaluation.  They also
-offer a thin numerical wrapper around each expression so that models can keep
-their own code short and declarative.
+The generator stage writes each tensor entry as the ``sympy.srepr`` of an expression in a JSON file. Here the entries are
+compiled to Python code, which reads the numbers of a model without SymPy: the file holds only Symbol, Integer, Rational,
+Add, Mul, Pow, I and conjugate, and :func:`build_substitutions` gives those names their numerical meaning.
 
 Part of TransitionListener v2
 Documentation: https://tasillo.de/TransitionListener/
@@ -18,28 +17,14 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import Any, Mapping
 
 import json
+import math
 from itertools import permutations
 import numpy as np
 
 from transitionlistener import errors
-
-if TYPE_CHECKING:
-    import sympy as sp
-
-
-def _require_sympy():
-    """Import SymPy on demand and raise a targeted error when it is unavailable."""
-    try:
-        import sympy as sp
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError(
-            "SymPy is required for symbolic counterterm tensor evaluation. "
-            "Install `sympy` to use SymPy-based counterterm models."
-        ) from exc
-    return sp
 
 
 def _is_index_key(key: str) -> bool:
@@ -57,8 +42,7 @@ def _parse_index_key(key: str) -> tuple[int, ...]:
 
 
 def _convert_tensor_dict(obj: Any) -> Any:
-    """Recursively turn JSON-loaded tensor data back into SymPy expressions."""
-    sp = _require_sympy()
+    """Recursively turn JSON-loaded tensor data into compiled expressions, keyed by index tuples."""
     if isinstance(obj, dict):
         converted = {}
         for key, value in obj.items():
@@ -70,67 +54,24 @@ def _convert_tensor_dict(obj: Any) -> Any:
     if isinstance(obj, list):
         return [_convert_tensor_dict(item) for item in obj]
     if isinstance(obj, str):
-        return sp.sympify(obj, evaluate=False)
+        return compile(obj, "<curvature tensor>", "eval")
     return obj
 
 
-def _initialise_parameter_symbols(
-    metadata: dict[str, Any],
-    *,
-    complex_parameters: tuple[str, ...] = (),
-) -> dict[str, sp.Symbol]:
-    """Construct the SymPy symbols corresponding to the stored metadata labels."""
-    sp = _require_sympy()
-    parameter_aliases = metadata.get("parameter_symbol_names", {})
-    parameter_symbols: dict[str, sp.Symbol] = {}
-    for name in metadata.get("parameters", []):
-        alias = parameter_aliases.get(name, name)
-        alias_expr = sp.sympify(alias)
-        if isinstance(alias_expr, sp.Symbol):
-            base_name = alias_expr.name
-        else:
-            base_name = str(alias)
-            alias_expr = sp.Symbol(base_name)
-        is_complex = base_name in complex_parameters
-        symbol = sp.Symbol(base_name) if is_complex else sp.Symbol(base_name, real=True)
-        for tag in {name, base_name, str(alias)}:
-            parameter_symbols[tag] = symbol
-        parameter_symbols[alias_expr] = symbol
-    metadata["parameter_symbols"] = parameter_symbols
-    return parameter_symbols
-
-
 @lru_cache(maxsize=None)
-def load_tensor_dataset(
-    tensor_file: Path,
-    *,
-    complex_parameters: tuple[str, ...] = (
-        "Vud",
-        "Vus",
-        "Vub",
-        "Vcd",
-        "Vcs",
-        "Vcb",
-        "Vtd",
-        "Vts",
-        "Vtb",
-    ),
-) -> tuple[dict[str, Any], dict[str, Any]]:
+def load_tensor_dataset(tensor_file: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     """
-    Load a JSON tensor dataset and return SymPy expressions ready for evaluation.
+    Load a JSON tensor dataset.
 
     Parameters
     ----------
     tensor_file:
         Absolute path to the JSON document produced by the counterterm generator.
-    complex_parameters:
-        Iterable with the subset of parameters that need complex-valued symbols.
 
     Returns
     -------
     (metadata, tensors)
-        Metadata dictionary (augmented with ``parameter_symbols``) and a nested
-        dictionary of SymPy expressions keyed by index tuples.
+        Metadata dictionary and a nested dictionary of compiled expressions keyed by index tuples.
     """
 
     if not tensor_file.exists():
@@ -142,18 +83,15 @@ def load_tensor_dataset(
     with tensor_file.open("r", encoding="utf-8") as fh:
         raw = json.load(fh)
 
-    metadata = raw.get("metadata", {})
-    _initialise_parameter_symbols(metadata, complex_parameters=complex_parameters)
-    tensors = _convert_tensor_dict(raw.get("tensors", {}))
-    return metadata, tensors
+    return raw.get("metadata", {}), _convert_tensor_dict(raw.get("tensors", {}))
 
 
 def build_substitutions(
     metadata: Mapping[str, Any],
     parameter_values: Mapping[str, complex],
-) -> dict[sp.Symbol, complex]:
+) -> dict[str, Any]:
     """
-    Construct the substitution dictionary used during tensor evaluation.
+    Construct the names under which the compiled expressions run.
 
     Parameters
     ----------
@@ -166,54 +104,46 @@ def build_substitutions(
     Returns
     -------
     dict
-        Mapping ``sympy.Symbol -> value`` ready to be passed to
-        :func:`evaluate_expression`.
+        The globals for :func:`evaluate_expression`.
     """
 
-    sp = _require_sympy()
-    subs: dict[sp.Symbol, complex] = {}
-    param_symbols: dict[str, sp.Symbol] = dict(metadata.get("parameter_symbols", {}))
     aliases = metadata.get("parameter_symbol_names", {})
-
-    def assign(label: str, value: complex) -> None:
-        symbol = param_symbols.get(label)
-        if symbol is None:
-            symbol = sp.Symbol(label)
-            param_symbols[label] = symbol
-        subs[symbol] = value
-        # Also populate the alias to avoid round trips.
-        alias_label = aliases.get(label)
-        if alias_label is not None:
-            alias_symbol = param_symbols.get(alias_label)
-            if alias_symbol is None:
-                alias_symbol = sp.Symbol(alias_label)
-                param_symbols[alias_label] = alias_symbol
-            subs[alias_symbol] = value
-
+    numbers: dict[str, complex] = {}
     for key, value in parameter_values.items():
-        assign(str(key), complex(value))
+        numbers[str(key)] = value
+        alias = aliases.get(str(key))
+        if alias is not None:
+            numbers[str(alias)] = value
 
-    metadata["parameter_symbols"] = param_symbols  # type: ignore[index]
-    return subs
+    def symbol(name: str, **assumptions: Any) -> complex:
+        try:
+            return numbers[name]
+        except KeyError:
+            raise ValueError(f"Unresolved symbol in tensor evaluation: {name}") from None
+
+    return {
+        "__builtins__": {},
+        "Symbol": symbol,
+        "Integer": int,
+        "Rational": lambda numerator, denominator: numerator / denominator,
+        "Add": lambda *terms: sum(terms),
+        "Mul": lambda *factors: math.prod(factors),
+        "Pow": pow,
+        "I": 1j,
+        "conjugate": lambda value: complex(value).conjugate(),
+    }
 
 
-def evaluate_expression(
-    expr: sp.Expr,
-    substitutions: Mapping[sp.Symbol, complex],
-    *,
-    extra_substitutions: Mapping[str | sp.Symbol, complex] | None = None,
-) -> complex | float:
+def evaluate_expression(expr: Any, names: Mapping[str, Any]) -> complex | float:
     """
-    Evaluate a tensor entry to floating-point precision.
+    Evaluate a compiled tensor entry.
 
     Parameters
     ----------
     expr:
-        SymPy expression representing the tensor component.
-    substitutions:
-        Base substitution map generated by :func:`build_substitutions`.
-    extra_substitutions:
-        Optional field-dependent substitutions that should override the base map.
+        Compiled expression from :func:`load_tensor_dataset`.
+    names:
+        The globals from :func:`build_substitutions`.
 
     Returns
     -------
@@ -222,29 +152,9 @@ def evaluate_expression(
         ``float`` for convenience.
     """
 
-    sp = _require_sympy()
     if expr is None:
         return 0.0
-
-    subs = dict(substitutions)
-    if extra_substitutions:
-        for key, value in extra_substitutions.items():
-            symbol = key if isinstance(key, sp.Symbol) else sp.Symbol(str(key))
-            subs[symbol] = complex(value)
-
-    evaluated = sp.N(expr.subs(subs), 30)
-    free_symbols = getattr(evaluated, "free_symbols", set())
-    if free_symbols:
-        missing = ", ".join(str(sym) for sym in sorted(free_symbols, key=str))
-        raise ValueError(f"Unresolved symbols in tensor evaluation: {missing} (expression: {expr})")
-
-    try:
-        value = complex(evaluated)
-    except TypeError:
-        real_part = float(sp.N(sp.re(evaluated), 30))
-        imag_part = float(sp.N(sp.im(evaluated), 30))
-        value = complex(real_part, imag_part)
-
+    value = complex(eval(expr, names))
     if abs(value.imag) < 1e-12:
         return float(value.real)
     if abs(value.real) < 1e-12:

@@ -94,7 +94,10 @@ reported as 999 rather than left unnamed.
      - Any failure that carries no code of its own. Ten exception classes have none:
        ``NoModelError``, ``NoConfigError``, ``NoLoggerError``, ``TooSmalldVError``,
        ``InfiniteActionError``, ``ZeroActionError``, ``DeformationError``,
-       ``PotentialError``, ``ParamNamesError`` and ``GWParamsError``. A 999 therefore says
+       ``PotentialError``, ``ParamNamesError`` and ``GWParamsError``. Exceptions defined
+       outside :py:mod:`transitionlistener.errors` have none either. The one a run with the
+       three-dimensional rate meets most is ``NLOGridError``, raised when the point lies
+       outside the shipped table of the next-to-leading-order correction. A 999 therefore says
        only that the point failed, and the message is the whole of the diagnosis.
 
 Codes 8, 15, 18 and 19 carry a statement about what was and was not measured, which decides

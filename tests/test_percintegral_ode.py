@@ -9,7 +9,13 @@ import math
 import numpy as np
 import pytest
 
+from scipy import integrate
+
+from transitionlistener import errors
+from transitionlistener.compiled import percolation as compiled_percolation
+from transitionlistener.compiled.splines import PchipInterpolator
 from transitionlistener.bubbledynamics import (
+    _LOG_GAMMA_SOURCE_FLOOR,
     _PERC_INTEGRAL_STOP,
     Gamma,
     HubbleParameter,
@@ -27,7 +33,7 @@ from transitionlistener.bubbledynamics import (
 # ---------------------------------------------------------------------------
 
 def _synthetic_grid(n: int = 80, *, seed: int = 42):
-    """Build a synthetic (T, H, S) grid mimicking a conformal dark U(1) transition.
+    """Build a synthetic (T, H, S) grid mimicking a conformal U(1) with fermions transition.
 
     T is in internal units (O(1)), S ~ O(100) * T at the hot end (large S/T,
     exponentially suppressed Gamma) decreasing to S ~ O(5) * T near
@@ -283,3 +289,101 @@ class TestIntegrateBrokenTemperatureGuards:
         assert integrate_broken_temperature(None, None, None, T, P, 0.5) is None
         assert integrate_broken_temperature(None, None, None, T, P, 2.5) is None
 
+
+def _solve_ivp_chain(T, log_source, log_transport, prefactor, target):
+    """The chain of J_n with scipy's DOP853, its events and interpolants, at the tolerances of percIntegralODE."""
+    u = np.log(T)
+    source = PchipInterpolator(u[::-1], log_source[::-1], extrapolate=True)
+    transport = PchipInterpolator(u[::-1], log_transport[::-1], extrapolate=True)
+
+    def rhs(v, y):
+        t = np.exp(v)
+        a, b = float(source(v)), float(transport(v))
+        gamma = np.exp(a) if a > _LOG_GAMMA_SOURCE_FLOOR else 0.0
+        nu = np.exp(b) if b > _LOG_GAMMA_SOURCE_FLOOR else 0.0
+        return [-gamma * t, -y[0] * nu * t, -2.0 * y[1] * nu * t, -3.0 * y[2] * nu * t]
+
+    def reaches(v, y):
+        return prefactor * y[3] - target
+
+    def gone(v, y):
+        return prefactor * y[3] - _PERC_INTEGRAL_STOP
+
+    gone.terminal = True
+    gone.direction = 1.0
+    return integrate.solve_ivp(rhs, (u[0], u[-1]), [0.0] * 4, method="DOP853", t_eval=u, rtol=1e-10, atol=1e-300,
+                               events=[reaches, gone]), source, transport
+
+
+def _compiled_chain(T, source, transport, prefactor, target):
+    J3 = np.empty(T.size)
+    status, reached, crossing, j3_stop = compiled_percolation.chain_integral(
+        np.ascontiguousarray(source.x), np.ascontiguousarray(source.c), np.ascontiguousarray(transport.c),
+        _LOG_GAMMA_SOURCE_FLOOR, np.log(T), prefactor, target, _PERC_INTEGRAL_STOP, 1e-10, 1e-300, J3)
+    return status, reached, crossing, j3_stop, J3
+
+
+class TestCompiledChain:
+    """chain_integral against solve_ivp, on the two ways it ends and on a chain with a closed form."""
+
+    @pytest.mark.parametrize("seed", range(6))
+    @pytest.mark.parametrize("n, top", [(60, 0.3), (250, 0.3), (250, 40.0), (250, 200.0)])
+    def test_it_is_solve_ivp(self, n, top, seed):
+        rng = np.random.default_rng(seed)
+        T = np.geomspace(150.0, rng.uniform(30.0, 60.0), n)
+        H = rng.uniform(0.5, 2.0) * 1e-16 * T**2
+        S = T * (140.0 + rng.uniform(800.0, 3000.0) * (T / 100.0 - 1.0))
+        S = np.maximum(S, 3.0 * T)
+        log_source = np.maximum(_log_bag_gamma_source_array(T, S, H), _LOG_GAMMA_SOURCE_FLOOR)
+        log_transport = -np.log(H)
+        prefactor = rng.uniform(0.2, 4.0)
+        scale = top / max(abs(float(percIntegralODE(T, H, S, vw=1.0)[-1])), 1e-300)
+        log_source = np.maximum(log_source + np.log(scale) * (top < _PERC_INTEGRAL_STOP), _LOG_GAMMA_SOURCE_FLOOR)
+        target = 0.1 * top * prefactor
+        sol, source, transport = _solve_ivp_chain(T, log_source, log_transport, prefactor, target)
+        status, reached, crossing, j3_stop, J3 = _compiled_chain(T, source, transport, prefactor, target)
+        assert status == sol.status
+        assert reached == sol.y.shape[1]
+        reference = sol.y[3]
+        assert np.all(np.abs(J3[:reached] - reference) <= 1e-7 * np.abs(reference) + 1e-50 * np.max(reference))
+        if sol.t_events[0].size:
+            assert crossing == pytest.approx(sol.t_events[0][-1], abs=1e-10)
+        else:
+            assert np.isnan(crossing)
+        if status == compiled_percolation.CHAIN_STOPPED:
+            assert prefactor * j3_stop == pytest.approx(_PERC_INTEGRAL_STOP, rel=1e-7)
+            assert j3_stop == pytest.approx(sol.y_events[1][0][3], rel=1e-7)
+
+    def test_the_closed_form(self):
+        """gamma = T^a and nu = T^b: with u(T) = (T_0^p - T^p)/p, J3 = 6 * integral of the nested powers."""
+        T = np.geomspace(2.0, 1.0, 40)
+        a, b = 3.0, -2.0
+        u = np.log(T)
+        source = PchipInterpolator(u[::-1], a * u[::-1], extrapolate=True)
+        transport = PchipInterpolator(u[::-1], b * u[::-1], extrapolate=True)
+        status, reached, crossing, _, J3 = _compiled_chain(T, source, transport, 1.0, np.nan)
+        assert status == compiled_percolation.CHAIN_FINISHED and reached == T.size and np.isnan(crossing)
+        T0 = T[0]
+        # With nu T^-1 dT = T^-2 dT and r = 1/T - 1/T0: J0' = T^3, Jn' = n J_(n-1) in r.
+        grid = np.geomspace(T0, T[-1], 400001)
+        r = 1.0 / grid - 1.0 / T0
+        J0 = (T0**4 - grid**4) / 4.0
+        J1 = integrate.cumulative_trapezoid(J0, r, initial=0.0)
+        J2 = 2.0 * integrate.cumulative_trapezoid(J1, r, initial=0.0)
+        J3_exact = 3.0 * integrate.cumulative_trapezoid(J2, r, initial=0.0)
+        assert np.max(np.abs(J3[1:] / np.interp(-T[1:], -grid, J3_exact) - 1.0)) < 1e-6
+
+    def test_a_target_after_the_stop_is_not_reported(self):
+        T, H, S = _synthetic_grid(n=200)
+        S = S * 0.4
+        assert percIntegralODE(T, H, S, vw=1.0)[-1] == pytest.approx(_PERC_INTEGRAL_STOP, rel=1e-7)
+        _, below = percIntegralODE(T, H, S, vw=1.0, i_target=_PERC_INTEGRAL_STOP * 0.99)
+        _, above = percIntegralODE(T, H, S, vw=1.0, i_target=_PERC_INTEGRAL_STOP * 1.01)
+        assert below is not None
+        assert above is None
+
+    def test_an_overflowing_rate_is_a_typed_failure(self):
+        T = np.geomspace(100.0, 50.0, 30)
+        S = 100.0 * T
+        with pytest.raises(errors.PercolationError):
+            percIntegralODE(T, np.full_like(T, 1e-300), S, vw=1.0)

@@ -29,7 +29,7 @@ from .transitionObservables_fixedstep import TransitionObservables as _Transitio
 
 
 def _select_observables_class(pot):
-    """Pick the legacy seeded class when algorithm_mode == 'fixed_step_size'."""
+    """Pick the seeded class when algorithm_mode == 'fixed_step_size'."""
     if pot.config.percolationConf.algorithm_mode == "fixed_step_size":
         return _TransitionObservablesFixedStepSize
     return _TransitionObservablesAdaptiveStepSize
@@ -1637,13 +1637,16 @@ def plotProfile2(transitions, conversionFactor):
 
 def plotGWSpectrum(gwparams_dict: dict, showplot: bool=False, saveplot: bool=True,
                   foldername: str="", filename: str="", fig=None, ax=None,
-                  legendfontsize: int=8):
+                  legendfontsize: int=8, config=None):
     """Build the spectrum from parameters and plot it for the core detectors.
     
     Parameters
     ----------
     gwparams_dict : dict
         Dictionary containing the parameters for the GW spectrum.
+    config : Configuration, optional
+        The model's ``pot.config``; selects the spectrum's modelling choices
+        (defaults if omitted).
     showplot : bool, optional
         Whether to display the plot.
     foldername : str, optional
@@ -1653,7 +1656,7 @@ def plotGWSpectrum(gwparams_dict: dict, showplot: bool=False, saveplot: bool=Tru
     
     """
     astroparams_dict = {}
-    gwspec = FOPTspectrum(gwparams_dict, astroparams_dict, verbose=False)
+    gwspec = FOPTspectrum(gwparams_dict, astroparams_dict, verbose=False, config=config)
     gw = Observability(gwspec, verbose=False, include_smbhb=False)
     figwasnone = False
     if fig == None:
@@ -1688,10 +1691,14 @@ def plotGWSpectrum(gwparams_dict: dict, showplot: bool=False, saveplot: bool=Tru
 
 
 def plotSpectrum2PTA(gwparams_dict : dict, showplot : bool=True,
-                     foldername : str="", filename : str="", title : str=""):
-    """Build the spectrum and plot it together with PTA sensitivities."""
+                     foldername : str="", filename : str="", title : str="",
+                     config=None):
+    """Build the spectrum and plot it together with PTA sensitivities.
+
+    ``config`` is the model's ``pot.config``; it selects the spectrum's
+    modelling choices (defaults if omitted)."""
     astroparams_dict = {}
-    gwspec = FOPTspectrum(gwparams_dict, astroparams_dict, verbose=False)
+    gwspec = FOPTspectrum(gwparams_dict, astroparams_dict, verbose=False, config=config)
     gw = Observability(gwspec, verbose=False, include_smbhb=False)
     fig, ax = plotSensitivitiesPTA(gw, showplot=False, call_from_spectrum=True, nfreq=14)
     frequencies_Hz = np.logspace(-10, -5, 1000)  # Hz

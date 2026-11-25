@@ -242,8 +242,11 @@ def _build_step1_approx_profile(
         ],
         dtype=float,
     )
-    gamma = np.asarray(bd.Gamma(temperatures, actions), dtype=float)
-    log_gamma_h4_sym = np.asarray(bd.logGamma(temperatures, actions), dtype=float) - 4.0 * np.log(hubble_sym)
+    # Routed through the model: with the default rate_mode this is bit-for-bit
+    # bd.Gamma / bd.logGamma, but in 3D mode the rate depends on the bounce
+    # profile and the matching, which only the potential can supply.
+    gamma, log_gamma = bd.rateArrays(pot, temperatures, actions, outdict)
+    log_gamma_h4_sym = log_gamma - 4.0 * np.log(hubble_sym)
     if not (np.all(np.isfinite(hubble_sym)) and np.all(np.isfinite(gamma)) and np.all(np.isfinite(log_gamma_h4_sym))):
         return None
 
@@ -336,8 +339,8 @@ def _scout_needs_hot_extension(profile: _Step1ApproxProfile | None, settings) ->
 # about 5. By S_3/T of 500 the rate is already far past that: across the 31 recorded
 # profiles the hottest support point the controller retains sits at S_3/T between 478 and
 # 509, with log10(Gamma/H^4) between -141 and -154. The threshold sits at 1e3: twice that
-# measured maximum, and five times the tightest live band measured anywhere (the conformal
-# dark U(1) ladder still nucleates at g = 0.54 with S_3/T ~ 140-200).
+# measured maximum, and five times the tightest live band measured anywhere, where
+# nucleation happens at S_3/T ~ 140-200.
 #
 # It was 1e4, which measurement showed to be far too loose. Instrumenting a run's live
 # action solves at lambda3 = 5.8177725978: 34 of 75 (45%) fell between S_3/T of 500 and
@@ -1148,7 +1151,7 @@ def _preferred_probability_jump_interval(
 ) -> tuple[tuple[float, float, float, float, float] | None, float, str]:
     """Return the jump interval the controller should refine or enforce first.
 
-    The stricter optional threshold is tried before the historical global one.
+    The stricter optional threshold is tried before the global one.
     This allows threshold studies to demand tighter neighbouring-``Delta P``
     control either globally or only in the early-rise part of the curve.
     """
@@ -1191,13 +1194,13 @@ def _preferred_probability_jump_interval(
 
 
 def _jump_mode_is_strict(threshold_mode: str) -> bool:
-    """Was this jump selected by the strict criterion rather than the historical one?
+    """Was this jump selected by the strict criterion rather than the global one?
 
     The strict mode is labelled from ``_STRICT_JUMP_P_MAX`` and
     ``_STRICT_JUMP_APPLY_GLOBALLY`` above, both of which exist to be moved in threshold
     studies. Testing the rendered string against ``"strict P<0.2"`` would stop matching as
     soon as either is changed, and the post-peak exemption below would then silently revert
-    to the self-contradiction it was written to remove, with nothing failing to say so.
+    to the self-contradiction it removes, with nothing failing to say so.
     """
     return str(threshold_mode) != "generic"
 
@@ -1209,11 +1212,9 @@ def _resource_note(
 ) -> str:
     """Say which resource the controller actually ran out of, if the caller knows.
 
-    The message used to assert that the support budget had been spent on jump refinement.
-    That is often untrue and it sent the reader to the wrong place: at
-    lambda3 = 5.8136778037 the run was rejected with 115 of its action evaluations still
-    unspent, having instead reached the iteration limit of support updates, which was
-    maxit = 10 when that point was measured and is 20 now.
+    The support budget is often not the resource that ran out: a run can be rejected with
+    many of its action evaluations still unspent, having reached the iteration limit of
+    support updates instead.
     """
 
     if remaining_budget is None:
@@ -1270,7 +1271,7 @@ def _raise_if_large_delta_p_underresolved(
     jump_high, jump_low, probability_high, probability_low, delta_p = jump_interval
     raise errors.PercolationError(
         "Numerical accuracy error: detected a sharp unresolved jump in P(T) at "
-        f"T = [{jump_low:2.5g}, {jump_high:2.5g}] where "
+        f"T = [{jump_low:2.5g}, {jump_high:2.5g}] (internal temperature units) where "
         f"P = {probability_high:2.5g} -> {probability_low:2.5g} "
         f"(Delta P = {delta_p:2.5g} > {threshold:2.5g}). "
         f"{stage} cannot accept the {outcome} profile because this jump remained "
@@ -1388,12 +1389,12 @@ def _build_dynamiczoomwindow_unresolved_jump_grid(
         return None
     jump_high, jump_low, _, _, delta_p = jump_interval
     # An interval selected by the *acceptance* criterion is fatal, so it must be
-    # repairable even when it lies past the rate peak. The inert veto used to apply here
-    # unconditionally, which put the solver in direct self-contradiction: at
+    # repairable even when it lies past the rate peak. Applying the inert veto here
+    # unconditionally puts the solver in direct self-contradiction: at
     # lambda3 = 5.8177725978 the interval [28.745, 30.453] GeV (rate peak at 41.05 GeV)
-    # was declared inert and unrefinable by this function and simultaneously fatal by
-    # _raise_if_large_delta_p_underresolved, so the controller accepted with 119 budget
-    # unspent and the gate then rejected the point. Keep the veto only where the jump is
+    # is declared inert and unrefinable by this function and simultaneously fatal by
+    # _raise_if_large_delta_p_underresolved, so the controller accepts with 119 budget
+    # unspent and the gate then rejects the point. Keep the veto only where the jump is
     # not acceptance-fatal.
     if not _jump_mode_is_strict(threshold_mode) and _rate_interval_is_post_peak_inert(
         temperatures,

@@ -209,3 +209,7 @@ def main():
     if (not is_mpi) or (rank == 0):
         msg = (f"Finished in {time.strftime('%H:%M:%S', time.gmtime(tend-t0))}")
         console.print(Panel.fit(f"[bold green]{msg}[/bold green]", border_style="green"))
+
+
+if __name__ == "__main__":
+    main()

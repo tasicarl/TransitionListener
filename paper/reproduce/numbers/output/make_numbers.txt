@@ -1,0 +1,1 @@
+wrote 97 numbers to numbers.json and numbers.tex

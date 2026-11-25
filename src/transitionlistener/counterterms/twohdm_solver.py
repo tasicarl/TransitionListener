@@ -16,13 +16,10 @@ Authors:
 
 from __future__ import annotations
 
-import copy
-from functools import lru_cache
 from pathlib import Path
 from typing import Tuple
 
 import numpy as np
-import sympy as sp
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from transitionlistener import errors
@@ -92,10 +89,10 @@ def _load_dataset() -> Tuple[dict, dict]:
 
 def _tensor_parameter_values(model) -> dict[str, complex]:
     """
-    Assemble the parameter substitution dictionary used by the tensor evaluator.
+    Assemble the numbers the tensor evaluator reads.
 
     Values are expressed in physical units (GeV or dimensionless) because the
-    generated SymPy expressions follow the BSMPT normalisation.
+    generated expressions follow the BSMPT normalisation.
     """
 
     cf_sq = model.conversionFactor**2
@@ -120,121 +117,38 @@ def _tensor_parameter_values(model) -> dict[str, complex]:
     return values
 
 
-@lru_cache(maxsize=1)
-def _counterterm_matrix_factory():
-    """
-    Build the SymPy representation of the on-shell renormalisation conditions.
-
-    Following Eqs. (3.59)–(3.63) of arXiv:1803.02846, we impose two tadpole
-    conditions and five mass-matrix conditions (CP-even, CP-odd, and charged
-    sectors).  The result is a 7×7 matrix ``M(v_1, v_2)`` such that
-    ``M · δ = -Δ`` where ``δ`` collects the counterterms and ``Δ`` the Coleman–
-    Weinberg corrections.
-    """
-
-    dm11, dm22, dm12, dl1, dl2, dl3, dl5 = sp.symbols(
-        "dm11 dm22 dm12 dl1 dl2 dl3 dl5",
-        real=True,
-    )
-    delta_params = (dm11, dm22, dm12, dl1, dl2, dl3, dl5)
-
-    (
-        phi1p_R,
-        phi1p_I,
-        phi2p_R,
-        phi2p_I,
-        phi1_R,
-        phi1_I,
-        phi2_R,
-        phi2_I,
-    ) = sp.symbols(
-        "phi1p_R phi1p_I phi2p_R phi2p_I phi1_R phi1_I phi2_R phi2_I",
-        real=True,
-    )
-    fields = [
-        phi1p_R,
-        phi1p_I,
-        phi2p_R,
-        phi2p_I,
-        phi1_R,
-        phi1_I,
-        phi2_R,
-        phi2_I,
-    ]
-
-    phi1 = sp.Matrix(
-        [
-            (phi1p_R + sp.I * phi1p_I) / sp.sqrt(2),
-            (phi1_R + sp.I * phi1_I) / sp.sqrt(2),
-        ]
-    )
-    phi2 = sp.Matrix(
-        [
-            (phi2p_R + sp.I * phi2p_I) / sp.sqrt(2),
-            (phi2_R + sp.I * phi2_I) / sp.sqrt(2),
-        ]
-    )
-    phi1_sq = sp.simplify((phi1.conjugate().T * phi1)[0])
-    phi2_sq = sp.simplify((phi2.conjugate().T * phi2)[0])
-    phi12 = sp.simplify((phi1.conjugate().T * phi2)[0])
-    phi21 = sp.simplify((phi2.conjugate().T * phi1)[0])
-
-    Vct = (
-        dm11 * phi1_sq
-        + dm22 * phi2_sq
-        - dm12 * (phi12 + phi21)
-        + (dl1 / 2) * phi1_sq**2
-        + (dl2 / 2) * phi2_sq**2
-        + dl3 * phi1_sq * phi2_sq
-        + (dl5 / 2) * (phi12**2 + phi21**2)
-    )
-
-    grad_exprs = [sp.diff(Vct, field) for field in fields]
-    hess_exprs = [
-        [sp.diff(grad_exprs[i], field_j) for field_j in fields]
-        for i in range(len(fields))
-    ]
-
-    v1_sym, v2_sym = sp.symbols("v1 v2", real=True)
-    vacuum_subs = {
-        phi1p_R: 0,
-        phi1p_I: 0,
-        phi2p_R: 0,
-        phi2p_I: 0,
-        phi1_I: 0,
-        phi2_I: 0,
-        phi1_R: v1_sym,
-        phi2_R: v2_sym,
-    }
-
-    condition_rows = []
-    for kind, index in CONDITION_SPECS:
-        if kind == "grad":
-            expr = grad_exprs[index]
-        else:
-            i, j = index
-            expr = hess_exprs[i][j]
-        expr = sp.simplify(expr.subs(vacuum_subs))
-        row = [sp.simplify(sp.diff(expr, param)) for param in delta_params]
-        condition_rows.append(row)
-
-    matrix = sp.Matrix(condition_rows)
-    return sp.lambdify((v1_sym, v2_sym), matrix, "numpy")
-
-
 def _counterterm_matrix(v1: float, v2: float) -> np.ndarray:
-    r"""Evaluate the linear counterterm system matrix :math:`M(v_1, v_2)`.
+    r"""The linear counterterm system matrix :math:`M(v_1, v_2)`.
 
-    The matrix is defined through the on-shell matching equations
+    Following Eqs. (3.59)–(3.63) of arXiv:1803.02846, the two tadpole conditions and five mass-matrix conditions
+    (CP-even, CP-odd, and charged sectors) of the counterterm potential
+
+    .. math::
+       V_{ct} = \delta m_{11}^2 \Phi_1^\dagger\Phi_1 + \delta m_{22}^2 \Phi_2^\dagger\Phi_2
+       - \delta m_{12}^2 (\Phi_1^\dagger\Phi_2 + h.c.) + \tfrac{\delta\lambda_1}{2} (\Phi_1^\dagger\Phi_1)^2
+       + \tfrac{\delta\lambda_2}{2} (\Phi_2^\dagger\Phi_2)^2
+       + \delta\lambda_3 \Phi_1^\dagger\Phi_1 \Phi_2^\dagger\Phi_2
+       + \tfrac{\delta\lambda_5}{2} ((\Phi_1^\dagger\Phi_2)^2 + h.c.)
+
+    are the rows of
 
     .. math::
        M(v_1, v_2)\,\delta = -\Delta,
 
     where :math:`\delta = (\delta m_{11}^2, \delta m_{22}^2, \delta m_{12}^2,
-    \delta\lambda_1, \delta\lambda_2, \delta\lambda_3, \delta\lambda_5)`.
+    \delta\lambda_1, \delta\lambda_2, \delta\lambda_3, \delta\lambda_5)` and the rows are in the
+    order of ``CONDITION_SPECS``.
     """
-    matrix_func = _counterterm_matrix_factory()
-    return np.asarray(matrix_func(v1, v2), dtype=float)
+    v1_sq, v2_sq, product = v1 * v1, v2 * v2, v1 * v2
+    return np.array([
+        [v1, 0.0, -v2, 0.5 * v1 * v1_sq, 0.0, 0.5 * v1 * v2_sq, 0.5 * v1 * v2_sq],
+        [0.0, v2, -v1, 0.0, 0.5 * v2 * v2_sq, 0.5 * v1_sq * v2, 0.5 * v1_sq * v2],
+        [1.0, 0.0, 0.0, 1.5 * v1_sq, 0.0, 0.5 * v2_sq, 0.5 * v2_sq],
+        [0.0, 1.0, 0.0, 0.0, 1.5 * v2_sq, 0.5 * v1_sq, 0.5 * v1_sq],
+        [0.0, 0.0, -1.0, 0.0, 0.0, product, product],
+        [1.0, 0.0, 0.0, 0.5 * v1_sq, 0.0, 0.5 * v2_sq, -0.5 * v2_sq],
+        [1.0, 0.0, 0.0, 0.5 * v1_sq, 0.0, 0.5 * v2_sq, 0.0],
+    ])
 
 
 def _condition_vector(grad_phys: np.ndarray, hess_phys: np.ndarray) -> np.ndarray:
@@ -272,7 +186,7 @@ def compute_counterterms(
     metadata, tensors = _load_dataset()
     arrays = tensor_utils.evaluate_curvature_arrays(
         tensors,
-        copy.deepcopy(metadata),
+        metadata,
         _tensor_parameter_values(model),
         yukawa_key=model._YUKAWA_TYPE_MAP[int(model.yukawa_type)],
     )

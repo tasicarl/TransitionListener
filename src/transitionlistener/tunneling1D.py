@@ -38,6 +38,7 @@ from . import helper_functions
 from . import errors
 from .helper_functions import rkqs, IntegrationError
 from .helper_functions import cubicInterpFunction
+from .compiled import roots, shooting
 
 #: Smallest radial step the bubble wall integration is allowed to take, as a fraction of the
 #: radius it is taken at. A step smaller than ``r`` times the machine epsilon cannot advance
@@ -119,6 +120,22 @@ def _bracketSpread(undershoot: float, overshoot: float) -> float:
 
 if sys.version_info >= (3,0):
     xrange = range
+
+
+def _geometricGrowth(h, length, n):
+    """The ratio q > 1 for which n steps h, h q, ..., h q^(n-1) add up to `length`, or 1."""
+    if n <= 1 or h * n >= length:
+        return 1.0
+    lo, hi = 1.0, 2.0
+    while h * (hi**n - 1) / (hi - 1) < length:
+        hi *= 2.0
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        if h * (mid**n - 1) / (mid - 1) < length:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
 
 class SingleFieldInstanton:
     r"""
@@ -458,44 +475,8 @@ class SingleFieldInstanton:
         :math:`I_\nu \rightarrow J_\nu`.
 
         """
-        beta = np.sqrt(abs(d2V))
-        beta_r = beta * r  # may overflow when r is very large; handled below
-        nu = 0.5 * (self.alpha - 1)
-        gamma = special.gamma  # Gamma function
-        iv, jv = special.iv, special.jv  # (modified) Bessel function
-        if beta_r < 1e-2:
-            # Use a small-r approximation for the Bessel function.
-            s = +1 if d2V > 0 else -1
-            phi = 0.0
-            dphi = 0.0
-            for k in range(1,4):
-                _ = (0.5*beta_r)**(2*k-2) * s**k / (gamma(k+1)*gamma(k+1+nu))
-                phi += _
-                dphi += _ * (2*k)
-            phi *= 0.25 * gamma(nu+1) * r**2 * dV * s
-            dphi *= 0.25 * gamma(nu+1) * r * dV * s
-            phi += phi0
-        elif d2V > 0:
-            import warnings
-            # If beta_r is very large, this will throw off overflow and divide
-            # by zero errors in iv(). It will return np.inf though, which is
-            # what we want. Just ignore the warnings.
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                phi = (gamma(nu+1)*(0.5*beta_r)**-nu * iv(nu, beta_r)-1) * dV/d2V
-                dphi = -nu*((0.5*beta_r)**-nu / r) * iv(nu, beta_r)
-                dphi += (0.5*beta_r)**-nu * 0.5*beta \
-                        * (iv(nu-1, beta_r)+iv(nu+1, beta_r))
-                dphi *= gamma(nu+1) * dV/d2V
-                phi += phi0
-        else:
-            phi = (gamma(nu+1)*(0.5*beta_r)**-nu * jv(nu, beta_r) - 1) * dV/d2V
-            dphi = -nu*((0.5*beta_r)**-nu / r) * jv(nu, beta_r)
-            dphi += (0.5*beta_r)**-nu * 0.5*beta \
-                    * (jv(nu-1, beta_r)-jv(nu+1, beta_r))
-            dphi *= gamma(nu+1) * dV/d2V
-            phi += phi0
-        return self._exactSolution_rval(phi, dphi)
+        phi, dphi = shooting.exact_solution(float(r), float(phi0), float(dV), float(d2V), 0.5 * (self.alpha - 1))
+        return self._exactSolution_rval(np.float64(phi), np.float64(dphi))
 
     _initialConditions_rval = namedtuple(
         "initialConditions_rval", "r0 phi dphi")
@@ -530,47 +511,20 @@ class SingleFieldInstanton:
         phi0 = self.phi_absMin + delta_phi0
         dV = self.dV_from_absMin(delta_phi0)
         d2V = self.d2V(phi0)
-        phi_r0, dphi_r0 = self.exactSolution(rmin, phi0, dV, d2V)
-        if abs(phi_r0 - self.phi_absMin) > abs(delta_phi_cutoff):
-            # The initial conditions at rmin work. Stop here.
-            return self._initialConditions_rval(rmin, phi_r0, dphi_r0)
-        if np.sign(dphi_r0) != np.sign(delta_phi0):
+        status, r0, phi, dphi = shooting.initial_conditions(
+            float(delta_phi0), float(rmin), float(delta_phi_cutoff), float(phi0), float(dV), float(d2V),
+            float(self.phi_absMin), 0.5 * (self.alpha - 1))
+        if status == shooting.START_FOUND:
+            return self._initialConditions_rval(r0, np.float64(phi), np.float64(dphi))
+        if status == shooting.WRONG_DIRECTION:
             # The field is evolving in the wrong direction.
             # Increasing r0 won't increase |delta_phi_r0|/
-            return rmin, phi_r0, dphi_r0
-
-        # Find the smallest r0 such that delta_phi_r0 > delta_phi_cutoff
-        r = rmin
-        while np.isfinite(r):
-            # Once r grows beyond the floating-point range, r *= 10 produces
-            # +inf and the exactSolution call below fails to converge. The
-            # loop guard on np.isfinite(r) catches that and exits cleanly.
-            rlast = r
-            r *= 10
-            phi, dphi = self.exactSolution(r, phi0, dV, d2V)
-            if abs(phi - self.phi_absMin) > abs(delta_phi_cutoff):
-                break
-
-        # Now find where phi - self.phi_absMin = delta_phi_cutoff exactly
-
-        def deltaPhiDiff(r_):
-            p = self.exactSolution(r_, phi0, dV, d2V)[0]
-            return abs(p - self.phi_absMin) - abs(delta_phi_cutoff)
-        
-        try:
-            r0 = optimize.brentq(deltaPhiDiff, rlast, r, disp=False)
-        except errors.Timeout:
-            raise
-        except Exception as e:
-            msg = (
-                "Could not find initial conditions for integration. The bubble "
-                "wall may be too thin-walled to integrate: "
-                + str(e)
-            )
-            raise errors.TunnelingError(msg)
-
-        phi_r0, dphi_r0 = self.exactSolution(r0, phi0, dV, d2V)
-        return self._initialConditions_rval(r0, phi_r0, dphi_r0)
+            return r0, np.float64(phi), np.float64(dphi)
+        reason = (f"The function value at x={r0} is NaN; solver cannot continue."
+                  if status == shooting.START_NOT_A_NUMBER else "f(a) and f(b) must have different signs")
+        raise errors.TunnelingError(
+            "Could not find initial conditions for integration. The bubble "
+            "wall may be too thin-walled to integrate: " + reason)
 
     def equationOfMotion(self, y, r):
         """
@@ -781,6 +735,13 @@ class SingleFieldInstanton:
         rval = (R,)+tuple(Yout.T)+eqn_args+(Rerr,)
         return self.profile_rval(*rval)
 
+    def _ordinary_trials(self, x, xmin, xmax, xincrease, xtol, delta_phi, delta_phi_cutoff, rmin, dr0, drmin, rmax,
+                         phitol, bracket_trials, ctype):
+        """The trials of findProfile that a subclass takes in one go. Returns the bisection as it then stands: x, xmin,
+        xmax, whether it is done, the type of the last trial, and (r0, y0, rf, epsabs, delta_phi0) of that trial or
+        None if there was none."""
+        return x, xmin, xmax, False, ctype, None
+
     def findProfile(self, xguess=None, xtol=1e-4, phitol=1e-4,
                     thinCutoff=.01, npoints=500, rmin=1e-4, rmax=1e4,
                     max_interior_pts=None):
@@ -881,74 +842,32 @@ class SingleFieldInstanton:
             # The sign for delta_phi_cutoff doesn't matter
         # --
         rf = None
+        ctype = None
         #: The last trial on each side of the bracket, so that the action can be checked for
         #: convergence once the loop ends on something other than `converged`.
         bracket_trials: dict = {}
-        # `epsabs_rf` and `delta_phi0_rf` are the `epsabs` and the `delta_phi0` that belong
-        # to `rf`, i.e. to the trial the kept `r0`, `y0` and `rf` came from. Both are
-        # recomputed from the trial `x` at the top of every iteration, and the loop can
-        # leave on an iteration whose trial contributed nothing: a non-finite `x` or `r0_`
-        # breaks out of it, and a trial without a usable slope is rejected without being
-        # integrated at all. The current `epsabs` can then be non-finite, and the current
-        # `delta_phi0` can be the one whose slope was judged unusable -- which is the slope
-        # the interior points below are built from, so taking it would put a rejected trial
-        # inside an accepted profile: on the quartic of
-        # `tests/test_unusable_slope_rejects_the_trial.py`, with the last trial rejected,
-        # that returns an action of 4.35e+12 against 94.8357. The saved profile is
-        # re-integrated, and its interior filled in, from the trial that was kept. On every
-        # other exit the saved and the current values are the same.
+        # `epsabs_rf` and `delta_phi0_rf` belong to the trial that the kept `r0`, `y0` and `rf`
+        # came from; the loop can end on a trial that was rejected or not integrated, whose
+        # current `epsabs` and `delta_phi0` must not be used for the saved profile.
         epsabs_rf = None
         delta_phi0_rf = None
         while True:
+            x, xmin, xmax, done, ctype, last = self._ordinary_trials(
+                x, xmin, xmax, xincrease, xtol, delta_phi, delta_phi_cutoff, rmin, dr0, drmin, rmax, phitol,
+                bracket_trials, ctype)
+            if last is not None:
+                r0, y0, rf, epsabs_rf, delta_phi0_rf = last
+            if done:
+                break
             delta_phi0 = np.exp(-x)*delta_phi
-            # `epsabs` has to be a fraction of the field range the integration covers, and
-            # that range is the bounce's own excursion,
-            # `|phi(0) - phi_metaMin| = |delta_phi0 - delta_phi|`, not the gap between the
-            # minima. On the shipped conformal dark U(1) at g = 0.46, y = 0.01, v = 0.14 GeV,
-            # the configuration every number in this comment is measured at, the gap is 1000
-            # internal units at every temperature while the excursion is 4.3 to 6.1 T, so
-            # `phitol |delta_phi|` is 1.6e-07 of the integrated feature at T_int = 0.1 and
-            # 2.4e-02 of it at 1e-6.
-            #
-            # `integrateProfile` spends `epsabs` twice, and the second use is the one that
-            # decides. Besides controlling the Runge-Kutta step it is the radius in
-            # `abs(y - [phi_metaMin, 0]) < 3*epsabs` inside which a profile counts as having
-            # reached the false vacuum. Tied to the gap between the minima that radius was a
-            # fixed absolute distance while the bounce shrank with the temperature, so
-            # `3 phitol |delta_phi| / excursion` grew from 5.9e-05 at an internal temperature
-            # of 1e-3 to 0.069 at 1e-6 and 0.63 at 1e-7, where a trial counted as arrived once
-            # it came within two thirds of the whole bounce of the false vacuum and the action
-            # came back 0 against the 102.93 this code gives. Separating the two uses shows
-            # which one matters: tightening only the step control gives 91.10 at 1e-6 and still
-            # 0 at 1e-7, tightening only the acceptance radius gives 96.93 and 636.3, and both
-            # together 103.20 and 102.93, against a converged 102.46 and 92.42. Tied to the
-            # bounce, `3*epsabs/excursion` is `3*phitol` at every temperature.
-            #
-            # Where the bounce covers a sizeable part of the gap the two rules are expected to
-            # agree, and the two configurations measured so far do: on the configuration
-            # `tests/test_1d_tunneling.py` uses they differ by 3.1e-08 relative at the
-            # configured `phitol`, and on `examples/example_point.yaml` the observables are
-            # identical to five figures. Away from the supercooled line that is the whole of
-            # the evidence.
+            # `epsabs` is a fraction `phitol` of the bounce's own field excursion,
+            # `|phi(0) - phi_metaMin|`, not of the gap between the minima. It sets the step
+            # control of `integrateProfile` and the radius `3*epsabs` inside which a trial counts
+            # as having reached the false vacuum, so both stay relative to the bounce when it
+            # shrinks with the supercooling.
             excursion = abs(delta_phi0 - delta_phi)
-            # The floor keeps `epsabs` strictly positive, which `rkqs` needs: handed a zero
-            # absolute tolerance it shrinks the step by the largest factor it is allowed on
-            # every try, so the integration would end at `dr < drmin` and an
-            # `IntegrationError`. It bites only for `x` below 1.7e-16, where `1 - exp(-x)`
-            # falls under the machine epsilon. The bisection's smallest `x` is not
-            # `0.5*xmin = 5*xtol`: `xmin` starts at `xtol*10` but an undershoot replaces it
-            # with the trial that undershot, so on the g = 0.46, y = 0.1, v_GeV = 1.0 point of
-            # `tests/test_bisection_bracket_scale.py` at the configured `xtol = 1e-10` the
-            # smallest `x` tried is 1.4e-10 and the accepted one 4.2e-10. Both are six orders
-            # above the floor. Reaching it needs an `xguess` that small, which a model's
-            # `tunneling_findProfile_params` is free to set, and such a trial has no usable
-            # slope: `delta_phi0` rounds to `delta_phi`, so `phi0` is `phi_metaMin`, where
-            # the potential's slope vanishes because it is a minimum too. It is rejected
-            # before any integration and bounds `x` from below, so the bisection climbs away
-            # from the floor rather than integrating at it. On the quartic with minima at 0
-            # and 1 of `tests/test_unusable_slope_rejects_the_trial.py` an `xguess` of 1e-18
-            # reaches the same bounce as the default guess, 94.8357891373604 against
-            # 94.83569041562252, and the smallest `x` handed to `integrateProfile` is 1.49.
+            # The floor keeps `epsabs` strictly positive, which `rkqs` needs; it acts only where
+            # `1 - exp(-x)` falls below the machine epsilon.
             phi_scale = max(excursion, abs(delta_phi) * np.finfo(float).eps)
             epsabs = abs(np.array([phi_scale, phi_scale/self.rscale])*phitol)
             integration_args = (dr0, epsfrac, epsabs, drmin, rmax)
@@ -1049,12 +968,11 @@ class SingleFieldInstanton:
 
                 if not np.isfinite(r0_) or not np.isfinite(x):
                     # Use the last finite values instead
-                    # (assuming there are such values). There need not be any now that a
+                    # (assuming there are such values). There need not be any, because a
                     # trial can be rejected for want of a usable slope: every earlier one
                     # may have been, in which case this solve has no profile at all and
                     # the check after the loop reports it, as it does for every other way
-                    # of leaving the loop without one. It used to assert `rf` here, which
-                    # was sound while the first unusable slope raised instead.
+                    # of leaving the loop without one.
                     break
                 r0 = r0_
                 y0 = np.array([phi0, dphi0])
@@ -1083,48 +1001,11 @@ class SingleFieldInstanton:
                     bracket_trials["overshoot"] = trial_profile
                 xmax = x
                 x = .5*(xmin+xmax)
-            # Check if we've reached xtol, as a fraction of the `x` the bracket holds rather
-            # than as an absolute window. `x` is the fraction of the gap between the minima that
-            # the bounce covers, `|phi(0) - phi_metaMin| / |delta_phi| = |exp(-x) - 1| ~ x`, so it
-            # shrinks with the supercooling while an absolute `xtol` does not. The scale is capped
-            # at one so the window is never wider than the absolute `xtol` it replaces, and the
-            # loop stops as well when the bracket can no longer be subdivided on the
-            # floating-point grid.
-            #
-            # The window is a fraction of the `x` the bracket holds rather than an absolute
-            # one. `x` is the fraction of the gap between the minima that the bounce covers,
-            # `|phi(0) - phi_metaMin| / |delta_phi| = |exp(-x) - 1| ~ x`, so it shrinks with
-            # the supercooling while an absolute `xtol` does not: on the shipped conformal dark
-            # U(1) at g = 0.46, `xtol/x` runs from 1.6e-07 at an internal temperature of 0.1 to
-            # 2.3e-02 at 1e-6. The cost shows in the number of bisection trials the absolute
-            # rule allows: on that model at the configured `xtol`, with this line put back to
-            # `(xmax-xmin) < xtol`, it is 25, 22, 19, 15, 12 and 8 at internal temperatures
-            # 1e-1 down to 1e-6, falling as the transition cools because an absolute `xtol` is
-            # already wide against the bracket once `x` is small. With the window a fraction of
-            # `x` it is 36 at every one of those temperatures. `xmin` enters so the test is
-            # defined on the first iteration, before `x` has been bracketed from below; `xmax`
-            # starts at infinity, so no stopping test fires until an overshoot has bracketed
-            # `x` from above.
-            #
-            # The scale is capped at one so the window is never wider than the absolute `xtol`
-            # it replaces. Without the cap this would loosen the bisection wherever the bracket
-            # sits above `x` = 1, which is the thick-walled end and not a corner case: the 2HDM
-            # benchmark converges at `x` = 2.27 to 2.45, and the shipped conformal dark U(1) at
-            # g = 0.7 passes `x` = 1 at T = 97.5 and reaches 2.02 at T = 135. Without the cap
-            # the bisection stopped 1.01 to 1.16 times `xtol` apart there, looser than the
-            # absolute rule it replaces. `findProfile` is a general solver and nothing here
-            # constrains `x`, so the cap keeps the change a tightening where the bounce is
-            # small, the absolute rule unchanged where it is not, and a loosening nowhere.
-            #
-            # The bracket cannot be subdivided below the spacing of the floating-point grid.
-            # Once the midpoint lands on an endpoint every further trial repeats the same `x`
-            # and no tolerance test can fire, so the loop has to stop on that rather than on
-            # `xtol`. It matters because the window is relative: the threshold `xtol * x` and
-            # the spacing `ulp(x)` both scale with `x`, so the stall sets in below
-            # `xtol` = 2.2e-16 at every `x`, where the absolute rule only stalled below
-            # `ulp(x)` itself. Measured with `xtol` = 1e-16, without this test the shipped
-            # conformal dark U(1) at two couplings both pass 400 trials with the last six `x`
-            # identical, and with it they stop.
+            # Stop once the bracket is narrower than `xtol` times the `x` it holds, capped at one
+            # so that the window is never wider than an absolute `xtol`. `x` is the fraction of
+            # the gap between the minima that the bounce covers and shrinks with the
+            # supercooling. Stop as well when the bracket can no longer be subdivided on the
+            # floating-point grid, where the midpoint repeats an endpoint.
             if x == xmin or x == xmax:
                 break
             if (xmax-xmin) < xtol * min(max(abs(x), abs(xmin)), 1.0):
@@ -1165,10 +1046,9 @@ class SingleFieldInstanton:
         if ctype != "converged" and len(bracket_trials) == 2:
             branch_actions = {}
             for side, (b_r0, b_y0, b_rf, b_epsabs, b_dphi0) in bracket_trials.items():
-                b_R = np.linspace(b_r0, b_rf, npoints)
                 try:
-                    branch_profile = self.integrateAndSaveProfile(
-                        b_R, b_y0, dr0, epsfrac, b_epsabs, drmin)
+                    b_R, branch_profile = self._savedProfile(
+                        b_r0, b_rf, npoints, b_y0, dr0, epsfrac, b_epsabs, drmin)
                 except IntegrationError as e:
                     # The same normalisation the shooting loop above gives its own
                     # `IntegrationError`: `_find_profile` reads a `TunnelingError` as an
@@ -1187,15 +1067,55 @@ class SingleFieldInstanton:
             self.bracket_branch_actions = dict(branch_actions)
 
         # Integrate a second time, this time getting the points along the way
-        R = np.linspace(r0, rf, npoints)
         try:
-            profile = self.integrateAndSaveProfile(R, y0, dr0,
-                                                   epsfrac, epsabs_rf, drmin)
+            R, profile = self._savedProfile(r0, rf, npoints, y0, dr0, epsfrac, epsabs_rf, drmin)
         except IntegrationError as e:
             raise errors.TunnelingError(
                 "Integration failed while saving the profile: " + str(e))
         profile = self._withInteriorPoints(R, profile, delta_phi0_rf, max_interior_pts)
         return profile
+
+    # The field moves over the part of [r0, rf] where |dphi/dr| is above this fraction of its
+    # largest value; the rest is the approach to the false vacuum.
+    _WALL_DPHI_FRACTION = 1e-2
+    # Above this share of [r0, rf] the field moves over most of the range and even spacing is kept.
+    _WALL_SHARE_FOR_EVEN_GRID = 0.25
+
+    def _savedProfile(self, r0, rf, npoints, y0, dr0, epsfrac, epsabs, drmin):
+        """Integrate the profile and save it on radii that resolve the wall.
+
+        The action is a quadrature over the saved radii, so they must resolve where the field
+        moves. Evenly spaced radii do not when the approach to the false vacuum is long: near a
+        point where the false vacuum's curvature vanishes the tail falls off as a power of r, and
+        the shooting runs on to many wall widths. Only a few per cent of evenly spaced radii then
+        fall in the wall, the action depends on the number of radii, and S3/T scatters between
+        neighbouring temperatures. The profile is first saved on even radii; where
+        the field moves over less than a quarter of the range, it is integrated again with half
+        the radii evenly spaced across the wall and half geometrically spaced over the tail.
+
+        Returns the radii and the profile.
+        """
+        R = np.linspace(r0, rf, npoints)
+        profile = self.integrateAndSaveProfile(R, y0, dr0, epsfrac, epsabs, drmin)
+        dphi = np.abs(np.asarray(profile.dPhi, dtype=float))
+        if not np.all(np.isfinite(dphi)) or npoints < 8 or not dphi.max() > 0:
+            return R, profile
+        moving = np.nonzero(dphi >= self._WALL_DPHI_FRACTION * dphi.max())[0]
+        r_cut = float(R[min(int(moving[-1]) + 1, npoints - 1)])
+        if r_cut - r0 >= self._WALL_SHARE_FOR_EVEN_GRID * (rf - r0) or r_cut <= r0:
+            return R, profile
+        n_wall = npoints // 2
+        R_wall = np.linspace(r0, r_cut, n_wall + 1)
+        # geometric in r - r0 from the end of the wall to rf, starting at the wall's spacing
+        h = R_wall[1] - R_wall[0]
+        n_tail = npoints - n_wall
+        growth = _geometricGrowth(h, rf - r_cut, n_tail - 1)
+        steps = h * growth ** np.arange(n_tail - 1)
+        R_tail = r_cut + np.cumsum(steps) * ((rf - r_cut) / np.sum(steps))
+        R_tail[-1] = rf
+        R = np.concatenate((R_wall, R_tail))
+        profile = self.integrateAndSaveProfile(R, y0, dr0, epsfrac, epsabs, drmin)
+        return R, profile
 
     def _withInteriorPoints(self, R, profile, delta_phi0, max_interior_pts):
         """Prepend the exact interior of the bubble, from `r = 0` out to `R[0]`.
@@ -1223,15 +1143,10 @@ class SingleFieldInstanton:
             N = np.arange(1,n+1)[::-1]
             R_int = R[0] - dx0*(N + 0.5*a*N*(N+1))
             R_int[0] = 0.0  # enforce this exactly
-        Phi_int = np.empty_like(R_int)
-        dPhi_int = np.empty_like(R_int)
-        Phi_int[0] = self.phi_absMin + delta_phi0
-        dPhi_int[0] = 0.0
+        phi0 = self.phi_absMin + delta_phi0
         dV = self.dV_from_absMin(delta_phi0)
-        d2V = self.d2V(Phi_int[0])
-        for i in range(1,len(R_int)):
-            Phi_int[i], dPhi_int[i] = self.exactSolution(
-                R_int[i], Phi_int[0], dV, d2V)
+        d2V = self.d2V(phi0)
+        Phi_int, dPhi_int = shooting.interior(R_int, float(phi0), float(dV), float(d2V), 0.5 * (self.alpha - 1))
         R_full = np.append(R_int, profile.R)
         Phi = np.append(Phi_int, profile.Phi)
         dPhi = np.append(dPhi_int, profile.dPhi)
@@ -1301,3 +1216,93 @@ class SingleFieldInstanton:
             p = np.linspace(phi[i][0], self.phi_metaMin, npoints)
         dp = interpolate.splev(p, tck)
         return p, dp
+
+
+_TRIAL_NAMES = {shooting.TRIAL_CONVERGED: "converged", shooting.TRIAL_UNDERSHOOT: "undershoot",
+                shooting.TRIAL_OVERSHOOT: "overshoot"}
+
+
+class CompiledInstanton(SingleFieldInstanton):
+    """The instanton with the integration of a shot in numba, for a potential whose derivative is the set of numbers
+    ``P`` of compiled.shooting._force."""
+
+    def integrateProfile(self, r0, y0, dr0, epsfrac, epsabs, drmin, rmax, *eqn_args):
+        epsfrac = np.broadcast_to(np.asarray(epsfrac, float), (2,)).copy()
+        epsabs = np.broadcast_to(np.asarray(epsabs, float), (2,)).copy()
+        code, ra, ya0, ya1, da0, da1, rb, yb0, yb1, db0, db1, dr = shooting.integrate(
+            self.P, float(r0), float(y0[0]), float(y0[1]), float(dr0), epsfrac, epsabs, float(drmin), float(rmax),
+            float(self.phi_metaMin), float(self.alpha))
+        if code == shooting.SHOT_PAST_RMAX:
+            raise IntegrationError("r > rmax")
+        if code == shooting.SHOT_STEP_TOO_SMALL:
+            raise IntegrationError("dr < drmin")
+        if code == shooting.SHOT_STEP_ROUNDS_TO_ZERO:
+            raise IntegrationError("Stepsize rounds down to zero.")
+        if code == shooting.SHOT_CONVERGED:
+            r, y, ctype = rb, np.array([yb0, yb1]), "converged"
+        else:
+            f = cubicInterpFunction(np.array([ya0, ya1]), dr * np.array([da0, da1]),
+                                    np.array([yb0, yb1]), dr * np.array([db0, db1]))
+            j, target = (1, 0.0) if code == shooting.SHOT_UNDERSHOOT else (0, float(self.phi_metaMin))
+            x, status = shooting.bezier_root(float(f.Y[0][j]), float(f.Y[1][j]), float(f.Y[2][j]), float(f.Y[3][j]),
+                                             target)
+            if status != roots.CONVERGED:      # scipy's error
+                x = optimize.brentq(lambda x: f(x)[j] - target, 0, 1)
+            ctype = "undershoot" if code == shooting.SHOT_UNDERSHOOT else "overshoot"
+            r, y = ra + dr * x, f(x)
+        if (abs(y - np.array([self.phi_metaMin, 0])) < 3 * epsabs).all():
+            ctype = "converged"
+        return self._integrateProfile_rval(r, y, ctype)
+
+    def integrateAndSaveProfile(self, R, y0, dr, epsfrac, epsabs, drmin, *eqn_args):
+        epsfrac = np.broadcast_to(np.asarray(epsfrac, float), (2,)).copy()
+        epsabs = np.broadcast_to(np.asarray(epsabs, float), (2,)).copy()
+        R = np.asarray(R, float)
+        Y, ok = shooting.integrate_and_save(self.P, R, float(y0[0]), float(y0[1]), float(dr), epsfrac, epsabs,
+                                            float(drmin), float(self.alpha))
+        if not ok:
+            raise IntegrationError("Stepsize rounds down to zero.")
+        return self.profile_rval(R, Y[:, 0], Y[:, 1], None)
+
+
+class ClosedFormInstanton(CompiledInstanton):
+    """A potential whose derivative has the closed form of compiled.shooting._force, with the given numbers."""
+
+    def __init__(self, phi_absMin, phi_metaMin, V, dV=None, d2V=None, closed=None, **kw):
+        super().__init__(phi_absMin, phi_metaMin, V, dV, d2V, **kw)
+        self.P = (np.ascontiguousarray(closed, dtype=float), np.empty(0), np.empty((0, 0)))
+
+
+class SplinePathInstanton(CompiledInstanton):
+    """The potential along a path of pathDeformation, whose spline gives the derivative. Needs V_spline_samples."""
+
+    def __init__(self, phi_absMin, phi_metaMin, V, dV=None, d2V=None, **kw):
+        super().__init__(phi_absMin, phi_metaMin, V, dV, d2V, **kw)
+        tck = getattr(getattr(dV, "__self__", None), "_V_tck", None)
+        if tck is None:
+            raise ValueError("SplinePathInstanton needs the spline path potential (V_spline_samples != None)")
+        derivative = interpolate.PPoly.from_spline(tck).derivative()
+        self.P = (np.empty(0), np.ascontiguousarray(derivative.x, dtype=float),
+                  np.ascontiguousarray(derivative.c, dtype=float))
+
+    def _ordinary_trials(self, x, xmin, xmax, xincrease, xtol, delta_phi, delta_phi_cutoff, rmin, dr0, drmin, rmax,
+                         phitol, bracket_trials, ctype):
+        kept = np.zeros((3, 8))
+        status, x, xmin, xmax, trial = shooting.bisect(
+            self.P, float(x), float(xmin), float(xmax), float(xincrease), float(xtol), float(self.phi_absMin), float(delta_phi),
+            float(self.phi_metaMin), float(self.phi_eps), float(delta_phi_cutoff), float(self.rscale), float(rmin),
+            float(dr0), float(drmin), float(rmax), float(phitol), _MIN_USABLE_DV_FROM_ABSMIN, float(self.alpha), kept)
+        for row, side in ((shooting.KEPT_UNDERSHOOT, "undershoot"), (shooting.KEPT_OVERSHOOT, "overshoot")):
+            if kept[row, shooting.KEPT_FILLED]:
+                bracket_trials[side] = self._kept_trial(kept[row])
+        if trial == shooting.TRIAL_NONE:
+            return x, xmin, xmax, status == shooting.BISECTION_DONE, ctype, None
+        last = self._kept_trial(kept[shooting.KEPT_LAST])
+        return x, xmin, xmax, status == shooting.BISECTION_DONE, _TRIAL_NAMES[trial], last
+
+    @staticmethod
+    def _kept_trial(row):
+        """(r0, y0, rf, epsabs, delta_phi0) of a row of the kept trials."""
+        y0 = np.array([row[shooting.KEPT_PHI], row[shooting.KEPT_DPHI]])
+        epsabs = np.array([row[shooting.KEPT_EPSABS_PHI], row[shooting.KEPT_EPSABS_DPHI]])
+        return row[shooting.KEPT_R0], y0, row[shooting.KEPT_RF], epsabs, row[shooting.KEPT_DELTA_PHI0]

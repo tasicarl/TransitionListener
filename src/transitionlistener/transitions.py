@@ -19,6 +19,7 @@ import numpy as np
 from scipy import optimize
 
 from . import pathDeformation
+from . import bubbledynamics
 from . import errors
 
 from . import console, print
@@ -97,6 +98,31 @@ def _format_temperature_gev(temperature: float | None, conversion_factor: float)
     return str(temperature * conversion_factor)
 
 
+def _apply_model_action(transitions, tunn: dict) -> dict:
+    """Replace the solver's actions cached by a nucleation search by the model's, keeping the
+    solver's as ``action_4d``; the action at the nucleation temperature follows.
+
+    A function of the instance rather than a method, because the transition searches are also
+    driven on a bare namespace holding only what they read; such an object has no model action
+    to apply and gets ``tunn`` back unchanged.
+    """
+    model_action = getattr(transitions, "_model_action", None)
+    if model_action is None:
+        return tunn
+    info = tunn.get("full_tunneling_info") or {}
+    for T, entry in info.items():
+        if "action_4d" in entry or not np.isfinite(entry.get("action", np.nan)):
+            continue
+        raw = entry["action"]
+        entry["action_4d"] = raw
+        entry["action"] = model_action(T, raw, instanton=entry.get("instanton"))
+        entry.pop("log_gamma", None)     # a rate cached from the solver's action
+    Tnuc = tunn.get("Tnuc")
+    if Tnuc is not None and Tnuc in info:
+        tunn["action"] = info[Tnuc]["action"]
+    return tunn
+
+
 class Transitions():
     """Compute the transition path from the high-T phase to the 0-T phase
     for a given set of phases.
@@ -144,8 +170,17 @@ class Transitions():
         # assemble the tunneling parameters:
         self.tunnelFromPhase_args = {"Ttol": pot.config.tracingConf.nucleation_Ttol,
                                      "approximate_strength_threshold": pot.config.tracingConf.approx_strength_threshold,
-                                     "nuclCriterion": pot.nucleationCriterion,
-                                     "fullTunneling_params": pot.config.tracingConf.tunneling_params}
+                                     "nuclCriterion": self._model_criterion(pot.nucleationCriterion),
+                                     "fullTunneling_params": {**pot.config.tracingConf.tunneling_params,
+                                                              **pathDeformation.bounceFreeParams(pot)}}
+        # The nucleation search solves the four-dimensional bounce. A model that supplies its own
+        # action (generic_potential.actionNuc, e.g. a three-dimensional rate) is asked for it here
+        # as well: the criterion is evaluated on the model's action, and the cached actions, which
+        # the percolation reuses as support points, are replaced by it (the solver's value is kept
+        # as "action_4d", as bubbledynamics.calcAction does). Otherwise the nucleation temperature
+        # and part of the percolation support would be four-dimensional in a three-dimensional run.
+        # For a model without its own action, actionNuc returns its argument and nothing changes.
+        self._model_actions = {}
 
         self.conversionFactor = pot.conversionFactor
         
@@ -247,6 +282,7 @@ class Transitions():
                                                     allow_second_order_fallback=not seedless,
                                                     invGroupElements=pathDeformation.imagesToPairOver(self.pot),
                                                     **tunnelFromPhase_args)
+                tunn = _apply_model_action(self, tunn)
                 # sometimes a second order transition slips through the phase tracing
                 if tunn['trantype'] == 2:
                     tr.type = 2
@@ -680,11 +716,9 @@ class Transitions():
             # handed, `while childPhases != []: childPhases.pop()`, so after the call
             # `startPhase.childPhases` is empty and counting it there reads zero every time.
             #
-            # The helper is given a COPY here, so the phase keeps its children. That is only
-            # safe because of the explicit cycle guard below: the consumption used to stop
-            # this loop running forever on a cyclic graph, by leaving a revisited phase with
-            # an empty child list that took the `startPhase.childPhases == []` exit above.
-            # Relying on that was accidental, and it destroyed the graph as a side effect.
+            # The helper is given a COPY here, so the phase keeps its children. A revisited
+            # phase therefore never takes the `startPhase.childPhases == []` exit above, and
+            # the explicit cycle guard is what stops this loop on a cyclic graph.
             offered = len(startPhase.childPhases)
             childPhases = self.getUniqueTunnelingPhases(
                 V, phases, startPhase.key, list(startPhase.childPhases))
@@ -735,6 +769,7 @@ class Transitions():
                                                         allow_second_order_fallback=not seedless,
                                                         invGroupElements=pathDeformation.imagesToPairOver(self.pot),
                                                         **tunnelFromPhase_args)
+                    tunn = _apply_model_action(self, tunn)
 
                     # create TunnelingInfo object
                     tr = TransitionInfo(Tcrit=tunn['Tcrit'], Tnuc=tunn['Tnuc'],
@@ -1057,6 +1092,23 @@ class Transitions():
         assert startPhase in phases
         return startPhase
 
+    def _model_action(self, T: float, S: float, instanton=None) -> float:
+        """The model's action for the solver's action ``S`` at ``T`` (generic_potential.actionNuc),
+        computed once per (T, S)."""
+        key = (float(T), float(S))
+        if key not in self._model_actions:
+            self._model_actions[key] = pathDeformation.modelAction(self.pot, T, S, instanton=instanton)
+        return self._model_actions[key]
+
+    def _model_criterion(self, criterion):
+        """The nucleation criterion evaluated on the model's action instead of the solver's."""
+        def model_criterion(S, T, *args):
+            # without a bounce S is the model's action already
+            if not np.isfinite(S) or pathDeformation.bounceFreeParams(self.pot):
+                return criterion(S, T, *args)
+            return criterion(self._model_action(T, S), T, *args)
+        return model_criterion
+
     def evalNucleationCriterion(self, T: float, start_phase: "PhaseInfo",
                                 end_phase: "PhaseInfo", V: callable, dV: callable,
                                 phitol: float, overlapAngle: float,
@@ -1128,4 +1180,13 @@ class Transitions():
             **fullTunneling_params)
 
         S = outdict[T]['action']
+
+        # Evaluate the nucleation rate here, where both the action and the
+        # bounce profile are in hand and the potential is reachable. The
+        # percolation integrands downstream see only arrays, so a rate that
+        # depends on the profile (as a three-dimensional one does) could not be
+        # computed there. With the default rate_mode this is exactly
+        # bubbledynamics.logGamma(T, S).
+        bubbledynamics.calcLogGamma(self.pot, T, outdict)
+
         return nuclCriterion(S, T, start_phase, end_phase)

@@ -310,11 +310,14 @@ def check_with_paper_style(fig, name: str = "figure") -> list[str]:
     Returns an empty list where it is not importable, which is the case outside the author's
     own checkout.
     """
+    import os
     import sys
 
-    for candidate in ("/lhome/ific/t/tasicarl/AccurateAstro-SMBHB-PT-PTA",):
-        if candidate not in sys.path:
-            sys.path.append(candidate)
+    # a checkout of AccurateAstro-SMBHB-PT-PTA next to this repository
+    candidate = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                             "AccurateAstro-SMBHB-PT-PTA")
+    if candidate not in sys.path:
+        sys.path.append(candidate)
     try:
         from smbhb.paper_style import check_text
     except Exception:

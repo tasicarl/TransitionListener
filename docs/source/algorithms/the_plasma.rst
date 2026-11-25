@@ -94,7 +94,7 @@ plasma. The plateau above it sits at :math:`g_\mathrm{eff} = 104.1` rather than 
 free-field 106.75, because the fit carries the interaction correction to the quark-gluon free
 energy. The counts in the energy density and in the entropy density differ wherever a species
 is neither relativistic nor gone, most of all across the quark-hadron step, where
-:math:`g_\mathrm{eff}` and :math:`h_\mathrm{eff}` are 6.7 per cent apart at 0.2 GeV. Below
+:math:`g_\mathrm{eff} = 41.1` and :math:`h_\mathrm{eff} = 38.1` at 0.2 GeV, 8 per cent apart. Below
 about 0.5 MeV the electrons and positrons annihilate and the neutrinos stop sharing the
 photons' temperature, so the two counts part for good and settle at
 :math:`g_\mathrm{eff} = 3.38` against :math:`h_\mathrm{eff} = 3.93` below 0.03 MeV. Both

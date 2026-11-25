@@ -1,0 +1,10 @@
+NG15  lattice shift -    shift g  71.1% (width +9%), log10 v   3.5% (width -9%), D 5.97, g 0.476-0.546, centre shift in g +0.0456
+NG15  lattice scale -    shift g  35.2% (width +7%), log10 v   5.4% (width -1%), D 2.64, g 0.454-0.522, centre shift in g +0.0226
+NG15  leading order      shift g   0.9% (width +2%), log10 v   0.3% (width -0%), D 0.10, g 0.433-0.499, centre shift in g +0.0006
+NG15  Delta S tables     shift g   0.0% (width -0%), log10 v   0.0% (width -0%), D 0.00, g 0.433-0.497, centre shift in g -0.0000
+NG15  4D daisy           shift g  73.0% (width -8%), log10 v   4.9% (width -11%), D 5.91, g 0.483-0.541, centre shift in g +0.0468
+IPTA2 lattice shift -    shift g 100.7% (width +7%), log10 v   2.5% (width +3%), D 3.71, g 0.518-0.571, centre shift in g +0.0500
+IPTA2 lattice scale -    shift g  50.4% (width +8%), log10 v   5.7% (width +1%), D 1.68, g 0.493-0.546, centre shift in g +0.0250
+IPTA2 leading order      shift g   2.4% (width +1%), log10 v   0.4% (width -0%), D 0.11, g 0.471-0.521, centre shift in g +0.0012
+IPTA2 Delta S tables     shift g   0.0% (width -0%), log10 v   0.0% (width -0%), D 0.00, g 0.470-0.519, centre shift in g -0.0000
+IPTA2 4D daisy           shift g  92.8% (width -8%), log10 v   3.2% (width -1%), D 3.38, g 0.518-0.563, centre shift in g +0.0461

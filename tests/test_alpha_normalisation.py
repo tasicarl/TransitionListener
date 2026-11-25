@@ -14,7 +14,7 @@ from transitionlistener.hydrodynamics import calc_kappas
 from transitionlistener.thermodynamics import e_geffSM, p_geffSM
 
 REPO = Path(__file__).resolve().parents[1]
-CONFORMAL = (REPO / "models/TL_conformal_dark_u1.py", "specific_potential",
+CONFORMAL = (REPO / "models/TL_conformal_u1_fermions.py", "specific_potential",
              {"g": 0.692, "y": 0.01, "v_GeV": 0.14})
 # Temperatures in internal units (vacuum expectation value 1000): strongly and mildly supercooled.
 TEMPERATURES = (20.0, 60.0)
@@ -156,8 +156,10 @@ class CalcKappasTests(unittest.TestCase):
     def test_alpha_wall_sets_the_collision_efficiency(self):
         config = self.config("NLO")
         kappa_phi, kappa_sw, _ = calc_kappas(0.5, **self.ARGS, config=config, alpha_wall=1.0)
-        # gamma_eq = (1.0 - 0.01) / 1e-3 = 990 exceeds gamma_star = 2 Rsep / (3 R0) = 667.
-        self.assertAlmostEqual(kappa_phi, 1 - 0.01 / 1.0, places=12)
+        # gamma_eq = (1.0 - 0.01) / 1e-3 = 990, R_eq = 1485, R_eff = 5 / (8 pi)^(1/3) Rsep
+        gamma_eq = 990.0
+        R_eff = 5.0 / (8 * np.pi) ** (1 / 3) * 1e3
+        self.assertAlmostEqual(kappa_phi, (1 - 0.01) * (1 - 1 / gamma_eq) / (1 + R_eff / (1.5 * gamma_eq)), places=10)
         # The sound-wave strength alphaN does not enter kappa_phi.
         self.assertEqual(calc_kappas(0.2, **self.ARGS, config=config, alpha_wall=1.0)[0], kappa_phi)
         # It does enter kappa_sw, through alpha_eff = alphaN (1 - kappa_phi).

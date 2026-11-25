@@ -25,6 +25,16 @@ wrong copy is dead code on the path it was meant to protect. **This is the most 
 is changed, say whether its twin needs the same change, and whether the entry point a real run
 takes reaches the copy that was edited.
 
+The hot loops are numba kernels in `transitionlistener/compiled/`. That package imports nothing from the modules that
+call it and knows no model; each module calling a kernel holds the rare branches in Python around it, and there is no
+second implementation of the common path. `generic_potential` keeps the numpy potential, because models with several
+fields and no `compiled_model`, or outside the form of `compiled/onefield.py`, run on it. `onefield_potential.py` reads
+the kernels' table from a model; `multifield_potential.py` compiles the three functions of a model's `compiled_model`,
+passes their addresses to `compiled/multifield.py`, and checks them against the Python potential. A model file changes
+the kernels through its numbers and those functions only, and a value `compiled_model` reads that is not an attribute of
+the model escapes the invalidation. A compiled potential must never be stale: a new input the kernels depend on is a defect unless assigning to it
+reaches `generic_potential.__setattr__`, and a name added to `_NOT_IN_THE_KERNELS` needs a reason.
+
 ## Things that are deliberate, not defects
 
 - **`transitionObservables_fixedstep.py` is usually left unchanged.** The two solvers are to be

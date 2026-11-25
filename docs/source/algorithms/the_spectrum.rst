@@ -8,9 +8,9 @@ frequency at which it peaks follow from four numbers computed earlier: the stren
 :math:`\alpha`, the mean bubble separation :math:`R_*`, the temperature :math:`T_\mathrm{reh}`
 after the released energy has been shared out, and the wall velocity :math:`v_\mathrm{w}`.
 
-This page describes the spectrum as the code builds it. The templates follow the report of the
-LISA Cosmology Working Group [Caprini:2024hue]_, and the equation numbers quoted below are that
-report's.
+This page describes the spectrum as the code builds it. The default templates follow the report
+of the LISA Cosmology Working Group [Caprini:2024hue]_, and the equation numbers quoted below are
+that report's. Other templates can be selected, and the last section lists them.
 
 The spectrum is built in :py:mod:`transitionlistener.gwfopt` and compared with the
 detectors in :py:mod:`transitionlistener.observability`.
@@ -47,9 +47,10 @@ Each source carries a fraction of the energy released. Writing
 the factor :math:`\alpha/(1+\alpha)` is the released energy as a fraction of the total, and
 :math:`\kappa_i` is the efficiency with which it reaches that source, computed in
 :doc:`hydrodynamics`. For the sound waves and the turbulence
-:math:`\varepsilon = 0.6`, which accounts for the efficiency of producing bulk motion relative
-to the single-bubble case as found in the Higgsless simulations of [Jinno:2022mie]_. For the
-scalar field :math:`\varepsilon = 1`.
+:math:`\varepsilon = 0.6` by default, which accounts for the efficiency of producing bulk motion
+relative to the single-bubble case as found in the Higgsless simulations of [Jinno:2022mie]_. The
+input key ``gw_kinetic_energy_efficiency`` sets it to any value above 0 and up to 1, and values
+between 0.4 and 0.8 are realistic. For the scalar field :math:`\varepsilon = 1`.
 
 Redshift to today
 -----------------
@@ -117,6 +118,18 @@ duration here is the one read off the bubble separation,
 :math:`(\beta/H)_\mathrm{RH} = (8\pi/f_\mathrm{perc})^{1/3}\max(v_\mathrm{w},c_\mathrm{s})/R_*`,
 and never the local one of :doc:`the_observables`.
 
+The sound-wave and turbulence fits are written in a bubble separation built from that
+inverse duration,
+
+.. math::
+   \tilde{R}_* = \frac{(8\pi)^{1/3}\max(v_\mathrm{w},c_\mathrm{s})}{(\beta/H)_\mathrm{RH}}
+              = f_\mathrm{perc}^{1/3}\,R_* ,
+
+which is the convention of [Caprini:2024hue]_ and of the simulations their fits come from.
+The measured separation :math:`R_*` is larger by :math:`f_\mathrm{perc}^{-1/3} = 1.51`. The
+code converts it to :math:`\tilde{R}_*` before it enters the two templates below, and the
+output column ``RH`` keeps the measured value.
+
 Sound waves
 -----------
 
@@ -124,9 +137,9 @@ Two breaks. The lower one is set by the bubble separation and the upper one by t
 of the sound shell:
 
 .. math::
-   f_1 = \frac{0.2}{R_*}H_{*,0},
+   f_1 = \frac{0.2}{\tilde{R}_*}H_{*,0},
    \qquad
-   f_2 = \frac{0.5}{R_*\,\Delta_\mathrm{w}}H_{*,0},
+   f_2 = \frac{0.5}{\tilde{R}_*\,\Delta_\mathrm{w}}H_{*,0},
    \qquad
    \Delta_\mathrm{w} = \frac{|v_\mathrm{w} - c_\mathrm{s}|}{\max(v_\mathrm{w}, c_\mathrm{s})} .
 
@@ -138,7 +151,7 @@ deflagration, and a general solution would need the full hydrodynamic profile.
 The integrated amplitude is their equation (2.10),
 
 .. math::
-   h^2\Omega_\mathrm{sw}^\mathrm{int} = R\, A_\mathrm{sw}\, K_\mathrm{sw}^2\, (H\tau_\mathrm{sw})\, R_* ,
+   h^2\Omega_\mathrm{sw}^\mathrm{int} = R\, A_\mathrm{sw}\, K_\mathrm{sw}^2\, \Upsilon_\mathrm{sw}\, \tilde{R}_* ,
 
 where :math:`K_\mathrm{sw}` is the kinetic energy fraction of the sound waves defined above,
 with :math:`A_\mathrm{sw} = 0.11` and the slopes :math:`n_1 = 3`, :math:`n_2 = 1`,
@@ -146,13 +159,31 @@ with :math:`A_\mathrm{sw} = 0.11` and the slopes :math:`n_1 = 3`, :math:`n_2 = 1
 sound waves decay once the shells have crossed, after a time
 
 .. math::
-   H\tau_\mathrm{sh} = \frac{R_*}{\sqrt{\tfrac{3}{4}\,\varepsilon\,\kappa_\mathrm{sw}\,
+   H\tau_\mathrm{sh} = \frac{\tilde{R}_*}{\sqrt{\tfrac{3}{4}\,\varepsilon\,\kappa_\mathrm{sw}\,
                     \alpha_\mathrm{hyd}/(1+\alpha_\mathrm{hyd})}},
 
 where :math:`\kappa_\mathrm{sw}` is the sound-wave efficiency of :doc:`hydrodynamics` and
 :math:`\alpha_\mathrm{hyd}` the transition strength at the wall, which the same page computes.
-The lifetime entering the amplitude is :math:`H\tau_\mathrm{sw} = \min(1, H\tau_\mathrm{sh})`,
-capped at one Hubble time. The rising part of the spectrum is :math:`f^3`, which is the causal
+The lifetime factor entering the amplitude is by default
+:math:`\Upsilon_\mathrm{sw} = \min(1, H\tau_\mathrm{sh})`, capped at one Hubble time. The input
+key ``gw_sw_lifetime_factor`` selects one of three forms:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 78
+
+   * - Value
+     - Lifetime factor
+   * - ``min`` (default)
+     - :math:`\Upsilon_\mathrm{sw} = \min(1, H\tau_\mathrm{sh})` [Caprini:2024hue]_.
+   * - ``guo``
+     - :math:`\Upsilon_\mathrm{sw} = 1 - (1 + 2H\tau_\mathrm{sh})^{-1/2}`, the result for a
+       source in a radiation-dominated expanding universe [Guo:2020grp]_.
+   * - ``guo_capped``
+     - The same form with :math:`H\tau_\mathrm{sh}` first capped at one.
+
+The three agree for :math:`H\tau_\mathrm{sh} \ll 1` and differ by a factor of order one for
+shells that last about a Hubble time. The rising part of the spectrum is :math:`f^3`, which is the causal
 slope any uncorrelated source must have.
 
 Turbulence
@@ -161,7 +192,7 @@ Turbulence
 Their equation (2.15), the full form rather than the approximation of their equation (2.25):
 
 .. math::
-   h^2\Omega_\mathrm{turb}(f) = 3 A_\mathrm{turb}\, \Omega_s^2\, R\, R_*^3
+   h^2\Omega_\mathrm{turb}(f) = 3 A_\mathrm{turb}\, \Omega_s^2\, R\, \tilde{R}_*^3
        \left(\frac{f}{H_{*,0}}\right)^3 p(f)\, T(f),
 
 with :math:`\Omega_s = K_\mathrm{turb}` and :math:`A_\mathrm{turb} = 0.085`. The anisotropic
@@ -169,7 +200,7 @@ spectrum is
 
 .. math::
    p(f) = \left[1+\left(\frac{f}{f_2}\right)^{a_2}\right]^{-11/(3a_2)},
-   \qquad f_2 = \frac{2.2}{R_*}H_{*,0}, \qquad a_2 = 2.15,
+   \qquad f_2 = \frac{2.2}{\tilde{R}_*}H_{*,0}, \qquad a_2 = 2.15,
 
 and the transfer function carries the finite lifetime of the source,
 
@@ -179,7 +210,7 @@ and the transfer function carries the finite lifetime of the source,
      \ln^2\!\left(1 + \dfrac{H_{*,0}}{2\pi f}\right), & \mathrm{otherwise},
    \end{cases}
 
-where :math:`N H\tau_e = N R_*/(2\pi v_A)` is the duration in Hubble times of :math:`N = 2`
+where :math:`N H\tau_e = N \tilde{R}_*/(2\pi v_A)` is the duration in Hubble times of :math:`N = 2`
 eddy turnovers and :math:`v_A = \sqrt{3\Omega_s/4}` is the Alfvén velocity.
 
 .. figure:: ../_static/algorithm_spectrum_sources.png
@@ -200,6 +231,72 @@ eddy turnovers and :math:`v_A = \sqrt{3\Omega_s/4}` is the Alfvén velocity.
    beneath it so that it reads as a band. A spectrum that rises above it is detectable, and
    this one does. The curve leaves the top of the panel at both ends, where the sensitivity is
    poor, and it does not stop there.
+
+Template choices
+----------------
+
+The templates above are the default. The modelling choices of the spectrum are attributes of
+``gwConf`` and can be set per run from the input dictionary with the keys below. They are the
+nuisance parameters of a parameter inference.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 22 48
+
+   * - Input key
+     - Default
+     - Meaning
+   * - ``gw_source_model``
+     - ``LISA-pipeline24``
+     - The template. ``LISA-pipeline24`` is the one described above.
+       ``LISA-update2019`` is the template of the sub-GeV analysis of
+       `arXiv:2502.19478 <https://arxiv.org/abs/2502.19478>`_: the sound waves of
+       [Caprini:2019egz]_, the bubble collisions from the lattice fit of
+       `arXiv:1802.05712 <https://arxiv.org/abs/1802.05712>`_ and the turbulence of
+       `arXiv:0909.0622 <https://arxiv.org/abs/0909.0622>`_.
+       ``LewickiVaskonen22`` replaces the three sources by two broken power laws fitted to
+       strongly supercooled transitions, one for the scalar-field shells and one for the
+       fluid shells [Lewicki:2022pdb]_.
+   * - ``gw_kinetic_energy_efficiency``
+     - 0.6
+     - The factor :math:`\varepsilon` of the sound waves and the turbulence.
+       ``LISA-pipeline24`` only.
+   * - ``gw_sw_lifetime_factor``
+     - ``min``
+     - The form of :math:`\Upsilon_\mathrm{sw}`, as above.
+   * - ``gw_expansion_suppression``
+     - ``False``
+     - Whether the expansion of the universe during the transition is included, following
+       `arXiv:2511.15687 <https://arxiv.org/abs/2511.15687>`_. For the two LISA templates
+       the amplitude and the peak frequency are rescaled and the spectrum is continued as
+       :math:`f^3` below the horizon frequency. For ``LewickiVaskonen22`` the fit with
+       expansion replaces the one in flat space.
+   * - ``gw_causality_tail``
+     - ``smooth``
+     - With the expansion included and for the flat-space fits of ``LewickiVaskonen22``: how
+       the :math:`f^3` tail below the horizon frequency joins the spectrum, ``smooth``,
+       ``sharp`` (as fitted) or ``off``.
+   * - ``gw_expansion_speed``
+     - ``betaH_RH``
+     - With the expansion included: the inverse duration used in its three factors.
+       ``betaH_Gamma`` uses the growth rate of the nucleation rate at the percolation
+       temperature instead, which only the adaptive solver computes.
+   * - ``gw_lv22_shape_field``
+     - ``bubbles_R3``
+     - ``LewickiVaskonen22``: the fit for the scalar-field shells.
+   * - ``gw_lv22_shape_fluid``
+     - ``fluid_R3_v1``
+     - ``LewickiVaskonen22``: the fit for the fluid shells.
+   * - ``gw_lv22_expanding_shape``
+     - ``dissipative``
+     - ``LewickiVaskonen22`` with the expansion included: the model of arXiv:2511.15687,
+       ``dissipative`` (dissipative bulk flow, ``bubbles_R3`` in flat space) or
+       ``non_dissipative`` (bulk flow, ``bubbles_R2`` in flat space).
+
+A value outside the allowed list is refused when the model is built, before any transition is
+computed.
+The choices a spectrum was built with are printed with its parameters in verbose mode and are
+available as ``FOPTspectrum.modelling_choices()``.
 
 Observability
 -------------
@@ -308,7 +405,8 @@ verdict empty rather than filling them from another product's best fit.
    The sound-wave template rests on simulations of transitions with :math:`\alpha` up to about
    0.1. A scan reaching far stronger transitions is extrapolating, and the amplitude reported
    there is a statement about the template as much as about the model. For strongly supercooled
-   transitions a template built for them is the appropriate one.
+   transitions a template built for them is the appropriate one, such as
+   ``LewickiVaskonen22``.
 
 References
 ----------
@@ -316,6 +414,18 @@ References
 .. [Caprini:2024hue] C. Caprini et al. (LISA Cosmology Working Group), *Gravitational waves from
    first-order phase transitions in LISA: reconstruction pipeline and physics interpretation*,
    JCAP **10** (2024) 020, `arXiv:2403.03723 <https://arxiv.org/abs/2403.03723>`_.
+
+.. [Caprini:2019egz] C. Caprini et al., *Detecting gravitational waves from cosmological phase
+   transitions with LISA: an update*, JCAP **03** (2020) 024,
+   `arXiv:1910.13125 <https://arxiv.org/abs/1910.13125>`_.
+
+.. [Guo:2020grp] H.-K. Guo, K. Sinha, D. Vagie and G. White, *Phase transitions in an expanding
+   universe: stochastic gravitational waves in standard and non-standard histories*,
+   JCAP **01** (2021) 001, `arXiv:2007.08537 <https://arxiv.org/abs/2007.08537>`_.
+
+.. [Lewicki:2022pdb] M. Lewicki and V. Vaskonen, *Gravitational waves from bubble
+   collisions and fluid motion in strongly supercooled phase transitions*, Eur. Phys. J. C
+   **83** (2023) 109, `arXiv:2208.11697 <https://arxiv.org/abs/2208.11697>`_.
 
 .. [Jinno:2022mie] R. Jinno, T. Konstandin, H. Rubira and I. Stomberg, *Higgsless simulations of
    cosmological phase transitions and gravitational waves*, JCAP **02** (2023) 011,

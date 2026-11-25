@@ -24,6 +24,7 @@ from scipy import optimize
 from transitionlistener import constants as cn
 from transitionlistener import errors
 from transitionlistener import thermodynamics
+from transitionlistener.compiled.percolation import count_absent
 from transitionlistener.bubbledynamics import (
     PercolationGrid,
     PercolationState,
@@ -57,6 +58,14 @@ from transitionlistener.percolation_adaptive_gridbuilders import (
 )
 
 
+# Same-grid Picard sweeps step 3 may still run after its iteration limit, see
+# `_refine_percolation_temperature_dynamiczoomwindow`.
+_SAME_GRID_SWEEPS_AFTER_LIMIT = 4
+# Largest estimated share of I(T_p) from above the hottest support point that the controller
+# leaves in place while hotter cached actions exist, see `_hot_tail_share`.
+_HOT_TAIL_SHARE_LIMIT = 1e-4
+
+
 def _controller_added_support_points(
     support_bank: np.ndarray | None,
     free_support_bank: np.ndarray | None,
@@ -69,11 +78,7 @@ def _controller_added_support_points(
         return 0
     if free_bank.size == 0:
         return int(bank.size)
-    count = 0
-    for value in bank:
-        if not np.any(_temperatures_match(free_bank, float(value), relative=1e-10)):
-            count += 1
-    return int(count)
+    return int(count_absent(bank, free_bank))
 
 
 def _new_controller_added_points(
@@ -152,8 +157,7 @@ def _rate_repair_budget(state: PercolationState, settings) -> int:
     window, so the refinement of ``P`` that follows gets one further
     ``n_action_max``. The repair points themselves need no allowance here: their
     actions are computed by the next sweep, which releases them into the free
-    bank. A profile that never needed the repair keeps exactly the historical
-    budget.
+    bank. A profile that never needed the repair gets no extra budget.
     """
     return int(settings.n_action_max) if int(state.rate_refine_points) > 0 else 0
 
@@ -243,6 +247,7 @@ def _estimate_dynamiczoomwindow_accuracy(
     pot,
     *,
     previous: dict[str, float | None] | None = None,
+    vw: float = 1.0,
 ) -> dict[str, float | None]:
     """Estimate Tperc, Tf and RH together with conservative convergence indicators."""
     from transitionlistener import bubbledynamics as bd
@@ -257,6 +262,10 @@ def _estimate_dynamiczoomwindow_accuracy(
         "RH_half_support": math.nan,
         "Tperc_bracket_width": math.inf,
         "Tf_bracket_width": math.inf,
+        "Tperc_ode": math.nan,
+        "Tperc_half_support": math.nan,
+        "Tf_ode": math.nan,
+        "Tf_half_support": math.nan,
     }
 
     Tperc, Tperc_width, _ = _find_value_crossing(temperatures, probabilities, settings.f_perc)
@@ -270,6 +279,17 @@ def _estimate_dynamiczoomwindow_accuracy(
     hubble_values = np.asarray(hubble, dtype=float)
     probability_values = np.asarray(probabilities, dtype=float)
     action_values = np.asarray(actions, dtype=float)
+
+    # The crossings as the integrator locates them, on the full support and on every second
+    # point of it. Their difference is the uncertainty of Tperc and Tf, as for RH below. The
+    # old measure, the width of the bracket the linear crossing above sits in, is a grid
+    # spacing rather than an error: it was 7e-2 at the median on the dark U(1) line, where T_p
+    # scatters by 2e-4, so `acc_tperc` could never be met. The values themselves stay the
+    # crossings of the profile handed in, which the RH indicator and Tf are evaluated at.
+    halved = _crossings_on_halved_support(temps, hubble_values, action_values, settings, vw=vw)
+    for key in ("Tperc", "Tf"):
+        estimate[f"{key}_ode"] = halved[f"{key}_full"]
+        estimate[f"{key}_half_support"] = halved[f"{key}_half"]
 
     finite_prob = np.isfinite(probability_values)
     finite_action = np.isfinite(action_values)
@@ -369,32 +389,34 @@ def _estimate_dynamiczoomwindow_accuracy(
     previous_Tf = None if previous is None else previous.get("Tf")
     previous_RH = None if previous is None else previous.get("RH")
 
-    if np.isfinite(float(estimate["Tperc"])):
-        bracket_uncertainty = float(estimate["Tperc_bracket_width"]) / max(abs(float(estimate["Tperc"])), 1e-30)
-        if previous_Tperc is None or not np.isfinite(previous_Tperc) or not np.isfinite(float(estimate["Tperc"])):
-            estimate["Tperc_uncertainty"] = bracket_uncertainty
+    for key, previous_value in (("Tperc", previous_Tperc), ("Tf", previous_Tf)):
+        value = float(estimate[key])
+        if not np.isfinite(value):
+            continue
+        scale = max(abs(value), 1e-30)
+        # The self-contained measure: the halved-support difference where both crossings
+        # exist, the bracket width (an upper bound, and the old measure) where they do not.
+        full, half = float(estimate[f"{key}_ode"]), float(estimate[f"{key}_half_support"])
+        if np.isfinite(full) and np.isfinite(half):
+            own = abs(full - half) / scale
         else:
-            estimate["Tperc_uncertainty"] = max(
-                bracket_uncertainty,
-                abs(float(estimate["Tperc"]) - float(previous_Tperc))
-                / max(abs(float(estimate["Tperc"])), 1e-30),
-            )
-    if np.isfinite(float(estimate["Tf"])):
-        bracket_uncertainty = float(estimate["Tf_bracket_width"]) / max(abs(float(estimate["Tf"])), 1e-30)
-        if previous_Tf is None or not np.isfinite(previous_Tf) or not np.isfinite(float(estimate["Tf"])):
-            estimate["Tf_uncertainty"] = bracket_uncertainty
+            own = float(estimate[f"{key}_bracket_width"]) / scale
+        # The drift since the previous iteration, between the integrator's crossings where both
+        # iterations have one: the linear crossing moves with the support by its own error.
+        previous_ode = None if previous is None else previous.get(f"{key}_ode")
+        if previous_ode is not None and np.isfinite(previous_ode) and np.isfinite(full):
+            drift = abs(full - float(previous_ode)) / scale
+        elif previous_value is not None and np.isfinite(previous_value):
+            drift = abs(value - float(previous_value)) / scale
         else:
-            estimate["Tf_uncertainty"] = max(
-                bracket_uncertainty,
-                abs(float(estimate["Tf"]) - float(previous_Tf))
-                / max(abs(float(estimate["Tf"])), 1e-30),
-            )
+            drift = None
+        estimate[f"{key}_uncertainty"] = own if drift is None else max(own, drift)
     if np.isfinite(float(estimate["RH"])):
-        # A single sample carries no information about its own convergence. This used to
-        # report 0.0 when there was no previous RH to compare against, so the very first
-        # estimate declared itself converged to zero per cent and acceptance passed on the
-        # spot -- which is why two accepted profiles were measured 27.6% apart at the 90th
-        # percentile while both claimed to meet acc_rh = 1%, with Tperc agreeing to under 1%.
+        # A single sample carries no information about its own convergence. Reporting 0.0
+        # with no previous RH to compare against would declare the very first estimate
+        # converged to zero per cent and pass acceptance on the spot: two accepted profiles
+        # then lie 27.6% apart at the 90th percentile while both claim to meet acc_rh = 1%,
+        # with Tperc agreeing to under 1%.
         #
         # Tperc and Tf do not have this hole: each falls back to its own bracket width. RH
         # has no bracket measure, so the honest value with nothing to compare against is
@@ -414,6 +436,42 @@ def _estimate_dynamiczoomwindow_accuracy(
         estimate["RH_uncertainty"] = max(candidates) if candidates else math.inf
 
     return estimate
+
+
+def _crossings_on_halved_support(temps, hubble, actions, settings, *, vw: float = 1.0) -> dict[str, float]:
+    """T_p and T_f where the integrator crosses them, on the full support and on every second point.
+
+    The bag-limit integral is used for both, as for the RH indicator: the expansion history is
+    a smooth factor that the difference cancels, and the comparison is between two samplings
+    of one profile, not a recomputation of the reported values. ``nan`` where a crossing is
+    not found, lies in the hottest interval, or the support is too short to halve (fewer than
+    eight points, see `_rh_on_halved_support`).
+    """
+    from transitionlistener import bubbledynamics as bd
+
+    out = {"Tperc_full": math.nan, "Tperc_half": math.nan, "Tf_full": math.nan, "Tf_half": math.nan}
+    temps = np.asarray(temps, dtype=float)
+    if temps.size < 8:
+        return out
+    keep = _halved_support_mask(temps.size)
+    hubble = np.asarray(hubble, dtype=float)
+    actions = np.asarray(actions, dtype=float)
+    for key, fraction in (("Tperc", settings.f_perc), ("Tf", settings.f_final)):
+        target = -math.log(max(1.0 - float(fraction), 1e-300))
+        for tag, mask in (("full", slice(None)), ("half", keep)):
+            try:
+                _, crossing = bd.percIntegralODE(
+                    temps[mask], hubble[mask], actions[mask], vw=float(vw), i_target=target)
+            except errors.Timeout:
+                raise
+            except Exception:
+                crossing = None
+            # A crossing inside the hottest interval is P jumping through the target within one
+            # interval: unresolved rather than converged, and both supports would report the
+            # same jump. Not measured.
+            if crossing is not None and np.isfinite(crossing) and 0.0 < crossing < float(temps[mask][1]):
+                out[f"{key}_{tag}"] = float(crossing)
+    return out
 
 
 def _halved_support_mask(n: int) -> np.ndarray:
@@ -787,12 +845,26 @@ def _try_dynamiczoomwindow_completed_refinement(
         settings,
         pot,
         previous=previous_estimate,
+        vw=vw,
     )
     if promote_cached_action_points("cached_action_points"):
         return True, estimate
     if previous_estimate is not None and _dynamiczoomwindow_accuracy_reached(estimate, settings):
         estimate["targets_met"] = True
         return False, estimate
+    # A measured miss of acc_tperc or acc_tfinal refines the transition band while there is
+    # budget and iteration left. With the bracket width as the measure this could not have
+    # worked, since that width only shrinks as fast as the grid does; the halved-support
+    # difference is an error estimate, and refining is what reduces it.
+    if iterator < settings.maxit and remaining_budget > 0 and _accuracy_target_missed(estimate, settings):
+        grid = _build_accuracy_refine_grid(
+            temperatures,
+            probabilities,
+            settings,
+            max_new_points=min(int(settings.n_action_increment), int(remaining_budget)),
+        )
+        if grid is not None and apply_candidate_grid(grid, "accuracy_refine"):
+            return True, estimate
 
     if previous_estimate is not None or remaining_budget <= 0:
         print(_dynamiczoomwindow_accuracy_warning_message(stage, estimate, settings))
@@ -815,6 +887,45 @@ def _try_dynamiczoomwindow_completed_refinement(
     # measured miss, up to 14.2% against a 1% target.
     estimate["targets_met"] = _dynamiczoomwindow_accuracy_verdict(estimate, settings)
     return False, estimate
+
+
+def _accuracy_target_missed(estimate: dict[str, float | None], settings) -> bool:
+    """Whether T_p or T_f has a measured uncertainty above its goal.
+
+    Only a finite uncertainty counts: an infinite one means nothing was measured, which
+    refining the band cannot be expected to change, and ``nan`` is refused rather than
+    compared.
+    """
+    for key, goal in (("Tperc", settings.acc_tperc), ("Tf", settings.acc_tfinal)):
+        uncertainty = float(estimate.get(f"{key}_uncertainty", math.inf))
+        if np.isfinite(uncertainty) and not (uncertainty <= float(goal)):
+            return True
+    return False
+
+
+def _build_accuracy_refine_grid(temperatures, probabilities, settings, *, max_new_points: int):
+    """Midpoints in ``ln T`` of the widest support intervals inside the transition band.
+
+    The band is where ``f_start <= P <= f_final`` at both ends of an interval: the intervals
+    that the percolation and completion temperatures are read from. At most
+    ``max_new_points`` intervals, the widest first; ``None`` when there is nothing to add.
+    """
+    temps = np.asarray(temperatures, dtype=float)
+    probs = np.asarray(probabilities, dtype=float)
+    if temps.size < 2 or probs.size != temps.size or int(max_new_points) <= 0:
+        return None
+    with np.errstate(invalid="ignore", divide="ignore"):
+        log_t = np.log(temps)
+    in_band = np.isfinite(probs) & (probs >= float(settings.f_start)) & (probs <= float(settings.f_final))
+    # Also the intervals reaching into the band from either side, so that a crossing in the
+    # first or last interval of the band is refined too.
+    interval_in_band = (in_band[:-1] | in_band[1:]) & np.isfinite(log_t[:-1]) & np.isfinite(log_t[1:])
+    widths = np.where(interval_in_band, log_t[:-1] - log_t[1:], -np.inf)
+    order = [int(i) for i in np.argsort(-widths) if np.isfinite(widths[i]) and widths[i] > 0.0]
+    order = order[: int(max_new_points)]
+    if not order:
+        return None
+    return np.exp(np.asarray([0.5 * (log_t[i] + log_t[i + 1]) for i in order], dtype=float))
 
 
 def _try_dynamiczoomwindow_ordered_support_refinement(
@@ -890,6 +1001,58 @@ def _try_dynamiczoomwindow_ordered_support_refinement(
     return False, int(remaining_budget)
 
 
+def _hot_tail_share(temperatures, hubble, actions, settings) -> float:
+    r"""Estimated share of ``I(T_p)`` that comes from above the hottest support point.
+
+    The integral starts from zero at the hottest support point ``T_0``, so whatever nucleates
+    above it is left out. That is negligible when the rate there is negligible for the
+    percolation point, and the hot-head test reads it off ``Gamma/H^4 < 1`` at ``T_0``. In a
+    supercooled, vacuum-dominated transition that is not enough: a rate somewhat below
+    ``H^4`` at ``T_0`` passes the test, but the e-folds of expansion down to T_p let the
+    bubbles nucleated above ``T_0`` fill percent of ``I(T_p)``.
+
+    The estimate: the share of ``I(T_p)`` from the hottest support interval (the bag-limit
+    integral with and without the hottest point), times ``1 / (1 - exp(-kappa Delta))``, which
+    sums the same contribution over the tail above ``T_0`` if the source ``gamma T`` keeps
+    falling towards higher temperature with the slope ``kappa`` it has across that interval
+    of width ``Delta`` in ``ln T``. A source that grows towards higher temperature gives an
+    unbounded tail, ``inf``. ``0`` where the hottest source is floored. ``nan`` where it cannot
+    be measured (fewer than eight points, no percolation crossing below the hottest interval,
+    a failed integral); the caller treats that as no evidence and leaves the decision to the
+    existing hot-head test.
+    """
+    from transitionlistener import bubbledynamics as bd
+
+    T = np.asarray(temperatures, dtype=float)
+    H = np.asarray(hubble, dtype=float)
+    S = np.asarray(actions, dtype=float)
+    if T.size < 8 or H.size != T.size or S.size != T.size:
+        return math.nan
+    source = bd._log_bag_gamma_source_array(T[:2], S[:2], H[:2]) + np.log(T[:2])
+    if not np.isfinite(source[0]) or source[0] <= bd._LOG_GAMMA_SOURCE_FLOOR + 1.0:
+        return 0.0
+    width = float(np.log(T[0] / T[1]))
+    if not np.isfinite(source[1]) or not width > 0.0:
+        return math.nan
+    target = -math.log(max(1.0 - float(settings.f_perc), 1e-300))
+    try:
+        full = bd.percIntegralODE(T, H, S, vw=1.0)
+        crossing = int(np.searchsorted(full, target))
+        if crossing < 3 or crossing >= T.size:
+            return math.nan
+        without = bd.percIntegralODE(T[1:], H[1:], S[1:], vw=1.0)
+    except errors.Timeout:
+        raise
+    except Exception:
+        return math.nan
+    first = (float(full[crossing]) - float(without[crossing - 1])) / float(full[crossing])
+    kappa = (float(source[1]) - float(source[0])) / width
+    if not kappa > 0.0:
+        return math.inf
+    share = first / (-math.expm1(-kappa * width))
+    return float(share) if np.isfinite(share) else math.nan
+
+
 def _dynamiczoomwindow_post_sweep_controller(
     temperatures: np.ndarray,
     hubble: np.ndarray,
@@ -930,6 +1093,15 @@ def _dynamiczoomwindow_post_sweep_controller(
     )
 
     if hot_head_needs_support and promote_hot_head_cached_points():
+        return "retry", None, int(remaining_budget), hot_head_needs_support
+    # The test above accepts a hot head once Gamma/H^4 < 1 there, which says nothing about
+    # how much the bubbles nucleated above it fill by T_p after many e-folds of supercooled
+    # expansion. Where the cache holds hotter actions, promote them while that share is
+    # measurable. Nothing else changes: with no cached point to promote the profile goes on
+    # unchanged, so the test cannot fail a run.
+    if not hot_head_needs_support and _hot_tail_share(
+        temperatures, hubble, actions, settings
+    ) > _HOT_TAIL_SHARE_LIMIT and promote_hot_head_cached_points():
         return "retry", None, int(remaining_budget), hot_head_needs_support
     if promote_cached_action_points("cached_action_points"):
         return "retry", None, int(remaining_budget), hot_head_needs_support
@@ -1376,6 +1548,13 @@ def _compute_step3_profile(
     # bounce-boundary test must not mistake for a solve.
     state.Sr_computed = np.zeros(TSYM.size, dtype=bool)
     profile_saturated = False
+    # The broken plasma is diluted between support points by the expansion history of the
+    # percolation integral, which depends on the false-vacuum plasma alone.
+    volume_ratios = bd.comoving_volume_ratios(
+        pot, phase_symmetric, TSYM,
+        time_temperature_mode=settings.time_temperature_mode,
+        entropy_definition=getattr(settings, "entropy_definition", None),
+    )
 
     for i, T in enumerate(TSYM):
         if not profile_saturated:
@@ -1397,7 +1576,7 @@ def _compute_step3_profile(
                 state.Tb[i] = np.nan
             elif i == 0:
                 try:
-                    TBRO = optimize.brentq(
+                    TBRO = bd.criterion_root(
                         bd.Tb_criterion,
                         TBROmin,
                         TBROmax,
@@ -1414,9 +1593,10 @@ def _compute_step3_profile(
             else:
                 P_prev = float(previous_probability[i - 1]) if np.isfinite(previous_probability[i - 1]) else 0.0
                 previous_tb = float(state.Tb[i - 1]) if np.isfinite(state.Tb[i - 1]) else np.nan
+                half_split = False
                 if P_prev < 1e-6 or not np.isfinite(previous_tb):
                     try:
-                        TBRO = optimize.brentq(
+                        TBRO = bd.criterion_root(
                             bd.Tb_criterion,
                             TBROmin,
                             TBROmax,
@@ -1429,22 +1609,26 @@ def _compute_step3_profile(
                                 f"{err}. The hot pure-symmetric tail may be too close to the "
                                 "broken-branch tracing boundary."
                             )
-                        TBRO = optimize.brentq(
+                        TBRO = bd.criterion_root(
                             bd.entropy_criterion_SYM_BRO,
                             TBROmin,
                             TBROmax,
-                            args=(previous_tb, T, TSYM[i - 1], phase_broken, pot),
+                            args=(previous_tb, volume_ratios[i], phase_broken, pot),
                         )
                 else:
+                    start_tb, half_split = bd._convert_half_at_interval_start(
+                        pot, phase_symmetric, phase_broken, TSYM[i - 1], previous_tb,
+                        P_prev, P - P_prev, TBROmin, TBROmax)
                     try:
-                        TBRO = optimize.brentq(
+                        TBRO = bd.criterion_root(
                             bd.entropy_criterion_SYM_BRO,
                             TBROmin,
                             TBROmax,
-                            args=(previous_tb, T, TSYM[i - 1], phase_broken, pot),
+                            args=(start_tb, volume_ratios[i], phase_broken, pot),
                         )
                     except ValueError:
-                        TBRO = optimize.brentq(
+                        half_split = False
+                        TBRO = bd.criterion_root(
                             bd.Tb_criterion,
                             TBROmin,
                             TBROmax,
@@ -1453,12 +1637,15 @@ def _compute_step3_profile(
                 eBRO = bd.energyDensity(pot, phase_broken, TBRO, include_decoupled=False)
 
                 dP = P - P_prev
+                if half_split:
+                    # The other half of this interval's conversion, at its cold end.
+                    dP = 0.5 * dP
                 energy_release = eBRO * (P - dP) + dP * eSYM_PT
                 if energy_release / eBRO < 1e-50:
                     state.Tb[i] = TBRO
                 else:
                     try:
-                        TBRO = optimize.brentq(
+                        TBRO = bd.criterion_root(
                             bd.energy_criterion_BRO,
                             TBROmin,
                             TBROmax,
@@ -1829,6 +2016,24 @@ def _refine_percolation_temperature_dynamiczoomwindow(
     iterator = 1
     profile_picard_retries = 0
     profile_rho_tol = max(5.0 * float(settings.acc_rh), 0.02)
+    sweeps_after_limit = 0
+
+    def _sweep_after_limit() -> bool:
+        """Whether one more same-grid sweep may run although `iterator` reached `maxit`.
+
+        `maxit` bounds the support updates. A sweep on the same grid with the latest P(T) is not
+        one: it only makes the profile in hand self-consistent. Without these sweeps a rebuild
+        in the last allowed iteration is returned as it was first computed, from the zeroed
+        P(T) that `_reset_state_arrays` leaves, i.e. with no reheating in H(T) at all, and
+        whether the Hubble rate feels the transition would depend on the iteration in which the
+        last rebuild happened. The number of such sweeps is bounded, and no support
+        update happens during them because every refinement path checks `iterator` first.
+        """
+        nonlocal sweeps_after_limit
+        if sweeps_after_limit >= _SAME_GRID_SWEEPS_AFTER_LIMIT:
+            return False
+        sweeps_after_limit += 1
+        return True
 
     def _note_rebuild(reason: str, old_grid: np.ndarray, new_grid: np.ndarray) -> None:
         _log_support_rebuild(state, "step3", reason, old_grid, new_grid, verbose)
@@ -2044,7 +2249,7 @@ def _refine_percolation_temperature_dynamiczoomwindow(
         # Tperc still moves noticeably between successive step-3 iterations,
         # continue iterating before judging the support accuracy.
         if np.isfinite(Tperc) and abs(Tperc - Tperc_prev) / max(abs(Tperc), 1e-30) >= rtol:
-            if iterator >= settings.maxit:
+            if iterator >= settings.maxit and not _sweep_after_limit():
                 print(
                     "Warning: step 3 reached the iteration limit before Tperc fully "
                     "stopped moving under the P-dependent Hubble update. Continuing."
@@ -2055,7 +2260,9 @@ def _refine_percolation_temperature_dynamiczoomwindow(
                 continue
 
         profile_residual = _profile_self_consistency_residual()
-        if profile_residual > profile_rho_tol and profile_picard_retries < 3 and iterator < settings.maxit:
+        if profile_residual > profile_rho_tol and profile_picard_retries < 3 and (
+            iterator < settings.maxit or _sweep_after_limit()
+        ):
             if verbose:
                 print(
                     "Step-3 profile not yet self-consistent on the current support grid: "

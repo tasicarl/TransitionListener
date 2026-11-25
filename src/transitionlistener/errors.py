@@ -459,7 +459,7 @@ class EnthalpyUnderflowError(Exception):
     solvers build that enthalpy in two ways. The adaptive one differences the energy density
     across a temperature step for the pseudo-trace strength; both of them form ``e + p``
     directly for the strengths that drive the wall and the sound waves. Either way the vacuum
-    energy cancels analytically and not numerically: on the conformal dark U(1) model at
+    energy cancels analytically and not numerically: on the conformal U(1) with fermions model at
     g = 0.5 it is 1.4857e8 in internal units while the thermal part is about 1e-15 of it, so
     the difference came back as exactly zero and the strength as infinity.
 
@@ -502,7 +502,7 @@ class UnexpectedError(Exception):
 
     The code is exposed as a class constant because the CLI needs it before an instance
     exists: an exception that reaches the per-point handler carrying no ``errorcode`` is
-    reported under this one rather than as the unnamed -1 it used to be.
+    reported under this one.
     """
 
     #: CLI error code for an unclassified failure.

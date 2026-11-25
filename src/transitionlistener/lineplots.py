@@ -44,7 +44,7 @@ def _as_scalar_or_nan(value) -> float:
 
 
 def _detectable_from_snr(snr: float, threshold: float) -> bool:
-    """Infer detectability from SNR when legacy scan exports omit the flag."""
+    """Infer detectability from SNR when a scan export omits the flag."""
     return bool(
         np.isfinite(snr)
         and np.isfinite(threshold)

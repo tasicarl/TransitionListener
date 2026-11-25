@@ -11,6 +11,7 @@ Authors:
     Carlo Tasillo <carlo.tasillo@ific.uv.es>
 """
 
+from transitionlistener.eft_rate import one_field_rate_3d
 import numpy as np
 from dataclasses import dataclass
 from scipy import interpolate
@@ -131,12 +132,30 @@ class PercolationResult:
     successful: bool
 
 
+def _refuse_adaptive_only_gw_choices(gw_conf) -> None:
+    """Refuse the spectrum settings that need an observable only the adaptive solver computes.
+
+    ``expansion_speed = "betaH_Gamma"`` with the expansion on needs ``betaH_Gamma``, which
+    this solver leaves ``nan``. The spectrum would refuse it too, but only after the
+    percolation, and the pipeline continues past a spectrum it cannot build, so the run would
+    end without one and without an error.
+    """
+    if (bool(getattr(gw_conf, "expansion_suppression", False))
+            and str(getattr(gw_conf, "expansion_speed", "betaH_RH")) == "betaH_Gamma"):
+        raise errors.GWParamsError(
+            "gw_expansion_speed = 'betaH_Gamma' needs the observable betaH_Gamma, which "
+            "percolation_algorithm_mode = 'fixed_step_size' does not compute. Use the adaptive "
+            "step size solver, or leave gw_expansion_speed at 'betaH_RH'."
+        )
+
+
 class TransitionObservables:
     """Evaluate derived observables for every transition of a potential."""
 
     def __init__(self, pot: generic_potential, phases: list[PhaseInfo],
                  transitions: list[TransitionInfo], verbose=False):
         """Store inputs and immediately compute all derived quantities."""
+        _refuse_adaptive_only_gw_choices(pot.config.gwConf)
         self.pot = pot
         self.phases = phases
         self.GWconfig = pot.config.gwConf
@@ -246,6 +265,7 @@ class TransitionObservables:
             "WARNING:noisy_c_s": False,
             "DIAG:c_s_step_change": float("nan"),
             "WARNING:daisy_outside_validity": False,
+            **one_field_rate_3d.VALIDITY_KEYS,
             "DIAG:daisy_over_radiation": float("nan"),
             "WARNING:v_wall_no_solution": False,
             "WARNING:no_perc_splines": False,
@@ -269,6 +289,9 @@ class TransitionObservables:
             "WARNING:entropy_scheme_sensitive": False,
             "DIAG:entropy_scheme_cs2_spread": float("nan"),
             "DIAG:entropy_scheme_lna_gap": float("nan"),
+            # Computed by the adaptive solver only; the spectrum setting that needs it is
+            # refused in the constructor.
+            "betaH_Gamma": float("nan"),
         }
         return TransitionContext(
             tr=tr,
@@ -1086,6 +1109,8 @@ class TransitionObservables:
 
         self._ensure_wall_velocity(ctx, percolation.Tperc)
         self._ensure_sound_speed(ctx, percolation.Tperc)
+        # the validity of the 3D theory at the same temperature; defaults where the run has no 3D rate
+        ctx.derived_params.update(one_field_rate_3d.validity_diagnostics(ctx.pot, percolation.Tperc))
 
         self._check_false_vacuum_shrinking(ctx, percolation)
         self._populate_temperature_observables(ctx, percolation)
